@@ -1,0 +1,89 @@
+# A minimal, valid MANDATE scenario fixture.
+#
+# This is NOT "The Arken Crisis" (product spec §36) — it is a deliberately
+# tiny two-country world used only to prove the Phase 1 pipeline (scenario
+# loading -> invariant validation -> turn resolution -> report generation)
+# works end to end. The authored initial scenario is Phase 8 work.
+
+schema_version: 1
+scenario_id: tiny_valid
+name: "Tiny Valid Fixture"
+ruleset_version: "0.1.0"
+content_version: "0.1.0"
+seed: 42
+player_country_id: arken
+
+countries:
+  - id: arken
+    name: "Republic of Arken"
+    population: 1000000
+    treasury:
+      cash_on_hand: 10000000000   # 100,000,000.00 denars, in minor units
+      debt: 5000000000            #  50,000,000.00 denars
+    population_groups:
+      - id: urban_workers
+        name: "Urban Workers"
+        population_share: 0.40
+        political_influence: 55
+        approval: 52
+        trust: 48
+        organization: 35
+        radicalization: 10
+      - id: rural_farmers
+        name: "Rural Farmers"
+        population_share: 0.35
+        political_influence: 45
+        approval: 50
+        trust: 50
+        organization: 25
+        radicalization: 5
+      - id: business_owners
+        name: "Business Owners"
+        population_share: 0.25
+        political_influence: 70
+        approval: 60
+        trust: 55
+        organization: 40
+        radicalization: 2
+    institutions:
+      - id: executive
+        name: "Executive Government"
+        loyalty: 80
+        power: 70
+        competence: 60
+        corruption: 15
+      - id: legislature
+        name: "Legislature"
+        loyalty: 60
+        power: 55
+        competence: 50
+        corruption: 20
+      - id: military
+        name: "Military"
+        loyalty: 75
+        power: 65
+        competence: 60
+        corruption: 10
+
+  - id: neighbor
+    name: "Neighboring State"
+    population: 500000
+    treasury:
+      cash_on_hand: 3000000000    #  30,000,000.00 denars
+      debt: 1000000000            #  10,000,000.00 denars
+    population_groups:
+      - id: citizens
+        name: "Citizens"
+        population_share: 1.0
+        political_influence: 50
+        approval: 55
+        trust: 50
+        organization: 20
+        radicalization: 3
+    institutions:
+      - id: executive
+        name: "Executive Government"
+        loyalty: 70
+        power: 60
+        competence: 55
+        corruption: 20
