@@ -64,6 +64,31 @@ def test_identical_in_memory_states_resolve_identically() -> None:
     )
 
 
+def test_two_independent_games_produce_byte_identical_complete_histories(
+    tiny_valid_scenario_path: Path,
+) -> None:
+    """Same scenario + seed + decisions, built and advanced independently twice,
+    must yield byte-identical *complete histories* (not just final state) —
+    every entry_hash, decisions_json, and report_json included."""
+    from app.simulation.history import advance_game, new_game
+    from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json
+
+    def _play(n: int) -> str:
+        state = load_scenario_file(tiny_valid_scenario_path)
+        save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+        for _ in range(n):
+            current = save.current_state()
+            decisions = DecisionSet(
+                expected_turn=current.turn,
+                expected_state_version=current.state_version,
+                decisions=[],
+            )
+            save = advance_game(save, decisions)
+        return dump_save_json(save)
+
+    assert _play(8) == _play(8)
+
+
 def test_canonical_dumps_rejects_non_canonical_value_types() -> None:
     import datetime
     import uuid

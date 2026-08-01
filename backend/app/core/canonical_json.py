@@ -20,7 +20,11 @@ from __future__ import annotations
 import datetime
 import json
 import uuid
+from hashlib import blake2b
 from typing import Any
+
+DIGEST_SIZE = 32
+"""BLAKE2b digest size in bytes (256-bit), giving 64 hex characters."""
 
 
 class NonCanonicalValueError(TypeError):
@@ -61,8 +65,18 @@ def canonical_dumps(data: Any) -> str:
     )
 
 
-def canonical_hash(data: Any) -> str:
-    """Convenience: a short hash of `canonical_dumps(data)`, useful in test failure messages."""
-    import hashlib
+def canonical_bytes(data: Any) -> bytes:
+    """`canonical_dumps(data)` encoded as UTF-8 bytes — what actually gets hashed or written."""
+    return canonical_dumps(data).encode("utf-8")
 
-    return hashlib.sha256(canonical_dumps(data).encode()).hexdigest()[:16]
+
+def canonical_digest(data: Any) -> str:
+    """A BLAKE2b-256 hex digest of `canonical_bytes(data)`.
+
+    Used for the history hash chain (`simulation.history`) and anywhere else
+    a deterministic content fingerprint is needed. Not a security primitive:
+    it is unkeyed, so it detects accidental corruption and unsophisticated
+    tampering, not a knowledgeable adversary who can simply recompute it
+    (see `docs/architecture.md`, "What the hash chain protects").
+    """
+    return blake2b(canonical_bytes(data), digest_size=DIGEST_SIZE).hexdigest()

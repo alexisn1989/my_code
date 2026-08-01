@@ -35,13 +35,40 @@ jobs:
       - name: Lint
         run: uv run ruff check .
 
-      - name: Type-check (simulation engine + core)
-        run: uv run mypy app/core app/simulation
+      # Runs the same set the pyproject `[tool.mypy]` config lists (packages +
+      # modules) — see backend/pyproject.toml.
+      - name: Type-check (deterministic engine + I/O boundaries)
+        run: uv run mypy
 
       - name: Test
         run: uv run pytest -v
 
-  # Frontend is a config-only scaffold as of Phase 0/1 (see docs/roadmap.md) —
-  # no `npm install` has been run or verified yet in this repository. A
-  # frontend CI job is added once the toolchain is installed and exercised,
-  # starting Phase 5.
+  frontend:
+    name: Frontend (typecheck, build, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci installs exactly what's locked in package-lock.json and fails
+      # if it's out of sync with package.json, mirroring the backend's
+      # `uv sync --locked` reproducibility guarantee.
+      - name: Install dependencies (locked)
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test

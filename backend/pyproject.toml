@@ -53,7 +53,8 @@ known-first-party = ["app"]
 
 [tool.mypy]
 python_version = "3.11"
-packages = ["app.core", "app.simulation"]
+packages = ["app.core", "app.simulation", "app.content"]
+modules = ["app.saves"]
 strict = true
 warn_unused_ignores = true
 disallow_untyped_defs = true

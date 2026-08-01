@@ -74,4 +74,68 @@ class ScenarioValidationError(MandateError):
 
 
 class SaveFileError(MandateError):
-    """A save/state file is missing, corrupt, or version-incompatible."""
+    """A save file is missing, unreadable, or not valid JSON.
+
+    Distinct from `HistoryValidationError` (the file parses fine but its
+    *content* fails history/integrity checks) and `SaveCompatibilityError`
+    (the file parses fine but declares an unsupported version).
+    """
+
+
+class SaveCompatibilityError(MandateError):
+    """Base class for version-incompatible saves. Never raised directly.
+
+    Save-format version, ruleset version, and content version are distinct
+    concepts (see `docs/adr/0002-snapshot-history-and-versioning.md`) and
+    each gets its own subclass so callers can tell which one is wrong.
+    """
+
+    def __init__(self, kind: str, found: str, supported: str) -> None:
+        self.kind = kind
+        self.found = found
+        self.supported = supported
+        super().__init__(
+            f"unsupported {kind} {found!r}; this build supports: {supported}. "
+            "The save was not loaded; nothing was modified."
+        )
+
+
+class UnsupportedSaveFormatVersionError(SaveCompatibilityError):
+    def __init__(self, found: str, supported: str) -> None:
+        super().__init__("save_format_version", found, supported)
+
+
+class UnsupportedRulesetVersionError(SaveCompatibilityError):
+    def __init__(self, found: str, supported: str) -> None:
+        super().__init__("ruleset_version", found, supported)
+
+
+class UnsupportedContentVersionError(SaveCompatibilityError):
+    def __init__(self, found: str, supported: str) -> None:
+        super().__init__("content_version", found, supported)
+
+
+class HistoryValidationError(MandateError):
+    """A save's history failed structural or cryptographic integrity checks.
+
+    Carries every problem found (see `simulation.history.validate_history`),
+    not just the first — tampering often breaks several checks at once
+    (e.g. a truncated tail breaks both `entry_count` and `head_entry_hash`),
+    and an actionable error should say so.
+    """
+
+    def __init__(self, problems: list[str]) -> None:
+        if not problems:
+            raise ValueError("HistoryValidationError requires at least one problem")
+        self.problems = problems
+        super().__init__(f"{len(problems)} history integrity problem(s): " + "; ".join(problems))
+
+
+class SnapshotNotFoundError(MandateError):
+    """A requested turn number has no corresponding history entry."""
+
+    def __init__(self, turn: int, available_turns: list[int]) -> None:
+        self.turn = turn
+        self.available_turns = available_turns
+        span = f"{available_turns[0]}-{available_turns[-1]}" if available_turns else "none"
+        super().__init__(f"no history entry for turn {turn}; available turns: {span}")

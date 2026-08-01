@@ -4,39 +4,56 @@ Phases match `product_spec.md` / the original brief §38. A phase is not started
 previous one's acceptance criteria pass and are verified (not just implemented). Section
 references (`§n`) point at the numbered sections of the original brief for full requirement detail.
 
-## Phase 0 — Discovery and project foundation — **in progress**
+## Phase 0 — Discovery and project foundation — **complete**
 
 Scope: §1–§6, §39–§40 (process rules), monorepo layout, tooling, docs.
 
 Acceptance criteria:
 - [x] Repository inspected, current state documented before any edit.
 - [x] `docs/product_spec.md`, `docs/architecture.md`, `docs/adr/0001-*.md` written.
-- [ ] Monorepo structure created (`backend/`, `frontend/`, `data/`, `docs/`, `scripts/`).
-- [ ] Backend formatting/lint/type/test tooling configured and runnable (`uv sync`, `ruff`,
+- [x] Monorepo structure created (`backend/`, `frontend/`, `data/`, `docs/`, `scripts/`).
+- [x] Backend formatting/lint/type/test tooling configured and runnable (`uv sync`, `ruff`,
       `mypy`, `pytest`).
-- [ ] `.env.example` present; no secrets committed.
-- [ ] CI workflow runs lint + type-check + tests on push.
-- [ ] Local development instructions in `README.md`.
+- [x] `.env.example` present; no secrets committed.
+- [x] CI workflow runs lint + type-check + tests on push.
+- [x] Local development instructions in `README.md`.
 
-## Phase 1 — Pure simulation foundation — **this session, minimal slice**
+## Phase 1 — Pure simulation foundation — **complete**
 
-Scope: §7 (turn structure), §8 (core game state, minimal subset).
+Scope: §7 (turn structure), §8 (core game state, minimal subset), §5.4 (immutable turn history).
 
-Acceptance criteria (this session's cut — see `architecture.md` for what's deferred within Phase 1):
-- [ ] Typed `GameState`, `DecisionSet`, `TurnReport` (+ minimal `WorldState`, `CountryState`,
+Minimal-slice acceptance criteria (first pass):
+- [x] Typed `GameState`, `DecisionSet`, `TurnReport` (+ minimal `WorldState`, `CountryState`,
       `PopulationGroupState`, `InstitutionState`, `TreasuryState`).
-- [ ] Deterministic seeded RNG (`core/rng.py`), namespaced by `(seed, turn, stream)`.
-- [ ] Scenario loader with validation (Pydantic, YAML).
-- [ ] Turn resolver with the explicit 15-phase order from §7, phases registered as data.
-- [ ] Invariant validation (population non-negative, group shares sum to 1 within tolerance,
+- [x] Deterministic seeded RNG (`core/rng.py`), namespaced by `(seed, turn, stream)`.
+- [x] Scenario loader with validation (Pydantic, YAML).
+- [x] Turn resolver with the explicit 15-phase order from §7, phases registered as data.
+- [x] Invariant validation (population non-negative, group shares sum to 1 within tolerance,
       turn/version bounds) run before and after resolution.
-- [ ] Headless CLI: create a game, resolve turns, inspect state — no server required.
-- [ ] One valid scenario fixture (`data/scenarios/tiny_valid.yaml`).
-- [ ] Tests: determinism (canonical JSON diff), turn number advances exactly once, invalid
+- [x] Headless CLI: create a game, resolve turns, inspect state — no server required.
+- [x] One valid scenario fixture (`data/scenarios/tiny_valid.yaml`).
+- [x] Tests: determinism (canonical JSON diff), turn number advances exactly once, invalid
       decisions never mutate input state, group-share validation, fixture loads.
 
-Remainder of Phase 1 (full domain model coverage of all ~29 state classes in §8, richer invariant
-set, immutable snapshot history in-process) is **not** in this session's scope; tracked as follow-up.
+History/persistence completion (second pass — see `docs/adr/0002-snapshot-history-and-versioning.md`):
+- [x] Immutable, hash-chained `GameSave`/`HistoryEntry` above the (unchanged, still pure) resolver.
+- [x] `entry_hash` covers state, decisions, report, turn, and both version fields — not state alone.
+- [x] Tail-truncation guard (`entry_count` + `head_entry_hash`) independent of the chain-link check.
+- [x] Recursive immutability: canonical-text storage, fresh-parse accessors, no reachable mutable
+      nested state — verified by explicit mutation-attempt tests, not just a `frozen=True` flag.
+- [x] Version compatibility policy: save-format/ruleset/content versions checked independently;
+      Phase-0's save format rejected outright (documented why a migration is impossible, not just
+      undesirable).
+- [x] Atomic save writes: unique same-directory temp file, `fsync`, `os.replace`, cleanup on failure.
+- [x] CLI: `new`/`inspect`/`resolve`/`history`, all operating on the real save format.
+- [x] Frontend scaffold installed and verified: `npm ci`, `tsc --noEmit`, `vite build`, `vitest run`
+      all pass; one render smoke test.
+- [x] 100-turn deterministic soak test, duration measured and reported (no invariant violations).
+
+Deliberately still deferred, not missing: full domain-model coverage of the remaining ~29 state
+classes in §8 (`GovernmentState`, `MilitaryState`, `DiplomaticRelationState`, parties, elections,
+…). Each is added in the phase that gives it real behavior — see `docs/architecture.md`, "Why not
+more, yet" — never as an empty placeholder ahead of that.
 
 ## Phase 2 — Economy, budget, and population
 

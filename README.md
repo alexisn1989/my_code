@@ -8,20 +8,22 @@ every decision.
 - **Design and product spec:** [`docs/product_spec.md`](docs/product_spec.md)
 - **Architecture:** [`docs/architecture.md`](docs/architecture.md)
 - **Roadmap and phase status:** [`docs/roadmap.md`](docs/roadmap.md)
-- **Stack rationale:** [`docs/adr/0001-stack-and-architecture.md`](docs/adr/0001-stack-and-architecture.md)
+- **ADRs:** [`docs/adr/0001-stack-and-architecture.md`](docs/adr/0001-stack-and-architecture.md),
+  [`docs/adr/0002-snapshot-history-and-versioning.md`](docs/adr/0002-snapshot-history-and-versioning.md)
 
 ## Current status
 
-**Phase 0 (project foundation) and the minimal slice of Phase 1 (pure simulation foundation) are
-implemented and verified.** There is a deterministic, testable turn-resolution engine reachable
-from a headless CLI. There is no API, no database, and no working frontend yet — see
-`docs/roadmap.md` for what's implemented per phase.
+**Phase 0 (project foundation) and Phase 1 (pure simulation foundation) are complete and
+verified.** There is a deterministic, hash-chained, immutable game-history engine reachable from a
+headless CLI, and a verified (installed, type-checked, built, tested) but otherwise empty frontend
+shell. There is no API and no database yet — see `docs/roadmap.md` for what's implemented per
+phase.
 
 ## Repository layout
 
 ```
-backend/    Python simulation engine, CLI, (Phase 4+) FastAPI app
-frontend/   React/TypeScript/Vite app — config scaffold only, not yet installed or built
+backend/    Python simulation engine, history/save layer, CLI, (Phase 4+) FastAPI app
+frontend/   React/TypeScript/Vite app — verified shell, no gameplay screens yet
 data/       Data-driven content: scenarios (YAML), later events/map
 docs/       Product spec, architecture, roadmap, ADRs
 ```
@@ -35,42 +37,55 @@ cd backend
 uv sync --group dev              # installs pinned, locked dependencies
 uv run ruff format --check .     # formatting
 uv run ruff check .              # lint
-uv run mypy app/core app/simulation   # strict type-check of the deterministic engine
+uv run mypy                      # strict type-check (app/core, app/simulation, app/content, app/saves)
 uv run pytest -v                 # full test suite
 ```
 
 ### Headless CLI
 
-The simulation engine works without a server or database:
+The simulation and history engine work without a server or database:
 
 ```bash
 uv run python -m app.cli new --scenario ../data/scenarios/tiny_valid.yaml --out save.json
 uv run python -m app.cli inspect --state save.json
 uv run python -m app.cli resolve --state save.json --turns 8 --out save.turn8.json
+uv run python -m app.cli history --state save.turn8.json
+uv run python -m app.cli history --state save.turn8.json --turn 3
 ```
 
-`new` creates a game from a scenario file. `inspect` loads and validates a state file without
-mutating it. `resolve` resolves N turns and writes the result to a new file — it refuses to
-overwrite its input.
+- `new` creates a save containing only the genesis (turn-0) entry.
+- `inspect` loads a save and reports its version envelope, current turn, entry count, and
+  integrity status — even an invalid save can be inspected; that's the point of "integrity status."
+- `resolve` appends N turns to history and writes the result atomically; it refuses to overwrite
+  its input, and on any failure nothing is written and the input is untouched.
+- `history` lists every turn, or with `--turn N` shows one historical entry, without mutating
+  anything. Unlike `inspect`, it refuses to operate on a save that fails integrity validation.
+
+Save files are hash-chained (see the history ADR below) — every entry records not just the
+resulting state but the decisions submitted and the report produced, linked to the previous entry
+by a BLAKE2b-256 hash. This detects accidental corruption and hand-editing; it is explicitly **not**
+anti-cheat security (the hashes are unkeyed).
 
 ## Frontend
 
-`frontend/` currently contains configuration and a minimal shell page only (React + TypeScript +
-Vite + Tailwind v4 + Vitest). **`npm install` has not been run or verified in this repository** —
-that, and real gameplay screens, start at Phase 5 once there is a backend API to talk to.
+`frontend/` is a verified but intentionally empty shell (React 19 + TypeScript + Vite + Tailwind v4
++ Vitest) — one placeholder page, one render smoke test. Real gameplay screens start at Phase 5
+once there is a backend API to talk to.
 
 ```bash
 cd frontend
-npm install
+npm ci               # installs exactly what's locked in package-lock.json
+npm run typecheck
 npm run build
-npm run test
+npm test              # noninteractive (vitest run)
 ```
 
 ## Local Postgres (Phase 4+)
 
-`docker-compose.yml` defines a Postgres service for the persistence layer introduced in Phase 4.
-Nothing in the backend uses a database yet; the compose file is validated
-(`docker compose config --quiet`) but not started as part of this phase.
+`docker-compose.yml` defines a Postgres service for the relational identity tables (games,
+countries, leaders, …) introduced in Phase 4. Nothing in the backend uses a database yet — the
+immutable history/save layer is file-based (see the ADR) and works standalone. The compose file is
+validated (`docker compose config --quiet`) but not started as part of this phase.
 
 ## Contributing / working method
 
