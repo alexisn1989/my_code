@@ -19,9 +19,10 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.money import Money, StrictBps, StrictMoney
+from app.core.quantity import StrictRealOutput, StrictRealOutputPerWorker, StrictWorkerCount
 
 _STRICT_CONFIG = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -166,6 +167,87 @@ class GovernmentFinanceState(BaseModel):
     annual_debt_interest_rate_bps: StrictBps
 
 
+class SectorCategory(StrEnum):
+    """The eleven aggregate economic sectors modeled in Phase 2B1 (product spec §13).
+
+    Declaration order here is the canonical sector ordering used by
+    `EconomyState`'s normalization validator and by `ProductionReport.sectors`
+    (see both) — changing this order is a ruleset-affecting change, not a
+    cosmetic one, since it would change canonical JSON and every `entry_hash`
+    computed over an `EconomyState`/`ProductionReport`.
+    """
+
+    AGRICULTURE = "agriculture"
+    EXTRACTION = "extraction"
+    MANUFACTURING = "manufacturing"
+    CONSTRUCTION = "construction"
+    ENERGY = "energy"
+    TRANSPORTATION = "transportation"
+    CONSUMER_SERVICES = "consumer_services"
+    FINANCE_AND_PROFESSIONAL_SERVICES = "finance_and_professional_services"
+    TECHNOLOGY = "technology"
+    DEFENSE_INDUSTRY = "defense_industry"
+    PUBLIC_SERVICES = "public_services"
+
+
+class SectorState(BaseModel):
+    """One aggregate sector's Phase-2B1 production inputs.
+
+    Deliberately mutable (no `frozen=True`): `employed_workers` is expected to
+    become player/AI-adjustable in a later economy phase. `capacity_utilization_bps`
+    and constraint classification are NOT stored here — they are always
+    derived from these inputs and live exclusively in `ProductionReport`, so
+    there is never a stored value that could disagree with its own formula.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    category: SectorCategory
+    quarterly_capacity_output: StrictRealOutput
+    output_per_worker: StrictRealOutputPerWorker
+    employed_workers: StrictWorkerCount
+
+
+class EconomyState(BaseModel):
+    """A country's Phase-2B1 production state: exactly one `SectorState` per `SectorCategory`.
+
+    All eleven categories must be present, exactly once — a zero-capacity
+    sector is a legitimate ("inactive") input, but an absent one is not,
+    since that would introduce a second, ambiguous "missing vs. zero" concept
+    alongside sector classification (see `docs/economy_methodology.md`).
+
+    This validator runs at construction time only. Because `SectorState` is
+    mutable, a later in-place assignment to a nested `sector.category` can
+    still desynchronize an already-constructed `EconomyState` from this
+    invariant — that risk is *not* fully closed here, and is independently
+    re-checked every turn by `simulation.invariants.check_invariants`
+    (`economy_sectors_valid`), not just at parse time.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    sectors: tuple[SectorState, ...]
+
+    @model_validator(mode="after")
+    def _sectors_cover_all_categories_exactly_once_in_canonical_order(self) -> EconomyState:
+        seen: set[SectorCategory] = set()
+        for sector in self.sectors:
+            if sector.category in seen:
+                raise ValueError(f"duplicate sector category: {sector.category.value!r}")
+            seen.add(sector.category)
+        missing = [c for c in SectorCategory if c not in seen]
+        if missing:
+            raise ValueError(
+                "economy is missing sector categories: "
+                f"{[c.value for c in missing]!r} — all {len(SectorCategory)} are required"
+            )
+        by_category = {sector.category: sector for sector in self.sectors}
+        canonical_order = tuple(by_category[category] for category in SectorCategory)
+        if canonical_order != self.sectors:
+            self.sectors = canonical_order
+        return self
+
+
 class CountryState(BaseModel):
     """A single country: player-controlled or AI-controlled.
 
@@ -183,6 +265,7 @@ class CountryState(BaseModel):
     institutions: list[InstitutionState] = Field(default_factory=list)
     treasury: TreasuryState
     finance: GovernmentFinanceState | None = None
+    economy: EconomyState | None = None
 
 
 class WorldState(BaseModel):
@@ -194,15 +277,18 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.2.0"
+RULESET_VERSION = "0.3.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
 instead the *engine* declares what ruleset it implements, and `save_format.SUPPORTED_RULESET_VERSIONS`
 gates which values are accepted when loading a save. Bump this when turn-resolution *behavior*
 changes (which phases do real work, what formulas they use) in a way that must not silently
-apply to already-resolved history — see `docs/adr/0002-snapshot-history-and-versioning.md` and
-`docs/adr/0003-government-accounting.md`.
+apply to already-resolved history — see `docs/adr/0002-snapshot-history-and-versioning.md`,
+`docs/adr/0003-government-accounting.md`, and `docs/adr/0004-sector-production-fixed-prices.md`
+(bumped `"0.2.0" -> "0.3.0"` for Phase 2B1: `CountryState.economy` becomes a required player
+field with no data to backfill from an older save, exactly the same kind of shape change that
+justified the Phase 1 -> 2A bump).
 """
 
 
