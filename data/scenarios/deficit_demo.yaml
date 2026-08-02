@@ -1,0 +1,68 @@
+# A minimal, valid MANDATE scenario fixture whose default budget runs a
+# deficit large enough to exhaust opening cash and require new borrowing —
+# the counterpart to tiny_valid.yaml's deliberately sustainable budget.
+#
+# Hand-checked expected outcome for turn 0 with no budget decision submitted
+# (see docs/economy_methodology.md for the full worked derivation):
+#
+#   revenue:  personal=120,000,000  corporate=80,000,000  consumption=51,200,000
+#             total_revenue=251,200,000
+#   spending: total_program_spending=670,000,000
+#   interest: quarterly_interest_expense=40,000,000  (8% annual on 2,000,000,000)
+#   pre_financing_balance = 251,200,000 - 670,000,000 - 40,000,000 = -458,800,000
+#   cash_before_financing = 50,000,000 + (-458,800,000) = -408,800,000
+#   new_borrowing = 408,800,000   (exactly covers the shortfall after cash)
+#   closing_cash  = 0             (opening cash fully consumed first)
+#   closing_debt  = 2,000,000,000 + 408,800,000 = 2,408,800,000
+#
+# Note: ruleset_version is NOT declared here — see tiny_valid.yaml's header.
+
+schema_version: 1
+scenario_id: deficit_demo
+name: "Deficit Demo Fixture"
+content_version: "0.2.0"
+seed: 99
+player_country_id: strapped
+
+countries:
+  - id: strapped
+    name: "Republic of Strapped"
+    population: 400000
+    treasury:
+      cash_on_hand: 50000000     #     500,000.00 denars — thin reserves on purpose
+      debt: 2000000000           #  20,000,000.00 denars
+    population_groups:
+      - id: citizens
+        name: "Citizens"
+        population_share: 1.0
+        political_influence: 50
+        approval: 45
+        trust: 40
+        organization: 25
+        radicalization: 8
+    institutions:
+      - id: executive
+        name: "Executive Government"
+        loyalty: 60
+        power: 55
+        competence: 45
+        corruption: 25
+    finance:
+      tax_bases:
+        personal_income: 1000000000    #  10,000,000.00 denars
+        corporate_profit: 500000000    #   5,000,000.00 denars
+        taxable_consumption: 800000000 #   8,000,000.00 denars
+      tax_policy:
+        personal_income_rate_bps: 1500   # 15%
+        corporate_rate_bps: 2000         # 20%
+        consumption_rate_bps: 800        #  8%
+        compliance_rate_bps: 8000        # 80%
+      spending_plan:
+        health: 150000000            #   1,500,000.00 denars
+        education: 100000000         #   1,000,000.00 denars
+        welfare: 150000000           #   1,500,000.00 denars
+        infrastructure: 80000000     #     800,000.00 denars
+        defense: 100000000           #   1,000,000.00 denars
+        security: 50000000           #     500,000.00 denars
+        administration: 40000000     #     400,000.00 denars
+      annual_debt_interest_rate_bps: 800   # 8% annual

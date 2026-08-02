@@ -36,6 +36,7 @@ from app.core.errors import (
     UnsupportedSaveFormatVersionError,
 )
 from app.simulation.history import GameSave, HistoryEntry
+from app.simulation.state import RULESET_VERSION
 
 SAVE_FORMAT_VERSION = 1
 """The only save envelope shape this build writes or reads.
@@ -46,8 +47,16 @@ so a Phase-0 save at turn 8 cannot be given a valid 9-entry history — there is
 *from*. It is rejected with an actionable message (see `app.cli`), not silently reinterpreted.
 """
 
-SUPPORTED_RULESET_VERSIONS: frozenset[str] = frozenset({"0.1.0"})
-SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.1.0"})
+SUPPORTED_RULESET_VERSIONS: frozenset[str] = frozenset({RULESET_VERSION})
+"""Just the current engine ruleset. Phase 1 saves (`ruleset_version="0.1.0"`, no government
+accounting) are intentionally excluded: Phase 2A changes what turn resolution actually *does*
+(taxes, spending, and interest now resolve; the report shape changed), and a Phase-1 save has no
+recorded budget decisions or finance state to run that new behavior against, so there is nothing
+to migrate — rejected with an actionable message, same as the save-format-version case above.
+See `docs/adr/0003-government-accounting.md` for the full decision.
+"""
+
+SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.2.0"})
 
 _REQUIRED_ENVELOPE_KEYS = {
     "save_format_version",

@@ -89,15 +89,34 @@ provides the single serialization path used by tests, save files, and (later) AP
    at Phase 4, but provable in-process without a database.
 5. **Return** `TurnResolution(state=new_state, report=TurnReport(...))`.
 
-Phases this session (0/1) implement for real: decision validation, turn/version advance, and report
-generation. The other named phases (production, budget, prices, diplomacy, combat, group welfare,
-institutional updates, unrest, elections, narrative events) are registered in `PHASE_ORDER` as
-explicit no-ops — each phase handler exists and runs, but does nothing yet and records that fact in
+As of Phase 2A, four of the fifteen phases implement real logic: decision validation, government
+accounting (three phases — see below), and report generation. The remaining named phases
+(production, prices, diplomacy, combat, group welfare, institutional updates, unrest, elections,
+narrative events) are still registered in `PHASE_ORDER` as explicit no-ops — each phase handler
+exists and runs, but does nothing yet and records that fact in
 `TurnReport.dev.phase_statuses: dict[str, Literal["implemented", "not_implemented"]]`, structured
-metadata for developers/tests. It is **not** surfaced as 12–15 repetitive entries in the
-player-facing part of the report — the brief's "no placeholder feature claims" rule (§5.7) means
-absent behavior is marked in dev metadata, not narrated to a hypothetical player as if it were
-content.
+metadata for developers/tests. It is **not** surfaced as repetitive entries in the player-facing
+part of the report — the brief's "no placeholder feature claims" rule (§5.7) means absent behavior
+is marked in dev metadata, not narrated to a hypothetical player as if it were content.
+`test_resolver.py::test_only_the_accounting_and_report_phases_are_implemented_so_far` tracks this
+boundary explicitly and is meant to be updated, not weakened, as more phases gain real logic.
+
+### Government accounting phases (Phase 2A)
+
+`apply_legal_and_administrative_changes` captures a frozen `OpeningFinanceSnapshot`
+(`phases.py`) — opening cash/debt, the previous tax policy and spending plan, by value, before
+anything is mutated — then applies the turn's `BudgetDecision` (if any) to the player's active tax
+policy and spending plan. `resolve_government_revenue_and_expenditure` computes revenue, total
+spending, and quarterly interest via the pure `simulation/accounting.py` engine.
+`update_prices_inflation_employment_debt_reserves` resolves cash and debt for the quarter and
+writes the result into the player's treasury (the phase name is the full §7 resolution-order
+label; only the debt/reserves portion of it is implemented). `generate_turn_report` assembles the
+self-validating `FinanceReport` from the accumulated `FinanceScratch` (a plain per-turn workspace
+threaded through `PhaseContext.finance` — no global state). Full formulas:
+`docs/economy_methodology.md`. Design rationale: `docs/adr/0003-government-accounting.md`.
+
+Accounting resolves for the **player country only** — `CountryState.finance` is optional, and
+`simulation.invariants` requires it just for the player (AI countries may omit it; see the ADR).
 
 ## History, hash chaining, and immutability
 
@@ -170,6 +189,13 @@ exactly or fail a test — no binary-float drift. Bounded political metrics (app
 trust, 0–100 scale) are `float` with a shared `clamp01_100` helper; they don't need to balance to
 zero the way money does, only to stay in range, which `check_invariants` enforces.
 
+Government-accounting fields (Phase 2A) use `StrictMoney`/`StrictSignedMoney`/`StrictBps` —
+`Annotated[int, Field(strict=True, ...)]` aliases in `core/money.py`. Pydantic's `strict=True` on
+an `int` field rejects whole-number floats (`10.0`), numeric strings (`"10"`), booleans (despite
+`bool` being an `int` subclass in plain Python), NaN, and ±infinity — verified empirically rather
+than assumed, and pinned by `tests/test_money.py`. Rate fields (`StrictBps`) are additionally
+bounded to `[0, 10_000]` (0%–100%).
+
 ## Persistence: file-based now, database at Phase 4
 
 Two storage shapes, kept deliberately separate — one built now, one designed for later:
@@ -195,11 +221,16 @@ Two storage shapes, kept deliberately separate — one built now, one designed f
 Scenarios are YAML. Parsing/validation is pure and lives in `app/simulation/scenario.py` (text in,
 `GameState` out, no disk access); reading the file from `data/scenarios/` is the one line of I/O in
 `app/content/scenarios.py`, which is otherwise where Phase 2+ content loaders (policies, events)
-will live once those systems exist to validate against. Every
-`GameState` carries `ruleset_version` and `content_version` strings (semver-ish, hand-bumped) so
-that a balance change to policy/event data does not retroactively alter already-resolved turns
-loaded from an older snapshot — enforced at Phase 2+ when content actually has numeric effects; the
-fields exist from this session onward so nothing has to be retrofitted.
+will live once those systems exist to validate against. Every `GameState` carries `ruleset_version`
+and `content_version` strings (semver-ish, hand-bumped).
+
+**`ruleset_version` is an engine constant, not scenario-authored.** `RULESET_VERSION` lives in
+`simulation/state.py` and is stamped onto every game by `scenario._to_game_state` — a scenario file
+declares `content_version` only. This changed in Phase 2A: Phase 1 let scenarios declare their own
+`ruleset_version`, which meant content could claim compatibility with rules it had no data for. See
+`docs/adr/0003-government-accounting.md`. `content_version` stays scenario-authored so that a
+balance change to policy/event/scenario data does not retroactively alter already-resolved turns
+loaded from an older snapshot.
 
 A third, independent version — `save_format_version` (`simulation/save_format.py`) — covers the
 shape of the save *file* itself, separate from both `ruleset_version` and `content_version`.

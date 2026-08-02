@@ -82,6 +82,19 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
                 ),
             )
         )
+    else:
+        player = state.world.countries[state.world.player_country_id]
+        if player.finance is None:
+            violations.append(
+                InvariantViolation(
+                    code="player_finance_required",
+                    message=(
+                        f"player country {player.id!r} has no GovernmentFinanceState; "
+                        "government accounting (Phase 2A) cannot resolve without it — "
+                        "AI countries may omit finance, the player country may not"
+                    ),
+                )
+            )
 
     for country in state.world.countries.values():
         violations.extend(_check_country(country))

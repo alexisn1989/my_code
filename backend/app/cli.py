@@ -4,6 +4,7 @@ all without a server or database.
     mandate new --scenario data/scenarios/tiny_valid.yaml --out save.json
     mandate inspect --state save.json
     mandate resolve --state save.json --turns 8 --out save.turn8.json
+    mandate resolve --state save.json --turns 1 --decisions-file budget.json --out save2.json
     mandate history --state save.turn8.json
     mandate history --state save.turn8.json --turn 3
 
@@ -13,29 +14,122 @@ nothing — even an invalid save can be inspected (that is the point of
 "integrity status"), reported via a nonzero exit rather than a stack trace.
 `resolve` appends N turns via `simulation.history.advance_game` and writes
 the result atomically; on any failure nothing is written and the input file
-is untouched. `history` lists every turn or, with `--turn N`, prints one
-historical entry — without mutating anything. It refuses to operate on an
-invalid save (unlike `inspect`, whose job is to report exactly that).
+is untouched. With `--decisions-file`, the file's JSON is parsed as a full
+`DecisionSet` (including `expected_turn`/`expected_state_version` — a
+mismatch against the save's actual current turn is rejected the same way any
+other stale decision set is) and applied to exactly one turn; `--decisions-file`
+requires `--turns 1`, enforced as a hard error rather than silently applying
+the file only to the first of several turns. `history` lists every turn or,
+with `--turn N`, prints one historical entry — without mutating anything. It
+refuses to operate on an invalid save (unlike `inspect`, whose job is to
+report exactly that).
 
 Save files are the real, versioned, hash-chained format from
 `simulation.save_format` — not the flat `{state_file_schema_version, state}`
 format Phase 0 wrote. That format is not read by this build at all; see
 `docs/adr/0002-snapshot-history-and-versioning.md` for why it isn't migrated.
+
+## Reason-ID rendering
+
+`TurnReportEntry`/`FinanceReport` store `reason_id` + structured `params`,
+not English prose (see `simulation.report` module docstring for why: report
+text lives inside hash-protected history and could never be re-rendered
+otherwise). `REASON_RENDERERS` is the presentation-layer table that turns
+those back into English for this CLI; `render_entry` falls back to a visibly
+labeled placeholder for an unmapped id rather than crashing.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from app.content.scenarios import load_scenario_file
-from app.core.errors import HistoryValidationError, MandateError
+from app.core.errors import DecisionSetError, HistoryValidationError, MandateError
+from app.core.money import format_money
 from app.saves import read_save_file, write_save_atomic
 from app.simulation.decisions import DecisionSet
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
-from app.simulation.report import TurnReport
+from app.simulation.report import FinanceReport, TurnReport, TurnReportEntry
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json, load_save_json
+
+# --- reason_id -> English rendering (presentation layer only; never stored) --
+
+_TAX_FIELD_LABELS = {
+    "personal_income_rate_bps": "Personal-income tax",
+    "corporate_rate_bps": "Corporate tax",
+    "consumption_rate_bps": "Consumption tax",
+}
+
+
+def _bps_to_percent_str(bps: object) -> str:
+    return f"{int(bps) / 100:g}%"
+
+
+def _render_turn_resolved(params: dict[str, str | int]) -> str:
+    return f"Turn {params['turn']} resolved."
+
+
+def _render_no_budget_changes_submitted(_params: dict[str, str | int]) -> str:
+    return "No budget changes were submitted; the current tax and spending plan continues."
+
+
+def _render_tax_rate_changed(params: dict[str, str | int]) -> str:
+    field = str(params["field"])
+    label = _TAX_FIELD_LABELS.get(field, field)
+    old_pct = _bps_to_percent_str(params["old_bps"])
+    new_pct = _bps_to_percent_str(params["new_bps"])
+    return f"{label} rate changed from {old_pct} to {new_pct}."
+
+
+def _render_spending_category_changed(params: dict[str, str | int]) -> str:
+    category = str(params["category"]).replace("_", " ")
+    old_amount = format_money(int(params["old_amount"]))
+    new_amount = format_money(int(params["new_amount"]))
+    return f"{category.capitalize()} spending changed from {old_amount} to {new_amount} denars."
+
+
+def _render_deficit_financed_with_new_borrowing(params: dict[str, str | int]) -> str:
+    amount = format_money(int(params["amount"]))
+    return (
+        f"The treasury issued {amount} denars of new debt because cash was insufficient "
+        "to cover the quarterly deficit."
+    )
+
+
+REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
+    "turn_resolved": _render_turn_resolved,
+    "no_budget_changes_submitted": _render_no_budget_changes_submitted,
+    "tax_rate_changed": _render_tax_rate_changed,
+    "spending_category_changed": _render_spending_category_changed,
+    "deficit_financed_with_new_borrowing": _render_deficit_financed_with_new_borrowing,
+}
+"""Every `reason_id` this build can emit must be a key here — proven by
+`tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
+through `render_entry` and asserts none of them hit the fallback branch.
+"""
+
+
+def render_entry(entry: TurnReportEntry) -> str:
+    """Render one report entry as English. Never raises: an unmapped `reason_id`
+    or a renderer that can't make sense of `params` produces a visibly-labeled
+    fallback string instead of crashing the CLI or displaying wrong information.
+    """
+    renderer = REASON_RENDERERS.get(entry.reason_id)
+    if renderer is None:
+        return f"[unrendered reason_id={entry.reason_id!r} params={entry.params!r}]"
+    try:
+        return renderer(entry.params)
+    except (KeyError, ValueError, TypeError) as exc:
+        return f"[error rendering reason_id={entry.reason_id!r}: {exc}]"
+
+
+# --- save file I/O ------------------------------------------------------------
 
 
 def _write_save(path: Path, save: GameSave) -> None:
@@ -44,6 +138,24 @@ def _write_save(path: Path, save: GameSave) -> None:
 
 def _read_save(path: Path) -> GameSave:
     return load_save_json(read_save_file(path), source=str(path))
+
+
+def _read_decisions_file(path: Path) -> DecisionSet:
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise DecisionSetError(f"could not read decisions file {path}: {exc}") from exc
+    try:
+        raw = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        raise DecisionSetError(f"decisions file {path} is not valid JSON: {exc}") from exc
+    try:
+        return DecisionSet.model_validate(raw)
+    except ValidationError as exc:
+        raise DecisionSetError(f"decisions file {path} failed validation: {exc}") from exc
+
+
+# --- subcommands ---------------------------------------------------------------
 
 
 def _cmd_new(args: argparse.Namespace) -> int:
@@ -75,6 +187,11 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     print(f"  current_turn:        {save.current_turn()}")
     print(f"  entries:             {len(save.entries)} (entry_count={save.entry_count})")
     print(f"  player_country:      {player.id} ({player.name}), population={player.population}")
+    if player.finance is not None:
+        print(
+            f"  treasury:            cash={format_money(player.treasury.cash_on_hand)} "
+            f"debt={format_money(player.treasury.debt)} denars"
+        )
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -86,10 +203,39 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _print_finance_report(finance: FinanceReport) -> None:
+    print("    finance:")
+    print(
+        f"      opening cash={format_money(finance.opening_cash)} "
+        f"debt={format_money(finance.opening_debt)}"
+    )
+    print(
+        f"      revenue: personal={format_money(finance.revenue.personal_income_tax)} "
+        f"corporate={format_money(finance.revenue.corporate_tax)} "
+        f"consumption={format_money(finance.revenue.consumption_tax)} "
+        f"total={format_money(finance.revenue.total_revenue)}"
+    )
+    print(
+        f"      spending: total={format_money(finance.total_program_spending)} "
+        f"interest={format_money(finance.quarterly_interest_expense)}"
+    )
+    print(
+        f"      pre_financing_balance={format_money(finance.pre_financing_balance)} "
+        f"new_borrowing={format_money(finance.new_borrowing)}"
+    )
+    print(
+        f"      closing cash={format_money(finance.closing_cash)} "
+        f"debt={format_money(finance.closing_debt)}"
+    )
+    print(f"      reconciliation: {finance.reconciliation_status}")
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
-        print(f"    [{entry.category}] {entry.summary}")
+        print(f"    [{entry.category}] {render_entry(entry)}")
+    if report.finance is not None:
+        _print_finance_report(report.finance)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -106,16 +252,25 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
         print("error: --out must not be the same file as --state (inputs are never overwritten)")
         return 2
 
+    if args.decisions_file is not None and args.turns != 1:
+        print(
+            "error: --decisions-file requires --turns 1 (a decisions file targets exactly one turn)"
+        )
+        return 2
+
     save = _read_save(state_path)
     print(f"resolving {args.turns} turn(s) from turn {save.current_turn()}")
 
     for _ in range(args.turns):
-        current = save.current_state()
-        decisions = DecisionSet(
-            expected_turn=current.turn,
-            expected_state_version=current.state_version,
-            decisions=[],
-        )
+        if args.decisions_file is not None:
+            decisions = _read_decisions_file(Path(args.decisions_file))
+        else:
+            current = save.current_state()
+            decisions = DecisionSet(
+                expected_turn=current.turn,
+                expected_state_version=current.state_version,
+                decisions=(),
+            )
         # advance_game validates history + the decision set + the resolved
         # state, in that order, and raises before appending anything on any
         # failure — so a mid-batch failure here leaves `save` (this local
@@ -172,7 +327,9 @@ def _cmd_history(args: argparse.Namespace) -> int:
         # decisions were resolved to produce this entry's state.
         print(f"  report (from resolving turn {report.resolved_turn}):")
         for report_entry in report.entries:
-            print(f"    [{report_entry.category}] {report_entry.summary}")
+            print(f"    [{report_entry.category}] {render_entry(report_entry)}")
+        if report.finance is not None:
+            _print_finance_report(report.finance)
     return 0
 
 
@@ -194,6 +351,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_resolve.add_argument("--state", required=True, help="path to the input save file")
     p_resolve.add_argument("--turns", type=int, default=1, help="number of turns to resolve")
     p_resolve.add_argument("--out", required=True, help="path to write the resulting save file")
+    p_resolve.add_argument(
+        "--decisions-file",
+        default=None,
+        help="path to a JSON DecisionSet to apply (requires --turns 1)",
+    )
     p_resolve.set_defaults(func=_cmd_resolve)
 
     p_history = subparsers.add_parser("history", help="list turns, or inspect one historical turn")

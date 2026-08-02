@@ -17,9 +17,11 @@ constraints and are checked separately by `simulation.invariants`.
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.money import Money
+from app.core.money import Money, StrictBps, StrictMoney
 
 _STRICT_CONFIG = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -62,8 +64,106 @@ class TreasuryState(BaseModel):
 
     model_config = _STRICT_CONFIG
 
-    cash_on_hand: Money = Field(ge=0)
-    debt: Money = Field(ge=0)
+    cash_on_hand: StrictMoney
+    debt: StrictMoney
+
+
+class SpendingCategory(StrEnum):
+    """The seven government spending categories modeled in Phase 2A (product spec §13).
+
+    Shared between `SpendingPlanState` (field names match these values exactly)
+    and `simulation.decisions.SpendingUpdate` (a player's budget target for one
+    category) — one enum, not two parallel category lists that could drift.
+    """
+
+    HEALTH = "health"
+    EDUCATION = "education"
+    WELFARE = "welfare"
+    INFRASTRUCTURE = "infrastructure"
+    DEFENSE = "defense"
+    SECURITY = "security"
+    ADMINISTRATION = "administration"
+
+
+class TaxBaseState(BaseModel):
+    """Fixed-for-Phase-2A taxable bases (product spec §13, "Government Finance").
+
+    **Limitation, stated prominently per the ticket:** changing a tax *rate* in
+    2A does not change these *bases*. Real economic feedback (a higher
+    consumption-tax rate suppressing taxable consumption, income tax affecting
+    labor supply, etc.) is Phase 2B+ production-sector work. These are static
+    scenario-authored numbers that revenue is computed against, not a live
+    economic model.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    personal_income: StrictMoney
+    corporate_profit: StrictMoney
+    taxable_consumption: StrictMoney
+
+
+class TaxPolicyState(BaseModel):
+    """Currently active tax rates and compliance, all in basis points (0-10,000 = 0%-100%)."""
+
+    model_config = _STRICT_CONFIG
+
+    personal_income_rate_bps: StrictBps
+    corporate_rate_bps: StrictBps
+    consumption_rate_bps: StrictBps
+    compliance_rate_bps: StrictBps
+
+
+class SpendingPlanState(BaseModel):
+    """Currently active government spending, one field per `SpendingCategory`.
+
+    No defaults: a government finance state must explicitly specify every
+    category rather than silently defaulting unset ones to zero, which could
+    misrepresent what a scenario or a player's budget actually funds.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    health: StrictMoney
+    education: StrictMoney
+    welfare: StrictMoney
+    infrastructure: StrictMoney
+    defense: StrictMoney
+    security: StrictMoney
+    administration: StrictMoney
+
+    def total(self) -> Money:
+        return (
+            self.health
+            + self.education
+            + self.welfare
+            + self.infrastructure
+            + self.defense
+            + self.security
+            + self.administration
+        )
+
+    def get(self, category: SpendingCategory) -> Money:
+        return int(getattr(self, category.value))
+
+    def with_update(self, category: SpendingCategory, amount: Money) -> SpendingPlanState:
+        """A copy with one category's amount replaced. Does not mutate `self`."""
+        return self.model_copy(update={category.value: amount})
+
+
+class GovernmentFinanceState(BaseModel):
+    """A country's Phase-2A government accounting state: bases, policy, spending, and the
+    interest rate paid on public debt. Optional on `CountryState` — required for the player
+    country (`simulation.invariants` enforces this), unused and freely omittable for AI
+    countries until Phase 6 gives them budget decisions of their own.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    tax_bases: TaxBaseState
+    tax_policy: TaxPolicyState
+    spending_plan: SpendingPlanState
+    annual_debt_interest_rate_bps: StrictBps
 
 
 class CountryState(BaseModel):
@@ -82,6 +182,7 @@ class CountryState(BaseModel):
     population_groups: list[PopulationGroupState] = Field(default_factory=list)
     institutions: list[InstitutionState] = Field(default_factory=list)
     treasury: TreasuryState
+    finance: GovernmentFinanceState | None = None
 
 
 class WorldState(BaseModel):
@@ -91,6 +192,18 @@ class WorldState(BaseModel):
 
     countries: dict[str, CountryState] = Field(default_factory=dict)
     player_country_id: str
+
+
+RULESET_VERSION = "0.2.0"
+"""The current simulation ruleset version, stamped onto every newly created `GameState`
+(see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
+declaring its own ruleset version would let content decide which engine rules it runs under;
+instead the *engine* declares what ruleset it implements, and `save_format.SUPPORTED_RULESET_VERSIONS`
+gates which values are accepted when loading a save. Bump this when turn-resolution *behavior*
+changes (which phases do real work, what formulas they use) in a way that must not silently
+apply to already-resolved history — see `docs/adr/0002-snapshot-history-and-versioning.md` and
+`docs/adr/0003-government-accounting.md`.
+"""
 
 
 class GameState(BaseModel):

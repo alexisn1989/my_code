@@ -17,6 +17,14 @@ This module takes YAML *text*, not file paths — `app.simulation` has no I/O
 dependencies (see `docs/architecture.md`, "System boundaries"). Reading a
 scenario file from disk is `app.content.scenarios.load_scenario_file`, which
 calls `load_scenario_text` here.
+
+Scenarios declare `content_version` (the authored data they provide) but
+**not** `ruleset_version` — that comes from the engine's `state.RULESET_VERSION`
+constant, stamped onto every `GameState` built here. A scenario file does not
+get to declare which simulation rules it runs under; `extra="forbid"` on
+`ScenarioDefinition` means a scenario YAML that still has a `ruleset_version:`
+key (e.g. an old one, before this changed) fails to parse rather than being
+silently accepted with a value nobody checks.
 """
 
 from __future__ import annotations
@@ -26,7 +34,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.core.errors import ScenarioValidationError
 from app.simulation.invariants import check_invariants
-from app.simulation.state import CountryState, GameState, WorldState
+from app.simulation.state import RULESET_VERSION, CountryState, GameState, WorldState
 
 
 class ScenarioDefinition(BaseModel):
@@ -37,7 +45,6 @@ class ScenarioDefinition(BaseModel):
     schema_version: int = 1
     scenario_id: str
     name: str
-    ruleset_version: str
     content_version: str
     seed: int
     player_country_id: str
@@ -80,7 +87,7 @@ def _to_game_state(source: str, scenario: ScenarioDefinition) -> GameState:
 
     state = GameState(
         schema_version=scenario.schema_version,
-        ruleset_version=scenario.ruleset_version,
+        ruleset_version=RULESET_VERSION,
         content_version=scenario.content_version,
         seed=scenario.seed,
         turn=0,

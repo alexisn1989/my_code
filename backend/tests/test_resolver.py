@@ -94,14 +94,29 @@ def test_phases_run_in_the_documented_order() -> None:
     assert list(resolution.report.dev.phase_statuses.keys()) == list(PHASE_IDS)
 
 
-def test_report_generation_phase_is_implemented_others_are_not_yet() -> None:
+def test_only_the_accounting_and_report_phases_are_implemented_so_far() -> None:
+    # As of Phase 2A: government accounting (3 phases) + report generation are
+    # real; every other resolution-order step remains an honest no-op. This
+    # test's job is to track that boundary exactly as it moves phase by phase
+    # — update the IMPLEMENTED set here, not the underlying assertion, as more
+    # phases gain real logic.
     state = make_game_state(turn=0, state_version=0)
     resolution = resolve_turn(state, _empty_decisions_for(state))
     statuses = resolution.report.dev.phase_statuses
 
-    assert statuses["generate_turn_report"] == PhaseStatus.IMPLEMENTED
-    other_statuses = {pid: s for pid, s in statuses.items() if pid != "generate_turn_report"}
-    assert all(s == PhaseStatus.NOT_IMPLEMENTED for s in other_statuses.values())
+    implemented_phase_ids = {
+        "apply_legal_and_administrative_changes",
+        "resolve_government_revenue_and_expenditure",
+        "update_prices_inflation_employment_debt_reserves",
+        "generate_turn_report",
+    }
+    for phase_id, status in statuses.items():
+        expected = (
+            PhaseStatus.IMPLEMENTED
+            if phase_id in implemented_phase_ids
+            else PhaseStatus.NOT_IMPLEMENTED
+        )
+        assert status == expected, f"{phase_id}: expected {expected}, got {status}"
 
 
 def test_report_resolved_turn_matches_the_turn_that_was_played() -> None:
