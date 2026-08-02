@@ -59,10 +59,22 @@ from app.simulation.report import (
     ProductionReport,
     RevenueBreakdown,
     SectorProductionReport,
+    SectorTaxBaseReport,
+    TaxBaseDerivationReport,
     TurnReportEntry,
     direction_for,
 )
-from app.simulation.state import GameState, SpendingPlanState, TaxBaseState, TaxPolicyState
+from app.simulation.state import (
+    GameState,
+    SectorCategory,
+    SpendingPlanState,
+    TaxBaseState,
+    TaxPolicyState,
+)
+from app.simulation.tax_base_derivation import (
+    aggregate_tax_base_contributions,
+    compute_sector_tax_base_contribution,
+)
 
 if TYPE_CHECKING:
     # Only needed for the `random.Random` annotation below. A real (unguarded)
@@ -76,7 +88,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, slots=True)
 class OpeningFinanceSnapshot:
     """The player's complete financial position *before* this turn's budget decision
-    is applied (R3). Frozen and holding only immutable-by-convention Pydantic model
+    is applied (R3, Phase 2A). Frozen and holding only immutable-by-convention Pydantic model
     instances captured by value at the start of `apply_legal_and_administrative_changes`
     — before any mutation — so later phases (and a mutated working `CountryState`) can
     never retroactively change what this turn's report says "opening" was.
@@ -84,19 +96,23 @@ class OpeningFinanceSnapshot:
     Needed for: computing interest from *opening* debt, explaining old-to-new tax and
     spending changes, proving omitted `BudgetDecision` fields were preserved, and
     distinguishing the player's *submitted* changes from the *resulting active* budget.
+
+    As of Phase 2B2, tax bases are **not** part of this snapshot: they are no longer an
+    authored, "opening" quantity at all — they are derived fresh every turn by
+    `_resolve_government_revenue_and_expenditure` from that turn's own production (see
+    `simulation.tax_base_derivation`), so there is nothing to snapshot "before mutation."
     """
 
     opening_cash: Money
     opening_debt: Money
     annual_debt_interest_rate_bps: int
-    tax_bases: TaxBaseState
     previous_tax_policy: TaxPolicyState
     previous_spending_plan: SpendingPlanState
 
 
 @dataclass
 class FinanceScratch:
-    """Mutable, turn-local accounting workspace threaded through the Phase 2A phases
+    """Mutable, turn-local accounting workspace threaded through the Phase 2A/2B2 phases
     via `PhaseContext.finance`. Not itself part of `GameState` or the report — purely
     a way to pass intermediate values from one phase handler to the next without
     global state (product spec's ban on "hidden side effects" for phase handlers).
@@ -106,6 +122,10 @@ class FinanceScratch:
     active_tax_policy: TaxPolicyState
     active_spending_plan: SpendingPlanState
     budget_changes: tuple[BudgetChangeEntry, ...] = ()
+    applied_tax_bases: TaxBaseState | None = None
+    """Set by `_resolve_government_revenue_and_expenditure`, derived fresh from this turn's
+    `ctx.production_report` — see `simulation.tax_base_derivation`. There is no "opening" tax
+    base anymore (Phase 2B2); this is the only tax-base value this turn ever has."""
     revenue: RevenueBreakdown | None = None
     total_program_spending: Money | None = None
     quarterly_interest_expense: Money | None = None
@@ -136,6 +156,11 @@ class PhaseContext:
     only current-turn `state...economy` and never spans multiple phases, so it builds this
     report directly. Deliberately never read or written by any finance phase, and vice versa
     — see `_resolve_production_and_trade`'s docstring."""
+    tax_base_derivation_report: TaxBaseDerivationReport | None = None
+    """Set by `_resolve_government_revenue_and_expenditure`, at the start of that phase, from
+    `production_report` — see that function's docstring. `resolver.py` copies this onto the
+    final `TurnReport`, where it is cross-validated against both `production_report` and
+    `finance_report` (Phase 2B2 R1)."""
     _current_phase_id: str | None = field(default=None, repr=False)
 
     def rng(self, stream: str) -> random.Random:
@@ -169,19 +194,19 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
         )
 
     # .model_copy() (not a bare reference) for every Pydantic-model-typed field:
-    # TaxBaseState/TaxPolicyState/SpendingPlanState all have `validate_assignment=True`,
-    # which permits in-place field mutation (`obj.field = x`) on a live instance. A bare
-    # reference here would mean a *future* phase handler mutating `finance.tax_policy`
-    # or `finance.spending_plan` in place — rather than replacing them wholesale, as this
+    # TaxPolicyState/SpendingPlanState both have `validate_assignment=True`, which permits
+    # in-place field mutation (`obj.field = x`) on a live instance. A bare reference here
+    # would mean a *future* phase handler mutating `finance.tax_policy` or
+    # `finance.spending_plan` in place — rather than replacing them wholesale, as this
     # module's handlers currently do — would silently corrupt what this turn's report
     # calls "opening," even though `OpeningFinanceSnapshot` itself is frozen. These models
     # have only scalar fields, so a shallow `model_copy()` is already a full, independent
-    # copy — there is no nested mutable object left to worry about.
+    # copy — there is no nested mutable object left to worry about. (Tax bases are not
+    # captured here at all as of Phase 2B2 — see `OpeningFinanceSnapshot`'s docstring.)
     opening = OpeningFinanceSnapshot(
         opening_cash=player.treasury.cash_on_hand,
         opening_debt=player.treasury.debt,
         annual_debt_interest_rate_bps=finance.annual_debt_interest_rate_bps,
-        tax_bases=finance.tax_bases.model_copy(),
         previous_tax_policy=finance.tax_policy.model_copy(),
         previous_spending_plan=finance.spending_plan.model_copy(),
     )
@@ -277,11 +302,92 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
     ctx.mark_implemented()
 
 
+def _derive_tax_bases_from_production(ctx: PhaseContext) -> TaxBaseDerivationReport:
+    """Phase 2B2: derive this turn's tax bases from this turn's already-computed
+    `ctx.production_report` (production is phase 3; this revenue phase is phase 4, so
+    production is always populated by the time this runs — no lag, same-turn linkage).
+
+    Reads `actual_output` from the production report row for each category, never
+    re-deriving it from `SectorState` — this is what R1's cross-report validation on
+    `TurnReport` later confirms: the exact same figure production computed is the exact
+    figure derivation used as its input. Structural per-sector shares
+    (`value_added_share_bps`/`labor_income_share_bps`) come from the player's current
+    `EconomyState`; the country-level fiscal coefficients come from
+    `GovernmentFinanceState.tax_base_coefficients`. Pure with respect to `ctx.state` — reads
+    it, does not mutate it; the derived result is turn-local (`ctx.tax_base_derivation_report`),
+    never written back into `GameState`.
+    """
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    economy = player.economy
+    finance = player.finance
+    assert economy is not None, "resolve_production_and_trade already required this"
+    assert finance is not None, "apply_legal_and_administrative_changes already required this"
+    assert ctx.production_report is not None, "resolve_production_and_trade always runs first"
+
+    production_by_category = {
+        row.category: row.actual_output for row in ctx.production_report.sectors
+    }
+    shares_by_category = {sector.category: sector for sector in economy.sectors}
+
+    results = []
+    sector_reports: list[SectorTaxBaseReport] = []
+    for category in SectorCategory:
+        sector_state = shares_by_category[category]
+        actual_output = production_by_category[category]
+        result = compute_sector_tax_base_contribution(
+            actual_output=actual_output,
+            value_added_share_bps=sector_state.value_added_share_bps,
+            labor_income_share_bps=sector_state.labor_income_share_bps,
+            coefficients=finance.tax_base_coefficients,
+        )
+        results.append(result)
+        sector_reports.append(
+            SectorTaxBaseReport(
+                category=category,
+                actual_output=actual_output,
+                value_added_share_bps=sector_state.value_added_share_bps,
+                labor_income_share_bps=sector_state.labor_income_share_bps,
+                modeled_value_added=result.modeled_value_added,
+                labor_income=result.labor_income,
+                operating_surplus=result.operating_surplus,
+                personal_contribution=result.personal_contribution,
+                corporate_contribution=result.corporate_contribution,
+                consumption_contribution=result.consumption_contribution,
+            )
+        )
+
+    aggregates = aggregate_tax_base_contributions(tuple(results))
+    return TaxBaseDerivationReport(
+        coefficients=finance.tax_base_coefficients,
+        sectors=tuple(sector_reports),
+        total_modeled_value_added=aggregates.total_modeled_value_added,
+        total_labor_income=aggregates.total_labor_income,
+        total_operating_surplus=aggregates.total_operating_surplus,
+        derived_tax_bases=aggregates.derived_tax_bases,
+    )
+
+
 def _resolve_government_revenue_and_expenditure(ctx: PhaseContext) -> None:
     scratch = ctx.finance
     assert scratch is not None, "apply_legal_and_administrative_changes always runs first"
 
-    revenue_breakdown = compute_tax_revenue(scratch.opening.tax_bases, scratch.active_tax_policy)
+    derivation = _derive_tax_bases_from_production(ctx)
+    ctx.tax_base_derivation_report = derivation
+    scratch.applied_tax_bases = derivation.derived_tax_bases
+
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="production",
+            reason_id="tax_bases_derived",
+            params={
+                "personal_income": derivation.derived_tax_bases.personal_income,
+                "corporate_profit": derivation.derived_tax_bases.corporate_profit,
+                "taxable_consumption": derivation.derived_tax_bases.taxable_consumption,
+            },
+        )
+    )
+
+    revenue_breakdown = compute_tax_revenue(scratch.applied_tax_bases, scratch.active_tax_policy)
     scratch.revenue = RevenueBreakdown(
         personal_income_tax=revenue_breakdown.personal_income_tax,
         corporate_tax=revenue_breakdown.corporate_tax,
@@ -423,6 +529,7 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
 
     scratch = ctx.finance
     if scratch is not None:
+        assert scratch.applied_tax_bases is not None
         assert scratch.revenue is not None
         assert scratch.total_program_spending is not None
         assert scratch.quarterly_interest_expense is not None
@@ -434,7 +541,7 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
             opening_cash=scratch.opening.opening_cash,
             opening_debt=scratch.opening.opening_debt,
             annual_debt_interest_rate_bps=scratch.opening.annual_debt_interest_rate_bps,
-            tax_bases=scratch.opening.tax_bases,
+            tax_bases=scratch.applied_tax_bases,
             previous_tax_policy=scratch.opening.previous_tax_policy,
             active_tax_policy=scratch.active_tax_policy,
             previous_spending_plan=scratch.opening.previous_spending_plan,
