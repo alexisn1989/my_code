@@ -9,15 +9,19 @@ every decision.
 - **Architecture:** [`docs/architecture.md`](docs/architecture.md)
 - **Roadmap and phase status:** [`docs/roadmap.md`](docs/roadmap.md)
 - **ADRs:** [`docs/adr/0001-stack-and-architecture.md`](docs/adr/0001-stack-and-architecture.md),
-  [`docs/adr/0002-snapshot-history-and-versioning.md`](docs/adr/0002-snapshot-history-and-versioning.md)
+  [`docs/adr/0002-snapshot-history-and-versioning.md`](docs/adr/0002-snapshot-history-and-versioning.md),
+  [`docs/adr/0003-government-accounting.md`](docs/adr/0003-government-accounting.md)
+- **Economy formulas:** [`docs/economy_methodology.md`](docs/economy_methodology.md)
 
 ## Current status
 
-**Phase 0 (project foundation) and Phase 1 (pure simulation foundation) are complete and
-verified.** There is a deterministic, hash-chained, immutable game-history engine reachable from a
-headless CLI, and a verified (installed, type-checked, built, tested) but otherwise empty frontend
-shell. There is no API and no database yet — see `docs/roadmap.md` for what's implemented per
-phase.
+**Phase 0, Phase 1 (pure simulation foundation), and Phase 2A (government accounting and budget
+gameplay) are complete and verified.** The player can change tax rates and spending; revenue,
+spending, interest, and debt resolve deterministically and reconcile exactly every turn, wrapped in
+the same hash-chained, immutable history from Phase 1. There is no API and no database yet, and no
+economy beyond government accounting (no production sectors, prices, inflation, or population
+effects) — see `docs/roadmap.md` for what's implemented per phase and
+`docs/economy_methodology.md` for exactly what Phase 2A does and does not simulate.
 
 ## Repository layout
 
@@ -51,20 +55,41 @@ uv run python -m app.cli inspect --state save.json
 uv run python -m app.cli resolve --state save.json --turns 8 --out save.turn8.json
 uv run python -m app.cli history --state save.turn8.json
 uv run python -m app.cli history --state save.turn8.json --turn 3
+
+# Submit a budget decision (raise the personal-income tax rate to 25%):
+echo '{"expected_turn": 0, "expected_state_version": 0,
+       "decisions": [{"personal_income_rate_bps": 2500}]}' > budget.json
+uv run python -m app.cli resolve --state save.json --turns 1 \
+    --decisions-file budget.json --out save1.json
 ```
 
 - `new` creates a save containing only the genesis (turn-0) entry.
 - `inspect` loads a save and reports its version envelope, current turn, entry count, and
   integrity status — even an invalid save can be inspected; that's the point of "integrity status."
 - `resolve` appends N turns to history and writes the result atomically; it refuses to overwrite
-  its input, and on any failure nothing is written and the input is untouched.
-- `history` lists every turn, or with `--turn N` shows one historical entry, without mutating
-  anything. Unlike `inspect`, it refuses to operate on a save that fails integrity validation.
+  its input, and on any failure nothing is written and the input is untouched. `--decisions-file`
+  applies a JSON `DecisionSet` (requires `--turns 1`) instead of the default "no decision, continue
+  the current budget."
+- `history` lists every turn, or with `--turn N` shows one historical entry — including the
+  financial report, rendered as English via `app.cli.REASON_RENDERERS` — without mutating anything.
+  Unlike `inspect`, it refuses to operate on a save that fails integrity validation.
 
 Save files are hash-chained (see the history ADR below) — every entry records not just the
 resulting state but the decisions submitted and the report produced, linked to the previous entry
 by a BLAKE2b-256 hash. This detects accidental corruption and hand-editing; it is explicitly **not**
 anti-cheat security (the hashes are unkeyed).
+
+### Government accounting (Phase 2A)
+
+The player can change tax rates (personal income, corporate, consumption) and spending across
+seven categories. Each turn: tax revenue is collected against fixed tax bases, spending and
+quarterly debt interest are deducted, a deficit consumes cash before any new borrowing, and the
+result is checked against two reconciliation equations that must hold exactly in integer minor
+units. `FinanceReport` re-derives and checks those equations independently every time it's
+constructed — including when read back out of history — so a report can never claim to reconcile
+when the numbers don't actually add up. Full formulas and what's explicitly not yet simulated
+(production, prices, inflation, employment, tax bases responding to rates, …):
+[`docs/economy_methodology.md`](docs/economy_methodology.md).
 
 ## Frontend
 

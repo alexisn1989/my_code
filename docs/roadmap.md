@@ -66,6 +66,49 @@ player-facing choice between political control and operational independence; pop
 update incrementally with tracked approval reasons; policies have delayed/ramped effects; property
 tests for money reconciliation and bounded metrics.
 
+### Phase 2A — Government accounting and budget gameplay — **complete**
+
+Scope: the government-finance slice of §13 only — tax revenue, spending, quarterly debt interest,
+and deficit financing. See `docs/economy_methodology.md` for every formula and
+`docs/adr/0003-government-accounting.md` for the design decisions.
+
+Acceptance criteria:
+- [x] `TaxBaseState`/`TaxPolicyState`/`SpendingPlanState`/`GovernmentFinanceState` — fixed tax
+      bases, player-adjustable rates (basis points) and spending, all strict-integer validated
+      (rejects float/numeric-string/bool/NaN/inf, not just non-strict coercion).
+- [x] Pure `simulation/accounting.py`: per-category tax revenue, quarterly interest on *opening*
+      debt only, deficit-consumes-cash-then-borrows, no automatic debt repayment — both
+      reconciliation equations verified exactly (representative cases + 2,000-trial random search).
+- [x] `BudgetDecision`: explicit targets (not deltas), at least one target required, no duplicate
+      spending categories, at most one per `DecisionSet`.
+- [x] `FinanceReport` is self-validating on every construction path (fresh build, parsed from
+      history JSON, loaded from a save, CLI inspection) — independently re-derives every total and
+      both reconciliation equations from its own stored fields rather than trusting the phase that
+      built it; `reconciliation_status` is a derived property, not a field that could disagree with
+      the numbers.
+- [x] `OpeningFinanceSnapshot` captured before any budget mutation, using real copies (not bare
+      references) of the nested Pydantic sub-models — proven by tests that mutate a live field
+      in place, not just by reassigning the parent object.
+- [x] Player country requires `GovernmentFinanceState` (AI countries may omit it) — enforced
+      through the existing invariant/resolver pre-copy path, so a missing budget produces no
+      accounting, no history entry, and no output file, with no bespoke exception type needed.
+- [x] `RULESET_VERSION` moved from scenario-authored content to an engine constant; Phase-1 saves
+      rejected with an actionable error (frozen fixture committed *before* the bump, since there is
+      no other way to produce one afterward).
+- [x] Reason-ID/params reports (no prose in hash-protected history) with a CLI renderer table;
+      every reason ID the engine can emit is proven to have one.
+- [x] CLI `resolve --decisions-file` (requires `--turns 1`); `history` shows the financial report.
+- [x] Two scenario fixtures: `tiny_valid.yaml` (sustainable — used by the soak test) and
+      `deficit_demo.yaml` (deliberately borrows; every figure hand-checked against the resolver).
+- [x] 236 backend tests: strict-int rejection, formula edge cases, decision validation, treasury/
+      debt behavior, reconciliation, self-validation corruption (one test per equation), opening-
+      snapshot immutability (including in-place mutation, which caught a real reference-sharing
+      bug before it shipped), compatibility, CLI workflows, 8-turn and 100-turn integration runs.
+
+Explicitly deferred to later Phase 2 work: production sectors, GDP/prices/inflation/employment,
+tax bases responding to rates, wages, central bank, exchange rates, population approval effects —
+none of it simulated yet, stated plainly in `docs/economy_methodology.md` rather than implied.
+
 ## Phase 3 — Government and political survival
 
 Scope: §9 (constitutional system), §10 (political capital/action capacity), §12 (parties/
