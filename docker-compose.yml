@@ -1,0 +1,23 @@
+# Local development Postgres for Phase 4+ (persistence/API). Not used by
+# anything in this repository yet — Phase 0/1 has no database code. Kept here
+# now, validated with `docker compose config --quiet`, so Phase 4 has a known-
+# good starting point instead of authoring this from scratch later.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mandate
+      POSTGRES_PASSWORD: mandate
+      POSTGRES_DB: mandate
+    ports:
+      - "5432:5432"
+    volumes:
+      - mandate-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mandate"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mandate-postgres-data:

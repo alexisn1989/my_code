@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (lint, type-check, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.x"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      # --locked fails the build if uv.lock is out of date relative to
+      # pyproject.toml, rather than silently re-resolving (product spec §5.5,
+      # keep committed dependency resolution reproducible).
+      - name: Install dependencies (locked)
+        run: uv sync --locked --group dev
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Lint
+        run: uv run ruff check .
+
+      # Runs the same set the pyproject `[tool.mypy]` config lists (packages +
+      # modules) — see backend/pyproject.toml.
+      - name: Type-check (deterministic engine + I/O boundaries)
+        run: uv run mypy
+
+      - name: Test
+        run: uv run pytest -v
+
+  frontend:
+    name: Frontend (typecheck, build, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      # npm ci installs exactly what's locked in package-lock.json and fails
+      # if it's out of sync with package.json, mirroring the backend's
+      # `uv sync --locked` reproducibility guarantee.
+      - name: Install dependencies (locked)
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test

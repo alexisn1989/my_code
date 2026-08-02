@@ -1,0 +1,42 @@
+/*
+ * MANDATE design tokens (product spec §27, "Visual Direction"):
+ * deep navy, parchment, muted gold, charcoal, restrained red accents.
+ *
+ * Tailwind v4 is configured primarily through CSS: `@theme` below extends
+ * Tailwind's default token set with MANDATE's palette (e.g. `bg-navy-900`,
+ * `text-parchment-100`) instead of a JS/TS theme object. See
+ * tailwind.config.ts for the (secondary, tooling-facing) content globs.
+ */
+
+@import "tailwindcss";
+
+@theme {
+  --color-navy-950: #0a0f1a;
+  --color-navy-900: #0f1626;
+  --color-navy-800: #182338;
+
+  --color-parchment-100: #f3ecd9;
+  --color-parchment-200: #e8dcc0;
+
+  --color-gold-500: #b8933f;
+  --color-gold-600: #96742f;
+
+  --color-charcoal-700: #2b2d31;
+  --color-charcoal-900: #17181a;
+
+  --color-accent-red-600: #8c2f2f;
+
+  --font-display: "Georgia", "Times New Roman", serif;
+  --font-body:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-navy-950);
+  color: var(--color-parchment-100);
+  font-family: var(--font-body);
+}
