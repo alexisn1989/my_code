@@ -8,7 +8,7 @@ import pytest
 
 from app.core.canonical_json import canonical_dumps
 from app.core.errors import HistoryValidationError, SnapshotNotFoundError, TurnResolutionError
-from app.simulation.decisions import Decision, DecisionSet
+from app.simulation.decisions import BudgetDecision, DecisionSet
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
 from app.simulation.report import TurnReportEntry
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json
@@ -159,7 +159,7 @@ def test_mutating_retrieved_decisions_does_not_affect_history() -> None:
 
     decisions = save.entry_at(1).decisions()
     assert decisions is not None
-    decisions.decisions.append(Decision(kind="tamper", payload={}))
+    decisions.decisions = (*decisions.decisions, BudgetDecision(personal_income_rate_bps=1234))
 
     assert dump_save_json(save) == before
 
@@ -221,7 +221,7 @@ def test_tampering_with_decisions_is_detected() -> None:
     original = save.entries[index]
     decisions = original.decisions()
     assert decisions is not None
-    decisions.decisions.append(Decision(kind="tamper", payload={}))
+    decisions.decisions = (*decisions.decisions, BudgetDecision(personal_income_rate_bps=1234))
     tampered_json = canonical_dumps(decisions.model_dump(mode="json"))
     tampered_entry = dataclasses.replace(original, decisions_json=tampered_json)
     entries = (*save.entries[:index], tampered_entry)
