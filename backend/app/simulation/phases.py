@@ -154,13 +154,22 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
             "GovernmentFinanceState (this should have been caught by check_invariants)"
         )
 
+    # .model_copy() (not a bare reference) for every Pydantic-model-typed field:
+    # TaxBaseState/TaxPolicyState/SpendingPlanState all have `validate_assignment=True`,
+    # which permits in-place field mutation (`obj.field = x`) on a live instance. A bare
+    # reference here would mean a *future* phase handler mutating `finance.tax_policy`
+    # or `finance.spending_plan` in place — rather than replacing them wholesale, as this
+    # module's handlers currently do — would silently corrupt what this turn's report
+    # calls "opening," even though `OpeningFinanceSnapshot` itself is frozen. These models
+    # have only scalar fields, so a shallow `model_copy()` is already a full, independent
+    # copy — there is no nested mutable object left to worry about.
     opening = OpeningFinanceSnapshot(
         opening_cash=player.treasury.cash_on_hand,
         opening_debt=player.treasury.debt,
         annual_debt_interest_rate_bps=finance.annual_debt_interest_rate_bps,
-        tax_bases=finance.tax_bases,
-        previous_tax_policy=finance.tax_policy,
-        previous_spending_plan=finance.spending_plan,
+        tax_bases=finance.tax_bases.model_copy(),
+        previous_tax_policy=finance.tax_policy.model_copy(),
+        previous_spending_plan=finance.spending_plan.model_copy(),
     )
 
     budget_decision = ctx.decisions.decisions[0] if ctx.decisions.decisions else None

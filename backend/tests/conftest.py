@@ -41,16 +41,24 @@ def make_finance(
     corporate_rate_bps: int = 2_500,
     consumption_rate_bps: int = 1_000,
     compliance_rate_bps: int = 9_000,
-    health: Money = 50_000_00,
-    education: Money = 40_000_00,
-    welfare: Money = 60_000_00,
-    infrastructure: Money = 30_000_00,
-    defense: Money = 45_000_00,
-    security: Money = 20_000_00,
-    administration: Money = 15_000_00,
+    health: Money = 30_000_00,
+    education: Money = 24_000_00,
+    welfare: Money = 36_000_00,
+    infrastructure: Money = 18_000_00,
+    defense: Money = 27_000_00,
+    security: Money = 12_000_00,
+    administration: Money = 9_000_00,
     annual_debt_interest_rate_bps: int = 600,
 ) -> GovernmentFinanceState:
-    """Build a valid `GovernmentFinanceState` with reasonable round-number defaults."""
+    """Build a valid `GovernmentFinanceState` with reasonable round-number defaults.
+
+    Deliberately sustainable: with the default rates/compliance, total revenue
+    (19,350,000) comfortably exceeds default total spending (15,600,000) plus
+    interest on the (tiny, per `make_country`'s default treasury) opening debt —
+    so a long run of no-decision turns (e.g. the 100-turn soak) grows cash
+    without ever borrowing, keeping that test's timing signal meaningful rather
+    than dominated by an ever-growing debt figure.
+    """
     return GovernmentFinanceState(
         tax_bases=TaxBaseState(
             personal_income=personal_income,
