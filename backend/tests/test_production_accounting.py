@@ -14,12 +14,16 @@ def _sector(
     quarterly_capacity_output: int,
     output_per_worker: int,
     employed_workers: int,
+    value_added_share_bps: int = 5_000,
+    labor_income_share_bps: int = 5_000,
 ) -> SectorState:
     return SectorState(
         category=category,
         quarterly_capacity_output=quarterly_capacity_output,
         output_per_worker=output_per_worker,
         employed_workers=employed_workers,
+        value_added_share_bps=value_added_share_bps,
+        labor_income_share_bps=labor_income_share_bps,
     )
 
 

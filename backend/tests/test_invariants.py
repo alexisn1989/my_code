@@ -9,7 +9,13 @@ from app.simulation.history import new_game
 from app.simulation.invariants import check_invariants
 from app.simulation.resolver import resolve_turn
 from app.simulation.save_format import SAVE_FORMAT_VERSION
-from app.simulation.state import EconomyState, InstitutionState, PopulationGroupState
+from app.simulation.state import (
+    EconomyState,
+    InstitutionState,
+    PopulationGroupState,
+    SectorState,
+    TaxBaseCoefficients,
+)
 from tests.conftest import make_country, make_economy, make_finance, make_game_state
 
 
@@ -284,3 +290,52 @@ def test_noncanonical_sector_order_from_a_bypassed_construction_is_caught_by_inv
     assert "noncanonical_sector_order" in codes
     assert "duplicate_sector_category" not in codes
     assert "missing_sector_category" not in codes
+
+
+# --- Phase 2B2: tax-base coefficient range backstop --------------------------
+
+
+def test_tax_base_coefficient_out_of_range_is_caught_by_invariants() -> None:
+    """`StrictBps` already rejects an out-of-range coefficient at every legitimate
+    construction/assignment path — this is defense-in-depth for a fully bypassed
+    construction, mirroring the `noncanonical_sector_order` pattern above.
+    """
+    country = make_country("a")
+    assert country.finance is not None
+    bypassed_coefficients = TaxBaseCoefficients.model_construct(
+        personal_taxable_share_bps=99_999,
+        corporate_taxable_share_bps=4_000,
+        effective_consumption_base_share_bps=3_000,
+    )
+    bypassed_finance = country.finance.model_copy(
+        update={"tax_base_coefficients": bypassed_coefficients}
+    )
+    country = country.model_copy(update={"finance": bypassed_finance})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "tax_base_coefficient_out_of_range" in codes
+
+
+def test_sector_tax_base_share_out_of_range_is_caught_by_invariants() -> None:
+    country = make_country("a")
+    assert country.economy is not None
+    sectors = list(country.economy.sectors)
+    original = sectors[0]
+    bypassed_sector = SectorState.model_construct(
+        category=original.category,
+        quarterly_capacity_output=original.quarterly_capacity_output,
+        output_per_worker=original.output_per_worker,
+        employed_workers=original.employed_workers,
+        value_added_share_bps=-1,
+        labor_income_share_bps=original.labor_income_share_bps,
+    )
+    sectors[0] = bypassed_sector
+    bypassed_economy = country.economy.model_copy(update={"sectors": tuple(sectors)})
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "sector_tax_base_share_out_of_range" in codes

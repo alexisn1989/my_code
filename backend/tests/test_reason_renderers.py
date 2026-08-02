@@ -28,6 +28,11 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "sectors_exactly_balanced": 3,
         "sectors_inactive": 2,
     },
+    "tax_bases_derived": {
+        "personal_income": 4000000000,
+        "corporate_profit": 2000000000,
+        "taxable_consumption": 3000000000,
+    },
 }
 
 
@@ -122,3 +127,12 @@ def test_real_resolver_output_never_hits_the_fallback_sector_inactive() -> None:
     assert "sector_inactive" in ids
     for entry in entries:
         assert entry.reason_id in REASON_RENDERERS
+
+
+def test_real_resolver_output_never_hits_the_fallback_tax_bases_derived() -> None:
+    entries = _resolve_with("tiny_valid.yaml")
+    ids = {e.reason_id for e in entries}
+    assert "tax_bases_derived" in ids
+    for entry in entries:
+        assert entry.reason_id in REASON_RENDERERS
+        assert "unrendered" not in render_entry(entry)
