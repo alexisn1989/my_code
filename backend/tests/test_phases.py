@@ -40,7 +40,6 @@ def test_opening_snapshot_matches_state_as_it_was_before_any_phase_ran() -> None
     assert opening.opening_debt == original_debt
     assert opening.previous_tax_policy == original_finance.tax_policy
     assert opening.previous_spending_plan == original_finance.spending_plan
-    assert opening.tax_bases == original_finance.tax_bases
 
 
 def test_opening_snapshot_dataclass_itself_is_frozen() -> None:

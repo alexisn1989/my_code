@@ -16,7 +16,7 @@ from app.simulation.state import (
     SectorCategory,
     SectorState,
     SpendingPlanState,
-    TaxBaseState,
+    TaxBaseCoefficients,
     TaxPolicyState,
     TreasuryState,
     WorldState,
@@ -37,9 +37,9 @@ def tiny_valid_scenario_path() -> Path:
 
 def make_finance(
     *,
-    personal_income: Money = 500_000_00,
-    corporate_profit: Money = 300_000_00,
-    taxable_consumption: Money = 400_000_00,
+    personal_taxable_share_bps: int = 8_000,
+    corporate_taxable_share_bps: int = 4_000,
+    effective_consumption_base_share_bps: int = 3_000,
     personal_income_rate_bps: int = 2_000,
     corporate_rate_bps: int = 2_500,
     consumption_rate_bps: int = 1_000,
@@ -55,18 +55,19 @@ def make_finance(
 ) -> GovernmentFinanceState:
     """Build a valid `GovernmentFinanceState` with reasonable round-number defaults.
 
-    Deliberately sustainable: with the default rates/compliance, total revenue
-    (19,350,000) comfortably exceeds default total spending (15,600,000) plus
-    interest on the (tiny, per `make_country`'s default treasury) opening debt —
-    so a long run of no-decision turns (e.g. the 100-turn soak) grows cash
-    without ever borrowing, keeping that test's timing signal meaningful rather
-    than dominated by an ever-growing debt figure.
+    As of Phase 2B2, tax bases are no longer authored here — they are derived every turn
+    from the player's `EconomyState` (see `make_economy` below) and these
+    `tax_base_coefficients`. Paired with `make_economy`'s defaults, the derived bases
+    comfortably exceed default total spending (15,600,000) plus interest on the (tiny, per
+    `make_country`'s default treasury) opening debt — so a long run of no-decision turns
+    (e.g. the 100-turn soak) grows cash without ever borrowing, keeping that test's timing
+    signal meaningful rather than dominated by an ever-growing debt figure.
     """
     return GovernmentFinanceState(
-        tax_bases=TaxBaseState(
-            personal_income=personal_income,
-            corporate_profit=corporate_profit,
-            taxable_consumption=taxable_consumption,
+        tax_base_coefficients=TaxBaseCoefficients(
+            personal_taxable_share_bps=personal_taxable_share_bps,
+            corporate_taxable_share_bps=corporate_taxable_share_bps,
+            effective_consumption_base_share_bps=effective_consumption_base_share_bps,
         ),
         tax_policy=TaxPolicyState(
             personal_income_rate_bps=personal_income_rate_bps,
@@ -89,15 +90,23 @@ def make_finance(
 
 def make_economy(
     *,
-    quarterly_capacity_output: int = 1_000,
-    output_per_worker: int = 100,
-    employed_workers: int = 2,
+    quarterly_capacity_output: int = 25_000_000,
+    output_per_worker: int = 25_000_000,
+    employed_workers: int = 1,
+    value_added_share_bps: int = 5_000,
+    labor_income_share_bps: int = 5_000,
 ) -> EconomyState:
     """Build a valid `EconomyState` covering all 11 `SectorCategory` values with uniform,
-    round-number defaults. Deliberately unremarkable (every sector labor-constrained, since
-    `employed_workers * output_per_worker < quarterly_capacity_output`) — tests that need a
-    specific classification or edge case build `SectorState`/`EconomyState` directly instead
-    of overriding this factory's uniform shape.
+    round-number defaults (every sector exactly-balanced: `employed_workers * output_per_worker
+    == quarterly_capacity_output`) — tests that need a specific classification or edge case
+    build `SectorState`/`EconomyState` directly instead of overriding this factory's uniform
+    shape.
+
+    Paired with `make_finance`'s default `tax_base_coefficients`, this produces derived tax
+    bases (personal=55,000,000, corporate=27,500,000, consumption=41,250,000) that keep
+    `make_finance`'s "comfortably sustainable" default budget claim true post-Phase-2B2 — see
+    that function's docstring. Total employment is 11 (`len(SectorCategory)` * `employed_workers`),
+    far under `make_country`'s default `population=100`.
     """
     return EconomyState(
         sectors=tuple(
@@ -106,6 +115,8 @@ def make_economy(
                 quarterly_capacity_output=quarterly_capacity_output,
                 output_per_worker=output_per_worker,
                 employed_workers=employed_workers,
+                value_added_share_bps=value_added_share_bps,
+                labor_income_share_bps=labor_income_share_bps,
             )
             for category in SectorCategory
         )
@@ -166,7 +177,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.3.0",
+        content_version="0.4.0",
         seed=seed,
         turn=turn,
         state_version=state_version,

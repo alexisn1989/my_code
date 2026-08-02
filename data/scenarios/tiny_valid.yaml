@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.3.0"
+content_version: "0.4.0"
 seed: 42
 player_country_id: arken
 
@@ -74,12 +74,15 @@ countries:
         competence: 60
         corruption: 10
     finance:
-      tax_bases:
-        # Quarterly, in minor units (1/100 denar). Fixed for Phase 2A — a tax
-        # rate change does not move these; see TaxBaseState's docstring.
-        personal_income: 4000000000      #  40,000,000.00 denars
-        corporate_profit: 2000000000     #  20,000,000.00 denars
-        taxable_consumption: 3000000000  #  30,000,000.00 denars
+      # As of Phase 2B2, tax bases are NOT authored here — they are derived every turn from
+      # this country's economy (below) via simulation.tax_base_derivation. What IS authored
+      # is the country's fiscal reach: tax_base_coefficients.
+      tax_base_coefficients:
+        personal_taxable_share_bps: 8000              # 80% of sector labor income is personal tax base
+        corporate_taxable_share_bps: 4000              # 40% of sector operating surplus is corporate tax base
+        effective_consumption_base_share_bps: 3000      # 30% of sector modeled value added is consumption tax base
+        # (effective_consumption_base_share_bps is a deliberately reduced-form placeholder —
+        # see docs/economy_methodology.md and ADR 0005 for what it currently conflates.)
       tax_policy:
         personal_income_rate_bps: 2000   # 20%
         corporate_rate_bps: 2500         # 25%
@@ -95,70 +98,107 @@ countries:
         administration: 60000000     #     600,000.00 denars
       annual_debt_interest_rate_bps: 600   # 6% annual
     economy:
-      # Phase 2B1 sector production, fixed base-year prices, all 11 categories.
-      # Deliberately covers all four constraint classifications so the
-      # 100-turn soak (and any other test walking this scenario) exercises
-      # every code path in production_accounting.compute_sector_output.
-      # Hand-checked per sector (labor_limited_output = employed_workers *
-      # output_per_worker; actual_output = min(capacity, labor_limited)):
-      #   agriculture:      6,000 * 100   =   600,000 > capacity 500,000  -> capacity_constrained, actual=500,000
-      #   extraction:       4,000 * 50    =   200,000 < capacity 300,000 -> labor_constrained,    actual=200,000
-      #   manufacturing:    2,000 * 200   =   400,000 = capacity 400,000 -> exactly_balanced,     actual=400,000
-      #   construction:     capacity 0                                  -> inactive,              actual=0
-      #   energy:           1,000 * 125   =   125,000 < capacity 250,000 -> labor_constrained,    actual=125,000
-      #   transportation:   3,000 * 75    =   225,000 > capacity 150,000 -> capacity_constrained, actual=150,000
-      #   consumer_services:5,000 * 40    =   200,000 = capacity 200,000 -> exactly_balanced,     actual=200,000
-      #   finance_and_professional_services: 50 * 1,000 = 50,000 < capacity 100,000 -> labor_constrained, actual=50,000
-      #   technology:         300 * 400   =   120,000 > capacity 80,000  -> capacity_constrained, actual=80,000
-      #   defense_industry:   200 * 300   =    60,000 = capacity 60,000  -> exactly_balanced,     actual=60,000
-      #   public_services:  capacity 0                                  -> inactive,              actual=0
-      # total_employment = 21,550 (<< population 1,000,000)
-      # total_gross_output = 1,765,000 (fixed base-year output minor units — NOT GDP, NOT money)
+      # Phase 2B2 calibration note: sector outputs below are scaled (relative to the original
+      # Phase 2B1 fixture) via quarterly_capacity_output/output_per_worker ONLY — never
+      # employed_workers — specifically so that production-derived tax bases reproduce this
+      # scenario's original Phase 2A hand-checked bases EXACTLY, at a base-year price index of
+      # 1.0 (see app.core.quantity.base_year_real_output_to_money). Every sector uses uniform
+      # value_added_share_bps=5000 (50%) / labor_income_share_bps=5000 (50%); country-level
+      # tax_base_coefficients are declared above.
+      #
+      # Still deliberately covers all four constraint classifications so the 100-turn soak
+      # exercises every code path in production_accounting.compute_sector_output. Hand-checked
+      # per sector (labor_limited_output = employed_workers * output_per_worker; actual_output
+      # = min(capacity, labor_limited)):
+      #   agriculture:       12,000 *   200,000 = 2,400,000,000 > capacity 2,000,000,000 -> capacity_constrained, actual=2,000,000,000
+      #   extraction:        20,000 *   100,000 = 2,000,000,000 < capacity 3,000,000,000 -> labor_constrained,    actual=2,000,000,000
+      #   manufacturing:      2,000 * 1,000,000 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced,     actual=2,000,000,000
+      #   construction:      capacity 0                                                  -> inactive,            actual=0
+      #   energy:             8,000 *   250,000 = 2,000,000,000 < capacity 2,500,000,000 -> labor_constrained,    actual=2,000,000,000
+      #   transportation:     3,000 *   750,000 = 2,250,000,000 > capacity 2,000,000,000 -> capacity_constrained, actual=2,000,000,000
+      #   consumer_services:  5,000 *   400,000 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced,     actual=2,000,000,000
+      #   finance_and_professional_services: 200 * 10,000,000 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced, actual=2,000,000,000
+      #   technology:         2,000 * 2,000,000 = 4,000,000,000 = capacity 4,000,000,000 -> exactly_balanced,     actual=4,000,000,000
+      #   defense_industry:   5,000 *   500,000 = 2,500,000,000 > capacity 2,000,000,000 -> capacity_constrained, actual=2,000,000,000
+      #   public_services:   capacity 0                                                  -> inactive,            actual=0
+      # total_employment = 57,200 (<< population 1,000,000)
+      # total_gross_output = 20,000,000,000 (fixed base-year output minor units — NOT GDP, NOT money)
+      #
+      # Tax-base derivation check (uniform va_share=5000, labor_share=5000 across all sectors;
+      # coefficients personal=8000, corporate=4000, effective_consumption=3000):
+      #   modeled_value_added(total) = 20,000,000,000 * 0.5 = 10,000,000,000
+      #   labor_income(total)        = 10,000,000,000 * 0.5 =  5,000,000,000
+      #   operating_surplus(total)   = 10,000,000,000 -  5,000,000,000 =  5,000,000,000
+      #   personal_income base       =  5,000,000,000 * 0.8 =  4,000,000,000  (matches Phase 2A original exactly)
+      #   corporate_profit base      =  5,000,000,000 * 0.4 =  2,000,000,000  (matches Phase 2A original exactly)
+      #   taxable_consumption base   = 10,000,000,000 * 0.3 =  3,000,000,000  (matches Phase 2A original exactly)
       sectors:
         - category: agriculture
-          quarterly_capacity_output: 500000
-          output_per_worker: 100
-          employed_workers: 6000
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 200000
+          employed_workers: 12000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: extraction
-          quarterly_capacity_output: 300000
-          output_per_worker: 50
-          employed_workers: 4000
+          quarterly_capacity_output: 3000000000
+          output_per_worker: 100000
+          employed_workers: 20000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: manufacturing
-          quarterly_capacity_output: 400000
-          output_per_worker: 200
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 1000000
           employed_workers: 2000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: construction
           quarterly_capacity_output: 0
           output_per_worker: 1
           employed_workers: 0
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: energy
-          quarterly_capacity_output: 250000
-          output_per_worker: 125
-          employed_workers: 1000
+          quarterly_capacity_output: 2500000000
+          output_per_worker: 250000
+          employed_workers: 8000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: transportation
-          quarterly_capacity_output: 150000
-          output_per_worker: 75
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 750000
           employed_workers: 3000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: consumer_services
-          quarterly_capacity_output: 200000
-          output_per_worker: 40
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 400000
           employed_workers: 5000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: finance_and_professional_services
-          quarterly_capacity_output: 100000
-          output_per_worker: 1000
-          employed_workers: 50
-        - category: technology
-          quarterly_capacity_output: 80000
-          output_per_worker: 400
-          employed_workers: 300
-        - category: defense_industry
-          quarterly_capacity_output: 60000
-          output_per_worker: 300
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 10000000
           employed_workers: 200
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: technology
+          quarterly_capacity_output: 4000000000
+          output_per_worker: 2000000
+          employed_workers: 2000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: defense_industry
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 500000
+          employed_workers: 5000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: public_services
           quarterly_capacity_output: 0
           output_per_worker: 1
           employed_workers: 0
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
 
   - id: neighbor
     name: "Neighboring State"

@@ -62,6 +62,62 @@ def _check_country(country: CountryState) -> list[InvariantViolation]:
         seen_institution_ids.add(institution.id)
 
     violations.extend(_check_economy(country))
+    violations.extend(_check_tax_base_coefficients(country))
+
+    return violations
+
+
+_BPS_MIN = 0
+_BPS_MAX = 10_000
+
+
+def _check_tax_base_coefficients(country: CountryState) -> list[InvariantViolation]:
+    """Every-turn backstop re-checking basis-point range on the Phase 2B2 tax-base
+    coefficients, mirroring `_check_economy`'s role for `EconomyState`: `StrictBps` already
+    rejects an out-of-range value at every legitimate construction/assignment path, but a
+    fully bypassed construction (`model_construct`, or a raw dict smuggled in through some
+    future non-validating restore path) skips that entirely. This is defense-in-depth, not a
+    claim that the gap is reachable through ordinary Pydantic-validated code today.
+    """
+    violations: list[InvariantViolation] = []
+
+    if country.finance is not None:
+        coefficients = country.finance.tax_base_coefficients
+        for field_name, value in (
+            ("personal_taxable_share_bps", coefficients.personal_taxable_share_bps),
+            ("corporate_taxable_share_bps", coefficients.corporate_taxable_share_bps),
+            (
+                "effective_consumption_base_share_bps",
+                coefficients.effective_consumption_base_share_bps,
+            ),
+        ):
+            if not (_BPS_MIN <= value <= _BPS_MAX):
+                violations.append(
+                    InvariantViolation(
+                        code="tax_base_coefficient_out_of_range",
+                        message=(
+                            f"country {country.id!r}: tax_base_coefficients.{field_name}="
+                            f"{value} is outside [{_BPS_MIN}, {_BPS_MAX}]"
+                        ),
+                    )
+                )
+
+    if country.economy is not None:
+        for sector in country.economy.sectors:
+            for field_name, value in (
+                ("value_added_share_bps", sector.value_added_share_bps),
+                ("labor_income_share_bps", sector.labor_income_share_bps),
+            ):
+                if not (_BPS_MIN <= value <= _BPS_MAX):
+                    violations.append(
+                        InvariantViolation(
+                            code="sector_tax_base_share_out_of_range",
+                            message=(
+                                f"country {country.id!r}: sector {sector.category.value!r} "
+                                f"{field_name}={value} is outside [{_BPS_MIN}, {_BPS_MAX}]"
+                            ),
+                        )
+                    )
 
     return violations
 

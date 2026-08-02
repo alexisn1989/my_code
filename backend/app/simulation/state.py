@@ -87,14 +87,15 @@ class SpendingCategory(StrEnum):
 
 
 class TaxBaseState(BaseModel):
-    """Fixed-for-Phase-2A taxable bases (product spec §13, "Government Finance").
-
-    **Limitation, stated prominently per the ticket:** changing a tax *rate* in
-    2A does not change these *bases*. Real economic feedback (a higher
-    consumption-tax rate suppressing taxable consumption, income tax affecting
-    labor supply, etc.) is Phase 2B+ production-sector work. These are static
-    scenario-authored numbers that revenue is computed against, not a live
-    economic model.
+    """Taxable bases that tax revenue is computed against (product spec §13, "Government
+    Finance"). The model itself is unchanged since Phase 2A — `simulation.accounting.
+    compute_tax_revenue` still takes exactly this shape — but as of Phase 2B2 it is no longer
+    scenario-authored state. It is now a **derived, turn-local** value: `TaxBaseDerivationReport
+    .derived_tax_bases` (`report.py`), computed fresh every turn by
+    `simulation.tax_base_derivation` from the player's current `EconomyState` and
+    `GovernmentFinanceState.tax_base_coefficients`. Changing a tax *rate* still does not change
+    these *bases* directly — only changing production (or the coefficients) does; see
+    `docs/economy_methodology.md`.
     """
 
     model_config = _STRICT_CONFIG
@@ -152,16 +153,43 @@ class SpendingPlanState(BaseModel):
         return self.model_copy(update={category.value: amount})
 
 
-class GovernmentFinanceState(BaseModel):
-    """A country's Phase-2A government accounting state: bases, policy, spending, and the
-    interest rate paid on public debt. Optional on `CountryState` — required for the player
-    country (`simulation.invariants` enforces this), unused and freely omittable for AI
-    countries until Phase 6 gives them budget decisions of their own.
+class TaxBaseCoefficients(BaseModel):
+    """Country-level fiscal-reach coefficients (Phase 2B2) that turn per-sector modeled value
+    added / labor income / operating surplus into national tax bases. Country-level, not
+    per-sector (unlike `SectorState.value_added_share_bps`/`labor_income_share_bps`), because
+    these describe how much of the economy the tax system reaches — a property of fiscal
+    policy, not of any one industry.
+
+    `effective_consumption_base_share_bps` is a reduced-form placeholder: it currently
+    conflates household final-demand composition, government-vs-private consumption,
+    exports/other non-domestic demand, and exemptions/fiscal coverage into one coefficient,
+    because Phase 2B2 does not yet model final demand or trade separately. See
+    `docs/economy_methodology.md` and `docs/adr/0005-production-derived-tax-bases.md` for why
+    this is temporary and what a later phase should split it into.
     """
 
     model_config = _STRICT_CONFIG
 
-    tax_bases: TaxBaseState
+    personal_taxable_share_bps: StrictBps
+    corporate_taxable_share_bps: StrictBps
+    effective_consumption_base_share_bps: StrictBps
+
+
+class GovernmentFinanceState(BaseModel):
+    """A country's government accounting state: fiscal coefficients, policy, spending, and the
+    interest rate paid on public debt. Optional on `CountryState` — required for the player
+    country (`simulation.invariants` enforces this), unused and freely omittable for AI
+    countries until Phase 6 gives them budget decisions of their own.
+
+    As of Phase 2B2, tax bases are no longer authored here — `TaxBaseCoefficients` plus the
+    player's current-turn `EconomyState` are what `simulation.tax_base_derivation` uses to
+    derive them fresh every turn. There is no "opening"/"closing" tax-base concept anymore,
+    only "applied this turn" (see `TaxBaseDerivationReport` in `report.py`).
+    """
+
+    model_config = _STRICT_CONFIG
+
+    tax_base_coefficients: TaxBaseCoefficients
     tax_policy: TaxPolicyState
     spending_plan: SpendingPlanState
     annual_debt_interest_rate_bps: StrictBps
@@ -191,13 +219,20 @@ class SectorCategory(StrEnum):
 
 
 class SectorState(BaseModel):
-    """One aggregate sector's Phase-2B1 production inputs.
+    """One aggregate sector's production inputs, plus (Phase 2B2) its structural tax-base
+    decomposition shares.
 
     Deliberately mutable (no `frozen=True`): `employed_workers` is expected to
     become player/AI-adjustable in a later economy phase. `capacity_utilization_bps`
     and constraint classification are NOT stored here — they are always
     derived from these inputs and live exclusively in `ProductionReport`, so
     there is never a stored value that could disagree with its own formula.
+
+    `value_added_share_bps`/`labor_income_share_bps` are per-sector (not country-level)
+    because they are genuinely structural — how much of a sector's gross output survives
+    as modeled value added, and how much of that is labor income vs. operating surplus,
+    differs meaningfully by industry (extraction vs. professional services, for instance).
+    See `simulation.tax_base_derivation` and `docs/economy_methodology.md`.
     """
 
     model_config = _STRICT_CONFIG
@@ -206,6 +241,8 @@ class SectorState(BaseModel):
     quarterly_capacity_output: StrictRealOutput
     output_per_worker: StrictRealOutputPerWorker
     employed_workers: StrictWorkerCount
+    value_added_share_bps: StrictBps
+    labor_income_share_bps: StrictBps
 
 
 class EconomyState(BaseModel):
@@ -277,7 +314,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.3.0"
+RULESET_VERSION = "0.4.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -285,10 +322,12 @@ instead the *engine* declares what ruleset it implements, and `save_format.SUPPO
 gates which values are accepted when loading a save. Bump this when turn-resolution *behavior*
 changes (which phases do real work, what formulas they use) in a way that must not silently
 apply to already-resolved history — see `docs/adr/0002-snapshot-history-and-versioning.md`,
-`docs/adr/0003-government-accounting.md`, and `docs/adr/0004-sector-production-fixed-prices.md`
-(bumped `"0.2.0" -> "0.3.0"` for Phase 2B1: `CountryState.economy` becomes a required player
-field with no data to backfill from an older save, exactly the same kind of shape change that
-justified the Phase 1 -> 2A bump).
+`docs/adr/0003-government-accounting.md`, `docs/adr/0004-sector-production-fixed-prices.md`, and
+`docs/adr/0005-production-derived-tax-bases.md` (bumped `"0.3.0" -> "0.4.0"` for Phase 2B2:
+`GovernmentFinanceState.tax_bases` is removed in favor of required `tax_base_coefficients` and
+each `SectorState` gains required `value_added_share_bps`/`labor_income_share_bps` — a required
+state-shape change in both directions with no data to migrate an older save from, the same kind
+of change that justified every prior ruleset bump).
 """
 
 
