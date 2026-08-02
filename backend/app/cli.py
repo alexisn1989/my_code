@@ -55,7 +55,13 @@ from app.core.money import format_money
 from app.saves import read_save_file, write_save_atomic
 from app.simulation.decisions import DecisionSet
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
-from app.simulation.report import FinanceReport, ProductionReport, TurnReport, TurnReportEntry
+from app.simulation.report import (
+    FinanceReport,
+    ProductionReport,
+    TaxBaseDerivationReport,
+    TurnReport,
+    TurnReportEntry,
+)
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json, load_save_json
 
 # --- reason_id -> English rendering (presentation layer only; never stored) --
@@ -120,6 +126,16 @@ def _render_production_summary(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_tax_bases_derived(params: dict[str, str | int]) -> str:
+    personal = format_money(int(params["personal_income"]))
+    corporate = format_money(int(params["corporate_profit"]))
+    consumption = format_money(int(params["taxable_consumption"]))
+    return (
+        f"Tax bases derived from this turn's production: personal={personal} "
+        f"corporate={corporate} consumption={consumption} denars."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -128,6 +144,7 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "deficit_financed_with_new_borrowing": _render_deficit_financed_with_new_borrowing,
     "sector_inactive": _render_sector_inactive,
     "production_summary": _render_production_summary,
+    "tax_bases_derived": _render_tax_bases_derived,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -221,6 +238,14 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                 f"total_gross_output={production.total_gross_output:,} "
                 "(fixed base-year output units, not money)"
             )
+        if latest_report is not None and latest_report.tax_base_derivation is not None:
+            derived = latest_report.tax_base_derivation.derived_tax_bases
+            print(
+                "  tax bases (latest): "
+                f"personal={format_money(derived.personal_income)} "
+                f"corporate={format_money(derived.corporate_profit)} "
+                f"consumption={format_money(derived.taxable_consumption)} denars"
+            )
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -275,14 +300,42 @@ def _print_production_report(production: ProductionReport) -> None:
         )
 
 
+def _print_tax_base_derivation_report(derivation: TaxBaseDerivationReport) -> None:
+    print("    tax_base_derivation:")
+    print(
+        f"      total_modeled_value_added={derivation.total_modeled_value_added:,} "
+        f"total_labor_income={derivation.total_labor_income:,} "
+        f"total_operating_surplus={derivation.total_operating_surplus:,} "
+        "(fixed base-year output units, not money)"
+    )
+    print(
+        "      derived_tax_bases: "
+        f"personal={format_money(derivation.derived_tax_bases.personal_income)} "
+        f"corporate={format_money(derivation.derived_tax_bases.corporate_profit)} "
+        f"consumption={format_money(derivation.derived_tax_bases.taxable_consumption)} denars"
+    )
+    for sector in derivation.sectors:
+        print(
+            f"      {sector.category.value}: "
+            f"modeled_value_added={sector.modeled_value_added:,} "
+            f"labor_income={sector.labor_income:,} "
+            f"operating_surplus={sector.operating_surplus:,} "
+            f"personal={sector.personal_contribution:,} "
+            f"corporate={sector.corporate_contribution:,} "
+            f"consumption={sector.consumption_contribution:,}"
+        )
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
         print(f"    [{entry.category}] {render_entry(entry)}")
-    if report.finance is not None:
-        _print_finance_report(report.finance)
     if report.production is not None:
         _print_production_report(report.production)
+    if report.tax_base_derivation is not None:
+        _print_tax_base_derivation_report(report.tax_base_derivation)
+    if report.finance is not None:
+        _print_finance_report(report.finance)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -375,10 +428,12 @@ def _cmd_history(args: argparse.Namespace) -> int:
         print(f"  report (from resolving turn {report.resolved_turn}):")
         for report_entry in report.entries:
             print(f"    [{report_entry.category}] {render_entry(report_entry)}")
-        if report.finance is not None:
-            _print_finance_report(report.finance)
         if report.production is not None:
             _print_production_report(report.production)
+        if report.tax_base_derivation is not None:
+            _print_tax_base_derivation_report(report.tax_base_derivation)
+        if report.finance is not None:
+            _print_finance_report(report.finance)
     return 0
 
 
