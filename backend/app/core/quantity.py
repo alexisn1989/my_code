@@ -20,9 +20,17 @@ from typing import Annotated, TypeAlias
 
 from pydantic import Field
 
+from app.core.money import BPS_DENOMINATOR, Money
+
 # Pydantic's `strict=True` on an `int`-typed field rejects bool, whole-number
 # floats, numeric strings, NaN, and +/-inf — verified for `StrictMoney` in
 # `test_money.py` and re-verified for these aliases in `test_quantity.py`.
+
+WorkerCount: TypeAlias = int
+"""A count of employed workers, for plain function signatures (mirrors `Money` in `core.money`)."""
+
+RealOutput: TypeAlias = int
+"""An amount of fixed-base-year real output, for plain function signatures. Never `Money`."""
 
 StrictWorkerCount: TypeAlias = Annotated[int, Field(strict=True, ge=0)]
 """A nonnegative count of employed workers in a sector. Not currency, not output."""
@@ -40,3 +48,41 @@ StrictRealOutputPerWorker: TypeAlias = Annotated[int, Field(strict=True, gt=0)]
 a sector with no per-worker output isn't modeled by zeroing this field, it's modeled by
 `employed_workers == 0` (see `docs/economy_methodology.md` for why the two are kept distinct).
 """
+
+BASE_YEAR_PRICE_INDEX_BPS = BPS_DENOMINATOR
+"""The temporary real-output-to-money bridge (Phase 2B2), expressed as exact integer basis
+points rather than a runtime float: `10_000 bps == 1.0`, i.e. one fixed-base-year real output
+minor unit currently converts to exactly one nominal `Money` minor unit. This is a placeholder
+for the price-level system that doesn't exist yet — see `base_year_real_output_to_money` below
+and `docs/economy_methodology.md` for why this is deliberately temporary, not a permanent 1:1
+economic claim.
+"""
+
+
+def base_year_real_output_to_money(value: RealOutput) -> Money:
+    """The single named conversion point from fixed-base-year real output to nominal `Money`.
+
+    Deliberately a real function — not an implicit `int` pass-through — because this is the
+    single most important unit boundary in the economy simulation: everything upstream of this
+    call is a real production measure that can never be spent, taxed, or added to cash/debt;
+    everything downstream is spendable nominal currency. `RealOutput`/`Money` are both plain
+    `int` `TypeAlias`es at runtime, so nothing but this function's name, types, and docstring
+    marks the crossing — callers must route every real-to-nominal conversion through here rather
+    than passing a real-output integer directly into a `Money`-typed field.
+
+    Currently an identity conversion at `BASE_YEAR_PRICE_INDEX_BPS` (10,000 bps = 1.0), using
+    integer basis points rather than a runtime float so the "price index" is exact and
+    inspectable rather than an opaque `1.0` constant. This function — not the constant alone —
+    is what a later price-level/inflation system replaces; call sites do not change when it does.
+
+    Rejects negative and non-integer (including `bool`) input via `StrictRealOutput`'s own
+    validation semantics, re-applied here explicitly since this is a plain function, not a
+    Pydantic field.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"base_year_real_output_to_money requires a plain int, got {value!r}")
+    if value < 0:
+        raise ValueError(
+            f"base_year_real_output_to_money requires a nonnegative value, got {value}"
+        )
+    return (value * BASE_YEAR_PRICE_INDEX_BPS) // BPS_DENOMINATOR
