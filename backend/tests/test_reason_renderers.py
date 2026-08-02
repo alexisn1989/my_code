@@ -19,6 +19,15 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
     "tax_rate_changed": {"field": "personal_income_rate_bps", "old_bps": 2000, "new_bps": 2500},
     "spending_category_changed": {"category": "health", "old_amount": 100, "new_amount": 200},
     "deficit_financed_with_new_borrowing": {"amount": 12345},
+    "sector_inactive": {"category": "construction"},
+    "production_summary": {
+        "total_employment": 21550,
+        "total_gross_output": 1765000,
+        "sectors_capacity_constrained": 3,
+        "sectors_labor_constrained": 3,
+        "sectors_exactly_balanced": 3,
+        "sectors_inactive": 2,
+    },
 }
 
 
@@ -92,5 +101,24 @@ def test_real_resolver_output_never_hits_the_fallback_deficit_borrowing() -> Non
     entries = _resolve_with("deficit_demo.yaml")
     ids = {e.reason_id for e in entries}
     assert "deficit_financed_with_new_borrowing" in ids
+    for entry in entries:
+        assert entry.reason_id in REASON_RENDERERS
+
+
+def test_real_resolver_output_never_hits_the_fallback_production_summary() -> None:
+    entries = _resolve_with("tiny_valid.yaml")
+    ids = {e.reason_id for e in entries}
+    assert "production_summary" in ids
+    for entry in entries:
+        assert entry.reason_id in REASON_RENDERERS
+        assert "unrendered" not in render_entry(entry)
+
+
+def test_real_resolver_output_never_hits_the_fallback_sector_inactive() -> None:
+    # tiny_valid.yaml's arken economy has two zero-capacity sectors (construction,
+    # public_services) by design, so sector_inactive must be emitted for real.
+    entries = _resolve_with("tiny_valid.yaml")
+    ids = {e.reason_id for e in entries}
+    assert "sector_inactive" in ids
     for entry in entries:
         assert entry.reason_id in REASON_RENDERERS

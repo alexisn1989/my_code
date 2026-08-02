@@ -249,6 +249,65 @@ def test_tampering_with_report_is_detected() -> None:
     assert any("entry_hash does not match" in p for p in problems)
 
 
+def test_tampering_with_only_the_production_report_is_detected() -> None:
+    """Dedicated Phase 2B1 tamper test: `report.production` is new surface
+    area covered by `entry_hash` — this must not be assumed to work just
+    because the generic `report.entries` tamper test above passes.
+    """
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None
+    assert report.production is not None
+    tampered_production = report.production.model_copy(
+        update={"total_gross_output": report.production.total_gross_output + 1}
+    )
+    tampered_report = report.model_copy(update={"production": tampered_production})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered_entry = dataclasses.replace(original, report_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry)
+    tampered = dataclasses.replace(save, entries=entries, entry_count=len(entries))
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
+def test_tampering_with_only_the_economy_state_is_detected() -> None:
+    """Dedicated Phase 2B1 tamper test: `state...economy` is new surface area
+    covered by `entry_hash`, independent of the report-tamper test above."""
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    tampered_state = original.state()
+    country_id = tampered_state.world.player_country_id
+    country = tampered_state.world.countries[country_id]
+    assert country.economy is not None
+    tampered_state.world.countries[country_id] = country.model_copy(
+        update={
+            "economy": country.economy.model_copy(
+                update={
+                    "sectors": tuple(
+                        s.model_copy(update={"employed_workers": s.employed_workers + 1})
+                        if i == 0
+                        else s
+                        for i, s in enumerate(country.economy.sectors)
+                    )
+                }
+            )
+        }
+    )
+    tampered_json = canonical_dumps(tampered_state.model_dump(mode="json"))
+    assert tampered_json != original.state_json
+    tampered_entry = dataclasses.replace(original, state_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry, *save.entries[index + 1 :])
+    tampered = dataclasses.replace(save, entries=entries)
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
 def test_noncanonical_stored_payload_is_rejected_without_normalization() -> None:
     save = _fresh_save()
     genesis = save.entries[0]

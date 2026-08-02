@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import pytest
+
+from app.core.canonical_json import canonical_dumps
+from app.core.errors import HistoryValidationError, TurnResolutionError
+from app.simulation.decisions import DecisionSet
+from app.simulation.history import new_game
 from app.simulation.invariants import check_invariants
-from app.simulation.state import InstitutionState, PopulationGroupState
-from tests.conftest import make_country, make_finance, make_game_state
+from app.simulation.resolver import resolve_turn
+from app.simulation.save_format import SAVE_FORMAT_VERSION
+from app.simulation.state import EconomyState, InstitutionState, PopulationGroupState
+from tests.conftest import make_country, make_economy, make_finance, make_game_state
 
 
 def test_valid_state_has_no_violations() -> None:
@@ -137,3 +145,142 @@ def test_player_finance_uses_the_shared_finance_factory() -> None:
     assert check_invariants(state) == []
     assert state.world.countries["a"].finance is not None
     assert state.world.countries["a"].finance.tax_policy.personal_income_rate_bps == 3_000
+
+
+# --- Player-country economy requirement (Phase 2B1) --------------------------
+
+
+def test_valid_player_economy_has_no_violation() -> None:
+    country = make_country("a")
+    assert country.economy is not None
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+    assert check_invariants(state) == []
+
+
+def test_missing_player_economy_is_a_violation() -> None:
+    country = make_country("a", with_economy=False)
+    assert country.economy is None
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "player_economy_required" in codes
+
+
+def test_ai_country_without_economy_is_not_a_violation() -> None:
+    player = make_country("player", with_economy=True)
+    ai = make_country("ai_neighbor", with_economy=False)
+    assert ai.economy is None
+
+    state = make_game_state(
+        countries={"player": player, "ai_neighbor": ai}, player_country_id="player"
+    )
+    assert check_invariants(state) == []
+
+
+def test_player_economy_uses_the_shared_economy_factory() -> None:
+    economy = make_economy(employed_workers=10)
+    country = make_country("a", population=1_000, economy=economy)
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+    assert check_invariants(state) == []
+    assert state.world.countries["a"].economy is not None
+
+
+def test_sector_employment_exceeding_population_is_a_violation() -> None:
+    economy = make_economy(employed_workers=1_000)  # 11 sectors * 1000 = 11,000
+    country = make_country("a", population=100, economy=economy)  # << total employment
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "sector_employment_exceeds_population" in codes
+
+
+def test_sector_employment_exactly_equal_to_population_is_not_a_violation() -> None:
+    economy = make_economy(employed_workers=10)  # 11 sectors * 10 = 110
+    country = make_country("a", population=110, economy=economy)
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+    assert check_invariants(state) == []
+
+
+# --- R1: EconomyState's own construction-time invariant must be re-checked ---
+# --- every turn, since SectorState is deliberately mutable -------------------
+
+
+def test_nested_sector_mutation_into_a_duplicate_category_is_caught_by_invariants() -> None:
+    """R1's central regression test: `EconomyState`'s `@model_validator` only runs
+    at construction. A later `sector.category = ...` assignment on an already-built
+    `EconomyState` can desynchronize it from "all 11 categories, exactly once"
+    without ever re-running that validator — `check_invariants` is the independent,
+    every-turn backstop that still catches it.
+    """
+    country = make_country("a")
+    assert country.economy is not None
+    # Mutate a live, already-validated SectorState's category to collide with
+    # another sector already present — plain attribute assignment, an allowed
+    # path since SectorState is deliberately kept mutable (R1).
+    country.economy.sectors[1].category = country.economy.sectors[0].category
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "duplicate_sector_category" in codes
+    assert "missing_sector_category" in codes  # whatever category got overwritten is now absent
+
+
+def test_resolve_turn_rejects_a_nested_sector_mutation_without_mutating_input_or_history() -> None:
+    """R1's full regression test: `resolve_turn` catches the desynchronized
+    economy via `check_invariants` (not a crash), never mutates the caller's
+    state, and `advance_game` appends no history entry for the failed turn.
+    """
+    from app.simulation.history import advance_game
+
+    country = make_country("a")
+    assert country.economy is not None
+    country.economy.sectors[1].category = country.economy.sectors[0].category
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    before = canonical_dumps(state.model_dump(mode="json"))
+    decisions = DecisionSet(
+        expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
+    )
+    with pytest.raises(TurnResolutionError):
+        resolve_turn(state, decisions)
+    assert canonical_dumps(state.model_dump(mode="json")) == before
+
+    save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+    before_entry_count = save.entry_count
+    # Once stored and reloaded from JSON, `EconomyState`'s own construction-time
+    # validator catches the duplicate on re-parse (a stronger, independent check
+    # than check_invariants alone) — surfacing as a history-integrity failure
+    # rather than a turn-resolution failure, but either way nothing is appended.
+    with pytest.raises((TurnResolutionError, HistoryValidationError)):
+        advance_game(save, decisions)
+    assert save.entry_count == before_entry_count
+
+
+def test_noncanonical_sector_order_from_a_bypassed_construction_is_caught_by_invariants() -> None:
+    """A plain reassignment of `economy.sectors` re-triggers `EconomyState`'s own
+    `@model_validator` (via `validate_assignment=True`, which pydantic reruns
+    even for an already-constructed nested instance) and would silently
+    re-normalize the order back to canonical — it can't be used to produce a
+    noncanonical-order economy. `model_construct()` bypasses validation
+    entirely, and `model_copy(update=...)` (unlike a live attribute
+    assignment) never re-validates either, so together they're the realistic
+    way this state could arise — e.g. modeling a payload that was
+    reconstructed without ever going through normal validation.
+    `check_invariants` is the independent backstop that still catches it.
+    """
+    country = make_country("a")
+    assert country.economy is not None
+    sectors = list(country.economy.sectors)
+    sectors[0], sectors[1] = sectors[1], sectors[0]
+    bypassed = EconomyState.model_construct(sectors=tuple(sectors))
+    country = country.model_copy(update={"economy": bypassed})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "noncanonical_sector_order" in codes
+    assert "duplicate_sector_category" not in codes
+    assert "missing_sector_category" not in codes
