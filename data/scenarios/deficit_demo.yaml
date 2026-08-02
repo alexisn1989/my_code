@@ -20,7 +20,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.2.0"
+content_version: "0.3.0"
 seed: 99
 player_country_id: strapped
 
@@ -66,3 +66,56 @@ countries:
         security: 50000000           #     500,000.00 denars
         administration: 40000000     #     400,000.00 denars
       annual_debt_interest_rate_bps: 800   # 8% annual
+    economy:
+      # Phase 2B1 sector production, fixed base-year prices. This fixture's
+      # purpose is deficit financing, not production variety, so all 11
+      # sectors use one uniform, hand-checkable shape:
+      #   labor_limited_output = 100 * 50 = 5,000 < capacity 10,000
+      #   -> every sector labor_constrained, actual_output = 5,000
+      # total_employment = 1,100 (<< population 400,000)
+      # total_gross_output = 55,000 (fixed base-year output minor units — NOT GDP, NOT money)
+      sectors:
+        - category: agriculture
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
+        - category: extraction
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
+        - category: manufacturing
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
+        - category: construction
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
+        - category: energy
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
+        - category: transportation
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
+        - category: consumer_services
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
+        - category: finance_and_professional_services
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
+        - category: technology
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
+        - category: defense_industry
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
+        - category: public_services
+          quarterly_capacity_output: 10000
+          output_per_worker: 50
+          employed_workers: 100
