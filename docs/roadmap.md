@@ -159,6 +159,59 @@ prices, inflation, wages, unemployment/labor-force dynamics, hiring/layoffs, pop
 effects, and any behavioral link between taxes/spending and sector output — none of it implied or
 half-built, stated plainly in `docs/economy_methodology.md`.
 
+### Phase 2B2 — Production-derived tax bases — **complete**
+
+Scope: derive Phase 2A's tax bases from Phase 2B1's sector production, replacing the fixed
+scenario-authored bases — the one connection Phase 2B1 deliberately left out. See
+`docs/economy_methodology.md` for the full formulas and `docs/adr/0005-production-derived-tax-bases.md`
+for the design decisions.
+
+Acceptance criteria:
+- [x] `GovernmentFinanceState.tax_bases` removed; replaced by a new `TaxBaseCoefficients` model
+      (country-level fiscal-reach coefficients) plus new per-sector
+      `value_added_share_bps`/`labor_income_share_bps` on `SectorState` — tax bases are now
+      purely derived, turn-local, and never written back into `GameState`.
+- [x] Pure `simulation/tax_base_derivation.py`: modeled-value-added/labor-income/operating-surplus
+      decomposition and three tax-base contributions per sector, summed nationally (sum-of-parts,
+      not a national recompute) and converted to `Money` through exactly one named function,
+      `base_year_real_output_to_money` (`app.core.quantity`) — the sole real-output-to-nominal-money
+      boundary, using an exact-integer-bps price index rather than a runtime float.
+- [x] Self-validating `TaxBaseDerivationReport`/`SectorTaxBaseReport`, mirroring
+      `FinanceReport`/`ProductionReport`'s pattern — plus new `TurnReport`-level cross-report
+      validation proving the whole chain agrees: production's `actual_output` matches
+      derivation's input per sector category (matched by category identity, not tuple position),
+      derivation's output matches finance's applied bases exactly, and
+      production/derivation/finance reports are all present or all absent together.
+- [x] Derivation runs at the start of the existing revenue phase (no new `PHASE_ORDER` slot, no
+      reordering) — production (phase 3) already precedes revenue (phase 4), so same-turn linkage
+      is structural; proven across a real multi-turn run, not just turn 0.
+- [x] The relationship is one-directional: sector production affects tax bases and therefore
+      revenue; tax rates and spending still do not affect production or the bases derived from it
+      — actively tested in both directions, including a deliberately-inverted replacement for a
+      Phase 2B1 isolation test that had become vacuously true (not meaningfully true) under the
+      new code.
+- [x] Both scenario fixtures re-calibrated so derived tax bases reproduce the original Phase 2A
+      authored bases **exactly** — verified by direct computation and by resolving turn 0 through
+      the real engine — so every existing Phase 2A hand-checked revenue/interest/borrowing/
+      reconciliation figure in both fixtures is unchanged.
+- [x] `RULESET_VERSION` bumped again (`0.3.0 -> 0.4.0`); a Phase-2B1-ruleset save fixture was
+      frozen *before* the bump, mirroring every prior ruleset-bump precedent.
+- [x] CLI `inspect`/`history` extended with a tax-base derivation summary and per-sector
+      breakdown; new `tax_bases_derived` reason ID added to the renderer coverage test.
+- [x] 379 backend tests: strict coefficient validation, formula/rounding-boundary correctness
+      (including a hand-picked case proving sum-of-parts genuinely differs from a national
+      recompute), cross-report chain corruption in every direction, unit-bridge conversion
+      function tests, coefficient-range invariant backstops, resolver/history tamper detection
+      extended to the new report/state fields, compatibility fixture rejection, calibration
+      exactness against both real scenarios, same-turn/no-lag verification, and the existing
+      8-turn/100-turn integration and soak runs re-verified with derivation resolving every turn.
+
+Explicitly deferred: tax-rate elasticity, tax avoidance/compliance behavior, Laffer-curve effects,
+production responses to taxes, hiring/firing/labor movement, wage bargaining, unemployment,
+capacity investment or depreciation, prices, inflation, GDP/value-added/real-growth figures, trade,
+population approval effects — none of it implied or half-built, stated plainly in
+`docs/economy_methodology.md`.
+
 ## Phase 3 — Government and political survival
 
 Scope: §9 (constitutional system), §10 (political capital/action capacity), §12 (parties/

@@ -89,10 +89,11 @@ provides the single serialization path used by tests, save files, and (later) AP
    at Phase 4, but provable in-process without a database.
 5. **Return** `TurnResolution(state=new_state, report=TurnReport(...))`.
 
-As of Phase 2B1, five of the fifteen phases implement real logic: decision validation, sector
-production (see below), government accounting (three phases — see below), and report generation.
-The remaining named phases (trade, prices, diplomacy, combat, group welfare, institutional updates,
-unrest, elections, narrative events) are still registered in `PHASE_ORDER` as explicit no-ops — each
+As of Phase 2B2, five of the fifteen phases implement real logic: decision validation, sector
+production (see below), government accounting (three phases — see below, one of which now also
+performs tax-base derivation), and report generation. The remaining named phases (trade, prices,
+diplomacy, combat, group welfare, institutional updates, unrest, elections, narrative events) are
+still registered in `PHASE_ORDER` as explicit no-ops — each
 phase handler exists and runs, but does nothing yet and records that fact in
 `TurnReport.dev.phase_statuses: dict[str, Literal["implemented", "not_implemented"]]`, structured
 metadata for developers/tests. It is **not** surfaced as repetitive entries in the player-facing
@@ -111,31 +112,52 @@ capacity), capacity-utilization bps, and constraint classification via the pure
 `simulation/production_accounting.py` engine, then assembles the self-validating `ProductionReport`
 directly into `PhaseContext.production_report` — no `FinanceScratch`-style intermediate workspace,
 since production doesn't span multiple phases the way accounting does. This phase runs *before* the
-three accounting phases in `PHASE_ORDER` (unchanged — no reordering), so it is written to never read
-or write `ctx.finance`/`ctx.finance_report`/treasury/debt, and the accounting phases are written to
-never read `ctx.production_report` — actively tested in `tests/test_phase_isolation.py`, not just a
-convention. Full formulas: `docs/economy_methodology.md`. Design rationale:
-`docs/adr/0004-sector-production-fixed-prices.md`.
+three accounting phases in `PHASE_ORDER` (unchanged — no reordering); it is written to never read
+or write `ctx.finance`/`ctx.finance_report`/treasury/debt itself. As of Phase 2B2, the revenue phase
+immediately after it *does* read `ctx.production_report` (see below) — that one, one-directional
+read is deliberate and actively tested (`tests/test_phase_isolation.py`), not an accidental
+crossing; nothing else reaches across the shared `PhaseContext` in either direction. Full formulas:
+`docs/economy_methodology.md`. Design rationale: `docs/adr/0004-sector-production-fixed-prices.md`.
 
-### Government accounting phases (Phase 2A)
+### Government accounting phases (Phase 2A, extended in Phase 2B2)
 
 `apply_legal_and_administrative_changes` captures a frozen `OpeningFinanceSnapshot`
 (`phases.py`) — opening cash/debt, the previous tax policy and spending plan, by value, before
 anything is mutated — then applies the turn's `BudgetDecision` (if any) to the player's active tax
-policy and spending plan. `resolve_government_revenue_and_expenditure` computes revenue, total
-spending, and quarterly interest via the pure `simulation/accounting.py` engine.
+policy and spending plan. `resolve_government_revenue_and_expenditure` first derives this turn's
+tax bases from `ctx.production_report` via the pure `simulation/tax_base_derivation.py` engine
+(reading each sector's `actual_output` from the production report, never re-deriving it — see
+"Phase 2B2 tax-base derivation" below), then computes revenue, total spending, and quarterly
+interest via the pure `simulation/accounting.py` engine using those derived bases.
 `update_prices_inflation_employment_debt_reserves` resolves cash and debt for the quarter and
 writes the result into the player's treasury (the phase name is the full §7 resolution-order
 label; only the debt/reserves portion of it is implemented). `generate_turn_report` assembles the
 self-validating `FinanceReport` from the accumulated `FinanceScratch` (a plain per-turn workspace
-threaded through `PhaseContext.finance` — no global state). Full formulas:
-`docs/economy_methodology.md`. Design rationale: `docs/adr/0003-government-accounting.md`.
+threaded through `PhaseContext.finance` — now also carrying `applied_tax_bases`, the derived bases
+— no global state). Full formulas: `docs/economy_methodology.md`. Design rationale:
+`docs/adr/0003-government-accounting.md`, `docs/adr/0005-production-derived-tax-bases.md`.
+
+### Phase 2B2 tax-base derivation
+
+No new `PHASE_ORDER` slot: derivation runs at the *start* of the existing
+`resolve_government_revenue_and_expenditure` phase, since production (phase 3) already precedes
+revenue (phase 4) — same-turn linkage is structural, not incidental. `GovernmentFinanceState
+.tax_bases` (Phase 2A) is removed; tax bases are now purely derived and turn-local, stored only on
+`PhaseContext.tax_base_derivation_report` and copied onto `TurnReport.tax_base_derivation` by
+`resolver.py`, alongside `production` and `finance`. Three internally-valid reports are not enough
+to prove the chain is consistent, so `TurnReport` adds its own cross-report validators: production's
+`actual_output` must match derivation's input per `SectorCategory` (matched by category identity,
+never tuple position), derivation's `derived_tax_bases` must exactly equal
+`FinanceReport.tax_bases`, and `production`/`tax_base_derivation`/`finance` must be all present or
+all absent — a partial combination is rejected as a broken audit chain. See
+`docs/economy_methodology.md` and `docs/adr/0005-production-derived-tax-bases.md` for the full
+formulas, the real-to-nominal unit bridge, and the calibration approach.
 
 Accounting resolves for the **player country only** — `CountryState.finance` is optional, and
 `simulation.invariants` requires it just for the player (AI countries may omit it; see the ADR).
 Sector production follows the identical pattern: `CountryState.economy` is optional,
-`player_economy_required` requires it just for the player, and `ProductionReport` is player-only,
-mirroring `FinanceReport`'s scope exactly (see `docs/adr/0004-sector-production-fixed-prices.md`).
+`player_economy_required` requires it just for the player, and `ProductionReport`/
+`TaxBaseDerivationReport` are both player-only, mirroring `FinanceReport`'s scope exactly.
 
 ## History, hash chaining, and immutability
 

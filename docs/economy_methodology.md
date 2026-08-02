@@ -1,11 +1,12 @@
-# MANDATE — Economy Methodology (Phase 2A + 2B1)
+# MANDATE — Economy Methodology (Phase 2A + 2B1 + 2B2)
 
 Scope of this document: the government-finance slice implemented in Phase 2A (tax revenue,
-spending, quarterly debt interest, deficit financing) and the sector-production slice implemented
-in Phase 2B1 (aggregate sector capacity, labor productivity, employment, deterministic quarterly
-output at fixed base-year prices). Nothing else in §13 of the product spec (tax-base derivation,
-prices, inflation, wages, central banking, exchange rates) is implemented yet; see "Explicitly not
-yet simulated" below.
+spending, quarterly debt interest, deficit financing), the sector-production slice implemented in
+Phase 2B1 (aggregate sector capacity, labor productivity, employment, deterministic quarterly
+output at fixed base-year prices), and the production-derived tax-base slice implemented in
+Phase 2B2 (deriving Phase 2A's tax bases from Phase 2B1's production, replacing the fixed
+scenario-authored bases). Nothing else in §13 of the product spec (prices, inflation, wages,
+central banking, exchange rates) is implemented yet; see "Explicitly not yet simulated" below.
 
 ## Units and conventions
 
@@ -273,21 +274,17 @@ intermediate workspace — production reads only current-turn `state...economy` 
 multiple phases, unlike finance's opening-snapshot-then-apply shape). `PHASE_ORDER` itself is
 unchanged — no reordering.
 
-## Interaction with Phase 2A accounting — full isolation, both directions
+## Interaction with Phase 2A accounting — full isolation, both directions (superseded by Phase 2B2)
 
-`resolve_production_and_trade` runs **before** the finance phases in `PHASE_ORDER`, so
-`ctx.production_report` is already populated by the time they execute — a real risk, since nothing
-in the type system stops a finance phase from reaching across the shared `PhaseContext` and reading
-it. Phase 2B1 keeps the two systems fully isolated in both directions: production reads only
-`economy`, never `finance`/`treasury`; finance reads only its own opening snapshot and the
-decision, never `production_report`/`economy`. `tests/test_phase_isolation.py` actively tests this
-(not just documents it): a `FinanceReport` produced against wildly different `EconomyState` fixtures
-is byte-identical, and vice versa for `ProductionReport` against different finance/budget states.
-Tax bases, spending, treasury, and debt behave **exactly as Phase 2A implemented them** — sector
-output does not change tax revenue, spending does not change sector capacity, infrastructure
-spending does not improve production, defense spending does not improve defense-industry output,
-and there is no "higher taxes → lower output" rule (that connection, if it ever exists, is
-Phase 2B2+ territory).
+As originally shipped, Phase 2B1 kept production and finance fully isolated in both directions:
+production read only `economy`, never `finance`/`treasury`; finance read only its own opening
+snapshot and the decision, never `production_report`/`economy`. **Phase 2B2 deliberately breaks
+this symmetry** — see "Phase 2B2: Production-Derived Tax Bases" below for the one-directional
+relationship that replaces it. What stays true from this section: spending still does not change
+sector capacity, infrastructure spending still does not improve production, defense spending still
+does not improve defense-industry output, and there is no "higher taxes → lower output" rule (that
+connection, if it ever exists, is later work). What changed: sector output **does** now change tax
+revenue, through derived tax bases — that is the entire purpose of Phase 2B2.
 
 ## Terminology — this is not GDP
 
@@ -307,11 +304,165 @@ Phase-2A-ruleset save fixture (`backend/tests/fixtures/phase2a_save_ruleset_0.2.
 **before** this bump landed — the only way to produce a genuine one, mirroring the Phase-1 fixture.
 `SAVE_FORMAT_VERSION` is unchanged; only the ruleset/content-governed inner schema changed.
 
+---
+
+# Phase 2B2: Production-Derived Tax Bases
+
+Phase 2A's tax bases (`personal_income`, `corporate_profit`, `taxable_consumption`) are no longer
+fixed, scenario-authored numbers. They are derived every turn from that turn's own sector
+production. This is the one connection deliberately left out of Phase 2B1:
+
+```
+sector production -> transparent tax-base derivation -> existing tax rates
+    -> existing revenue calculation -> existing spending/interest/cash/debt reconciliation
+```
+
+The connection is **one-directional**. Tax rates and spending still do not affect production or
+the bases derived from it — only production affects bases, and bases affect revenue. `accounting.py`
+itself is unmodified: `compute_tax_revenue` still takes a `TaxBaseState`, it just now receives one
+that was computed this turn instead of read from state.
+
+## The unit bridge — real output to nominal money, exactly once
+
+Production is fixed-base-year **real** output; tax bases are nominal `Money`. There is no
+price-level or inflation model yet, so the conversion is an explicit, temporary bridge: a fixed
+base-year price index of 1.0, expressed as exact integer basis points —
+`app.core.quantity.BASE_YEAR_PRICE_INDEX_BPS = 10_000` — never a runtime float. The conversion
+itself is a named function, `base_year_real_output_to_money(value: RealOutput) -> Money`, not an
+implicit `int` pass-through: `RealOutput` and `Money` are both plain `int` aliases at runtime, so
+without a real function marking the crossing, nothing would visibly distinguish a real-output
+figure from spendable currency at the one place they actually meet. It rejects negative and
+non-integer (including `bool`) input, and is called at **exactly one point** — national tax-base
+construction in `tax_base_derivation.aggregate_tax_base_contributions`. Every value upstream of
+that call (`actual_output`, `modeled_value_added`, `labor_income`, `operating_surplus`, and the
+three per-sector contributions) is real; everything at and after that call is nominal `Money`. This
+is deliberately temporary: when a real price-level system exists, this function's body changes and
+every call site stays the same.
+
+## Formulas (integer, all floored, no randomness)
+
+Per sector, using that sector's `actual_output` from `ProductionReport` (never re-derived from
+`SectorState` — see "Same-turn linkage" below):
+
+```
+modeled_value_added = floor(actual_output       * value_added_share_bps / 10_000)
+labor_income         = floor(modeled_value_added * labor_income_share_bps / 10_000)
+operating_surplus    = modeled_value_added - labor_income          # exact, no rounding
+
+personal_contribution    = floor(labor_income        * personal_taxable_share_bps           / 10_000)
+corporate_contribution   = floor(operating_surplus   * corporate_taxable_share_bps          / 10_000)
+consumption_contribution = floor(modeled_value_added * effective_consumption_base_share_bps / 10_000)
+```
+
+`operating_surplus` is computed by subtraction, not a second floored share, specifically so
+`labor_income + operating_surplus == modeled_value_added` holds exactly for every input.
+
+**National tax bases are the sum of per-sector contributions**, converted to `Money` via
+`base_year_real_output_to_money` — not a value recomputed from national aggregates.
+`sum(floor(xi * r)) <= floor(sum(xi) * r)` in general (the gap can be up to `n - 1`), so summing
+per-sector floors is the only definition under which every national figure shown in
+`TaxBaseDerivationReport` is exactly the sum of the rows beneath it — the same reasoning
+`ProductionReport`'s totals already use. `tests/test_tax_base_derivation.py` includes a hand-picked
+case proving the two approaches genuinely diverge.
+
+## Terminology: `modeled_value_added` is a proxy, not GDP
+
+`actual_output * an authored share` is named `modeled_value_added`, not "value added" or "sector
+value added" — there is no intermediate-consumption accounting behind it, so it cannot honestly
+claim to be a national-accounts value-added measure. Its only job is preventing gross-output double
+counting *within this derivation*. It is never called GDP, real GDP, or economic growth, and the
+sum of per-sector `actual_output` (`ProductionReport.total_gross_output`) still is not GDP either —
+see the "Terminology" section above.
+
+`effective_consumption_base_share_bps` is a deliberately reduced-form, country-level coefficient.
+It currently combines four things that would, in a fuller model, be separate: household
+final-demand composition, the government-vs-private consumption split, exports and other
+non-domestic demand, and tax exemptions/fiscal coverage. Calling it simply "the tax system's reach"
+would overclaim what one coefficient can represent. Splitting it into a structural final-demand
+coefficient and a separate tax-coverage coefficient is recorded as later work, not attempted here —
+Phase 2B2 does not add a final-demand or trade model.
+
+## Authored inputs vs. derived outputs
+
+Two new authored inputs, kept structurally separate by what they describe:
+
+- **Per-sector, structural** (`SectorState`): `value_added_share_bps`, `labor_income_share_bps` —
+  genuinely differ by industry (extraction vs. professional services), so they live per sector.
+- **Country-level, fiscal** (`GovernmentFinanceState.tax_base_coefficients`, a new
+  `TaxBaseCoefficients` model): `personal_taxable_share_bps`, `corporate_taxable_share_bps`,
+  `effective_consumption_base_share_bps` — describe how much of the economy the tax system
+  reaches, a property of fiscal policy rather than any one sector.
+
+`GovernmentFinanceState.tax_bases` (the Phase 2A field) is **removed entirely**. Tax bases are
+purely derived and turn-local: recorded only in `TaxBaseDerivationReport`/`FinanceReport`, never
+written back into `GameState`. There is no "opening"/"closing" tax-base concept — only **applied**,
+the bases this turn's production produced and this turn's revenue used.
+
+## Report design, self-validation, and the cross-report chain
+
+`TaxBaseDerivationReport`/`SectorTaxBaseReport` (`app.simulation.report`) mirror `FinanceReport`'s/
+`ProductionReport`'s self-validation pattern: every derived field is independently re-checked from
+the report's own stored inputs, on every construction path. `sectors` covers all eleven categories
+exactly once in canonical order, normalized the same way `ProductionReport.sectors` is.
+`TaxBaseDerivationReport` is player-country-only, mirroring `FinanceReport`/`ProductionReport`.
+
+Self-validation of each report in isolation is not enough to prove the *chain* is consistent —
+three internally-valid reports could still describe three different calculations. `TurnReport`
+therefore adds its own cross-report validators: per `SectorCategory`, matched by **category
+identity, never tuple position**, `ProductionReport.actual_output` must equal what
+`TaxBaseDerivationReport` used as its input for that category; `TaxBaseDerivationReport
+.derived_tax_bases` must exactly equal `FinanceReport.tax_bases`; and `production`,
+`tax_base_derivation`, and `finance` must be all present or all absent on a given `TurnReport` — a
+partial combination is rejected rather than accepted as an incomplete audit trail.
+`tests/test_tax_base_report.py` independently corrupts every direction of this chain (production
+vs. derivation, derivation vs. finance, each missing-report combination) and proves each fails on
+fresh construction *and* on `model_validate_json` — independently of history's hash-tampering
+detection, which is a different failure mode (bytes changed after the fact, not "never consistent
+to begin with").
+
+Per-turn `TurnReportEntry` derivation entries stay concise: one `tax_bases_derived` entry carrying
+the three national totals. The complete per-sector breakdown lives exclusively in
+`TaxBaseDerivationReport`.
+
+## Same-turn linkage — no hidden lag
+
+`resolve_production_and_trade` (phase 3) always runs before
+`resolve_government_revenue_and_expenditure` (phase 4) in the fixed `PHASE_ORDER` — unchanged, no
+reordering. Derivation runs at the **start** of the revenue phase, reading `ctx.production_report`
+that the same `resolve_turn` call already computed this turn — never a cached or previous-turn
+value. `PhaseContext` is fresh per `resolve_turn` call, so there is no structural way for a stale
+value to leak across turns. `tests/test_production_to_revenue_linkage.py` proves this holds across
+a real multi-turn run, not just turn 0.
+
+## Calibration — both scenario fixtures reproduce their original Phase 2A bases exactly
+
+At a base-year price index of 1.0, Phase 2B1's original scenario production figures were roughly
+three orders of magnitude too small to reproduce Phase 2A's authored tax bases. Both
+`tiny_valid.yaml` and `deficit_demo.yaml` have their sector outputs re-authored (scaling
+`quarterly_capacity_output`/`output_per_worker` only, never `employed_workers`) so the derived
+bases reproduce the original authored bases **exactly** — verified by direct computation and by
+resolving turn 0 through the real engine: `tiny_valid.yaml` reproduces personal=4,000,000,000 /
+corporate=2,000,000,000 / consumption=3,000,000,000; `deficit_demo.yaml` reproduces
+personal=1,000,000,000 / corporate=500,000,000 / consumption=800,000,000. Every downstream
+revenue/interest/borrowing/reconciliation figure in both fixtures is therefore unchanged from
+Phase 2A — see each YAML file's header comment for the full worked calibration.
+
+## Version compatibility (Phase 2B2)
+
+`RULESET_VERSION` bumps again, `0.3.0 -> 0.4.0`, and `content_version` bumps alongside it.
+`CountryState`'s reachable finance shape changes in both directions: `tax_base_coefficients`
+becomes newly required, each sector's `value_added_share_bps`/`labor_income_share_bps` become
+newly required, and the previously-required `tax_bases` field is removed. An older save has no
+coefficient data to backfill and no way to derive it retroactively — the same "nothing to migrate
+from" policy as every prior bump. A Phase-2B1-ruleset save fixture
+(`backend/tests/fixtures/phase2b1_save_ruleset_0.3.0.json`) was frozen **before** this bump
+landed — the only way to produce a genuine one. `SAVE_FORMAT_VERSION` is unchanged.
+
 ## Explicitly not yet simulated
 
-Not yet modeled at all, in either Phase 2A or Phase 2B1: tax-base derivation from production,
-GDP/value-added/real-growth figures, prices, shortages, inflation, wages, employment/unemployment
-dynamics, labor-force participation, hiring/layoffs, household consumption response, central
-banking, exchange rates, trade, population approval effects, service-quality outcomes, corruption.
-All of it stays honestly absent rather than faked — see the product spec's "no placeholder feature
-claims" rule (§5.7).
+Not yet modeled at all, in Phase 2A, 2B1, or 2B2: tax-rate elasticity, tax avoidance/compliance
+behavior, Laffer-curve effects, production responses to taxes, hiring/firing/labor movement, wage
+bargaining, unemployment, capacity investment or depreciation, GDP/value-added/real-growth figures,
+prices, shortages, inflation, central banking, exchange rates, trade, population approval effects,
+service-quality outcomes, corruption. All of it stays honestly absent rather than faked — see the
+product spec's "no placeholder feature claims" rule (§5.7).
