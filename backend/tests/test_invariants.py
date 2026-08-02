@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.simulation.invariants import check_invariants
 from app.simulation.state import InstitutionState, PopulationGroupState
-from tests.conftest import make_country, make_game_state
+from tests.conftest import make_country, make_finance, make_game_state
 
 
 def test_valid_state_has_no_violations() -> None:
@@ -79,3 +79,61 @@ def test_population_group_share_below_zero_rejected_at_construction() -> None:
 
     with pytest.raises(ValidationError):
         PopulationGroupState(id="x", name="X", population_share=-0.1)
+
+
+# --- Player-country finance requirement (R6) ---------------------------------
+
+
+def test_valid_player_finance_has_no_violation() -> None:
+    # make_country defaults to with_finance=True for exactly this reason.
+    country = make_country("a")
+    assert country.finance is not None
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+    assert check_invariants(state) == []
+
+
+def test_missing_player_finance_is_a_violation() -> None:
+    country = make_country("a", with_finance=False)
+    assert country.finance is None
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "player_finance_required" in codes
+
+
+def test_ai_country_without_finance_is_not_a_violation() -> None:
+    player = make_country("player", with_finance=True)
+    ai = make_country("ai_neighbor", with_finance=False)
+    assert ai.finance is None
+
+    state = make_game_state(
+        countries={"player": player, "ai_neighbor": ai}, player_country_id="player"
+    )
+    assert check_invariants(state) == []
+
+
+def test_incorrect_player_country_reference_is_a_violation_not_a_finance_check() -> None:
+    # player_country_id pointing at a country that doesn't exist is caught by
+    # the existing unknown_player_country check; it must not also (or instead)
+    # produce a misleading player_finance_required violation, since there is
+    # no player country object to even inspect for finance.
+    country = make_country("a", with_finance=True)
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+    state.world.player_country_id = "does-not-exist"
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert codes == {"unknown_player_country"}
+
+
+def test_player_finance_uses_the_shared_finance_factory() -> None:
+    # Exercises the finance_factory/make_finance path directly (not just via
+    # make_country's default), matching the way real scenario/CLI code builds
+    # a GovernmentFinanceState from its component parts.
+    finance = make_finance(personal_income_rate_bps=3_000)
+    country = make_country("a", finance=finance)
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+    assert check_invariants(state) == []
+    assert state.world.countries["a"].finance is not None
+    assert state.world.countries["a"].finance.tax_policy.personal_income_rate_bps == 3_000

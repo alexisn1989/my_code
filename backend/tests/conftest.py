@@ -4,11 +4,17 @@ from pathlib import Path
 
 import pytest
 
+from app.core.money import Money
 from app.simulation.state import (
+    RULESET_VERSION,
     CountryState,
     GameState,
+    GovernmentFinanceState,
     InstitutionState,
     PopulationGroupState,
+    SpendingPlanState,
+    TaxBaseState,
+    TaxPolicyState,
     TreasuryState,
     WorldState,
 )
@@ -26,17 +32,73 @@ def tiny_valid_scenario_path() -> Path:
     return TINY_VALID_SCENARIO_PATH
 
 
+def make_finance(
+    *,
+    personal_income: Money = 500_000_00,
+    corporate_profit: Money = 300_000_00,
+    taxable_consumption: Money = 400_000_00,
+    personal_income_rate_bps: int = 2_000,
+    corporate_rate_bps: int = 2_500,
+    consumption_rate_bps: int = 1_000,
+    compliance_rate_bps: int = 9_000,
+    health: Money = 50_000_00,
+    education: Money = 40_000_00,
+    welfare: Money = 60_000_00,
+    infrastructure: Money = 30_000_00,
+    defense: Money = 45_000_00,
+    security: Money = 20_000_00,
+    administration: Money = 15_000_00,
+    annual_debt_interest_rate_bps: int = 600,
+) -> GovernmentFinanceState:
+    """Build a valid `GovernmentFinanceState` with reasonable round-number defaults."""
+    return GovernmentFinanceState(
+        tax_bases=TaxBaseState(
+            personal_income=personal_income,
+            corporate_profit=corporate_profit,
+            taxable_consumption=taxable_consumption,
+        ),
+        tax_policy=TaxPolicyState(
+            personal_income_rate_bps=personal_income_rate_bps,
+            corporate_rate_bps=corporate_rate_bps,
+            consumption_rate_bps=consumption_rate_bps,
+            compliance_rate_bps=compliance_rate_bps,
+        ),
+        spending_plan=SpendingPlanState(
+            health=health,
+            education=education,
+            welfare=welfare,
+            infrastructure=infrastructure,
+            defense=defense,
+            security=security,
+            administration=administration,
+        ),
+        annual_debt_interest_rate_bps=annual_debt_interest_rate_bps,
+    )
+
+
 def make_country(
     country_id: str = "testland",
     *,
     population: int = 100,
     group_shares: tuple[float, ...] = (0.6, 0.4),
+    with_finance: bool = True,
+    finance: GovernmentFinanceState | None = None,
 ) -> CountryState:
-    """Build a minimal, valid `CountryState` for unit tests that don't need YAML."""
+    """Build a minimal, valid `CountryState` for unit tests that don't need YAML.
+
+    Has finance by default (`with_finance=True`) because every existing caller
+    uses this to build what ends up being the player country, and the player
+    is required to have `GovernmentFinanceState` (see `simulation.invariants`).
+    Pass `with_finance=False` to build an AI-style country with none, or
+    `finance=...` to supply a specific one (implies `with_finance` is ignored).
+    """
     groups = [
         PopulationGroupState(id=f"group_{i}", name=f"Group {i}", population_share=share)
         for i, share in enumerate(group_shares)
     ]
+    resolved_finance = (
+        finance if finance is not None else (make_finance() if with_finance else None)
+    )
     return CountryState(
         id=country_id,
         name=country_id.title(),
@@ -44,6 +106,7 @@ def make_country(
         population_groups=groups,
         institutions=[InstitutionState(id="executive", name="Executive Government")],
         treasury=TreasuryState(cash_on_hand=1_000_00, debt=100_00),
+        finance=resolved_finance,
     )
 
 
@@ -59,8 +122,8 @@ def make_game_state(
     if countries is None:
         countries = {player_country_id: make_country(player_country_id)}
     return GameState(
-        ruleset_version="0.1.0",
-        content_version="0.1.0",
+        ruleset_version=RULESET_VERSION,
+        content_version="0.2.0",
         seed=seed,
         turn=turn,
         state_version=state_version,
@@ -76,3 +139,8 @@ def game_state_factory():
 @pytest.fixture
 def country_factory():
     return make_country
+
+
+@pytest.fixture
+def finance_factory():
+    return make_finance

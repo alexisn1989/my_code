@@ -1,15 +1,24 @@
 # A minimal, valid MANDATE scenario fixture.
 #
 # This is NOT "The Arken Crisis" (product spec §36) — it is a deliberately
-# tiny two-country world used only to prove the Phase 1 pipeline (scenario
+# tiny two-country world used to prove the simulation pipeline (scenario
 # loading -> invariant validation -> turn resolution -> report generation)
-# works end to end. The authored initial scenario is Phase 8 work.
+# works end to end, now including Phase 2A government accounting. The
+# authored initial scenario is Phase 8 work.
+#
+# arken's finance is a deliberately SUSTAINABLE budget: quarterly revenue
+# comfortably exceeds spending + interest, so cash grows and debt never
+# does. Used by the 100-turn soak test and general-purpose tests where a
+# runaway deficit would be noise, not signal. For a scenario that
+# deliberately runs a deficit and must borrow, see deficit_demo.yaml.
+#
+# Note: ruleset_version is NOT declared here — it comes from the engine's
+# RULESET_VERSION constant (simulation.state), not from scenario content.
 
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-ruleset_version: "0.1.0"
-content_version: "0.1.0"
+content_version: "0.2.0"
 seed: 42
 player_country_id: arken
 
@@ -64,6 +73,27 @@ countries:
         power: 65
         competence: 60
         corruption: 10
+    finance:
+      tax_bases:
+        # Quarterly, in minor units (1/100 denar). Fixed for Phase 2A — a tax
+        # rate change does not move these; see TaxBaseState's docstring.
+        personal_income: 4000000000      #  40,000,000.00 denars
+        corporate_profit: 2000000000     #  20,000,000.00 denars
+        taxable_consumption: 3000000000  #  30,000,000.00 denars
+      tax_policy:
+        personal_income_rate_bps: 2000   # 20%
+        corporate_rate_bps: 2500         # 25%
+        consumption_rate_bps: 1000       # 10%
+        compliance_rate_bps: 9000        # 90%
+      spending_plan:
+        health: 200000000            #   2,000,000.00 denars
+        education: 150000000         #   1,500,000.00 denars
+        welfare: 250000000           #   2,500,000.00 denars
+        infrastructure: 120000000    #   1,200,000.00 denars
+        defense: 180000000           #   1,800,000.00 denars
+        security: 90000000           #     900,000.00 denars
+        administration: 60000000     #     600,000.00 denars
+      annual_debt_interest_rate_bps: 600   # 6% annual
 
   - id: neighbor
     name: "Neighboring State"

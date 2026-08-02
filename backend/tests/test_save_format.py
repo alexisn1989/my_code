@@ -20,6 +20,7 @@ from app.simulation.save_format import (
     dump_save_json,
     load_save_json,
 )
+from app.simulation.state import RULESET_VERSION
 from tests.conftest import make_game_state
 
 
@@ -41,8 +42,8 @@ def test_current_versions_load_normally() -> None:
 def test_check_compatibility_accepts_current_versions() -> None:
     check_compatibility(
         save_format_version=SAVE_FORMAT_VERSION,
-        ruleset_version="0.1.0",
-        content_version="0.1.0",
+        ruleset_version=RULESET_VERSION,
+        content_version="0.2.0",
     )  # must not raise
 
 
