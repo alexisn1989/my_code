@@ -3,7 +3,12 @@
 # the counterpart to tiny_valid.yaml's deliberately sustainable budget.
 #
 # Hand-checked expected outcome for turn 0 with no budget decision submitted
-# (see docs/economy_methodology.md for the full worked derivation):
+# (see docs/economy_methodology.md for the full worked derivation). As of Phase 2B2, tax
+# bases are no longer authored (see `finance.tax_base_coefficients` below) — they are
+# derived every turn from this country's economy. The economy below is deliberately
+# calibrated so the derived bases reproduce personal=1,000,000,000 / corporate=500,000,000 /
+# taxable_consumption=800,000,000 EXACTLY, so every figure below is unchanged from the
+# original Phase 2A/2B1 fixture:
 #
 #   revenue:  personal=120,000,000  corporate=80,000,000  consumption=51,200,000
 #             total_revenue=251,200,000
@@ -20,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.3.0"
+content_version: "0.4.0"
 seed: 99
 player_country_id: strapped
 
@@ -48,10 +53,11 @@ countries:
         competence: 45
         corruption: 25
     finance:
-      tax_bases:
-        personal_income: 1000000000    #  10,000,000.00 denars
-        corporate_profit: 500000000    #   5,000,000.00 denars
-        taxable_consumption: 800000000 #   8,000,000.00 denars
+      # As of Phase 2B2, tax bases are derived from the economy below, not authored here.
+      tax_base_coefficients:
+        personal_taxable_share_bps: 10000              # 100% of sector labor income is personal tax base
+        corporate_taxable_share_bps: 5000               # 50% of sector operating surplus is corporate tax base
+        effective_consumption_base_share_bps: 4000       # 40% of sector modeled value added is consumption tax base
       tax_policy:
         personal_income_rate_bps: 1500   # 15%
         corporate_rate_bps: 2000         # 20%
@@ -67,55 +73,86 @@ countries:
         administration: 40000000     #     400,000.00 denars
       annual_debt_interest_rate_bps: 800   # 8% annual
     economy:
-      # Phase 2B1 sector production, fixed base-year prices. This fixture's
-      # purpose is deficit financing, not production variety, so all 11
-      # sectors use one uniform, hand-checkable shape:
-      #   labor_limited_output = 100 * 50 = 5,000 < capacity 10,000
-      #   -> every sector labor_constrained, actual_output = 5,000
-      # total_employment = 1,100 (<< population 400,000)
-      # total_gross_output = 55,000 (fixed base-year output minor units — NOT GDP, NOT money)
+      # Phase 2B2 calibration: this fixture's purpose is deficit financing, not production
+      # variety, so all 11 sectors stay in one of two uniform, hand-checkable groups — scaled
+      # via quarterly_capacity_output/output_per_worker ONLY (never employed_workers) so the
+      # derived tax bases reproduce the original Phase 2A hand-checked bases EXACTLY:
+      #   5 sectors: 1,000 * 500,000 = 500,000,000 = capacity 500,000,000 -> exactly_balanced, actual=500,000,000
+      #   6 sectors: 1,000 * 250,000 = 250,000,000 = capacity 250,000,000 -> exactly_balanced, actual=250,000,000
+      # total_gross_output = 5*500,000,000 + 6*250,000,000 = 4,000,000,000
+      # total_employment = 11,000 (<< population 400,000)
+      # Every sector uses value_added_share_bps=5000 (50%) / labor_income_share_bps=5000 (50%).
+      # Derivation check (coefficients personal=10000, corporate=5000, consumption=4000):
+      #   modeled_value_added = 4,000,000,000 * 0.5 = 2,000,000,000
+      #   labor_income        = 2,000,000,000 * 0.5 = 1,000,000,000
+      #   operating_surplus   = 2,000,000,000 - 1,000,000,000 = 1,000,000,000
+      #   personal_income base    = 1,000,000,000 * 1.0 = 1,000,000,000  (matches original exactly)
+      #   corporate_profit base   = 1,000,000,000 * 0.5 =   500,000,000  (matches original exactly)
+      #   taxable_consumption base= 2,000,000,000 * 0.4 =   800,000,000  (matches original exactly)
       sectors:
         - category: agriculture
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 500000000
+          output_per_worker: 500000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: extraction
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 500000000
+          output_per_worker: 500000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: manufacturing
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 500000000
+          output_per_worker: 500000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: construction
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 500000000
+          output_per_worker: 500000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: energy
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 500000000
+          output_per_worker: 500000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: transportation
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 250000000
+          output_per_worker: 250000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: consumer_services
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 250000000
+          output_per_worker: 250000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: finance_and_professional_services
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 250000000
+          output_per_worker: 250000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: technology
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 250000000
+          output_per_worker: 250000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: defense_industry
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 250000000
+          output_per_worker: 250000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
         - category: public_services
-          quarterly_capacity_output: 10000
-          output_per_worker: 50
-          employed_workers: 100
+          quarterly_capacity_output: 250000000
+          output_per_worker: 250000
+          employed_workers: 1000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
