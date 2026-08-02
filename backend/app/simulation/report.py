@@ -37,9 +37,11 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.core.money import StrictBps, StrictMoney, StrictSignedMoney
+from app.core.money import BPS_DENOMINATOR, StrictBps, StrictMoney, StrictSignedMoney
+from app.core.quantity import StrictRealOutput, StrictRealOutputPerWorker, StrictWorkerCount
 from app.simulation.accounting import compute_quarterly_interest, compute_tax_revenue
-from app.simulation.state import SpendingPlanState, TaxBaseState, TaxPolicyState
+from app.simulation.production_accounting import SectorConstraint
+from app.simulation.state import SectorCategory, SpendingPlanState, TaxBaseState, TaxPolicyState
 
 _STRICT_CONFIG = ConfigDict(extra="forbid")
 
@@ -300,6 +302,149 @@ class FinanceReport(BaseModel):
         return self
 
 
+class SectorProductionReport(BaseModel):
+    """One sector's self-validated Phase 2B1 production outcome.
+
+    Every derived field (`labor_limited_output`, `actual_output`,
+    `capacity_utilization_bps`, `constraint`) is independently re-checked
+    against the sector's own stored inputs on construction — see the
+    validators below — mirroring `FinanceReport`'s self-validation pattern.
+    There is no trusted boolean; a report that disagrees with its own
+    formulas never finishes construction.
+
+    Units: `capacity_output`/`output_per_worker`/`labor_limited_output`/
+    `actual_output` are fixed-base-year output minor units (`StrictRealOutput`/
+    `StrictRealOutputPerWorker`) — real production measures, never spendable
+    money. `employed_workers` is a worker count (`StrictWorkerCount`), a
+    distinct unit from output. See `app.core.quantity` and
+    `docs/economy_methodology.md`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    category: SectorCategory
+    capacity_output: StrictRealOutput
+    output_per_worker: StrictRealOutputPerWorker
+    employed_workers: StrictWorkerCount
+    labor_limited_output: StrictRealOutput
+    actual_output: StrictRealOutput
+    capacity_utilization_bps: StrictBps
+    constraint: SectorConstraint
+
+    @model_validator(mode="after")
+    def _labor_limited_output_matches_formula(self) -> SectorProductionReport:
+        expected = self.employed_workers * self.output_per_worker
+        if self.labor_limited_output != expected:
+            raise ValueError(
+                f"labor_limited_output={self.labor_limited_output} does not equal "
+                f"employed_workers * output_per_worker ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _actual_output_matches_formula(self) -> SectorProductionReport:
+        expected = min(self.capacity_output, self.labor_limited_output)
+        if self.actual_output != expected:
+            raise ValueError(
+                f"actual_output={self.actual_output} does not equal "
+                f"min(capacity_output, labor_limited_output) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _capacity_utilization_bps_matches_formula(self) -> SectorProductionReport:
+        expected = (
+            (self.actual_output * BPS_DENOMINATOR) // self.capacity_output
+            if self.capacity_output > 0
+            else 0
+        )
+        if self.capacity_utilization_bps != expected:
+            raise ValueError(
+                f"capacity_utilization_bps={self.capacity_utilization_bps} does not match "
+                f"floor(actual_output * 10_000 / capacity_output) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _constraint_matches_classification_rule(self) -> SectorProductionReport:
+        if self.capacity_output == 0:
+            expected = SectorConstraint.INACTIVE
+        elif self.labor_limited_output < self.capacity_output:
+            expected = SectorConstraint.LABOR_CONSTRAINED
+        elif self.labor_limited_output > self.capacity_output:
+            expected = SectorConstraint.CAPACITY_CONSTRAINED
+        else:
+            expected = SectorConstraint.EXACTLY_BALANCED
+        if self.constraint != expected:
+            raise ValueError(
+                f"constraint={self.constraint!r} does not match the classification rule "
+                f"applied to capacity_output/labor_limited_output (expected {expected!r})"
+            )
+        return self
+
+
+class ProductionReport(BaseModel):
+    """Structured, machine-readable Phase 2B1 sector production outcome for the player
+    country, for one turn. Player-only this phase, mirroring `FinanceReport`'s scope — AI
+    countries may have `economy=None` and get no production report.
+
+    `sectors` must contain exactly one entry per `SectorCategory`, in the enum's declaration
+    order — enforced (and, absent duplicates/missing categories, normalized) by the validator
+    below, the same policy `EconomyState` applies to its own `sectors` tuple. This is what
+    makes two logically-identical economies authored in different order serialize to
+    byte-identical canonical JSON and `entry_hash`.
+
+    This is "gross sector output at fixed base-year prices" — not GDP, not value added, not
+    an inflation-adjusted or growth figure. No value-added accounting exists yet, so summing
+    sector output can include intermediate production.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    sectors: tuple[SectorProductionReport, ...]
+    total_employment: StrictWorkerCount
+    total_gross_output: StrictRealOutput
+
+    @model_validator(mode="after")
+    def _sectors_cover_all_categories_exactly_once_in_canonical_order(self) -> ProductionReport:
+        seen: set[SectorCategory] = set()
+        for sector in self.sectors:
+            if sector.category in seen:
+                raise ValueError(f"duplicate sector category in report: {sector.category.value!r}")
+            seen.add(sector.category)
+        missing = [c for c in SectorCategory if c not in seen]
+        if missing:
+            raise ValueError(
+                "production report is missing sector categories: "
+                f"{[c.value for c in missing]!r} — all {len(SectorCategory)} are required"
+            )
+        by_category = {sector.category: sector for sector in self.sectors}
+        canonical_order = tuple(by_category[category] for category in SectorCategory)
+        if canonical_order != self.sectors:
+            self.sectors = canonical_order
+        return self
+
+    @model_validator(mode="after")
+    def _total_employment_matches_sum(self) -> ProductionReport:
+        expected = sum(sector.employed_workers for sector in self.sectors)
+        if self.total_employment != expected:
+            raise ValueError(
+                f"total_employment={self.total_employment} does not equal the sum of "
+                f"sectors[*].employed_workers ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _total_gross_output_matches_sum(self) -> ProductionReport:
+        expected = sum(sector.actual_output for sector in self.sectors)
+        if self.total_gross_output != expected:
+            raise ValueError(
+                f"total_gross_output={self.total_gross_output} does not equal the sum of "
+                f"sectors[*].actual_output ({expected})"
+            )
+        return self
+
+
 class TurnReport(BaseModel):
     """The full report produced by one `resolve_turn` call."""
 
@@ -313,4 +458,8 @@ class TurnReport(BaseModel):
     finance: FinanceReport | None = None
     """`None` only when accounting did not run (never for a successful Phase 2A+ turn on a
     valid player state — `simulation.invariants` requires player finance before resolution
+    can even begin)."""
+    production: ProductionReport | None = None
+    """`None` only when production did not run (never for a successful Phase 2B1+ turn on a
+    valid player state — `simulation.invariants` requires player economy before resolution
     can even begin)."""

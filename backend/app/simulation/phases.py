@@ -44,13 +44,21 @@ from app.simulation.accounting import (
     resolve_cash_and_debt,
 )
 from app.simulation.decisions import DecisionSet
+from app.simulation.production_accounting import (
+    SectorConstraint,
+    SectorProductionResult,
+    aggregate_production,
+    compute_sector_output,
+)
 from app.simulation.report import (
     TAX_RATE_CHANGE_FIELDS,
     BudgetChangeEntry,
     ChangeDirection,
     FinanceReport,
     PhaseStatus,
+    ProductionReport,
     RevenueBreakdown,
+    SectorProductionReport,
     TurnReportEntry,
     direction_for,
 )
@@ -122,6 +130,12 @@ class PhaseContext:
     """Set by `apply_legal_and_administrative_changes`; read by the two phases after it."""
     finance_report: FinanceReport | None = None
     """Set by `generate_turn_report`; `resolver.py` copies this onto the final `TurnReport`."""
+    production_report: ProductionReport | None = None
+    """Set by `resolve_production_and_trade`; `resolver.py` copies this onto the final
+    `TurnReport`. No scratch workspace for production (unlike `finance`): the phase reads
+    only current-turn `state...economy` and never spans multiple phases, so it builds this
+    report directly. Deliberately never read or written by any finance phase, and vice versa
+    — see `_resolve_production_and_trade`'s docstring."""
     _current_phase_id: str | None = field(default=None, repr=False)
 
     def rng(self, stream: str) -> random.Random:
@@ -318,6 +332,86 @@ def _update_prices_inflation_employment_debt_reserves(ctx: PhaseContext) -> None
     ctx.mark_implemented()
 
 
+def _resolve_production_and_trade(ctx: PhaseContext) -> None:
+    """Phase 2B1 sector production only — trade (imports/exports, cross-country flows) is
+    fully out of scope this phase despite the phase's name; that name is the fixed §7 phase
+    slot this fills, not a claim about what's implemented.
+
+    Deliberately isolated from Phase 2A's government accounting: reads only the player's
+    current-turn `EconomyState` (never `player.finance`/`player.treasury`), writes only
+    `ctx.production_report` (never `ctx.finance`/`ctx.finance_report`/treasury/debt), and
+    never mutates `state`. This phase runs *before* the finance phases in `PHASE_ORDER`, so
+    `ctx.production_report` is already populated by the time they execute — those phases must
+    never read it (see `tests/test_phase_isolation.py`, which asserts the two field sets each
+    phase touches are disjoint).
+    """
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    economy = player.economy
+    if economy is None:
+        # Unreachable in practice: simulation.invariants requires player economy before
+        # resolve_turn ever copies state, let alone runs phases. Guarded explicitly rather
+        # than silently assumed.
+        raise RuntimeError(
+            "resolve_production_and_trade: player country has no EconomyState "
+            "(this should have been caught by check_invariants)"
+        )
+
+    sector_reports: list[SectorProductionReport] = []
+    results: list[SectorProductionResult] = []
+    counts: dict[str, int] = {}
+    for sector in economy.sectors:
+        result = compute_sector_output(sector)
+        results.append(result)
+        sector_reports.append(
+            SectorProductionReport(
+                category=sector.category,
+                capacity_output=sector.quarterly_capacity_output,
+                output_per_worker=sector.output_per_worker,
+                employed_workers=sector.employed_workers,
+                labor_limited_output=result.labor_limited_output,
+                actual_output=result.actual_output,
+                capacity_utilization_bps=result.capacity_utilization_bps,
+                constraint=result.constraint,
+            )
+        )
+        counts[result.constraint.value] = counts.get(result.constraint.value, 0) + 1
+        if result.constraint.value == SectorConstraint.INACTIVE.value:
+            ctx.report_entries.append(
+                TurnReportEntry(
+                    category="production",
+                    reason_id="sector_inactive",
+                    params={"category": sector.category.value},
+                )
+            )
+
+    aggregates = aggregate_production(economy.sectors, tuple(results))
+    ctx.production_report = ProductionReport(
+        sectors=tuple(sector_reports),
+        total_employment=aggregates.total_employment,
+        total_gross_output=aggregates.total_gross_output,
+    )
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="production",
+            reason_id="production_summary",
+            params={
+                "total_employment": aggregates.total_employment,
+                "total_gross_output": aggregates.total_gross_output,
+                "sectors_capacity_constrained": counts.get(
+                    SectorConstraint.CAPACITY_CONSTRAINED.value, 0
+                ),
+                "sectors_labor_constrained": counts.get(
+                    SectorConstraint.LABOR_CONSTRAINED.value, 0
+                ),
+                "sectors_exactly_balanced": counts.get(SectorConstraint.EXACTLY_BALANCED.value, 0),
+                "sectors_inactive": counts.get(SectorConstraint.INACTIVE.value, 0),
+            },
+        )
+    )
+
+    ctx.mark_implemented()
+
+
 def _generate_turn_report(ctx: PhaseContext) -> None:
     ctx.report_entries.append(
         TurnReportEntry(
@@ -362,7 +456,7 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
 PHASE_ORDER: tuple[tuple[str, PhaseHandler], ...] = (
     ("validate_and_reserve_actions", _noop),
     ("apply_legal_and_administrative_changes", _apply_legal_and_administrative_changes),
-    ("resolve_production_and_trade", _noop),
+    ("resolve_production_and_trade", _resolve_production_and_trade),
     (
         "resolve_government_revenue_and_expenditure",
         _resolve_government_revenue_and_expenditure,
