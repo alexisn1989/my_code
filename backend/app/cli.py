@@ -55,7 +55,7 @@ from app.core.money import format_money
 from app.saves import read_save_file, write_save_atomic
 from app.simulation.decisions import DecisionSet
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
-from app.simulation.report import FinanceReport, TurnReport, TurnReportEntry
+from app.simulation.report import FinanceReport, ProductionReport, TurnReport, TurnReportEntry
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json, load_save_json
 
 # --- reason_id -> English rendering (presentation layer only; never stored) --
@@ -102,12 +102,32 @@ def _render_deficit_financed_with_new_borrowing(params: dict[str, str | int]) ->
     )
 
 
+def _render_sector_inactive(params: dict[str, str | int]) -> str:
+    category = str(params["category"]).replace("_", " ")
+    return f"{category.capitalize()} sector is inactive (zero production capacity)."
+
+
+def _render_production_summary(params: dict[str, str | int]) -> str:
+    total_employment = int(params["total_employment"])
+    total_gross_output = int(params["total_gross_output"])
+    return (
+        f"Sector production resolved: total_employment={total_employment:,} workers, "
+        f"total_gross_output={total_gross_output:,} (fixed base-year output units, not money). "
+        f"capacity_constrained={params['sectors_capacity_constrained']} "
+        f"labor_constrained={params['sectors_labor_constrained']} "
+        f"exactly_balanced={params['sectors_exactly_balanced']} "
+        f"inactive={params['sectors_inactive']}"
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
     "tax_rate_changed": _render_tax_rate_changed,
     "spending_category_changed": _render_spending_category_changed,
     "deficit_financed_with_new_borrowing": _render_deficit_financed_with_new_borrowing,
+    "sector_inactive": _render_sector_inactive,
+    "production_summary": _render_production_summary,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -192,6 +212,15 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
             f"  treasury:            cash={format_money(player.treasury.cash_on_hand)} "
             f"debt={format_money(player.treasury.debt)} denars"
         )
+    if player.economy is not None and save.entries:
+        latest_report = save.entries[-1].report()
+        if latest_report is not None and latest_report.production is not None:
+            production = latest_report.production
+            print(
+                f"  production (latest): total_employment={production.total_employment:,} "
+                f"total_gross_output={production.total_gross_output:,} "
+                "(fixed base-year output units, not money)"
+            )
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -230,12 +259,30 @@ def _print_finance_report(finance: FinanceReport) -> None:
     print(f"      reconciliation: {finance.reconciliation_status}")
 
 
+def _print_production_report(production: ProductionReport) -> None:
+    print("    production:")
+    print(
+        f"      total_employment={production.total_employment:,} workers "
+        f"total_gross_output={production.total_gross_output:,} "
+        "(fixed base-year output units, not money)"
+    )
+    for sector in production.sectors:
+        print(
+            f"      {sector.category.value}: actual_output={sector.actual_output:,} "
+            f"capacity={sector.capacity_output:,} "
+            f"utilization={sector.capacity_utilization_bps / 100:g}% "
+            f"employed={sector.employed_workers:,} constraint={sector.constraint.value}"
+        )
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
         print(f"    [{entry.category}] {render_entry(entry)}")
     if report.finance is not None:
         _print_finance_report(report.finance)
+    if report.production is not None:
+        _print_production_report(report.production)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -330,6 +377,8 @@ def _cmd_history(args: argparse.Namespace) -> int:
             print(f"    [{report_entry.category}] {render_entry(report_entry)}")
         if report.finance is not None:
             _print_finance_report(report.finance)
+        if report.production is not None:
+            _print_production_report(report.production)
     return 0
 
 

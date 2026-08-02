@@ -109,6 +109,56 @@ Explicitly deferred to later Phase 2 work: production sectors, GDP/prices/inflat
 tax bases responding to rates, wages, central bank, exchange rates, population approval effects —
 none of it simulated yet, stated plainly in `docs/economy_methodology.md` rather than implied.
 
+### Phase 2B1 — Sector production at fixed prices — **complete**
+
+Scope: aggregate economic sectors (§13) with capacity, labor productivity, employment, and
+deterministic quarterly output at fixed base-year prices — the production foundation later phases
+use to derive tax bases from real economic activity. See `docs/economy_methodology.md` for every
+formula and `docs/adr/0004-sector-production-fixed-prices.md` for the design decisions.
+
+Acceptance criteria:
+- [x] `SectorCategory` (11 fixed categories), `SectorState`, `EconomyState` — strict-integer
+      validated (`StrictWorkerCount`/`StrictRealOutput`/`StrictRealOutputPerWorker`, distinct
+      aliases from `Money`, never conflated with spendable treasury cash), all 11 categories
+      required exactly once, canonical declaration order enforced and normalized.
+- [x] Pure `simulation/production_accounting.py`: labor-limited output, actual output (capped at
+      capacity), floor-division capacity utilization in bps, and a four-way constraint
+      classification (`capacity_constrained`/`labor_constrained`/`exactly_balanced`/`inactive`)
+      with an explicit, tested tie-break for the zero-capacity/zero-employment case.
+- [x] `EconomyState`'s "all 11 categories, exactly once" invariant is checked twice — once at
+      construction (Pydantic validator) and independently every turn
+      (`simulation.invariants`) — because `SectorState` is deliberately kept mutable (a later
+      phase needs adjustable employment), so a nested `sector.category` mutation after
+      construction can desynchronize an already-built `EconomyState` without re-running the
+      constructor's own check; proven by a dedicated nested-mutation regression test.
+- [x] `resolve_production_and_trade` (an existing, previously no-op §7 phase slot) implements
+      production only — trade stays explicitly out of scope; `PHASE_ORDER` unchanged.
+- [x] `ProductionReport` is self-validating on every construction path (mirrors `FinanceReport`'s
+      pattern exactly), player-country-only, with canonical per-sector ordering so
+      logically-identical reports serialize byte-identically regardless of authored order.
+- [x] Full isolation from Phase 2A accounting, in both directions, actively tested (not just
+      documented): a `FinanceReport` is byte-identical across wildly different `EconomyState`
+      fixtures, and a `ProductionReport` is byte-identical across different finance/budget states.
+- [x] `RULESET_VERSION` bumped again (`0.2.0 -> 0.3.0`) — `CountryState.economy` becomes a new
+      required player field with no data to backfill from an older save; a Phase-2A-ruleset save
+      fixture was frozen *before* the bump, mirroring the Phase 1 → 2A precedent.
+- [x] CLI `inspect`/`history` extended with a production summary and per-sector breakdown; new
+      `reason_id`s (`production_summary`, `sector_inactive`) added to the renderer coverage test —
+      concise summary entries only, not a full per-sector dump duplicated into history every turn.
+- [x] Two scenario fixtures updated: `tiny_valid.yaml` (all 11 sectors, hand-checked, covering all
+      four classifications) and `deficit_demo.yaml` (uniform, hand-checked).
+- [x] 315 backend tests: strict-quantity rejection, formula/classification correctness (including
+      both zero-capacity and zero-employment edge cases), report self-validation corruption,
+      canonical-ordering byte-identical serialization, resolver/history tamper detection extended
+      to the new `production`/`economy` fields, Phase-2A regression/isolation, compatibility
+      fixture rejection, and the existing 8-turn/100-turn integration and soak runs re-verified
+      with production resolving every turn.
+
+Explicitly deferred: tax-base derivation from production, GDP/value-added/real-growth figures,
+prices, inflation, wages, unemployment/labor-force dynamics, hiring/layoffs, population approval
+effects, and any behavioral link between taxes/spending and sector output — none of it implied or
+half-built, stated plainly in `docs/economy_methodology.md`.
+
 ## Phase 3 — Government and political survival
 
 Scope: §9 (constitutional system), §10 (political capital/action capacity), §12 (parties/

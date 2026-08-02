@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.2.0"
+content_version: "0.3.0"
 seed: 42
 player_country_id: arken
 
@@ -94,6 +94,71 @@ countries:
         security: 90000000           #     900,000.00 denars
         administration: 60000000     #     600,000.00 denars
       annual_debt_interest_rate_bps: 600   # 6% annual
+    economy:
+      # Phase 2B1 sector production, fixed base-year prices, all 11 categories.
+      # Deliberately covers all four constraint classifications so the
+      # 100-turn soak (and any other test walking this scenario) exercises
+      # every code path in production_accounting.compute_sector_output.
+      # Hand-checked per sector (labor_limited_output = employed_workers *
+      # output_per_worker; actual_output = min(capacity, labor_limited)):
+      #   agriculture:      6,000 * 100   =   600,000 > capacity 500,000  -> capacity_constrained, actual=500,000
+      #   extraction:       4,000 * 50    =   200,000 < capacity 300,000 -> labor_constrained,    actual=200,000
+      #   manufacturing:    2,000 * 200   =   400,000 = capacity 400,000 -> exactly_balanced,     actual=400,000
+      #   construction:     capacity 0                                  -> inactive,              actual=0
+      #   energy:           1,000 * 125   =   125,000 < capacity 250,000 -> labor_constrained,    actual=125,000
+      #   transportation:   3,000 * 75    =   225,000 > capacity 150,000 -> capacity_constrained, actual=150,000
+      #   consumer_services:5,000 * 40    =   200,000 = capacity 200,000 -> exactly_balanced,     actual=200,000
+      #   finance_and_professional_services: 50 * 1,000 = 50,000 < capacity 100,000 -> labor_constrained, actual=50,000
+      #   technology:         300 * 400   =   120,000 > capacity 80,000  -> capacity_constrained, actual=80,000
+      #   defense_industry:   200 * 300   =    60,000 = capacity 60,000  -> exactly_balanced,     actual=60,000
+      #   public_services:  capacity 0                                  -> inactive,              actual=0
+      # total_employment = 21,550 (<< population 1,000,000)
+      # total_gross_output = 1,765,000 (fixed base-year output minor units — NOT GDP, NOT money)
+      sectors:
+        - category: agriculture
+          quarterly_capacity_output: 500000
+          output_per_worker: 100
+          employed_workers: 6000
+        - category: extraction
+          quarterly_capacity_output: 300000
+          output_per_worker: 50
+          employed_workers: 4000
+        - category: manufacturing
+          quarterly_capacity_output: 400000
+          output_per_worker: 200
+          employed_workers: 2000
+        - category: construction
+          quarterly_capacity_output: 0
+          output_per_worker: 1
+          employed_workers: 0
+        - category: energy
+          quarterly_capacity_output: 250000
+          output_per_worker: 125
+          employed_workers: 1000
+        - category: transportation
+          quarterly_capacity_output: 150000
+          output_per_worker: 75
+          employed_workers: 3000
+        - category: consumer_services
+          quarterly_capacity_output: 200000
+          output_per_worker: 40
+          employed_workers: 5000
+        - category: finance_and_professional_services
+          quarterly_capacity_output: 100000
+          output_per_worker: 1000
+          employed_workers: 50
+        - category: technology
+          quarterly_capacity_output: 80000
+          output_per_worker: 400
+          employed_workers: 300
+        - category: defense_industry
+          quarterly_capacity_output: 60000
+          output_per_worker: 300
+          employed_workers: 200
+        - category: public_services
+          quarterly_capacity_output: 0
+          output_per_worker: 1
+          employed_workers: 0
 
   - id: neighbor
     name: "Neighboring State"

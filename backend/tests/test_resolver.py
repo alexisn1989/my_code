@@ -95,9 +95,9 @@ def test_phases_run_in_the_documented_order() -> None:
 
 
 def test_only_the_accounting_and_report_phases_are_implemented_so_far() -> None:
-    # As of Phase 2A: government accounting (3 phases) + report generation are
-    # real; every other resolution-order step remains an honest no-op. This
-    # test's job is to track that boundary exactly as it moves phase by phase
+    # As of Phase 2B1: government accounting (3 phases) + sector production (1 phase) +
+    # report generation are real; every other resolution-order step remains an honest
+    # no-op. This test's job is to track that boundary exactly as it moves phase by phase
     # — update the IMPLEMENTED set here, not the underlying assertion, as more
     # phases gain real logic.
     state = make_game_state(turn=0, state_version=0)
@@ -106,6 +106,7 @@ def test_only_the_accounting_and_report_phases_are_implemented_so_far() -> None:
 
     implemented_phase_ids = {
         "apply_legal_and_administrative_changes",
+        "resolve_production_and_trade",
         "resolve_government_revenue_and_expenditure",
         "update_prices_inflation_employment_debt_reserves",
         "generate_turn_report",

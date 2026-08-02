@@ -8,10 +8,13 @@ from app.core.money import Money
 from app.simulation.state import (
     RULESET_VERSION,
     CountryState,
+    EconomyState,
     GameState,
     GovernmentFinanceState,
     InstitutionState,
     PopulationGroupState,
+    SectorCategory,
+    SectorState,
     SpendingPlanState,
     TaxBaseState,
     TaxPolicyState,
@@ -84,6 +87,31 @@ def make_finance(
     )
 
 
+def make_economy(
+    *,
+    quarterly_capacity_output: int = 1_000,
+    output_per_worker: int = 100,
+    employed_workers: int = 2,
+) -> EconomyState:
+    """Build a valid `EconomyState` covering all 11 `SectorCategory` values with uniform,
+    round-number defaults. Deliberately unremarkable (every sector labor-constrained, since
+    `employed_workers * output_per_worker < quarterly_capacity_output`) — tests that need a
+    specific classification or edge case build `SectorState`/`EconomyState` directly instead
+    of overriding this factory's uniform shape.
+    """
+    return EconomyState(
+        sectors=tuple(
+            SectorState(
+                category=category,
+                quarterly_capacity_output=quarterly_capacity_output,
+                output_per_worker=output_per_worker,
+                employed_workers=employed_workers,
+            )
+            for category in SectorCategory
+        )
+    )
+
+
 def make_country(
     country_id: str = "testland",
     *,
@@ -91,14 +119,17 @@ def make_country(
     group_shares: tuple[float, ...] = (0.6, 0.4),
     with_finance: bool = True,
     finance: GovernmentFinanceState | None = None,
+    with_economy: bool = True,
+    economy: EconomyState | None = None,
 ) -> CountryState:
     """Build a minimal, valid `CountryState` for unit tests that don't need YAML.
 
-    Has finance by default (`with_finance=True`) because every existing caller
-    uses this to build what ends up being the player country, and the player
-    is required to have `GovernmentFinanceState` (see `simulation.invariants`).
-    Pass `with_finance=False` to build an AI-style country with none, or
-    `finance=...` to supply a specific one (implies `with_finance` is ignored).
+    Has finance and economy by default (`with_finance=True`, `with_economy=True`) because
+    every existing caller uses this to build what ends up being the player country, and the
+    player is required to have both `GovernmentFinanceState` and `EconomyState` (see
+    `simulation.invariants`). Pass `with_finance=False`/`with_economy=False` to build an
+    AI-style country with neither, or `finance=...`/`economy=...` to supply a specific one
+    (implies the corresponding `with_*` flag is ignored).
     """
     groups = [
         PopulationGroupState(id=f"group_{i}", name=f"Group {i}", population_share=share)
@@ -106,6 +137,9 @@ def make_country(
     ]
     resolved_finance = (
         finance if finance is not None else (make_finance() if with_finance else None)
+    )
+    resolved_economy = (
+        economy if economy is not None else (make_economy() if with_economy else None)
     )
     return CountryState(
         id=country_id,
@@ -115,6 +149,7 @@ def make_country(
         institutions=[InstitutionState(id="executive", name="Executive Government")],
         treasury=TreasuryState(cash_on_hand=1_000_00, debt=100_00),
         finance=resolved_finance,
+        economy=resolved_economy,
     )
 
 
@@ -131,7 +166,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.2.0",
+        content_version="0.3.0",
         seed=seed,
         turn=turn,
         state_version=state_version,
@@ -152,3 +187,8 @@ def country_factory():
 @pytest.fixture
 def finance_factory():
     return make_finance
+
+
+@pytest.fixture
+def economy_factory():
+    return make_economy

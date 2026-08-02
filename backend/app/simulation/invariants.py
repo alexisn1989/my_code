@@ -16,7 +16,7 @@ resolution").
 from __future__ import annotations
 
 from app.core.errors import InvariantViolation
-from app.simulation.state import CountryState, GameState
+from app.simulation.state import CountryState, GameState, SectorCategory
 
 GROUP_SHARE_TOLERANCE = 1e-6
 """Documented rounding tolerance (product spec §8) for population-group share reconciliation."""
@@ -61,6 +61,81 @@ def _check_country(country: CountryState) -> list[InvariantViolation]:
             )
         seen_institution_ids.add(institution.id)
 
+    violations.extend(_check_economy(country))
+
+    return violations
+
+
+def _check_economy(country: CountryState) -> list[InvariantViolation]:
+    """Re-check `EconomyState`'s own construction-time invariant every turn.
+
+    `EconomyState.sectors` is a tuple of mutable `SectorState` objects (kept
+    mutable deliberately — a later economy phase makes `employed_workers`
+    adjustable), so a nested `sector.category = ...` assignment performed
+    *after* construction can desynchronize a previously-valid `EconomyState`
+    from "all 11 categories, exactly once" without ever re-running
+    `EconomyState`'s own `@model_validator`. This is the independent,
+    every-turn backstop for that gap — not a duplicate of the constructor
+    check, a catch for what the constructor check cannot see.
+    """
+    if country.economy is None:
+        return []
+
+    violations: list[InvariantViolation] = []
+    categories = [sector.category for sector in country.economy.sectors]
+
+    seen: set[SectorCategory] = set()
+    duplicates: set[SectorCategory] = set()
+    for category in categories:
+        if category in seen:
+            duplicates.add(category)
+        seen.add(category)
+    if duplicates:
+        violations.append(
+            InvariantViolation(
+                code="duplicate_sector_category",
+                message=(
+                    f"country {country.id!r}: duplicate sector categories "
+                    f"{sorted(c.value for c in duplicates)!r}"
+                ),
+            )
+        )
+
+    missing = [c for c in SectorCategory if c not in seen]
+    if missing:
+        violations.append(
+            InvariantViolation(
+                code="missing_sector_category",
+                message=(
+                    f"country {country.id!r}: missing sector categories "
+                    f"{[c.value for c in missing]!r} — all {len(SectorCategory)} are required"
+                ),
+            )
+        )
+
+    if not duplicates and not missing and tuple(categories) != tuple(SectorCategory):
+        violations.append(
+            InvariantViolation(
+                code="noncanonical_sector_order",
+                message=(
+                    f"country {country.id!r}: economy.sectors is not ordered in canonical "
+                    "SectorCategory declaration order"
+                ),
+            )
+        )
+
+    total_employment = sum(sector.employed_workers for sector in country.economy.sectors)
+    if total_employment > country.population:
+        violations.append(
+            InvariantViolation(
+                code="sector_employment_exceeds_population",
+                message=(
+                    f"country {country.id!r}: total sector employment {total_employment} "
+                    f"exceeds population {country.population}"
+                ),
+            )
+        )
+
     return violations
 
 
@@ -92,6 +167,17 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
                         f"player country {player.id!r} has no GovernmentFinanceState; "
                         "government accounting (Phase 2A) cannot resolve without it — "
                         "AI countries may omit finance, the player country may not"
+                    ),
+                )
+            )
+        if player.economy is None:
+            violations.append(
+                InvariantViolation(
+                    code="player_economy_required",
+                    message=(
+                        f"player country {player.id!r} has no EconomyState; "
+                        "sector production (Phase 2B1) cannot resolve without it — "
+                        "AI countries may omit economy, the player country may not"
                     ),
                 )
             )

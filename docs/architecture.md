@@ -89,17 +89,33 @@ provides the single serialization path used by tests, save files, and (later) AP
    at Phase 4, but provable in-process without a database.
 5. **Return** `TurnResolution(state=new_state, report=TurnReport(...))`.
 
-As of Phase 2A, four of the fifteen phases implement real logic: decision validation, government
-accounting (three phases — see below), and report generation. The remaining named phases
-(production, prices, diplomacy, combat, group welfare, institutional updates, unrest, elections,
-narrative events) are still registered in `PHASE_ORDER` as explicit no-ops — each phase handler
-exists and runs, but does nothing yet and records that fact in
+As of Phase 2B1, five of the fifteen phases implement real logic: decision validation, sector
+production (see below), government accounting (three phases — see below), and report generation.
+The remaining named phases (trade, prices, diplomacy, combat, group welfare, institutional updates,
+unrest, elections, narrative events) are still registered in `PHASE_ORDER` as explicit no-ops — each
+phase handler exists and runs, but does nothing yet and records that fact in
 `TurnReport.dev.phase_statuses: dict[str, Literal["implemented", "not_implemented"]]`, structured
 metadata for developers/tests. It is **not** surfaced as repetitive entries in the player-facing
 part of the report — the brief's "no placeholder feature claims" rule (§5.7) means absent behavior
 is marked in dev metadata, not narrated to a hypothetical player as if it were content.
 `test_resolver.py::test_only_the_accounting_and_report_phases_are_implemented_so_far` tracks this
 boundary explicitly and is meant to be updated, not weakened, as more phases gain real logic.
+
+### Sector production phase (Phase 2B1)
+
+`resolve_production_and_trade` — the fixed §7 phase slot this fills; only the production half is
+implemented, trade (imports/exports, cross-country flows) is explicitly out of scope this phase —
+reads the player's `EconomyState` (required; `simulation.invariants` enforces this the same way it
+requires player `finance`) and computes each sector's labor-limited output, actual output (capped at
+capacity), capacity-utilization bps, and constraint classification via the pure
+`simulation/production_accounting.py` engine, then assembles the self-validating `ProductionReport`
+directly into `PhaseContext.production_report` — no `FinanceScratch`-style intermediate workspace,
+since production doesn't span multiple phases the way accounting does. This phase runs *before* the
+three accounting phases in `PHASE_ORDER` (unchanged — no reordering), so it is written to never read
+or write `ctx.finance`/`ctx.finance_report`/treasury/debt, and the accounting phases are written to
+never read `ctx.production_report` — actively tested in `tests/test_phase_isolation.py`, not just a
+convention. Full formulas: `docs/economy_methodology.md`. Design rationale:
+`docs/adr/0004-sector-production-fixed-prices.md`.
 
 ### Government accounting phases (Phase 2A)
 
@@ -117,6 +133,9 @@ threaded through `PhaseContext.finance` — no global state). Full formulas:
 
 Accounting resolves for the **player country only** — `CountryState.finance` is optional, and
 `simulation.invariants` requires it just for the player (AI countries may omit it; see the ADR).
+Sector production follows the identical pattern: `CountryState.economy` is optional,
+`player_economy_required` requires it just for the player, and `ProductionReport` is player-only,
+mirroring `FinanceReport`'s scope exactly (see `docs/adr/0004-sector-production-fixed-prices.md`).
 
 ## History, hash chaining, and immutability
 

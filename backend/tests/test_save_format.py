@@ -43,7 +43,7 @@ def test_check_compatibility_accepts_current_versions() -> None:
     check_compatibility(
         save_format_version=SAVE_FORMAT_VERSION,
         ruleset_version=RULESET_VERSION,
-        content_version="0.2.0",
+        content_version="0.3.0",
     )  # must not raise
 
 

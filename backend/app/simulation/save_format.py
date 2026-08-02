@@ -49,14 +49,15 @@ so a Phase-0 save at turn 8 cannot be given a valid 9-entry history — there is
 
 SUPPORTED_RULESET_VERSIONS: frozenset[str] = frozenset({RULESET_VERSION})
 """Just the current engine ruleset. Phase 1 saves (`ruleset_version="0.1.0"`, no government
-accounting) are intentionally excluded: Phase 2A changes what turn resolution actually *does*
-(taxes, spending, and interest now resolve; the report shape changed), and a Phase-1 save has no
-recorded budget decisions or finance state to run that new behavior against, so there is nothing
-to migrate — rejected with an actionable message, same as the save-format-version case above.
-See `docs/adr/0003-government-accounting.md` for the full decision.
+accounting) and Phase 2A saves (`ruleset_version="0.2.0"`, no sector production) are intentionally
+excluded: each ruleset bump changes what turn resolution actually *does* and/or what `GameState`
+must contain (Phase 2A added required player finance; Phase 2B1 adds required player economy), and
+an older save has no recorded data to run the new behavior against, so there is nothing to migrate
+— rejected with an actionable message, same as the save-format-version case above. See
+`docs/adr/0003-government-accounting.md` and `docs/adr/0004-sector-production-fixed-prices.md`.
 """
 
-SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.2.0"})
+SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.3.0"})
 
 _REQUIRED_ENVELOPE_KEYS = {
     "save_format_version",

@@ -10,18 +10,22 @@ every decision.
 - **Roadmap and phase status:** [`docs/roadmap.md`](docs/roadmap.md)
 - **ADRs:** [`docs/adr/0001-stack-and-architecture.md`](docs/adr/0001-stack-and-architecture.md),
   [`docs/adr/0002-snapshot-history-and-versioning.md`](docs/adr/0002-snapshot-history-and-versioning.md),
-  [`docs/adr/0003-government-accounting.md`](docs/adr/0003-government-accounting.md)
+  [`docs/adr/0003-government-accounting.md`](docs/adr/0003-government-accounting.md),
+  [`docs/adr/0004-sector-production-fixed-prices.md`](docs/adr/0004-sector-production-fixed-prices.md)
 - **Economy formulas:** [`docs/economy_methodology.md`](docs/economy_methodology.md)
 
 ## Current status
 
-**Phase 0, Phase 1 (pure simulation foundation), and Phase 2A (government accounting and budget
-gameplay) are complete and verified.** The player can change tax rates and spending; revenue,
-spending, interest, and debt resolve deterministically and reconcile exactly every turn, wrapped in
-the same hash-chained, immutable history from Phase 1. There is no API and no database yet, and no
-economy beyond government accounting (no production sectors, prices, inflation, or population
-effects) — see `docs/roadmap.md` for what's implemented per phase and
-`docs/economy_methodology.md` for exactly what Phase 2A does and does not simulate.
+**Phase 0, Phase 1 (pure simulation foundation), Phase 2A (government accounting and budget
+gameplay), and Phase 2B1 (sector production at fixed prices) are complete and verified.** The player
+can change tax rates and spending; revenue, spending, interest, and debt resolve deterministically
+and reconcile exactly every turn. Eleven aggregate economic sectors also resolve deterministic
+quarterly output at fixed base-year prices — capacity, labor productivity, and employment drive a
+self-validating production report, fully isolated from the budget (taxes/spending don't affect
+output; output doesn't affect revenue). All of it is wrapped in the same hash-chained, immutable
+history from Phase 1. There is no API and no database yet, and no prices, inflation, wages, or
+population effects — see `docs/roadmap.md` for what's implemented per phase and
+`docs/economy_methodology.md` for exactly what's simulated and what isn't.
 
 ## Repository layout
 
@@ -87,9 +91,21 @@ quarterly debt interest are deducted, a deficit consumes cash before any new bor
 result is checked against two reconciliation equations that must hold exactly in integer minor
 units. `FinanceReport` re-derives and checks those equations independently every time it's
 constructed — including when read back out of history — so a report can never claim to reconcile
-when the numbers don't actually add up. Full formulas and what's explicitly not yet simulated
-(production, prices, inflation, employment, tax bases responding to rates, …):
-[`docs/economy_methodology.md`](docs/economy_methodology.md).
+when the numbers don't actually add up.
+
+### Sector production (Phase 2B1)
+
+Eleven aggregate sectors (agriculture, extraction, manufacturing, construction, energy,
+transportation, consumer services, finance and professional services, technology, defense
+industry, public services) each have a quarterly production capacity, output-per-worker
+productivity, and an employed-worker count. Every turn, each sector's labor-limited output
+(`employed_workers * output_per_worker`) is capped at capacity, classified
+(capacity-constrained/labor-constrained/exactly-balanced/inactive), and reported at a fixed
+base-year price — deliberately **not** GDP, value added, or an inflation-adjusted figure, and
+deliberately unable to affect taxes, spending, prices, or the budget in either direction this phase.
+`ProductionReport` self-validates the same way `FinanceReport` does. Full formulas and what's
+explicitly not yet simulated (tax-base derivation, prices, inflation, employment dynamics, wages,
+…): [`docs/economy_methodology.md`](docs/economy_methodology.md).
 
 ## Frontend
 
