@@ -170,7 +170,7 @@ def test_mutating_retrieved_report_does_not_affect_history() -> None:
 
     report = save.entry_at(1).report()
     assert report is not None
-    report.entries.append(TurnReportEntry(category="tamper", summary="tampered"))
+    report.entries.append(TurnReportEntry(category="tamper", reason_id="tampered"))
 
     assert dump_save_json(save) == before
 
@@ -238,7 +238,7 @@ def test_tampering_with_report_is_detected() -> None:
     report = original.report()
     assert report is not None
     tampered_report = report.model_copy(
-        update={"entries": [*report.entries, TurnReportEntry(category="tamper", summary="x")]}
+        update={"entries": [*report.entries, TurnReportEntry(category="tamper", reason_id="x")]}
     )
     tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
     tampered_entry = dataclasses.replace(original, report_json=tampered_json)
@@ -346,7 +346,7 @@ def test_decisions_on_genesis_is_rejected() -> None:
 def test_report_on_genesis_is_rejected() -> None:
     save = _fresh_save()
     fake_report = canonical_dumps(
-        TurnReportEntry(category="x", summary="y").model_dump(mode="json")
+        TurnReportEntry(category="x", reason_id="y").model_dump(mode="json")
     )
     # Not even a valid TurnReport shape — any non-null value at genesis is invalid.
     bad_genesis = dataclasses.replace(save.entries[0], report_json=fake_report)
