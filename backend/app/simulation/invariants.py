@@ -125,14 +125,18 @@ def _check_tax_base_coefficients(country: CountryState) -> list[InvariantViolati
 def _check_economy(country: CountryState) -> list[InvariantViolation]:
     """Re-check `EconomyState`'s own construction-time invariant every turn.
 
-    `EconomyState.sectors` is a tuple of mutable `SectorState` objects (kept
-    mutable deliberately — a later economy phase makes `employed_workers`
-    adjustable), so a nested `sector.category = ...` assignment performed
-    *after* construction can desynchronize a previously-valid `EconomyState`
-    from "all 11 categories, exactly once" without ever re-running
-    `EconomyState`'s own `@model_validator`. This is the independent,
-    every-turn backstop for that gap — not a duplicate of the constructor
-    check, a catch for what the constructor check cannot see.
+    `EconomyState.sectors` is a tuple of mutable `SectorState` objects, so a nested
+    `sector.category = ...` assignment performed *after* construction can desynchronize a
+    previously-valid `EconomyState` from "all 11 categories, exactly once" without ever
+    re-running `EconomyState`'s own `@model_validator`. This is the independent, every-turn
+    backstop for that gap — not a duplicate of the constructor check, a catch for what the
+    constructor check cannot see.
+
+    Also re-checks `effective_labor_force_share_bps` range and the derived
+    `effective_labor_force <= population` bound (Phase 2B3) — `StrictBps` already rejects an
+    out-of-range share at every legitimate construction/assignment path, so this is
+    defense-in-depth against a fully bypassed construction, mirroring
+    `_check_tax_base_coefficients`'s role for the Phase 2B2 coefficients.
     """
     if country.economy is None:
         return []
@@ -180,17 +184,29 @@ def _check_economy(country: CountryState) -> list[InvariantViolation]:
             )
         )
 
-    total_employment = sum(sector.employed_workers for sector in country.economy.sectors)
-    if total_employment > country.population:
+    share_bps = country.economy.effective_labor_force_share_bps
+    if not (_BPS_MIN <= share_bps <= _BPS_MAX):
         violations.append(
             InvariantViolation(
-                code="sector_employment_exceeds_population",
+                code="effective_labor_force_share_out_of_range",
                 message=(
-                    f"country {country.id!r}: total sector employment {total_employment} "
-                    f"exceeds population {country.population}"
+                    f"country {country.id!r}: economy.effective_labor_force_share_bps="
+                    f"{share_bps} is outside [{_BPS_MIN}, {_BPS_MAX}]"
                 ),
             )
         )
+    else:
+        effective_labor_force = (country.population * share_bps) // _BPS_MAX
+        if effective_labor_force > country.population:
+            violations.append(
+                InvariantViolation(
+                    code="effective_labor_force_exceeds_population",
+                    message=(
+                        f"country {country.id!r}: effective_labor_force "
+                        f"{effective_labor_force} exceeds population {country.population}"
+                    ),
+                )
+            )
 
     return violations
 

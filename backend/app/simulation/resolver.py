@@ -91,6 +91,7 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
         resolved_turn=resolving_turn,
         entries=ctx.report_entries,
         dev=TurnReportDevMeta(phase_statuses=ctx.phase_statuses),
+        labor_market=ctx.labor_market_report,
         finance=ctx.finance_report,
         production=ctx.production_report,
         tax_base_derivation=ctx.tax_base_derivation_report,
