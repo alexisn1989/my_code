@@ -89,9 +89,10 @@ provides the single serialization path used by tests, save files, and (later) AP
    at Phase 4, but provable in-process without a database.
 5. **Return** `TurnResolution(state=new_state, report=TurnReport(...))`.
 
-As of Phase 2B2, five of the fifteen phases implement real logic: decision validation, sector
-production (see below), government accounting (three phases — see below, one of which now also
-performs tax-base derivation), and report generation. The remaining named phases (trade, prices,
+As of Phase 2B3, five of the fifteen phases implement real logic: decision validation, sector
+production (see below — now also performing labor allocation first), government accounting (three
+phases — see below, one of which also performs tax-base derivation), and report generation. The
+remaining named phases (trade, prices,
 diplomacy, combat, group welfare, institutional updates, unrest, elections, narrative events) are
 still registered in `PHASE_ORDER` as explicit no-ops — each
 phase handler exists and runs, but does nothing yet and records that fact in
@@ -102,22 +103,45 @@ is marked in dev metadata, not narrated to a hypothetical player as if it were c
 `test_resolver.py::test_only_the_accounting_and_report_phases_are_implemented_so_far` tracks this
 boundary explicitly and is meant to be updated, not weakened, as more phases gain real logic.
 
-### Sector production phase (Phase 2B1)
+### Sector production phase (Phase 2B1, labor allocation added in Phase 2B3)
 
-`resolve_production_and_trade` — the fixed §7 phase slot this fills; only the production half is
-implemented, trade (imports/exports, cross-country flows) is explicitly out of scope this phase —
-reads the player's `EconomyState` (required; `simulation.invariants` enforces this the same way it
-requires player `finance`) and computes each sector's labor-limited output, actual output (capped at
-capacity), capacity-utilization bps, and constraint classification via the pure
-`simulation/production_accounting.py` engine, then assembles the self-validating `ProductionReport`
-directly into `PhaseContext.production_report` — no `FinanceScratch`-style intermediate workspace,
-since production doesn't span multiple phases the way accounting does. This phase runs *before* the
-three accounting phases in `PHASE_ORDER` (unchanged — no reordering); it is written to never read
-or write `ctx.finance`/`ctx.finance_report`/treasury/debt itself. As of Phase 2B2, the revenue phase
-immediately after it *does* read `ctx.production_report` (see below) — that one, one-directional
-read is deliberate and actively tested (`tests/test_phase_isolation.py`), not an accidental
-crossing; nothing else reaches across the shared `PhaseContext` in either direction. Full formulas:
-`docs/economy_methodology.md`. Design rationale: `docs/adr/0004-sector-production-fixed-prices.md`.
+`resolve_production_and_trade` — the fixed §7 phase slot this fills; only production (plus, as of
+Phase 2B3, the labor allocation that feeds it) is implemented, trade (imports/exports,
+cross-country flows) is explicitly out of scope this phase — reads the player's `EconomyState`
+(required; `simulation.invariants` enforces this the same way it requires player `finance`) and,
+at the very start of the phase, derives this turn's labor allocation via the pure
+`simulation/labor_allocation.py` engine (population, `effective_labor_force_share_bps`, and each
+sector's capacity/productivity — see "Phase 2B3 labor allocation" below), assembling the
+self-validating `LaborMarketReport` into `PhaseContext.labor_market_report`. It then computes each
+sector's labor-limited output (using that sector's just-allocated workers, not a stored field),
+actual output (capped at capacity), capacity-utilization bps, and constraint classification via
+the pure `simulation/production_accounting.py` engine, assembling the self-validating
+`ProductionReport` into `PhaseContext.production_report` — no `FinanceScratch`-style intermediate
+workspace for either report, since neither spans multiple phases the way accounting does. This
+phase runs *before* the three accounting phases in `PHASE_ORDER` (unchanged — no reordering); it
+is written to never read or write `ctx.finance`/`ctx.finance_report`/treasury/debt itself. As of
+Phase 2B2, the revenue phase immediately after it *does* read `ctx.production_report` (see
+below) — that one, one-directional read is deliberate and actively tested
+(`tests/test_phase_isolation.py`), not an accidental crossing; nothing else reaches across the
+shared `PhaseContext` in either direction. Full formulas: `docs/economy_methodology.md`. Design
+rationale: `docs/adr/0004-sector-production-fixed-prices.md`,
+`docs/adr/0006-labor-allocation-at-fixed-prices.md`.
+
+### Phase 2B3 labor allocation
+
+No new `PHASE_ORDER` slot: allocation runs at the *start* of `resolve_production_and_trade`,
+immediately before per-sector output — same phase, same turn, so same-turn linkage (a population
+or labor-force-share change affects production the turn it applies) is structural.
+`SectorState.employed_workers` (Phase 2B1/2B2) is removed entirely; employment is now purely
+derived and turn-local, stored only on `PhaseContext.labor_market_report` and copied onto
+`TurnReport.labor_market` by `resolver.py`, alongside `production`, `tax_base_derivation`, and
+`finance`. `TurnReport`'s cross-report validators extend from three reports to four:
+`LaborMarketReport.allocated_workers` must match `ProductionReport.employed_workers` per
+`SectorCategory` (matched by category identity, never tuple position), and
+`labor_market`/`production`/`tax_base_derivation`/`finance` must be all present or all absent. See
+`docs/economy_methodology.md` and `docs/adr/0006-labor-allocation-at-fixed-prices.md` for the full
+formulas, the largest-remainder allocation algorithm and its tie-breaking rule, and the
+calibration approach.
 
 ### Government accounting phases (Phase 2A, extended in Phase 2B2)
 
@@ -155,9 +179,10 @@ formulas, the real-to-nominal unit bridge, and the calibration approach.
 
 Accounting resolves for the **player country only** — `CountryState.finance` is optional, and
 `simulation.invariants` requires it just for the player (AI countries may omit it; see the ADR).
-Sector production follows the identical pattern: `CountryState.economy` is optional,
-`player_economy_required` requires it just for the player, and `ProductionReport`/
-`TaxBaseDerivationReport` are both player-only, mirroring `FinanceReport`'s scope exactly.
+Sector production (and, as of Phase 2B3, labor allocation) follows the identical pattern:
+`CountryState.economy` is optional, `player_economy_required` requires it just for the player, and
+`LaborMarketReport`/`ProductionReport`/`TaxBaseDerivationReport` are all player-only, mirroring
+`FinanceReport`'s scope exactly.
 
 ## History, hash chaining, and immutability
 

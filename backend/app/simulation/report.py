@@ -313,6 +313,172 @@ class FinanceReport(BaseModel):
         return self
 
 
+class SectorLaborAllocationReport(BaseModel):
+    """One sector's self-validated Phase 2B3 labor-allocation outcome.
+
+    `unfilled_workers` and `allocated_workers <= required_workers` are independently re-checked
+    here, from this row's own stored fields — see the validators below. The allocation
+    *algorithm* itself (largest-remainder, canonical tie-breaking) is not re-derived at the report
+    level, the same way `ProductionReport` does not re-derive the labor allocation that produced
+    its own `employed_workers` — it is proven correct by `test_labor_allocation.py` and enforced
+    cross-report by `TurnReport` (allocation matches what `ProductionReport` actually used).
+    """
+
+    model_config = _STRICT_CONFIG
+
+    category: SectorCategory
+    required_workers: StrictWorkerCount
+    allocated_workers: StrictWorkerCount
+    unfilled_workers: StrictWorkerCount
+
+    @model_validator(mode="after")
+    def _allocated_does_not_exceed_required(self) -> SectorLaborAllocationReport:
+        if self.allocated_workers > self.required_workers:
+            raise ValueError(
+                f"allocated_workers={self.allocated_workers} exceeds "
+                f"required_workers={self.required_workers} for sector {self.category.value!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _unfilled_workers_matches_formula(self) -> SectorLaborAllocationReport:
+        expected = self.required_workers - self.allocated_workers
+        if self.unfilled_workers != expected:
+            raise ValueError(
+                f"unfilled_workers={self.unfilled_workers} does not equal "
+                f"required_workers - allocated_workers ({expected})"
+            )
+        return self
+
+
+class LaborMarketReport(BaseModel):
+    """Structured, machine-readable Phase 2B3 labor-allocation outcome for the player country,
+    for one turn. Player-only, mirroring `ProductionReport`/`TaxBaseDerivationReport`'s scope —
+    AI countries may have `economy=None` and get no labor-market report.
+
+    `sectors` must contain exactly one entry per `SectorCategory`, in canonical declaration
+    order — enforced and (absent duplicates/missing categories) normalized by the same policy
+    the other per-sector reports already apply to their own collections.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    total_population: StrictWorkerCount
+    effective_labor_force_share_bps: StrictBps
+    effective_labor_force: StrictWorkerCount
+    sectors: tuple[SectorLaborAllocationReport, ...]
+    total_labor_demand: StrictWorkerCount
+    total_employment: StrictWorkerCount
+    unemployed_workers: StrictWorkerCount
+    unfilled_jobs: StrictWorkerCount
+    unemployment_rate_bps: StrictBps
+
+    @model_validator(mode="after")
+    def _sectors_cover_all_categories_exactly_once_in_canonical_order(self) -> LaborMarketReport:
+        seen: set[SectorCategory] = set()
+        for sector in self.sectors:
+            if sector.category in seen:
+                raise ValueError(
+                    f"duplicate sector category in labor market report: {sector.category.value!r}"
+                )
+            seen.add(sector.category)
+        missing = [c for c in SectorCategory if c not in seen]
+        if missing:
+            raise ValueError(
+                "labor market report is missing sector categories: "
+                f"{[c.value for c in missing]!r} — all {len(SectorCategory)} are required"
+            )
+        by_category = {sector.category: sector for sector in self.sectors}
+        canonical_order = tuple(by_category[category] for category in SectorCategory)
+        if canonical_order != self.sectors:
+            self.sectors = canonical_order
+        return self
+
+    @model_validator(mode="after")
+    def _effective_labor_force_matches_formula(self) -> LaborMarketReport:
+        expected = (self.total_population * self.effective_labor_force_share_bps) // BPS_DENOMINATOR
+        if self.effective_labor_force != expected:
+            raise ValueError(
+                f"effective_labor_force={self.effective_labor_force} does not equal "
+                f"floor(total_population * effective_labor_force_share_bps / 10_000) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _effective_labor_force_does_not_exceed_population(self) -> LaborMarketReport:
+        if self.effective_labor_force > self.total_population:
+            raise ValueError(
+                f"effective_labor_force={self.effective_labor_force} exceeds "
+                f"total_population={self.total_population}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _total_labor_demand_matches_sum(self) -> LaborMarketReport:
+        expected = sum(sector.required_workers for sector in self.sectors)
+        if self.total_labor_demand != expected:
+            raise ValueError(
+                f"total_labor_demand={self.total_labor_demand} does not equal the sum of "
+                f"sectors[*].required_workers ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _total_employment_matches_sum(self) -> LaborMarketReport:
+        expected = sum(sector.allocated_workers for sector in self.sectors)
+        if self.total_employment != expected:
+            raise ValueError(
+                f"total_employment={self.total_employment} does not equal the sum of "
+                f"sectors[*].allocated_workers ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _total_employment_matches_min_identity(self) -> LaborMarketReport:
+        expected = min(self.effective_labor_force, self.total_labor_demand)
+        if self.total_employment != expected:
+            raise ValueError(
+                f"total_employment={self.total_employment} does not equal "
+                f"min(effective_labor_force, total_labor_demand) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _unemployed_workers_matches_formula(self) -> LaborMarketReport:
+        expected = self.effective_labor_force - self.total_employment
+        if self.unemployed_workers != expected:
+            raise ValueError(
+                f"unemployed_workers={self.unemployed_workers} does not equal "
+                f"effective_labor_force - total_employment ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _unfilled_jobs_matches_formula(self) -> LaborMarketReport:
+        expected = self.total_labor_demand - self.total_employment
+        if self.unfilled_jobs != expected:
+            raise ValueError(
+                f"unfilled_jobs={self.unfilled_jobs} does not equal "
+                f"total_labor_demand - total_employment ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _unemployment_rate_bps_matches_formula(self) -> LaborMarketReport:
+        expected = (
+            (self.unemployed_workers * BPS_DENOMINATOR) // self.effective_labor_force
+            if self.effective_labor_force > 0
+            else 0
+        )
+        if self.unemployment_rate_bps != expected:
+            raise ValueError(
+                f"unemployment_rate_bps={self.unemployment_rate_bps} does not match "
+                "floor(unemployed_workers * 10_000 / effective_labor_force), or 0 when "
+                f"effective_labor_force is 0 ({expected})"
+            )
+        return self
+
+
 class SectorProductionReport(BaseModel):
     """One sector's self-validated Phase 2B1 production outcome.
 
@@ -322,6 +488,11 @@ class SectorProductionReport(BaseModel):
     validators below — mirroring `FinanceReport`'s self-validation pattern.
     There is no trusted boolean; a report that disagrees with its own
     formulas never finishes construction.
+
+    As of Phase 2B3, `employed_workers` is no longer scenario-authored — it is this turn's
+    labor allocation, cross-checked against `LaborMarketReport.sectors[*].allocated_workers` for
+    the same category by `TurnReport` (see below), not re-derived by this row itself (mirroring
+    how this row never re-derives the tax-base coefficients that used its own `actual_output`).
 
     Units: `capacity_output`/`output_per_worker`/`labor_limited_output`/
     `actual_output` are fixed-base-year output minor units (`StrictRealOutput`/
@@ -678,24 +849,54 @@ class TurnReport(BaseModel):
     """`None` only when derivation did not run (never for a successful Phase 2B2+ turn on a
     valid player state). Named distinctly from `FinanceReport.tax_bases` to avoid confusion
     between "this turn's derivation detail" and "the bases finance actually applied.\""""
+    labor_market: LaborMarketReport | None = None
+    """`None` only when labor allocation did not run (never for a successful Phase 2B3+ turn on
+    a valid player state). Runs before production in the same phase; see `phases.py`."""
 
     @model_validator(mode="after")
-    def _production_finance_and_derivation_are_all_present_or_all_absent(self) -> TurnReport:
-        """R1: a partial combination of the three player-economy reports would represent a
-        broken audit chain (e.g. production ran but derivation silently didn't) — reject it
-        outright rather than accepting whatever subset happens to be present.
+    def _labor_production_derivation_and_finance_are_all_present_or_all_absent(self) -> TurnReport:
+        """R1 (extended, Phase 2B3): a partial combination of the four player-economy reports
+        would represent a broken audit chain (e.g. production ran but derivation silently
+        didn't) — reject it outright rather than accepting whatever subset happens to be present.
         """
         present = (
+            self.labor_market is not None,
             self.production is not None,
             self.tax_base_derivation is not None,
             self.finance is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
-                "production, tax_base_derivation, and finance must be all present or all "
-                f"absent on a TurnReport — got present={present} "
-                "(production, tax_base_derivation, finance)"
+                "labor_market, production, tax_base_derivation, and finance must be all present "
+                f"or all absent on a TurnReport — got present={present} "
+                "(labor_market, production, tax_base_derivation, finance)"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _labor_market_allocation_matches_production_employment(self) -> TurnReport:
+        """Phase 2B3: per `SectorCategory` — matched by category identity, never tuple position
+        — `LaborMarketReport.allocated_workers` must equal what `ProductionReport` used as
+        `employed_workers` for that same sector. Two internally-valid reports could otherwise
+        each be correct in isolation while silently describing different employment numbers.
+        """
+        if self.labor_market is None or self.production is None:
+            return self
+        allocated_by_category = {s.category: s.allocated_workers for s in self.labor_market.sectors}
+        production_by_category = {s.category: s.employed_workers for s in self.production.sectors}
+        for category, allocated in allocated_by_category.items():
+            expected = production_by_category.get(category)
+            if expected is None:
+                raise ValueError(
+                    f"labor_market references sector category {category.value!r} that does not "
+                    "appear in production.sectors"
+                )
+            if allocated != expected:
+                raise ValueError(
+                    f"labor_market.sectors allocated_workers for category {category.value!r} "
+                    f"({allocated}) does not match production.sectors employed_workers for the "
+                    f"same category ({expected})"
+                )
         return self
 
     @model_validator(mode="after")

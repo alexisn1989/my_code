@@ -12,23 +12,28 @@ every decision.
   [`docs/adr/0002-snapshot-history-and-versioning.md`](docs/adr/0002-snapshot-history-and-versioning.md),
   [`docs/adr/0003-government-accounting.md`](docs/adr/0003-government-accounting.md),
   [`docs/adr/0004-sector-production-fixed-prices.md`](docs/adr/0004-sector-production-fixed-prices.md),
-  [`docs/adr/0005-production-derived-tax-bases.md`](docs/adr/0005-production-derived-tax-bases.md)
+  [`docs/adr/0005-production-derived-tax-bases.md`](docs/adr/0005-production-derived-tax-bases.md),
+  [`docs/adr/0006-labor-allocation-at-fixed-prices.md`](docs/adr/0006-labor-allocation-at-fixed-prices.md)
 - **Economy formulas:** [`docs/economy_methodology.md`](docs/economy_methodology.md)
 
 ## Current status
 
 **Phase 0, Phase 1 (pure simulation foundation), Phase 2A (government accounting and budget
-gameplay), Phase 2B1 (sector production at fixed prices), and Phase 2B2 (production-derived tax
-bases) are complete and verified.** The player can change tax rates and spending; eleven aggregate
-economic sectors resolve deterministic quarterly output at fixed base-year prices, which now
-**derives** the tax bases revenue is computed against (replacing the fixed, scenario-authored bases
-Phase 2A started with) — capacity, labor productivity, and employment genuinely drive government
-revenue. The relationship is one-directional: production affects tax bases and revenue; tax rates
-and spending still do not affect production. Revenue, spending, interest, and debt resolve
-deterministically and reconcile exactly every turn, with a self-validating report chain proving
+gameplay), Phase 2B1 (sector production at fixed prices), Phase 2B2 (production-derived tax
+bases), and Phase 2B3 (labor allocation and unemployment at fixed prices) are complete and
+verified.** The player can change tax rates and spending; eleven aggregate economic sectors
+resolve deterministic quarterly output at fixed base-year prices, staffed every turn by a
+deterministic labor allocation **derived** from population (replacing the fixed,
+scenario-authored `employed_workers` Phase 2B1 started with), which in turn **derives** the tax
+bases revenue is computed against (replacing the fixed, scenario-authored bases Phase 2A started
+with) — population, capacity, labor productivity, and employment genuinely drive government
+revenue. The relationship is one-directional: population/labor supply affects allocation and
+production; production affects tax bases and revenue; tax rates and spending still do not affect
+allocation or production. Revenue, spending, interest, and debt resolve deterministically and
+reconcile exactly every turn, with a self-validating report chain proving labor allocation,
 production, tax-base derivation, and finance agree with each other, not just internally. All of it
 is wrapped in the same hash-chained, immutable history from Phase 1. There is no API and no
-database yet, and no prices, inflation, wages, or population effects — see `docs/roadmap.md` for
+database yet, and no prices, inflation, wages, or hiring friction — see `docs/roadmap.md` for
 what's implemented per phase and `docs/economy_methodology.md` for exactly what's simulated and
 what isn't.
 
@@ -88,7 +93,7 @@ resulting state but the decisions submitted and the report produced, linked to t
 by a BLAKE2b-256 hash. This detects accidental corruption and hand-editing; it is explicitly **not**
 anti-cheat security (the hashes are unkeyed).
 
-### Government accounting (Phase 2A, tax bases now production-derived as of Phase 2B2)
+### Government accounting (Phase 2A, tax bases production-derived since Phase 2B2)
 
 The player can change tax rates (personal income, corporate, consumption) and spending across
 seven categories. Each turn: tax revenue is collected against tax bases derived from that turn's
@@ -99,16 +104,29 @@ in integer minor units. `FinanceReport` re-derives and checks those equations in
 time it's constructed — including when read back out of history — so a report can never claim to
 reconcile when the numbers don't actually add up.
 
-### Sector production (Phase 2B1)
+### Sector production (Phase 2B1, employment derived since Phase 2B3)
 
 Eleven aggregate sectors (agriculture, extraction, manufacturing, construction, energy,
 transportation, consumer services, finance and professional services, technology, defense
-industry, public services) each have a quarterly production capacity, output-per-worker
-productivity, and an employed-worker count. Every turn, each sector's labor-limited output
-(`employed_workers * output_per_worker`) is capped at capacity, classified
+industry, public services) each have a quarterly production capacity and output-per-worker
+productivity. Every turn, each sector's labor-limited output (`allocated_workers *
+output_per_worker`, using this same turn's labor allocation — see below, not a scenario-authored
+employment count) is capped at capacity, classified
 (capacity-constrained/labor-constrained/exactly-balanced/inactive), and reported at a fixed
 base-year price — deliberately **not** GDP, value added, or an inflation-adjusted figure.
 `ProductionReport` self-validates the same way `FinanceReport` does.
+
+### Labor allocation and unemployment (Phase 2B3)
+
+Sector employment is no longer scenario-authored. Each turn: an effective labor force is derived
+from population and a reduced-form labor-force-share coefficient; each sector's labor demand is
+the ceiling-division worker count needed to run at full capacity; a deterministic
+largest-remainder allocation (with explicit canonical tie-breaking) distributes the labor force
+across sectors, capped at each sector's own demand. The relationship is one-directional:
+population/labor supply determines allocation and therefore production; tax rates and spending
+still cannot affect allocation. `LaborMarketReport` self-validates the same way the other reports
+do, and `TurnReport` cross-validates that labor allocation matches what production actually used,
+per sector.
 
 ### Production-derived tax bases (Phase 2B2)
 
@@ -118,11 +136,11 @@ into a `modeled_value_added` proxy (explicitly not national-accounts value added
 labor income and operating surplus, and converted into the three tax bases `FinanceReport` uses —
 through exactly one named, explicit real-output-to-money conversion function. The relationship is
 one-directional: production determines tax bases and revenue; tax rates and spending still cannot
-affect production. `TurnReport` cross-validates that production, tax-base derivation, and finance
-all agree with each other (matched by sector category, not just internally self-consistent) — a
-partial or inconsistent combination is rejected outright. Full formulas, the unit-bridge design,
-and what's explicitly not yet simulated (prices, inflation, employment dynamics, wages, tax-rate
-elasticity, …): [`docs/economy_methodology.md`](docs/economy_methodology.md).
+affect production. `TurnReport` cross-validates that labor allocation, production, tax-base
+derivation, and finance all agree with each other (matched by sector category, not just internally
+self-consistent) — a partial or inconsistent combination is rejected outright. Full formulas, the
+unit-bridge design, and what's explicitly not yet simulated (prices, inflation, wages, hiring
+friction, tax-rate elasticity, …): [`docs/economy_methodology.md`](docs/economy_methodology.md).
 
 ## Frontend
 

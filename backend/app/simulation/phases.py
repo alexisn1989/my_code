@@ -44,6 +44,12 @@ from app.simulation.accounting import (
     resolve_cash_and_debt,
 )
 from app.simulation.decisions import DecisionSet
+from app.simulation.labor_allocation import (
+    aggregate_labor_market,
+    allocate_workers,
+    compute_effective_labor_force,
+    compute_required_workers,
+)
 from app.simulation.production_accounting import (
     SectorConstraint,
     SectorProductionResult,
@@ -55,9 +61,11 @@ from app.simulation.report import (
     BudgetChangeEntry,
     ChangeDirection,
     FinanceReport,
+    LaborMarketReport,
     PhaseStatus,
     ProductionReport,
     RevenueBreakdown,
+    SectorLaborAllocationReport,
     SectorProductionReport,
     SectorTaxBaseReport,
     TaxBaseDerivationReport,
@@ -150,6 +158,11 @@ class PhaseContext:
     """Set by `apply_legal_and_administrative_changes`; read by the two phases after it."""
     finance_report: FinanceReport | None = None
     """Set by `generate_turn_report`; `resolver.py` copies this onto the final `TurnReport`."""
+    labor_market_report: LaborMarketReport | None = None
+    """Set at the very start of `resolve_production_and_trade`, before any sector output is
+    computed; `resolver.py` copies this onto the final `TurnReport`. No scratch workspace (like
+    `production_report`): allocation reads only current-turn `state...economy`/`population` and
+    never spans multiple phases."""
     production_report: ProductionReport | None = None
     """Set by `resolve_production_and_trade`; `resolver.py` copies this onto the final
     `TurnReport`. No scratch workspace for production (unlike `finance`): the phase reads
@@ -438,18 +451,71 @@ def _update_prices_inflation_employment_debt_reserves(ctx: PhaseContext) -> None
     ctx.mark_implemented()
 
 
+def _allocate_labor(ctx: PhaseContext) -> LaborMarketReport:
+    """Phase 2B3: deterministic labor allocation, run at the very start of
+    `resolve_production_and_trade` — before any sector output is computed — so production
+    consumes this same turn's allocation with no lag. Reads `player.population` and
+    `economy.effective_labor_force_share_bps`/`economy.sectors`, never `player.finance`/
+    `player.treasury`; writes only `ctx.labor_market_report`; never mutates `state`. Pure with
+    respect to `ctx.state`, mirroring `_derive_tax_bases_from_production`'s isolation.
+    """
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    economy = player.economy
+    assert economy is not None, "resolve_production_and_trade already required this"
+
+    effective_labor_force = compute_effective_labor_force(
+        population=player.population,
+        effective_labor_force_share_bps=economy.effective_labor_force_share_bps,
+    )
+    required_by_category = tuple(
+        (sector.category, compute_required_workers(sector)) for sector in economy.sectors
+    )
+    allocation_results = allocate_workers(
+        required_by_category=required_by_category,
+        effective_labor_force=effective_labor_force,
+    )
+    market_aggregates = aggregate_labor_market(
+        total_population=player.population,
+        effective_labor_force=effective_labor_force,
+        results=allocation_results,
+    )
+
+    sector_reports = tuple(
+        SectorLaborAllocationReport(
+            category=result.category,
+            required_workers=result.required_workers,
+            allocated_workers=result.allocated_workers,
+            unfilled_workers=result.required_workers - result.allocated_workers,
+        )
+        for result in allocation_results
+    )
+
+    return LaborMarketReport(
+        total_population=market_aggregates.total_population,
+        effective_labor_force_share_bps=economy.effective_labor_force_share_bps,
+        effective_labor_force=market_aggregates.effective_labor_force,
+        sectors=sector_reports,
+        total_labor_demand=market_aggregates.total_labor_demand,
+        total_employment=market_aggregates.total_employment,
+        unemployed_workers=market_aggregates.unemployed_workers,
+        unfilled_jobs=market_aggregates.unfilled_jobs,
+        unemployment_rate_bps=market_aggregates.unemployment_rate_bps,
+    )
+
+
 def _resolve_production_and_trade(ctx: PhaseContext) -> None:
-    """Phase 2B1 sector production only — trade (imports/exports, cross-country flows) is
-    fully out of scope this phase despite the phase's name; that name is the fixed §7 phase
-    slot this fills, not a claim about what's implemented.
+    """Phase 2B1 sector production, plus (Phase 2B3) the labor allocation that feeds it —
+    trade (imports/exports, cross-country flows) is fully out of scope this phase despite the
+    phase's name; that name is the fixed §7 phase slot this fills, not a claim about what's
+    implemented.
 
     Deliberately isolated from Phase 2A's government accounting: reads only the player's
-    current-turn `EconomyState` (never `player.finance`/`player.treasury`), writes only
-    `ctx.production_report` (never `ctx.finance`/`ctx.finance_report`/treasury/debt), and
-    never mutates `state`. This phase runs *before* the finance phases in `PHASE_ORDER`, so
-    `ctx.production_report` is already populated by the time they execute — those phases must
-    never read it (see `tests/test_phase_isolation.py`, which asserts the two field sets each
-    phase touches are disjoint).
+    current-turn `EconomyState`/`population` (never `player.finance`/`player.treasury`), writes
+    only `ctx.labor_market_report`/`ctx.production_report` (never `ctx.finance`/
+    `ctx.finance_report`/treasury/debt), and never mutates `state`. This phase runs *before* the
+    finance phases in `PHASE_ORDER`, so both reports are already populated by the time they
+    execute — those phases must never read them (see `tests/test_phase_isolation.py`, which
+    asserts the field sets each phase touches are disjoint).
     """
     player = ctx.state.world.countries[ctx.state.world.player_country_id]
     economy = player.economy
@@ -462,18 +528,39 @@ def _resolve_production_and_trade(ctx: PhaseContext) -> None:
             "(this should have been caught by check_invariants)"
         )
 
+    labor_market = _allocate_labor(ctx)
+    ctx.labor_market_report = labor_market
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="production",
+            reason_id="labor_market_resolved",
+            params={
+                "effective_labor_force": labor_market.effective_labor_force,
+                "total_employment": labor_market.total_employment,
+                "unemployed_workers": labor_market.unemployed_workers,
+                "unfilled_jobs": labor_market.unfilled_jobs,
+                "unemployment_rate_bps": labor_market.unemployment_rate_bps,
+            },
+        )
+    )
+
+    allocated_by_category = {row.category: row.allocated_workers for row in labor_market.sectors}
+
     sector_reports: list[SectorProductionReport] = []
     results: list[SectorProductionResult] = []
+    allocated_workers_in_order: list[int] = []
     counts: dict[str, int] = {}
     for sector in economy.sectors:
-        result = compute_sector_output(sector)
+        allocated_workers = allocated_by_category[sector.category]
+        allocated_workers_in_order.append(allocated_workers)
+        result = compute_sector_output(sector, allocated_workers)
         results.append(result)
         sector_reports.append(
             SectorProductionReport(
                 category=sector.category,
                 capacity_output=sector.quarterly_capacity_output,
                 output_per_worker=sector.output_per_worker,
-                employed_workers=sector.employed_workers,
+                employed_workers=allocated_workers,
                 labor_limited_output=result.labor_limited_output,
                 actual_output=result.actual_output,
                 capacity_utilization_bps=result.capacity_utilization_bps,
@@ -490,7 +577,7 @@ def _resolve_production_and_trade(ctx: PhaseContext) -> None:
                 )
             )
 
-    aggregates = aggregate_production(economy.sectors, tuple(results))
+    aggregates = aggregate_production(tuple(allocated_workers_in_order), tuple(results))
     ctx.production_report = ProductionReport(
         sectors=tuple(sector_reports),
         total_employment=aggregates.total_employment,

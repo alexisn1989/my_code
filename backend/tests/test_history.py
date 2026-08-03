@@ -289,7 +289,7 @@ def test_tampering_with_only_the_economy_state_is_detected() -> None:
             "economy": country.economy.model_copy(
                 update={
                     "sectors": tuple(
-                        s.model_copy(update={"employed_workers": s.employed_workers + 1})
+                        s.model_copy(update={"output_per_worker": s.output_per_worker + 1})
                         if i == 0
                         else s
                         for i, s in enumerate(country.economy.sectors)

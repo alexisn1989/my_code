@@ -25,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.4.0"
+content_version: "0.5.0"
 seed: 99
 player_country_id: strapped
 
@@ -73,86 +73,85 @@ countries:
         administration: 40000000     #     400,000.00 denars
       annual_debt_interest_rate_bps: 800   # 8% annual
     economy:
-      # Phase 2B2 calibration: this fixture's purpose is deficit financing, not production
-      # variety, so all 11 sectors stay in one of two uniform, hand-checkable groups — scaled
-      # via quarterly_capacity_output/output_per_worker ONLY (never employed_workers) so the
-      # derived tax bases reproduce the original Phase 2A hand-checked bases EXACTLY:
-      #   5 sectors: 1,000 * 500,000 = 500,000,000 = capacity 500,000,000 -> exactly_balanced, actual=500,000,000
-      #   6 sectors: 1,000 * 250,000 = 250,000,000 = capacity 250,000,000 -> exactly_balanced, actual=250,000,000
-      # total_gross_output = 5*500,000,000 + 6*250,000,000 = 4,000,000,000
-      # total_employment = 11,000 (<< population 400,000)
+      # Phase 2B3 calibration: capacities are unchanged from Phase 2B2 — employment is no
+      # longer authored (SectorState no longer has an employed_workers field); it is fully
+      # derived every turn from effective_labor_force_share_bps (below) plus each sector's
+      # quarterly_capacity_output/output_per_worker. output_per_worker is retuned (never
+      # capacity, population, or the labor-force share) so labor demand rises from the 11,000
+      # the old authored employment totaled to a plausible ~10% unemployment level, while every
+      # sector's actual_output — and therefore every derived tax base/revenue/interest/
+      # borrowing/reconciliation figure below — stays byte-for-byte identical to Phase 2B2:
+      #   5 sectors:  required=10,000  10,000 *  50,000 =  500,000,000 = capacity  500,000,000 -> exactly_balanced, actual=500,000,000
+      #   5 sectors:  required=25,000  25,000 *  10,000 =  250,000,000 = capacity  250,000,000 -> exactly_balanced, actual=250,000,000
+      #   public_services: required=5,000  5,000 * 50,000 =  250,000,000 = capacity  250,000,000 -> exactly_balanced, actual=250,000,000
+      # total_labor_demand = 5*10,000 + 5*25,000 + 5,000 = 180,000
+      # effective_labor_force = floor(400,000 * 5000 / 10,000) = 200,000
+      # total_employment = 180,000; unemployed = 20,000; unemployment_rate = exactly 10.00% (1000 bps)
+      # total_gross_output = 5*500,000,000 + 5*250,000,000 + 250,000,000 = 4,000,000,000
+      #   (byte-identical to Phase 2B2's figure, since every actual_output above is unchanged)
       # Every sector uses value_added_share_bps=5000 (50%) / labor_income_share_bps=5000 (50%).
-      # Derivation check (coefficients personal=10000, corporate=5000, consumption=4000):
+      # Derivation check (unchanged from Phase 2B2 — coefficients personal=10000, corporate=5000,
+      # consumption=4000):
       #   modeled_value_added = 4,000,000,000 * 0.5 = 2,000,000,000
       #   labor_income        = 2,000,000,000 * 0.5 = 1,000,000,000
       #   operating_surplus   = 2,000,000,000 - 1,000,000,000 = 1,000,000,000
       #   personal_income base    = 1,000,000,000 * 1.0 = 1,000,000,000  (matches original exactly)
       #   corporate_profit base   = 1,000,000,000 * 0.5 =   500,000,000  (matches original exactly)
       #   taxable_consumption base= 2,000,000,000 * 0.4 =   800,000,000  (matches original exactly)
+      effective_labor_force_share_bps: 5000   # 50% of population is economically active (reduced form)
       sectors:
         - category: agriculture
           quarterly_capacity_output: 500000000
-          output_per_worker: 500000
-          employed_workers: 1000
+          output_per_worker: 50000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
         - category: extraction
           quarterly_capacity_output: 500000000
-          output_per_worker: 500000
-          employed_workers: 1000
+          output_per_worker: 50000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
         - category: manufacturing
           quarterly_capacity_output: 500000000
-          output_per_worker: 500000
-          employed_workers: 1000
+          output_per_worker: 50000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
         - category: construction
           quarterly_capacity_output: 500000000
-          output_per_worker: 500000
-          employed_workers: 1000
+          output_per_worker: 50000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
         - category: energy
           quarterly_capacity_output: 500000000
-          output_per_worker: 500000
-          employed_workers: 1000
+          output_per_worker: 50000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
         - category: transportation
           quarterly_capacity_output: 250000000
-          output_per_worker: 250000
-          employed_workers: 1000
+          output_per_worker: 10000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
         - category: consumer_services
           quarterly_capacity_output: 250000000
-          output_per_worker: 250000
-          employed_workers: 1000
+          output_per_worker: 10000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
         - category: finance_and_professional_services
           quarterly_capacity_output: 250000000
-          output_per_worker: 250000
-          employed_workers: 1000
+          output_per_worker: 10000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
         - category: technology
           quarterly_capacity_output: 250000000
-          output_per_worker: 250000
-          employed_workers: 1000
+          output_per_worker: 10000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
         - category: defense_industry
           quarterly_capacity_output: 250000000
-          output_per_worker: 250000
-          employed_workers: 1000
+          output_per_worker: 10000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
         - category: public_services
           quarterly_capacity_output: 250000000
-          output_per_worker: 250000
-          employed_workers: 1000
+          output_per_worker: 50000
           value_added_share_bps: 5000
           labor_income_share_bps: 5000

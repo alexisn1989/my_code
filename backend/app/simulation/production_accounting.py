@@ -13,10 +13,14 @@ caught by the other.
 
 Per sector::
 
-    labor_limited_output    = employed_workers * output_per_worker
+    labor_limited_output    = allocated_workers * output_per_worker
     actual_output            = min(quarterly_capacity_output, labor_limited_output)
     capacity_utilization_bps = floor(actual_output * 10_000 / quarterly_capacity_output)
                                 if quarterly_capacity_output > 0 else 0
+
+As of Phase 2B3, `allocated_workers` is not read from `SectorState` (which no longer has an
+`employed_workers` field) — it is passed in by the caller, having already been computed by
+`simulation.labor_allocation` earlier in the same phase. See `docs/adr/0006-labor-allocation-at-fixed-prices.md`.
 
 Floor division is used for the same reason `core.money.apply_bps` floors:
 it guarantees `capacity_utilization_bps == 10_000` if and only if
@@ -33,11 +37,11 @@ report where every derived number must be exactly recomputable.
     else:                                                      EXACTLY_BALANCED
 
 Capacity is checked *first*. This resolves the degenerate case
-`quarterly_capacity_output == 0 and employed_workers == 0` as `INACTIVE`
+`quarterly_capacity_output == 0 and allocated_workers == 0` as `INACTIVE`
 rather than the trivial `labor_limited_output (0) == quarterly_capacity_output (0)`
 reading of "exactly balanced" — a sector with no capacity at all has not
 achieved full utilization of anything. Conversely, `quarterly_capacity_output
-> 0 and employed_workers == 0` is `LABOR_CONSTRAINED`, not `INACTIVE`: capacity
+> 0 and allocated_workers == 0` is `LABOR_CONSTRAINED`, not `INACTIVE`: capacity
 exists and is simply unstaffed, a materially different fact from "this
 sector has no capacity." See `docs/economy_methodology.md` for the full
 worked derivation and both edge cases.
@@ -57,7 +61,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from app.core.money import BPS_DENOMINATOR
-from app.core.quantity import StrictRealOutput
+from app.core.quantity import StrictRealOutput, WorkerCount
 from app.simulation.state import SectorState
 
 
@@ -78,10 +82,14 @@ class SectorProductionResult:
     constraint: SectorConstraint
 
 
-def compute_sector_output(sector: SectorState) -> SectorProductionResult:
-    """Apply the formulas and classification rule documented in the module docstring
-    to one sector's inputs. Pure — reads only `sector`'s own fields."""
-    labor_limited_output = sector.employed_workers * sector.output_per_worker
+def compute_sector_output(
+    sector: SectorState, allocated_workers: WorkerCount
+) -> SectorProductionResult:
+    """Apply the formulas and classification rule documented in the module docstring to one
+    sector's inputs. Pure — reads only `sector`'s own fields plus the `allocated_workers` the
+    caller already derived this same turn via `simulation.labor_allocation` (Phase 2B3;
+    `SectorState` no longer carries an authored employment field)."""
+    labor_limited_output = allocated_workers * sector.output_per_worker
     actual_output = min(sector.quarterly_capacity_output, labor_limited_output)
 
     if sector.quarterly_capacity_output > 0:
@@ -115,13 +123,14 @@ class ProductionAggregates:
 
 
 def aggregate_production(
-    sectors: tuple[SectorState, ...], results: tuple[SectorProductionResult, ...]
+    allocated_workers: tuple[WorkerCount, ...], results: tuple[SectorProductionResult, ...]
 ) -> ProductionAggregates:
-    """Sum employment (from inputs) and actual output (from computed results) across all sectors.
-    `sectors`/`results` must be the same length and in the same order (the caller — the
-    `resolve_production_and_trade` phase — always builds them together, one result per sector).
+    """Sum employment (from this turn's labor allocation) and actual output (from computed
+    results) across all sectors. `allocated_workers`/`results` must be the same length and in the
+    same order (the caller — the `resolve_production_and_trade` phase — always builds them
+    together, one result per sector, from the same `LaborMarketReport`).
     """
     return ProductionAggregates(
-        total_employment=sum(sector.employed_workers for sector in sectors),
+        total_employment=sum(allocated_workers),
         total_gross_output=sum(result.actual_output for result in results),
     )

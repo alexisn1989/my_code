@@ -57,6 +57,7 @@ from app.simulation.decisions import DecisionSet
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
 from app.simulation.report import (
     FinanceReport,
+    LaborMarketReport,
     ProductionReport,
     TaxBaseDerivationReport,
     TurnReport,
@@ -113,6 +114,19 @@ def _render_sector_inactive(params: dict[str, str | int]) -> str:
     return f"{category.capitalize()} sector is inactive (zero production capacity)."
 
 
+def _render_labor_market_resolved(params: dict[str, str | int]) -> str:
+    effective_labor_force = int(params["effective_labor_force"])
+    total_employment = int(params["total_employment"])
+    unemployed_workers = int(params["unemployed_workers"])
+    unfilled_jobs = int(params["unfilled_jobs"])
+    unemployment_rate = _bps_to_percent_str(params["unemployment_rate_bps"])
+    return (
+        f"Labor market resolved: labor_force={effective_labor_force:,} "
+        f"employment={total_employment:,} unemployed={unemployed_workers:,} "
+        f"unfilled_jobs={unfilled_jobs:,} unemployment_rate={unemployment_rate}."
+    )
+
+
 def _render_production_summary(params: dict[str, str | int]) -> str:
     total_employment = int(params["total_employment"])
     total_gross_output = int(params["total_gross_output"])
@@ -143,6 +157,7 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "spending_category_changed": _render_spending_category_changed,
     "deficit_financed_with_new_borrowing": _render_deficit_financed_with_new_borrowing,
     "sector_inactive": _render_sector_inactive,
+    "labor_market_resolved": _render_labor_market_resolved,
     "production_summary": _render_production_summary,
     "tax_bases_derived": _render_tax_bases_derived,
 }
@@ -284,6 +299,22 @@ def _print_finance_report(finance: FinanceReport) -> None:
     print(f"      reconciliation: {finance.reconciliation_status}")
 
 
+def _print_labor_market_report(labor_market: LaborMarketReport) -> None:
+    print("    labor_market:")
+    print(
+        f"      labor_force={labor_market.effective_labor_force:,} "
+        f"employment={labor_market.total_employment:,} "
+        f"unemployed={labor_market.unemployed_workers:,} "
+        f"unfilled_jobs={labor_market.unfilled_jobs:,} "
+        f"unemployment_rate={labor_market.unemployment_rate_bps / 100:g}%"
+    )
+    for sector in labor_market.sectors:
+        print(
+            f"      {sector.category.value}: required={sector.required_workers:,} "
+            f"allocated={sector.allocated_workers:,} unfilled={sector.unfilled_workers:,}"
+        )
+
+
 def _print_production_report(production: ProductionReport) -> None:
     print("    production:")
     print(
@@ -330,6 +361,8 @@ def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
         print(f"    [{entry.category}] {render_entry(entry)}")
+    if report.labor_market is not None:
+        _print_labor_market_report(report.labor_market)
     if report.production is not None:
         _print_production_report(report.production)
     if report.tax_base_derivation is not None:
@@ -428,6 +461,8 @@ def _cmd_history(args: argparse.Namespace) -> int:
         print(f"  report (from resolving turn {report.resolved_turn}):")
         for report_entry in report.entries:
             print(f"    [{report_entry.category}] {render_entry(report_entry)}")
+        if report.labor_market is not None:
+            _print_labor_market_report(report.labor_market)
         if report.production is not None:
             _print_production_report(report.production)
         if report.tax_base_derivation is not None:

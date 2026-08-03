@@ -7,14 +7,17 @@ isolation.
 
 from __future__ import annotations
 
+import itertools
+
 import pytest
 from pydantic import ValidationError
 
+from app.content.scenarios import load_scenario_file
 from app.simulation.decisions import DecisionSet
 from app.simulation.report import SectorTaxBaseReport, TaxBaseDerivationReport, TurnReport
 from app.simulation.resolver import resolve_turn
 from app.simulation.state import SectorCategory, TaxBaseCoefficients
-from tests.conftest import make_game_state
+from tests.conftest import SCENARIO_DIR, make_game_state
 
 
 def _valid_derivation_report_dict() -> dict:
@@ -259,28 +262,66 @@ class TestR1CrossReportValidation:
     @pytest.mark.parametrize(
         "present_fields",
         [
-            ["production"],
-            ["tax_base_derivation"],
-            ["finance"],
-            ["production", "tax_base_derivation"],
-            ["production", "finance"],
-            ["tax_base_derivation", "finance"],
+            sorted(combo)
+            for r in range(1, 4)
+            for combo in itertools.combinations(
+                ("labor_market", "production", "tax_base_derivation", "finance"), r
+            )
         ],
     )
-    def test_partial_report_combinations_are_rejected(self, present_fields: list[str]) -> None:
+    def test_all_partial_combinations_of_four_reports_are_rejected(
+        self, present_fields: list[str]
+    ) -> None:
+        """Phase 2B3 extends the completeness rule from three reports to four — every proper
+        nonempty subset of {labor_market, production, tax_base_derivation, finance} (14 of them)
+        must be rejected, not just the three Phase 2B2 originally covered.
+        """
         data, _ = _valid_turn_report_dict()
-        for field in ("production", "tax_base_derivation", "finance"):
+        for field in ("labor_market", "production", "tax_base_derivation", "finance"):
             if field not in present_fields:
                 data[field] = None
         with pytest.raises(ValidationError, match="all present or all absent"):
             TurnReport.model_validate(data)
 
+    def test_labor_market_allocation_mismatch_with_production_employment_is_rejected(self) -> None:
+        """`tiny_valid.yaml` (not the uniform conftest default) is used here specifically
+        because its sectors have genuinely different `allocated_workers` values — swapping
+        which category two labor_market rows are labeled with (their numbers untouched) keeps
+        every one of `LaborMarketReport`'s own aggregate/per-row identities self-consistent
+        (same numbers, same total), so only the cross-report check against `ProductionReport`
+        (which is untouched) can catch the resulting per-category mismatch.
+        """
+        state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+        decisions = DecisionSet(expected_turn=0, expected_state_version=0, decisions=())
+        report = resolve_turn(state, decisions).report
+        data = report.model_dump(mode="json")
+        assert data["labor_market"] is not None
+
+        sectors = data["labor_market"]["sectors"]
+        agriculture = next(s for s in sectors if s["category"] == "agriculture")
+        extraction = next(s for s in sectors if s["category"] == "extraction")
+        assert agriculture["allocated_workers"] != extraction["allocated_workers"]
+        agriculture["category"], extraction["category"] = (
+            extraction["category"],
+            agriculture["category"],
+        )
+
+        with pytest.raises(ValidationError, match="does not match"):
+            TurnReport.model_validate(data)
+
     def test_all_three_absent_is_valid(self) -> None:
+        """`_valid_turn_report_dict()` now comes from the real resolver, so `labor_market` is
+        also present by default (Phase 2B3 extended the completeness rule to four reports) —
+        it must be nulled out here too, or this becomes a partial (rejected) combination rather
+        than the "all absent" case this test means to exercise.
+        """
         data, _ = _valid_turn_report_dict()
+        data["labor_market"] = None
         data["production"] = None
         data["tax_base_derivation"] = None
         data["finance"] = None
         report = TurnReport.model_validate(data)
+        assert report.labor_market is None
         assert report.production is None
         assert report.tax_base_derivation is None
         assert report.finance is None
@@ -288,6 +329,7 @@ class TestR1CrossReportValidation:
     def test_all_three_present_and_consistent_is_valid(self) -> None:
         data, report = _valid_turn_report_dict()
         # Sanity: the fixture itself is genuinely all-present before any corruption.
+        assert report.labor_market is not None
         assert report.production is not None
         assert report.tax_base_derivation is not None
         assert report.finance is not None

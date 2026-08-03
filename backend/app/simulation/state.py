@@ -22,7 +22,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.money import Money, StrictBps, StrictMoney
-from app.core.quantity import StrictRealOutput, StrictRealOutputPerWorker, StrictWorkerCount
+from app.core.quantity import StrictRealOutput, StrictRealOutputPerWorker
 
 _STRICT_CONFIG = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -219,14 +219,15 @@ class SectorCategory(StrEnum):
 
 
 class SectorState(BaseModel):
-    """One aggregate sector's production inputs, plus (Phase 2B2) its structural tax-base
-    decomposition shares.
+    """One aggregate sector's production inputs, plus its structural tax-base decomposition
+    shares (Phase 2B2).
 
-    Deliberately mutable (no `frozen=True`): `employed_workers` is expected to
-    become player/AI-adjustable in a later economy phase. `capacity_utilization_bps`
-    and constraint classification are NOT stored here — they are always
-    derived from these inputs and live exclusively in `ProductionReport`, so
-    there is never a stored value that could disagree with its own formula.
+    As of Phase 2B3, `employed_workers` no longer exists here: employment is fully derived
+    every turn by `simulation.labor_allocation` from `EconomyState.effective_labor_force_share_bps`
+    and each sector's labor demand, exactly mirroring why `GovernmentFinanceState.tax_bases` was
+    removed in Phase 2B2 — a value that is always recomputed from other state should not also be
+    stored, or it can drift from its own derivation. `capacity_utilization_bps` and constraint
+    classification remain NOT stored here either — both live exclusively in `ProductionReport`.
 
     `value_added_share_bps`/`labor_income_share_bps` are per-sector (not country-level)
     because they are genuinely structural — how much of a sector's gross output survives
@@ -240,13 +241,13 @@ class SectorState(BaseModel):
     category: SectorCategory
     quarterly_capacity_output: StrictRealOutput
     output_per_worker: StrictRealOutputPerWorker
-    employed_workers: StrictWorkerCount
     value_added_share_bps: StrictBps
     labor_income_share_bps: StrictBps
 
 
 class EconomyState(BaseModel):
-    """A country's Phase-2B1 production state: exactly one `SectorState` per `SectorCategory`.
+    """A country's Phase-2B1 production state: exactly one `SectorState` per `SectorCategory`,
+    plus (Phase 2B3) the reduced-form labor-supply coefficient that feeds those sectors.
 
     All eleven categories must be present, exactly once — a zero-capacity
     sector is a legitimate ("inactive") input, but an absent one is not,
@@ -259,10 +260,19 @@ class EconomyState(BaseModel):
     invariant — that risk is *not* fully closed here, and is independently
     re-checked every turn by `simulation.invariants.check_invariants`
     (`economy_sectors_valid`), not just at parse time.
+
+    `effective_labor_force_share_bps` (Phase 2B3) is a deliberate reduced-form placeholder —
+    it currently conflates working-age share, labor-force participation, and any other
+    structural availability factor into one coefficient, the same kind of temporary
+    simplification `TaxBaseCoefficients.effective_consumption_base_share_bps` already is (see
+    ADR 0005 R4). It lives here, alongside the sectors it feeds, rather than on
+    `CountryState` directly — `CountryState.population` stays the single authoritative
+    population source; this coefficient only says what *share* of it is economically active.
     """
 
     model_config = _STRICT_CONFIG
 
+    effective_labor_force_share_bps: StrictBps
     sectors: tuple[SectorState, ...]
 
     @model_validator(mode="after")
@@ -314,7 +324,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.4.0"
+RULESET_VERSION = "0.5.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -322,12 +332,13 @@ instead the *engine* declares what ruleset it implements, and `save_format.SUPPO
 gates which values are accepted when loading a save. Bump this when turn-resolution *behavior*
 changes (which phases do real work, what formulas they use) in a way that must not silently
 apply to already-resolved history — see `docs/adr/0002-snapshot-history-and-versioning.md`,
-`docs/adr/0003-government-accounting.md`, `docs/adr/0004-sector-production-fixed-prices.md`, and
-`docs/adr/0005-production-derived-tax-bases.md` (bumped `"0.3.0" -> "0.4.0"` for Phase 2B2:
-`GovernmentFinanceState.tax_bases` is removed in favor of required `tax_base_coefficients` and
-each `SectorState` gains required `value_added_share_bps`/`labor_income_share_bps` — a required
-state-shape change in both directions with no data to migrate an older save from, the same kind
-of change that justified every prior ruleset bump).
+`docs/adr/0003-government-accounting.md`, `docs/adr/0004-sector-production-fixed-prices.md`,
+`docs/adr/0005-production-derived-tax-bases.md`, and
+`docs/adr/0006-labor-allocation-at-fixed-prices.md` (bumped `"0.4.0" -> "0.5.0"` for Phase 2B3:
+`SectorState.employed_workers` is removed in favor of a required
+`EconomyState.effective_labor_force_share_bps` — a required state-shape change in both
+directions with no data to migrate an older save from, the same kind of change that justified
+every prior ruleset bump).
 """
 
 
