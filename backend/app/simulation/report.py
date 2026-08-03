@@ -41,12 +41,17 @@ from app.core.money import BPS_DENOMINATOR, StrictBps, StrictMoney, StrictSigned
 from app.core.quantity import (
     StrictRealOutput,
     StrictRealOutputPerWorker,
+    StrictResourceQuantity,
+    StrictResourceQuantityPerWorker,
     StrictWorkerCount,
     base_year_real_output_to_money,
 )
 from app.simulation.accounting import compute_quarterly_interest, compute_tax_revenue
 from app.simulation.production_accounting import SectorConstraint
+from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
+    RENEWABLE_RESOURCES,
+    ResourceCategory,
     SectorCategory,
     SpendingPlanState,
     TaxBaseCoefficients,
@@ -479,6 +484,236 @@ class LaborMarketReport(BaseModel):
         return self
 
 
+class ResourceDepositReport(BaseModel):
+    """One resource deposit's self-validated Phase 2C1 extraction outcome.
+
+    Every derived field is independently re-checked against this row's own stored inputs on
+    construction — see the validators below — mirroring `SectorProductionReport`'s pattern
+    exactly. `regeneration_per_turn`/`stock_ceiling` (R1) are carried here specifically so
+    `_regenerated_matches_formula` can recompute regeneration from the row's own fields rather
+    than trusting the phase that built it — without them this row could not independently verify
+    the one number that makes timber different from every other resource.
+
+    Units: every quantity field except the worker counts is a physical resource quantity
+    (`StrictResourceQuantity`/`StrictResourceQuantityPerWorker`) in the category's own unit
+    (`state.RESOURCE_UNITS`) — never `Money`, never `RealOutput`. No conversion to either exists.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    category: ResourceCategory
+    opening_stock: StrictResourceQuantity
+    regeneration_per_turn: StrictResourceQuantity
+    stock_ceiling: StrictResourceQuantity | None
+    regenerated: StrictResourceQuantity
+    available_stock: StrictResourceQuantity
+    extraction_capacity_per_turn: StrictResourceQuantity
+    output_per_worker: StrictResourceQuantityPerWorker
+    required_workers: StrictWorkerCount
+    allocated_workers: StrictWorkerCount
+    extracted: StrictResourceQuantity
+    closing_stock: StrictResourceQuantity
+    status: DepositStatus
+
+    @model_validator(mode="after")
+    def _regeneration_and_ceiling_respect_renewability_rule(self) -> ResourceDepositReport:
+        if self.category not in RENEWABLE_RESOURCES:
+            if self.regeneration_per_turn != 0:
+                raise ValueError(
+                    f"{self.category.value} is nonrenewable but regeneration_per_turn="
+                    f"{self.regeneration_per_turn} — must be 0"
+                )
+            if self.stock_ceiling is not None:
+                raise ValueError(
+                    f"{self.category.value} is nonrenewable but stock_ceiling="
+                    f"{self.stock_ceiling} — must be None"
+                )
+        else:
+            if self.stock_ceiling is None:
+                raise ValueError(f"{self.category.value} is renewable but stock_ceiling is None")
+            if self.available_stock > self.stock_ceiling:
+                raise ValueError(
+                    f"available_stock={self.available_stock} exceeds stock_ceiling="
+                    f"{self.stock_ceiling} for renewable {self.category.value}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _regenerated_matches_formula(self) -> ResourceDepositReport:
+        if self.category not in RENEWABLE_RESOURCES:
+            expected = 0
+        else:
+            # stock_ceiling is guaranteed not None here by the renewability-rule validator above
+            # (Pydantic "after" validators on the same model run in declaration order).
+            assert self.stock_ceiling is not None
+            expected = max(
+                0, min(self.regeneration_per_turn, self.stock_ceiling - self.opening_stock)
+            )
+        if self.regenerated != expected:
+            raise ValueError(
+                f"regenerated={self.regenerated} does not match the regeneration formula "
+                f"applied to opening_stock/regeneration_per_turn/stock_ceiling ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _available_stock_matches_formula(self) -> ResourceDepositReport:
+        expected = self.opening_stock + self.regenerated
+        if self.available_stock != expected:
+            raise ValueError(
+                f"available_stock={self.available_stock} does not equal "
+                f"opening_stock + regenerated ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _required_workers_matches_ceiling_division(self) -> ResourceDepositReport:
+        extractable_ceiling = min(self.available_stock, self.extraction_capacity_per_turn)
+        expected = (
+            0
+            if extractable_ceiling == 0
+            else (extractable_ceiling + self.output_per_worker - 1) // self.output_per_worker
+        )
+        if self.required_workers != expected:
+            raise ValueError(
+                f"required_workers={self.required_workers} does not equal "
+                f"ceil(min(available_stock, extraction_capacity_per_turn) / output_per_worker) "
+                f"({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _allocated_does_not_exceed_required(self) -> ResourceDepositReport:
+        if self.allocated_workers > self.required_workers:
+            raise ValueError(
+                f"allocated_workers={self.allocated_workers} exceeds "
+                f"required_workers={self.required_workers} for {self.category.value}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _extracted_matches_three_way_min(self) -> ResourceDepositReport:
+        expected = min(
+            self.available_stock,
+            self.extraction_capacity_per_turn,
+            self.allocated_workers * self.output_per_worker,
+        )
+        if self.extracted != expected:
+            raise ValueError(
+                f"extracted={self.extracted} does not equal min(available_stock, "
+                f"extraction_capacity_per_turn, allocated_workers * output_per_worker) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _closing_stock_matches_conservation(self) -> ResourceDepositReport:
+        expected = self.available_stock - self.extracted
+        if self.closing_stock != expected:
+            raise ValueError(
+                f"closing_stock={self.closing_stock} does not equal "
+                f"available_stock - extracted ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _status_matches_classification_rule(self) -> ResourceDepositReport:
+        if self.extraction_capacity_per_turn == 0:
+            expected = DepositStatus.INACTIVE
+        elif self.available_stock == 0:
+            expected = DepositStatus.DEPLETED
+        elif self.extracted == self.available_stock:
+            expected = DepositStatus.STOCK_CONSTRAINED
+        elif self.extracted == self.extraction_capacity_per_turn:
+            expected = DepositStatus.CAPACITY_CONSTRAINED
+        else:
+            expected = DepositStatus.LABOR_CONSTRAINED
+        if self.status != expected:
+            raise ValueError(
+                f"status={self.status!r} does not match the classification rule applied to "
+                f"extraction_capacity_per_turn/available_stock/extracted (expected {expected!r})"
+            )
+        return self
+
+
+class ResourceExtractionReport(BaseModel):
+    """Structured, machine-readable Phase 2C1 resource-extraction outcome for the player country,
+    for one turn. Player-only, mirroring `LaborMarketReport`/`ProductionReport`'s scope — AI
+    countries may have `economy=None` and get no resource-extraction report.
+
+    `deposits` must contain exactly one entry per `ResourceCategory`, in canonical declaration
+    order. **Unlike every other per-category report collection in this module, noncanonical order
+    is REJECTED here, not normalized (R3)** — see `state.EconomyState`'s sibling validator and
+    `docs/adr/0007-resource-endowments-and-extraction.md` for why.
+
+    No `total_extracted` field: physical quantities of different resources (tonnes, barrels,
+    cubic metres) are never summed together (D4) — only worker counts are aggregated.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    deposits: tuple[ResourceDepositReport, ...]
+    extraction_sector_workers: StrictWorkerCount
+    total_extraction_workers: StrictWorkerCount
+    unassigned_resource_workers: StrictWorkerCount
+
+    @model_validator(mode="after")
+    def _deposits_cover_all_categories_exactly_once_in_canonical_order(
+        self,
+    ) -> ResourceExtractionReport:
+        seen: set[ResourceCategory] = set()
+        for deposit in self.deposits:
+            if deposit.category in seen:
+                raise ValueError(
+                    f"duplicate resource category in extraction report: {deposit.category.value!r}"
+                )
+            seen.add(deposit.category)
+        missing = [c for c in ResourceCategory if c not in seen]
+        if missing:
+            raise ValueError(
+                "resource extraction report is missing resource categories: "
+                f"{[c.value for c in missing]!r} — all {len(ResourceCategory)} are required"
+            )
+        by_category = {deposit.category: deposit for deposit in self.deposits}
+        canonical_order = tuple(by_category[category] for category in ResourceCategory)
+        if canonical_order != self.deposits:
+            got = [d.category.value for d in self.deposits]
+            expected = [c.value for c in ResourceCategory]
+            raise ValueError(
+                "extraction report deposits are not in canonical ResourceCategory order: "
+                f"got {got!r}, expected {expected!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _total_extraction_workers_matches_sum(self) -> ResourceExtractionReport:
+        expected = sum(deposit.allocated_workers for deposit in self.deposits)
+        if self.total_extraction_workers != expected:
+            raise ValueError(
+                f"total_extraction_workers={self.total_extraction_workers} does not equal the "
+                f"sum of deposits[*].allocated_workers ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _unassigned_matches_sector_workers_minus_total(self) -> ResourceExtractionReport:
+        expected = self.extraction_sector_workers - self.total_extraction_workers
+        if self.unassigned_resource_workers != expected:
+            raise ValueError(
+                f"unassigned_resource_workers={self.unassigned_resource_workers} does not equal "
+                f"extraction_sector_workers - total_extraction_workers ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _total_does_not_exceed_sector_workers(self) -> ResourceExtractionReport:
+        if self.total_extraction_workers > self.extraction_sector_workers:
+            raise ValueError(
+                f"total_extraction_workers={self.total_extraction_workers} exceeds "
+                f"extraction_sector_workers={self.extraction_sector_workers}"
+            )
+        return self
+
+
 class SectorProductionReport(BaseModel):
     """One sector's self-validated Phase 2B1 production outcome.
 
@@ -852,24 +1087,57 @@ class TurnReport(BaseModel):
     labor_market: LaborMarketReport | None = None
     """`None` only when labor allocation did not run (never for a successful Phase 2B3+ turn on
     a valid player state). Runs before production in the same phase; see `phases.py`."""
+    resources: ResourceExtractionReport | None = None
+    """`None` only when resource extraction did not run (never for a successful Phase 2C1+ turn
+    on a valid player state). Runs immediately after labor allocation and before resource
+    depletion is written back to state, in the same phase; see `phases.py`."""
 
     @model_validator(mode="after")
-    def _labor_production_derivation_and_finance_are_all_present_or_all_absent(self) -> TurnReport:
-        """R1 (extended, Phase 2B3): a partial combination of the four player-economy reports
-        would represent a broken audit chain (e.g. production ran but derivation silently
-        didn't) — reject it outright rather than accepting whatever subset happens to be present.
+    def _labor_resources_production_derivation_and_finance_are_all_present_or_all_absent(
+        self,
+    ) -> TurnReport:
+        """R1 (extended, Phase 2B3; extended again, Phase 2C1): a partial combination of the five
+        player-economy reports would represent a broken audit chain (e.g. production ran but
+        derivation silently didn't) — reject it outright rather than accepting whatever subset
+        happens to be present.
         """
         present = (
             self.labor_market is not None,
+            self.resources is not None,
             self.production is not None,
             self.tax_base_derivation is not None,
             self.finance is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
-                "labor_market, production, tax_base_derivation, and finance must be all present "
-                f"or all absent on a TurnReport — got present={present} "
-                "(labor_market, production, tax_base_derivation, finance)"
+                "labor_market, resources, production, tax_base_derivation, and finance must be "
+                f"all present or all absent on a TurnReport — got present={present} "
+                "(labor_market, resources, production, tax_base_derivation, finance)"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _labor_market_extraction_sector_matches_resources_extraction_sector_workers(
+        self,
+    ) -> TurnReport:
+        """Phase 2C1: `LaborMarketReport.sectors[EXTRACTION].allocated_workers` must equal
+        `ResourceExtractionReport.extraction_sector_workers` — the worker budget resource
+        sub-allocation actually used must be the exact number labor allocation gave the
+        extraction sector, not merely a similar internally-valid number.
+        """
+        if self.labor_market is None or self.resources is None:
+            return self
+        extraction_row = next(
+            (s for s in self.labor_market.sectors if s.category == SectorCategory.EXTRACTION), None
+        )
+        if extraction_row is None:
+            raise ValueError("labor_market.sectors is missing the EXTRACTION category")
+        if extraction_row.allocated_workers != self.resources.extraction_sector_workers:
+            raise ValueError(
+                "labor_market.sectors[EXTRACTION].allocated_workers="
+                f"{extraction_row.allocated_workers} does not match "
+                "resources.extraction_sector_workers="
+                f"{self.resources.extraction_sector_workers}"
             )
         return self
 

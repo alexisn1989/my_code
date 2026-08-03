@@ -64,6 +64,8 @@ from app.simulation.report import (
     LaborMarketReport,
     PhaseStatus,
     ProductionReport,
+    ResourceDepositReport,
+    ResourceExtractionReport,
     RevenueBreakdown,
     SectorLaborAllocationReport,
     SectorProductionReport,
@@ -71,6 +73,16 @@ from app.simulation.report import (
     TaxBaseDerivationReport,
     TurnReportEntry,
     direction_for,
+)
+from app.simulation.resource_extraction import (
+    DepositExtractionResult,
+    DepositStatus,
+    aggregate_extraction,
+    allocate_extraction_workers,
+    compute_deposit_extraction,
+)
+from app.simulation.resource_extraction import (
+    compute_required_workers as compute_required_resource_workers,
 )
 from app.simulation.state import (
     GameState,
@@ -163,6 +175,14 @@ class PhaseContext:
     computed; `resolver.py` copies this onto the final `TurnReport`. No scratch workspace (like
     `production_report`): allocation reads only current-turn `state...economy`/`population` and
     never spans multiple phases."""
+    resources_report: ResourceExtractionReport | None = None
+    """Set by `_extract_resources`, immediately after `labor_market_report` and before any sector
+    output is computed; `resolver.py` copies this onto the final `TurnReport`. Unlike every other
+    field on this class, building this report is not the only thing `_extract_resources` does:
+    it also writes each deposit's `closing_stock` back into `ctx.state...economy.resource_deposits`
+    in that same step (Phase 2C1, R2) — the one deliberate, narrow exception to this phase's
+    otherwise-unchanged "never mutates state" contract, scoped to `resource_deposits` alone. See
+    `_extract_resources`'s docstring and `docs/adr/0007-resource-endowments-and-extraction.md`."""
     production_report: ProductionReport | None = None
     """Set by `resolve_production_and_trade`; `resolver.py` copies this onto the final
     `TurnReport`. No scratch workspace for production (unlike `finance`): the phase reads
@@ -503,19 +523,102 @@ def _allocate_labor(ctx: PhaseContext) -> LaborMarketReport:
     )
 
 
+def _extract_resources(
+    ctx: PhaseContext, *, extraction_sector_workers: int
+) -> ResourceExtractionReport:
+    """Phase 2C1: deterministic resource regeneration, extraction, and depletion, run immediately
+    after labor allocation and before aggregate sector production, inside
+    `resolve_production_and_trade`. `extraction_sector_workers` is this same turn's
+    `LaborMarketReport.sectors[EXTRACTION].allocated_workers` — the worker budget sub-allocated
+    across the eight deposits.
+
+    Unlike `_allocate_labor` and every other helper in this phase, this function is **not** pure
+    with respect to `ctx.state` (R2, `docs/adr/0007-resource-endowments-and-extraction.md`):
+    extraction and its resulting depletion are one domain operation, so after computing each
+    deposit's closing stock this function writes it straight back into
+    `ctx.state...economy.resource_deposits`, matched by `ResourceCategory` identity — never tuple
+    position, and never any field but `remaining_stock`. This is a deliberate, narrow exception to
+    the phase's otherwise-unchanged "never mutates state" contract; `resolve_production_and_trade`
+    still never reads or writes `ctx.finance`/`ctx.finance_report`/treasury/debt, and this function
+    itself never touches anything but `resource_deposits`. Safe because the resolver's single deep
+    copy and its post-phase invariant re-check (`resolver.py`) are unaffected by *which* phase
+    performed a mutation — an invariant violation later in the same `resolve_turn` call still
+    discards the entire working copy.
+    """
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    economy = player.economy
+    assert economy is not None, "resolve_production_and_trade already required this"
+
+    required_by_category = {
+        deposit.category: compute_required_resource_workers(deposit)
+        for deposit in economy.resource_deposits
+    }
+    allocation_results = allocate_extraction_workers(
+        required_by_category=required_by_category,
+        extraction_sector_workers=extraction_sector_workers,
+    )
+    allocation_by_category = {result.category: result for result in allocation_results}
+
+    deposit_reports: list[ResourceDepositReport] = []
+    extraction_results: list[DepositExtractionResult] = []
+    for deposit in economy.resource_deposits:
+        allocation = allocation_by_category[deposit.category]
+        extraction_result = compute_deposit_extraction(deposit=deposit, allocation=allocation)
+        extraction_results.append(extraction_result)
+        deposit_reports.append(
+            ResourceDepositReport(
+                category=extraction_result.category,
+                opening_stock=extraction_result.opening_stock,
+                regeneration_per_turn=extraction_result.regeneration_per_turn,
+                stock_ceiling=extraction_result.stock_ceiling,
+                regenerated=extraction_result.regenerated,
+                available_stock=extraction_result.available_stock,
+                extraction_capacity_per_turn=extraction_result.extraction_capacity_per_turn,
+                output_per_worker=extraction_result.output_per_worker,
+                required_workers=extraction_result.required_workers,
+                allocated_workers=extraction_result.allocated_workers,
+                extracted=extraction_result.extracted,
+                closing_stock=extraction_result.closing_stock,
+                status=extraction_result.status,
+            )
+        )
+        # R2: extraction and its depletion are one domain operation, performed together right
+        # here — `deposit` is the live model instance inside `ctx.state`'s working copy (not a
+        # fresh parse), so this assignment mutates the working state directly. Matched by
+        # `deposit.category` identity, never by loop/tuple position.
+        deposit.remaining_stock = extraction_result.closing_stock
+
+    aggregates = aggregate_extraction(
+        extraction_sector_workers=extraction_sector_workers,
+        results=tuple(extraction_results),
+    )
+
+    return ResourceExtractionReport(
+        deposits=tuple(deposit_reports),
+        extraction_sector_workers=aggregates.extraction_sector_workers,
+        total_extraction_workers=aggregates.total_extraction_workers,
+        unassigned_resource_workers=aggregates.unassigned_resource_workers,
+    )
+
+
 def _resolve_production_and_trade(ctx: PhaseContext) -> None:
-    """Phase 2B1 sector production, plus (Phase 2B3) the labor allocation that feeds it —
+    """Phase 2B1 sector production, plus (Phase 2B3) the labor allocation that feeds it, plus
+    (Phase 2C1) the resource extraction sub-allocated from the extraction sector's workers —
     trade (imports/exports, cross-country flows) is fully out of scope this phase despite the
     phase's name; that name is the fixed §7 phase slot this fills, not a claim about what's
     implemented.
 
     Deliberately isolated from Phase 2A's government accounting: reads only the player's
     current-turn `EconomyState`/`population` (never `player.finance`/`player.treasury`), writes
-    only `ctx.labor_market_report`/`ctx.production_report` (never `ctx.finance`/
-    `ctx.finance_report`/treasury/debt), and never mutates `state`. This phase runs *before* the
-    finance phases in `PHASE_ORDER`, so both reports are already populated by the time they
-    execute — those phases must never read them (see `tests/test_phase_isolation.py`, which
-    asserts the field sets each phase touches are disjoint).
+    only `ctx.labor_market_report`/`ctx.resources_report`/`ctx.production_report` (never
+    `ctx.finance`/`ctx.finance_report`/treasury/debt). This phase runs *before* the finance phases
+    in `PHASE_ORDER`, so all three reports are already populated by the time they execute — those
+    phases must never read them (see `tests/test_phase_isolation.py`).
+
+    As of Phase 2C1 (R2), this phase is **not** entirely free of state mutation: `_extract_resources`
+    writes each deposit's closing stock into `economy.resource_deposits` as part of computing the
+    resource report — see that function's docstring for why, and for the exact scope of the
+    exception (`resource_deposits` only, nothing else).
     """
     player = ctx.state.world.countries[ctx.state.world.player_country_id]
     economy = player.economy
@@ -545,6 +648,27 @@ def _resolve_production_and_trade(ctx: PhaseContext) -> None:
     )
 
     allocated_by_category = {row.category: row.allocated_workers for row in labor_market.sectors}
+
+    resources = _extract_resources(
+        ctx, extraction_sector_workers=allocated_by_category[SectorCategory.EXTRACTION]
+    )
+    ctx.resources_report = resources
+    status_counts = {status.value: 0 for status in DepositStatus}
+    for deposit_report in resources.deposits:
+        status_counts[deposit_report.status.value] += 1
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="production",
+            reason_id="resource_extraction_resolved",
+            params={
+                "deposits_active": len(resources.deposits)
+                - status_counts[DepositStatus.INACTIVE.value],
+                "deposits_depleted": status_counts[DepositStatus.DEPLETED.value],
+                "total_extraction_workers": resources.total_extraction_workers,
+                "unassigned_resource_workers": resources.unassigned_resource_workers,
+            },
+        )
+    )
 
     sector_reports: list[SectorProductionReport] = []
     results: list[SectorProductionResult] = []
