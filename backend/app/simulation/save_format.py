@@ -49,20 +49,23 @@ so a Phase-0 save at turn 8 cannot be given a valid 9-entry history — there is
 
 SUPPORTED_RULESET_VERSIONS: frozenset[str] = frozenset({RULESET_VERSION})
 """Just the current engine ruleset. Phase 1 (`"0.1.0"`, no government accounting), Phase 2A
-(`"0.2.0"`, no sector production), Phase 2B1 (`"0.3.0"`, no production-derived tax bases), and
-Phase 2B2 (`"0.4.0"`, no derived labor allocation) saves are intentionally excluded: each ruleset
-bump changes what turn resolution actually *does* and/or what `GameState` must contain (Phase 2A
-added required player finance; Phase 2B1 added required player economy; Phase 2B2 removes
-authored `tax_bases` in favor of required `tax_base_coefficients` and per-sector shares; Phase 2B3
-removes authored `SectorState.employed_workers` in favor of a required
-`EconomyState.effective_labor_force_share_bps`), and an older save has no recorded data to run the
-new behavior against, so there is nothing to migrate — rejected with an actionable message, same
-as the save-format-version case above. See `docs/adr/0003-government-accounting.md`,
+(`"0.2.0"`, no sector production), Phase 2B1 (`"0.3.0"`, no production-derived tax bases), Phase
+2B2 (`"0.4.0"`, no derived labor allocation), and Phase 2B3 (`"0.5.0"`, no resource endowments or
+extraction) saves are intentionally excluded: each ruleset bump changes what turn resolution
+actually *does* and/or what `GameState` must contain (Phase 2A added required player finance;
+Phase 2B1 added required player economy; Phase 2B2 removes authored `tax_bases` in favor of
+required `tax_base_coefficients` and per-sector shares; Phase 2B3 removes authored
+`SectorState.employed_workers` in favor of a required
+`EconomyState.effective_labor_force_share_bps`; Phase 2C1 adds a new required
+`EconomyState.resource_deposits`), and an older save has no recorded data to run the new behavior
+against, so there is nothing to migrate — rejected with an actionable message, same as the
+save-format-version case above. See `docs/adr/0003-government-accounting.md`,
 `docs/adr/0004-sector-production-fixed-prices.md`, `docs/adr/0005-production-derived-tax-bases.md`,
-and `docs/adr/0006-labor-allocation-at-fixed-prices.md`.
+`docs/adr/0006-labor-allocation-at-fixed-prices.md`, and
+`docs/adr/0007-resource-endowments-and-extraction.md`.
 """
 
-SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.5.0"})
+SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.6.0"})
 
 _REQUIRED_ENVELOPE_KEYS = {
     "save_format_version",
