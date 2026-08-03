@@ -185,28 +185,53 @@ def test_ai_country_without_economy_is_not_a_violation() -> None:
 
 
 def test_player_economy_uses_the_shared_economy_factory() -> None:
-    economy = make_economy(employed_workers=10)
+    economy = make_economy(effective_labor_force_share_bps=8_000)
     country = make_country("a", population=1_000, economy=economy)
     state = make_game_state(countries={"a": country}, player_country_id="a")
     assert check_invariants(state) == []
     assert state.world.countries["a"].economy is not None
 
 
-def test_sector_employment_exceeding_population_is_a_violation() -> None:
-    economy = make_economy(employed_workers=1_000)  # 11 sectors * 1000 = 11,000
-    country = make_country("a", population=100, economy=economy)  # << total employment
+# --- Phase 2B3: effective-labor-force share/bound backstops ------------------
+
+
+def test_effective_labor_force_share_out_of_range_from_a_bypassed_construction_is_caught_by_invariants() -> (
+    None
+):
+    """`StrictBps` already rejects an out-of-range share at every legitimate
+    construction/assignment path — this is defense-in-depth for a fully bypassed
+    construction, mirroring `tax_base_coefficient_out_of_range` above.
+    """
+    country = make_country("a")
+    assert country.economy is not None
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=99_999,
+        sectors=country.economy.sectors,
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
     state = make_game_state(countries={"a": country}, player_country_id="a")
 
     violations = check_invariants(state)
     codes = {v.code for v in violations}
-    assert "sector_employment_exceeds_population" in codes
+    assert "effective_labor_force_share_out_of_range" in codes
 
 
-def test_sector_employment_exactly_equal_to_population_is_not_a_violation() -> None:
-    economy = make_economy(employed_workers=10)  # 11 sectors * 10 = 110
-    country = make_country("a", population=110, economy=economy)
+def test_effective_labor_force_exceeding_population_from_bypassed_population_is_caught_by_invariants() -> (
+    None
+):
+    """`0 <= effective_labor_force <= population` holds by construction for any *valid*
+    `population`/`effective_labor_force_share_bps` pair — this only exercises the every-turn
+    backstop via a bypassed (`model_copy(update=...)`, which skips field validation)
+    negative population: floor((-1000) * 5000 / 10_000) == -500, which is greater than -1000.
+    """
+    economy = make_economy(effective_labor_force_share_bps=5_000)
+    country = make_country("a", population=1_000, economy=economy)
+    country = country.model_copy(update={"population": -1_000})
     state = make_game_state(countries={"a": country}, player_country_id="a")
-    assert check_invariants(state) == []
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "effective_labor_force_exceeds_population" in codes
 
 
 # --- R1: EconomyState's own construction-time invariant must be re-checked ---
@@ -281,7 +306,10 @@ def test_noncanonical_sector_order_from_a_bypassed_construction_is_caught_by_inv
     assert country.economy is not None
     sectors = list(country.economy.sectors)
     sectors[0], sectors[1] = sectors[1], sectors[0]
-    bypassed = EconomyState.model_construct(sectors=tuple(sectors))
+    bypassed = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=tuple(sectors),
+    )
     country = country.model_copy(update={"economy": bypassed})
     state = make_game_state(countries={"a": country}, player_country_id="a")
 
@@ -327,7 +355,6 @@ def test_sector_tax_base_share_out_of_range_is_caught_by_invariants() -> None:
         category=original.category,
         quarterly_capacity_output=original.quarterly_capacity_output,
         output_per_worker=original.output_per_worker,
-        employed_workers=original.employed_workers,
         value_added_share_bps=-1,
         labor_income_share_bps=original.labor_income_share_bps,
     )

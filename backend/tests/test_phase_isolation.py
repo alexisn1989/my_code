@@ -1,9 +1,10 @@
 """Phase 2B2 changed the isolation contract from Phase 2B1: production and finance are no
 longer fully isolated — production now affects revenue **through derived tax bases**
-(`simulation.tax_base_derivation`). The dependency is deliberately one-directional:
+(`simulation.tax_base_derivation`). Phase 2B3 adds labor allocation ahead of production in the
+same chain, under the same one-directional rule:
 
-- economy -> tax bases -> revenue:  MUST hold (this is the whole point of Phase 2B2)
-- tax rates / spending -> production:  MUST NOT hold (still isolated, as in 2B1)
+- population/labor supply -> allocation -> production -> tax bases -> revenue:  MUST hold
+- tax rates / spending -> allocation / production:  MUST NOT hold (still isolated, as in 2B1)
 
 This module tests both directions. `test_finance_report_is_byte_identical_across_wildly_
 different_economies` (the Phase 2B1 test asserting the *opposite* of the current design)
@@ -11,14 +12,14 @@ is deliberately replaced, not silently deleted — see
 `test_different_economies_produce_different_tax_bases_and_revenue` below, and ADR 0005 for
 why this inversion is intentional. The other two isolation tests keep their original
 premise and become more important now that the dependency is one-directional rather than
-symmetric.
+symmetric; both are extended here to also cover `labor_market`.
 """
 
 from __future__ import annotations
 
 from app.simulation.decisions import BudgetDecision, DecisionSet, SpendingUpdate
 from app.simulation.phases import PhaseContext, run_phases
-from app.simulation.report import FinanceReport, ProductionReport
+from app.simulation.report import FinanceReport, LaborMarketReport, ProductionReport
 from app.simulation.resolver import resolve_turn
 from app.simulation.state import (
     EconomyState,
@@ -82,11 +83,9 @@ def test_different_economies_produce_different_tax_bases_and_revenue() -> None:
     value added and coincidentally match another zero-output economy — that coincidence is
     exactly what made the old, now-inverted test pass for the wrong reason).
     """
-    small_economy = make_economy(
-        quarterly_capacity_output=1_000_000, output_per_worker=1_000_000, employed_workers=1
-    )
+    small_economy = make_economy(quarterly_capacity_output=1_000_000, output_per_worker=1_000_000)
     large_economy = make_economy(
-        quarterly_capacity_output=1_000_000_000, output_per_worker=1_000_000, employed_workers=1_000
+        quarterly_capacity_output=1_000_000_000, output_per_worker=1_000_000
     )
 
     small_finance = _resolve_with_economy(small_economy)
@@ -104,9 +103,7 @@ def test_zero_output_economy_still_reconciles_with_zero_derived_bases() -> None:
     that produces zero output everywhere derives all-zero tax bases, and the turn must
     still reconcile exactly (zero revenue is a valid, not a broken, outcome).
     """
-    zero_economy = make_economy(
-        quarterly_capacity_output=0, output_per_worker=1, employed_workers=0
-    )
+    zero_economy = make_economy(quarterly_capacity_output=0, output_per_worker=1)
     finance = _resolve_with_economy(zero_economy)
     assert finance.tax_bases.personal_income == 0
     assert finance.tax_bases.corporate_profit == 0
@@ -121,7 +118,7 @@ def test_tax_rate_change_does_not_affect_derived_tax_bases() -> None:
     """
     economy = make_economy()
 
-    def _resolve_with_rate(rate_bps: int) -> tuple[TaxBaseState, FinanceReport]:
+    def _resolve_with_rate(rate_bps: int) -> tuple[TaxBaseState, FinanceReport, LaborMarketReport]:
         state = make_game_state(turn=0, state_version=0)
         player_id = state.world.player_country_id
         country = state.world.countries[player_id]
@@ -133,19 +130,28 @@ def test_tax_rate_change_does_not_affect_derived_tax_bases() -> None:
         )
         resolution = resolve_turn(state, decisions)
         assert resolution.report.finance is not None
-        return resolution.report.finance.tax_bases, resolution.report.finance
+        assert resolution.report.labor_market is not None
+        return (
+            resolution.report.finance.tax_bases,
+            resolution.report.finance,
+            resolution.report.labor_market,
+        )
 
-    bases_low, finance_low = _resolve_with_rate(1_000)
-    bases_high, finance_high = _resolve_with_rate(9_000)
+    bases_low, finance_low, labor_market_low = _resolve_with_rate(1_000)
+    bases_high, finance_high, labor_market_high = _resolve_with_rate(9_000)
 
     assert bases_low == bases_high
     assert finance_low.revenue.personal_income_tax != finance_high.revenue.personal_income_tax
+    # Phase 2B3: a tax-rate change must not move labor allocation either.
+    assert labor_market_low.model_dump(mode="json") == labor_market_high.model_dump(mode="json")
 
 
 def test_spending_change_does_not_affect_production_or_derived_bases() -> None:
     economy = make_economy()
 
-    def _resolve_with_spending(amount: int) -> tuple[ProductionReport, TaxBaseState]:
+    def _resolve_with_spending(
+        amount: int,
+    ) -> tuple[ProductionReport, TaxBaseState, LaborMarketReport]:
         state = make_game_state(turn=0, state_version=0)
         player_id = state.world.player_country_id
         country = state.world.countries[player_id]
@@ -164,13 +170,20 @@ def test_spending_change_does_not_affect_production_or_derived_bases() -> None:
         resolution = resolve_turn(state, decisions)
         assert resolution.report.production is not None
         assert resolution.report.finance is not None
-        return resolution.report.production, resolution.report.finance.tax_bases
+        assert resolution.report.labor_market is not None
+        return (
+            resolution.report.production,
+            resolution.report.finance.tax_bases,
+            resolution.report.labor_market,
+        )
 
-    production_low, bases_low = _resolve_with_spending(1)
-    production_high, bases_high = _resolve_with_spending(999_999)
+    production_low, bases_low, labor_market_low = _resolve_with_spending(1)
+    production_high, bases_high, labor_market_high = _resolve_with_spending(999_999)
 
     assert production_low.model_dump(mode="json") == production_high.model_dump(mode="json")
     assert bases_low == bases_high
+    # Phase 2B3: a spending change must not move labor allocation either.
+    assert labor_market_low.model_dump(mode="json") == labor_market_high.model_dump(mode="json")
 
 
 def test_production_report_is_identical_regardless_of_finance_state() -> None:

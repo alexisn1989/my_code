@@ -28,6 +28,7 @@ FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 PHASE1_SAVE_PATH = FIXTURES_DIR / "phase1_save_ruleset_0.1.0.json"
 PHASE2A_SAVE_PATH = FIXTURES_DIR / "phase2a_save_ruleset_0.2.0.json"
 PHASE2B1_SAVE_PATH = FIXTURES_DIR / "phase2b1_save_ruleset_0.3.0.json"
+PHASE2B2_SAVE_PATH = FIXTURES_DIR / "phase2b2_save_ruleset_0.4.0.json"
 
 
 def test_frozen_phase1_save_fixture_declares_the_old_ruleset_version() -> None:
@@ -174,3 +175,40 @@ def test_phase2b1_save_compatibility_is_checked_before_any_entry_payload_is_pars
 
     with pytest.raises(UnsupportedRulesetVersionError):
         load_save_json(json.dumps(raw), source="corrupted-and-incompatible-2b1")
+
+
+# --- Phase 2B2 -> Phase 2B3 ruleset bump -------------------------------------
+#
+# `phase2b2_save_ruleset_0.4.0.json` was frozen with unmodified Phase-2B2 code (tax bases are
+# production-derived, but employment is still scenario-authored) *before* RULESET_VERSION was
+# bumped to 0.5.0 for Phase 2B3 — mirroring every prior fixture above.
+
+
+def test_frozen_phase2b2_save_fixture_declares_the_old_ruleset_version() -> None:
+    raw = json.loads(PHASE2B2_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.4.0"
+    assert raw["ruleset_version"] != RULESET_VERSION
+
+
+def test_phase2b2_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
+    """Rejected specifically via the ruleset-version gate, not incidentally via a missing
+    `effective_labor_force_share_bps` field — proving compatibility is checked before any entry
+    payload is parsed, and that the fixture was frozen before the bump (sequencing risk, same
+    as every prior ruleset bump).
+    """
+    raw_text = read_save_file(PHASE2B2_SAVE_PATH)
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(raw_text, source=str(PHASE2B2_SAVE_PATH))
+
+    message = str(exc_info.value)
+    assert "0.4.0" in message
+    assert RULESET_VERSION in message
+    assert "not loaded" in message
+
+
+def test_phase2b2_save_compatibility_is_checked_before_any_entry_payload_is_parsed() -> None:
+    raw = json.loads(read_save_file(PHASE2B2_SAVE_PATH))
+    raw["entries"][0]["state_json"] = "{not even valid json"
+
+    with pytest.raises(UnsupportedRulesetVersionError):
+        load_save_json(json.dumps(raw), source="corrupted-and-incompatible-2b2")

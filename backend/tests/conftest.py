@@ -92,34 +92,41 @@ def make_economy(
     *,
     quarterly_capacity_output: int = 25_000_000,
     output_per_worker: int = 25_000_000,
-    employed_workers: int = 1,
+    effective_labor_force_share_bps: int = 10_000,
     value_added_share_bps: int = 5_000,
     labor_income_share_bps: int = 5_000,
 ) -> EconomyState:
     """Build a valid `EconomyState` covering all 11 `SectorCategory` values with uniform,
-    round-number defaults (every sector exactly-balanced: `employed_workers * output_per_worker
-    == quarterly_capacity_output`) — tests that need a specific classification or edge case
-    build `SectorState`/`EconomyState` directly instead of overriding this factory's uniform
-    shape.
+    round-number defaults (every sector exactly-balanced: `required_workers * output_per_worker
+    == quarterly_capacity_output`, since `quarterly_capacity_output == output_per_worker` by
+    default gives `required_workers == 1` per sector) — tests that need a specific
+    classification or edge case build `SectorState`/`EconomyState` directly instead of
+    overriding this factory's uniform shape.
+
+    As of Phase 2B3, employment is not authored here — `simulation.labor_allocation` derives it
+    every turn from `effective_labor_force_share_bps` plus each sector's capacity/productivity.
+    The default `effective_labor_force_share_bps=10_000` (100%), paired with `make_country`'s
+    default `population=100`, gives an effective labor force of 100 — comfortably above the 11
+    workers (`len(SectorCategory)`) required at full capacity, so labor stays abundant and every
+    sector gets exactly the one worker it asks for, matching the pre-Phase-2B3 authored shape.
 
     Paired with `make_finance`'s default `tax_base_coefficients`, this produces derived tax
     bases (personal=55,000,000, corporate=27,500,000, consumption=41,250,000) that keep
     `make_finance`'s "comfortably sustainable" default budget claim true post-Phase-2B2 — see
-    that function's docstring. Total employment is 11 (`len(SectorCategory)` * `employed_workers`),
-    far under `make_country`'s default `population=100`.
+    that function's docstring.
     """
     return EconomyState(
+        effective_labor_force_share_bps=effective_labor_force_share_bps,
         sectors=tuple(
             SectorState(
                 category=category,
                 quarterly_capacity_output=quarterly_capacity_output,
                 output_per_worker=output_per_worker,
-                employed_workers=employed_workers,
                 value_added_share_bps=value_added_share_bps,
                 labor_income_share_bps=labor_income_share_bps,
             )
             for category in SectorCategory
-        )
+        ),
     )
 
 
@@ -177,7 +184,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.4.0",
+        content_version="0.5.0",
         seed=seed,
         turn=turn,
         state_version=state_version,

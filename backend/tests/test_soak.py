@@ -88,11 +88,20 @@ def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustai
     for entry in save.entries[1:]:
         report = entry.report()
         assert report is not None
+        assert report.labor_market is not None
+        assert report.production is not None
+        assert report.tax_base_derivation is not None
         assert report.finance is not None
         assert report.finance.reconciliation_status == "reconciled"
         assert report.finance.new_borrowing == 0
+        # Phase 2B3: labor allocation feeds production every turn, same-turn, no lag.
+        allocated_by_category = {
+            s.category: s.allocated_workers for s in report.labor_market.sectors
+        }
+        for row in report.production.sectors:
+            assert row.employed_workers == allocated_by_category[row.category]
 
     print(
-        f"\n{TURNS}-turn soak (real scenario, accounting every turn): "
+        f"\n{TURNS}-turn soak (real scenario, labor+production+derivation+finance every turn): "
         f"{elapsed:.3f}s total, {elapsed / TURNS * 1000:.2f}ms/turn"
     )
