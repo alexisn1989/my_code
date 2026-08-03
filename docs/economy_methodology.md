@@ -1,12 +1,15 @@
-# MANDATE — Economy Methodology (Phase 2A + 2B1 + 2B2)
+# MANDATE — Economy Methodology (Phase 2A + 2B1 + 2B2 + 2B3)
 
 Scope of this document: the government-finance slice implemented in Phase 2A (tax revenue,
 spending, quarterly debt interest, deficit financing), the sector-production slice implemented in
 Phase 2B1 (aggregate sector capacity, labor productivity, employment, deterministic quarterly
-output at fixed base-year prices), and the production-derived tax-base slice implemented in
+output at fixed base-year prices), the production-derived tax-base slice implemented in
 Phase 2B2 (deriving Phase 2A's tax bases from Phase 2B1's production, replacing the fixed
-scenario-authored bases). Nothing else in §13 of the product spec (prices, inflation, wages,
-central banking, exchange rates) is implemented yet; see "Explicitly not yet simulated" below.
+scenario-authored bases), and the labor-allocation slice implemented in Phase 2B3 (deriving
+Phase 2B1's employment from population and sector labor demand, replacing the fixed
+scenario-authored `employed_workers`). Nothing else in §13 of the product spec (prices, inflation,
+wages, central banking, exchange rates) is implemented yet; see "Explicitly not yet simulated"
+below.
 
 ## Units and conventions
 
@@ -215,14 +218,16 @@ fall out of the formula incidentally:
   sector has no capacity." Zero output and zero utilization are still correct in this case; only the
   classification label differs from the zero-capacity case.
 
-## Employment boundary — deliberately static this phase
+## Employment boundary — deliberately static this phase (superseded by Phase 2B3)
 
-`employed_workers` is fixed scenario/decision input. Phase 2B1 does **not** implement wage
-formation, an unemployment rate, labor-force participation, hiring/layoffs, worker movement,
-population-group occupations, immigration, strikes, or tax-driven employment changes. The one
-cross-field check that does exist — `sector_employment_exceeds_population`
-(`simulation.invariants`) — only guards against `sum(employed_workers) > population`; it is not a
-labor-force model.
+As originally shipped, `employed_workers` was fixed scenario/decision input, guarded only by
+`sector_employment_exceeds_population` (`sum(employed_workers) > population`). **Phase 2B3
+removes `employed_workers` entirely** and derives employment every turn from population and
+sector labor demand instead — see "Phase 2B3: Labor Allocation and Unemployment at Fixed Prices"
+below. What stays true from this section: Phase 2B1 itself still does not implement wage
+formation, hiring/layoffs, worker movement, population-group occupations, immigration, strikes,
+or tax-driven employment changes — Phase 2B3 adds *how many workers a sector gets*, not any of
+those dynamics.
 
 ## Report design and self-validation
 
@@ -458,11 +463,169 @@ from" policy as every prior bump. A Phase-2B1-ruleset save fixture
 (`backend/tests/fixtures/phase2b1_save_ruleset_0.3.0.json`) was frozen **before** this bump
 landed — the only way to produce a genuine one. `SAVE_FORMAT_VERSION` is unchanged.
 
-## Explicitly not yet simulated
+## Explicitly not yet simulated (Phase 2A, 2B1, 2B2)
 
 Not yet modeled at all, in Phase 2A, 2B1, or 2B2: tax-rate elasticity, tax avoidance/compliance
-behavior, Laffer-curve effects, production responses to taxes, hiring/firing/labor movement, wage
-bargaining, unemployment, capacity investment or depreciation, GDP/value-added/real-growth figures,
-prices, shortages, inflation, central banking, exchange rates, trade, population approval effects,
-service-quality outcomes, corruption. All of it stays honestly absent rather than faked — see the
-product spec's "no placeholder feature claims" rule (§5.7).
+behavior, Laffer-curve effects, production responses to taxes, capacity investment or
+depreciation, GDP/value-added/real-growth figures, prices, shortages, inflation, central banking,
+exchange rates, trade, population approval effects, service-quality outcomes, corruption. All of
+it stays honestly absent rather than faked — see the product spec's "no placeholder feature
+claims" rule (§5.7).
+
+---
+
+# Phase 2B3: Labor Allocation and Unemployment at Fixed Prices
+
+Sector employment (`SectorState.employed_workers` in Phase 2B1/2B2) is no longer scenario-authored.
+It is derived every turn from the player's population and each sector's labor demand:
+
+```
+population -> effective labor force -> sector labor demand -> deterministic allocation
+    -> employment and unemployment -> existing production -> existing tax-base and finance chain
+```
+
+Still fixed prices, still no wages — this connects population to production, nothing more. See
+`docs/adr/0006-labor-allocation-at-fixed-prices.md` for the design decisions.
+
+## Labor supply — a reduced-form coefficient, not a demographic model
+
+```
+effective_labor_force = floor(population * effective_labor_force_share_bps / 10_000)
+```
+
+`population` is `CountryState.population` — the single authoritative headcount;
+`population_groups` merely partitions it and is not used here. `effective_labor_force_share_bps`
+(a new `StrictBps` field on `EconomyState`) is a deliberately reduced-form placeholder: it
+currently combines working-age share, labor-force participation, and any other structural
+availability limitation into one number, exactly the kind of temporary simplification
+`TaxBaseCoefficients.effective_consumption_base_share_bps` already is (see the Phase 2B2 section
+above). Since `0 <= effective_labor_force_share_bps <= 10_000` and `population >= 0`, floor
+division gives `0 <= effective_labor_force <= population` **by construction**, not by a runtime
+clamp.
+
+## Sector labor demand — a staffing requirement, not observed vacancies
+
+```
+required_workers = 0                                             [quarterly_capacity_output == 0]
+                 = ceil(quarterly_capacity_output / output_per_worker)             [otherwise]
+```
+
+Integer ceiling division only (`(capacity + output_per_worker - 1) // output_per_worker`), no
+floats — `output_per_worker` is already strictly positive (Phase 2B1), so no division-by-zero
+path exists. This is the workers needed to run a sector at **full modeled capacity** — not
+observed job openings, not wage-based labor demand, not profit-maximizing employment; none of
+those concepts exist without a wage/price system, which Phase 2B3 does not add.
+
+## Deterministic allocation — largest-remainder method, canonical tie-breaking
+
+```
+total_labor_demand = sum(required_workers)
+
+if total_labor_demand <= effective_labor_force:      # abundant or exactly equal
+    allocated[i] = required[i]
+else:                                                 # scarce
+    floor_i     = (effective_labor_force * required_i) // total_labor_demand
+    remainder_i = (effective_labor_force * required_i) %  total_labor_demand
+    leftover    = effective_labor_force - sum(floor_i)
+    distribute +1 to the `leftover` sectors with the largest remainder_i,
+      ties broken by ascending canonical SectorCategory declaration order
+```
+
+`allocated_i <= required_i` holds provably, not just empirically: in the abundant branch trivially
+(`allocated_i == required_i`); in the scarce branch, `effective_labor_force < total_labor_demand`
+implies `floor_i <= required_i - 1` whenever `required_i > 0`, and `leftover` is always strictly
+less than the number of sectors with positive demand, so no sector ever receives more than one
+extra unit above its floor. Verified by direct proof, by a hand-picked all-equal-remainder
+fixture (eleven sectors, identical demand, tie-breaking resolved entirely by canonical order —
+`tests/test_labor_allocation.py`), and by a committed property-based test (Hypothesis, 1,000
+random cases per run) proving `0 <= allocated_i <= required_i` and `sum(allocated) ==
+min(labor_force, sum(required))` for arbitrary nonnegative integer inputs.
+
+## Identities
+
+```
+total_employment      = sum(allocated_i) = min(effective_labor_force, total_labor_demand)
+unemployed_workers    = effective_labor_force - total_employment
+unfilled_jobs          = total_labor_demand   - total_employment
+unemployment_rate_bps  = floor(unemployed_workers * 10_000 / effective_labor_force)
+                           [effective_labor_force > 0]
+                       = 0                                        [effective_labor_force == 0]
+```
+
+`unemployment_rate_bps == 0` when the labor force is zero is a documented choice, not a division
+guard worked around silently — 0/0 has no meaningful rate, and 0 is the only non-arbitrary answer.
+
+## Production consumes allocated workers, not an authored field
+
+`production_accounting.compute_sector_output` takes an explicit `allocated_workers` parameter
+instead of reading `SectorState.employed_workers` (which no longer exists) —
+`labor_limited_output = allocated_workers * output_per_worker`, otherwise identical to the Phase
+2B1 formula. `aggregate_production` likewise sums employment from the allocation results rather
+than from state.
+
+## Report design and the four-report cross-validation chain
+
+`LaborMarketReport`/`SectorLaborAllocationReport` (`app.simulation.report`) mirror the existing
+self-validation pattern: every aggregate is independently re-derived from the report's own stored
+sector rows on every construction path, `sectors` covers all eleven categories exactly once in
+canonical order, and per-row `allocated_workers <= required_workers` plus `unfilled_workers ==
+required_workers - allocated_workers` are each checked directly.
+
+`TurnReport`'s cross-report chain extends from three reports to four: `LaborMarketReport
+.allocated_workers` must equal `ProductionReport.employed_workers` for the same `SectorCategory`
+(matched by category identity, never tuple position, for the same reason the Phase 2B2 chain
+does), and `labor_market`/`production`/`tax_base_derivation`/`finance` must be all present or all
+absent — every partial combination is rejected outright.
+
+## Same-turn linkage — no hidden lag
+
+No new `PHASE_ORDER` slot: allocation runs at the **very start** of `resolve_production_and_trade`
+(phase 3), immediately before per-sector output — same phase, same turn. A population or
+labor-force-share change takes effect the turn it applies, proven across a real multi-turn run
+(`tests/test_labor_to_production_linkage.py`), the same way Phase 2B2's derivation linkage is
+proven.
+
+## Not an "acceptable unemployment" rule
+
+Two new every-turn invariants (`effective_labor_force_share_out_of_range`,
+`effective_labor_force_exceeds_population`) are defense-in-depth backstops against a bypassed
+construction — mirroring `tax_base_coefficient_out_of_range`'s role in Phase 2B2 — **not** a claim
+about what unemployment level is acceptable. No invariant enforces an unemployment range: that is
+a scenario-calibration concern (see "Calibration" below), and a future crisis, war, or shock must
+remain free to produce extreme unemployment without tripping an engine-level constraint.
+
+## Calibration — both scenario fixtures land at a plausible ~10% unemployment
+
+Deriving employment from capacity/productivity alone (holding every Phase 2B2 output/base/revenue
+figure fixed) initially produced ~91%/~94.5% unemployment in the two fixtures — technically exact,
+but implausible for developer fixtures that appear in CLI output, documentation, and future
+political-effect tests. Both scenarios' `output_per_worker` (never population, capacity, or the
+labor-force share) were retuned so labor demand rises to a plausible level while every sector's
+`actual_output` — and therefore every output/tax-base/revenue figure — stays byte-for-byte
+identical to Phase 2B2: `tiny_valid.yaml` — labor force 600,000, employment 540,000, unemployed
+60,000 (exactly 10.00%), output 20,000,000,000, bases 4,000,000,000/2,000,000,000/3,000,000,000.
+`deficit_demo.yaml` — labor force 200,000, employment 180,000, unemployed 20,000 (exactly 10.00%),
+output 4,000,000,000, bases 1,000,000,000/500,000,000/800,000,000. Labor stays abundant in both —
+scarcity is exercised only by a dedicated in-test fixture, not a committed scenario. One disclosed
+consequence: since abundant-labor allocation always gives `allocated == required`, and that
+implies `actual_output == capacity` whenever a sector is staffed at all, `labor_constrained`
+becomes unreachable in `tiny_valid` specifically — a real structural consequence of deriving
+employment, not a bug, covered by the scarce in-test fixture instead.
+
+## Version compatibility (Phase 2B3)
+
+`RULESET_VERSION` bumps again, `0.4.0 -> 0.5.0`, and `content_version` bumps alongside it.
+`CountryState`'s reachable economy shape changes in both directions: `EconomyState
+.effective_labor_force_share_bps` becomes newly required, and the previously-required
+`SectorState.employed_workers` field is removed. An older save has no labor-force-share data to
+backfill — the same "nothing to migrate from" policy as every prior bump. A Phase-2B2-ruleset save
+fixture (`backend/tests/fixtures/phase2b2_save_ruleset_0.4.0.json`) was frozen **before** this
+bump landed — the only way to produce a genuine one. `SAVE_FORMAT_VERSION` is unchanged.
+
+## Explicitly not yet simulated (Phase 2B3)
+
+Not modeled: wages or wage bargaining, minimum wage, hiring/firing delay or adjustment costs,
+skills/education matching/occupations, worker mobility costs, labor unions or strikes,
+unemployment benefits, demographic age structure, migration or population growth, tax-rate or
+spending effects on labor supply/demand, and everything the Phase 2A/2B1/2B2 exclusion lists
+above already cover. All of it stays honestly absent rather than faked.

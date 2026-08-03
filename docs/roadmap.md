@@ -212,6 +212,87 @@ capacity investment or depreciation, prices, inflation, GDP/value-added/real-gro
 population approval effects — none of it implied or half-built, stated plainly in
 `docs/economy_methodology.md`.
 
+### Phase 2B3 — Labor allocation and unemployment at fixed prices — **complete**
+
+Scope: replace the last remaining hand-authored input in the production chain —
+`SectorState.employed_workers` — with a deterministic, instantaneous labor foundation: population
+→ effective labor force → sector labor demand → deterministic worker allocation → employment and
+unemployment → existing production → existing tax-base and finance chain. Still fixed prices; no
+wages, hiring friction, tax behavioral responses, or population approval. See
+`docs/economy_methodology.md` for every formula and
+`docs/adr/0006-labor-allocation-at-fixed-prices.md` for the design decisions.
+
+Acceptance criteria:
+- [x] `SectorState.employed_workers` removed entirely — employment is fully turn-local and derived,
+      never authored, mirroring why `GovernmentFinanceState.tax_bases` was removed in Phase 2B2.
+      `EconomyState` gains a required `effective_labor_force_share_bps` — a deliberate reduced-form
+      coefficient (working-age share, participation, and other structural availability, temporarily
+      combined into one number) — feeding `effective_labor_force = floor(population *
+      effective_labor_force_share_bps / 10_000)`, proved `0 <= effective_labor_force <= population`
+      by construction.
+- [x] Pure `simulation/labor_allocation.py`: ceiling-division sector labor demand
+      (`required_workers = ceil(capacity / output_per_worker)`, `0` when capacity is `0`), and a
+      largest-remainder allocation algorithm with an explicit, tested canonical-order tie-break —
+      proven to conserve the total and never over-allocate a sector both by direct proof and by a
+      committed Hypothesis property test (1,000 random cases per run: `0 <= allocated_i <=
+      required_i`, `sum(allocated) == min(labor_force, sum(required))`, always).
+- [x] Labor allocation runs at the very start of the existing production phase (no new
+      `PHASE_ORDER` slot, no reordering) — production consumes this same turn's allocation with no
+      lag, proven across a real multi-turn run.
+- [x] Self-validating `LaborMarketReport`/`SectorLaborAllocationReport`, mirroring the existing
+      report pattern — plus a fourth `TurnReport`-level cross-report check (allocation matches what
+      production actually used, per category) extending the existing three-report completeness
+      rule to four; every partial combination of the four reports is rejected.
+- [x] The relationship stays one-directional: labor supply affects production, tax bases, and
+      revenue; tax rates and spending still do not affect allocation or production — actively
+      tested in both directions.
+- [x] Both scenario fixtures recalibrated (`output_per_worker` retuned only — never population,
+      capacity, or the labor-force share) to land at a plausible ~10% unemployment rate
+      (`tiny_valid`: labor force 600,000 / employment 540,000 / unemployed 60,000; `deficit_demo`:
+      labor force 200,000 / employment 180,000 / unemployed 20,000 — both exactly 10.00%) while
+      every existing Phase 2B2 output/tax-base/revenue figure in both fixtures stays byte-for-byte
+      identical.
+- [x] `RULESET_VERSION` bumped again (`0.4.0 -> 0.5.0`); a Phase-2B2-ruleset save fixture was
+      frozen *before* the bump, mirroring every prior ruleset-bump precedent.
+- [x] CLI `inspect`/`history` extended with a labor-market summary and per-sector allocation
+      breakdown; new `labor_market_resolved` reason ID added to the renderer coverage test.
+- [x] 437 backend tests: labor-supply/demand formula edge cases, allocation algorithm correctness
+      including canonical tie-breaking and the Hypothesis property test, report self-validation
+      corruption, the extended four-report cross-validation chain, resolver/history tamper
+      detection extended to the new report/state fields, compatibility fixture rejection,
+      calibration exactness against both real scenarios, same-turn/no-lag verification, and the
+      existing 8-turn/100-turn integration and soak runs re-verified with allocation resolving
+      every turn.
+
+Explicitly deferred: wages/wage bargaining, minimum wage, hiring/firing delay or adjustment costs,
+skills/education matching/occupations, worker mobility costs, labor unions/strikes, unemployment
+benefits, demographic age structure, migration/population growth, tax-rate or spending effects on
+labor supply/demand, production investment/depreciation, prices/inflation, GDP/growth figures,
+trade, population approval effects — none of it implied or half-built, stated plainly in
+`docs/economy_methodology.md`.
+
+### Phase 2C1 — Resource endowments and extraction — **deferred, not started**
+
+Recorded here so this direction is not silently dropped, not as a commitment to schedule it next.
+No code, fields, formulas, scenarios, or tests exist for this yet — this entry is documentation
+only, per the same "no placeholder feature claims" rule the rest of this roadmap follows.
+
+Scope (planned, not designed in detail): natural-resource endowments and extraction as a distinct
+layer from Phase 2B's aggregate sector production — timber, iron ore, coal, crude oil, natural gas,
+uranium, copper, and critical minerals. Country-level deposits initially (later province/map-level,
+once Phase 6's map exists); finite nonrenewable reserves with exact conservation (extraction can
+never exceed remaining reserves); deterministic renewable regeneration for timber; extraction
+bounded by remaining reserves, extraction capacity, labor, and productivity — the same
+capacity/labor shape Phase 2B1/2B3 already established, applied to a physical-resource domain
+instead of aggregate output. Physical resource quantities are a distinct type family from `Money`
+and `RealOutput`, never conflated with either (mirroring the existing `Money`/`RealOutput`/
+`WorkerCount` separation). Resource-rich and import-dependent country configurations become
+possible content, not just uniform fixtures. Future connections (each its own later phase, not
+implied by this entry): energy and industry (resource inputs feeding production), trade (resource
+imports/exports), sanctions (resource-access denial), nationalization and corruption (resource
+rents as a political-economy lever), environmental damage, alliances and war (resource security as
+a motive), and nuclear programs (uranium specifically).
+
 ## Phase 3 — Government and political survival
 
 Scope: §9 (constitutional system), §10 (political capital/action capacity), §12 (parties/
