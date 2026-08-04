@@ -107,6 +107,14 @@ environment systems, detailed naval logistics, currency unions, colonial/histori
 workshop content sharing, optional locally generated newspaper flavor text. Architecture should
 avoid obvious dead ends against these, without building unused abstraction now.
 
+The base-game economy (§13) includes only a **shallow** natural-resource foundation: finite
+country-level reserves for eight resources, exact conservation, and deterministic extraction
+bounded by stock/capacity/labor (Phase 2C1 — see `docs/roadmap.md` and
+`docs/adr/0007-resource-endowments-and-extraction.md`). A fuller **Resources and Energy
+expansion** — resource-to-industry input-output chains, trade in resources, province/field-level
+deposits, ownership/nationalization/corruption as a resource lever, and environmental effects — is
+explicitly deferred beyond the vertical slice, not implied by the base-game foundation existing.
+
 ## 42. Final product standard
 
 MANDATE succeeds if players can understand their country's condition, make politically meaningful

@@ -89,10 +89,10 @@ provides the single serialization path used by tests, save files, and (later) AP
    at Phase 4, but provable in-process without a database.
 5. **Return** `TurnResolution(state=new_state, report=TurnReport(...))`.
 
-As of Phase 2B3, five of the fifteen phases implement real logic: decision validation, sector
-production (see below — now also performing labor allocation first), government accounting (three
-phases — see below, one of which also performs tax-base derivation), and report generation. The
-remaining named phases (trade, prices,
+As of Phase 2C1, five of the fifteen phases implement real logic: decision validation, sector
+production (see below — now also performing labor allocation and resource extraction first),
+government accounting (three phases — see below, one of which also performs tax-base derivation),
+and report generation. The remaining named phases (trade, prices,
 diplomacy, combat, group welfare, institutional updates, unrest, elections, narrative events) are
 still registered in `PHASE_ORDER` as explicit no-ops — each
 phase handler exists and runs, but does nothing yet and records that fact in
@@ -103,29 +103,36 @@ is marked in dev metadata, not narrated to a hypothetical player as if it were c
 `test_resolver.py::test_only_the_accounting_and_report_phases_are_implemented_so_far` tracks this
 boundary explicitly and is meant to be updated, not weakened, as more phases gain real logic.
 
-### Sector production phase (Phase 2B1, labor allocation added in Phase 2B3)
+### Sector production phase (Phase 2B1, labor allocation added in Phase 2B3, resource extraction added in Phase 2C1)
 
 `resolve_production_and_trade` — the fixed §7 phase slot this fills; only production (plus, as of
-Phase 2B3, the labor allocation that feeds it) is implemented, trade (imports/exports,
-cross-country flows) is explicitly out of scope this phase — reads the player's `EconomyState`
-(required; `simulation.invariants` enforces this the same way it requires player `finance`) and,
-at the very start of the phase, derives this turn's labor allocation via the pure
+Phase 2B3, the labor allocation that feeds it, and as of Phase 2C1, the resource extraction
+sub-allocated from that same labor) is implemented, trade (imports/exports, cross-country flows)
+is explicitly out of scope this phase — reads the player's `EconomyState` (required;
+`simulation.invariants` enforces this the same way it requires player `finance`) and, at the very
+start of the phase, derives this turn's labor allocation via the pure
 `simulation/labor_allocation.py` engine (population, `effective_labor_force_share_bps`, and each
 sector's capacity/productivity — see "Phase 2B3 labor allocation" below), assembling the
-self-validating `LaborMarketReport` into `PhaseContext.labor_market_report`. It then computes each
-sector's labor-limited output (using that sector's just-allocated workers, not a stored field),
-actual output (capped at capacity), capacity-utilization bps, and constraint classification via
-the pure `simulation/production_accounting.py` engine, assembling the self-validating
+self-validating `LaborMarketReport` into `PhaseContext.labor_market_report`. Immediately after
+that, it derives this turn's resource extraction via the pure `simulation/resource_extraction.py`
+engine, sub-allocating the extraction sector's just-allocated workers across the eight resource
+deposits (see "Phase 2C1 resource extraction" below), assembling the self-validating
+`ResourceExtractionReport` into `PhaseContext.resources_report` — and, in that same step, writing
+each deposit's closing stock back into the working `economy.resource_deposits`. It then computes
+each sector's labor-limited output (using that sector's just-allocated workers, not a stored
+field), actual output (capped at capacity), capacity-utilization bps, and constraint classification
+via the pure `simulation/production_accounting.py` engine, assembling the self-validating
 `ProductionReport` into `PhaseContext.production_report` — no `FinanceScratch`-style intermediate
-workspace for either report, since neither spans multiple phases the way accounting does. This
-phase runs *before* the three accounting phases in `PHASE_ORDER` (unchanged — no reordering); it
-is written to never read or write `ctx.finance`/`ctx.finance_report`/treasury/debt itself. As of
-Phase 2B2, the revenue phase immediately after it *does* read `ctx.production_report` (see
-below) — that one, one-directional read is deliberate and actively tested
-(`tests/test_phase_isolation.py`), not an accidental crossing; nothing else reaches across the
-shared `PhaseContext` in either direction. Full formulas: `docs/economy_methodology.md`. Design
-rationale: `docs/adr/0004-sector-production-fixed-prices.md`,
-`docs/adr/0006-labor-allocation-at-fixed-prices.md`.
+workspace for any of the three reports, since none of them span multiple phases the way accounting
+does. This phase runs *before* the three accounting phases in `PHASE_ORDER` (unchanged — no
+reordering); it is written to never read or write `ctx.finance`/`ctx.finance_report`/treasury/debt
+itself. As of Phase 2B2, the revenue phase immediately after it *does* read
+`ctx.production_report` (see below) — that one, one-directional read is deliberate and actively
+tested (`tests/test_phase_isolation.py`), not an accidental crossing; nothing else reaches across
+the shared `PhaseContext` in either direction. Full formulas: `docs/economy_methodology.md`.
+Design rationale: `docs/adr/0004-sector-production-fixed-prices.md`,
+`docs/adr/0006-labor-allocation-at-fixed-prices.md`,
+`docs/adr/0007-resource-endowments-and-extraction.md`.
 
 ### Phase 2B3 labor allocation
 
@@ -134,13 +141,49 @@ immediately before per-sector output — same phase, same turn, so same-turn lin
 or labor-force-share change affects production the turn it applies) is structural.
 `SectorState.employed_workers` (Phase 2B1/2B2) is removed entirely; employment is now purely
 derived and turn-local, stored only on `PhaseContext.labor_market_report` and copied onto
-`TurnReport.labor_market` by `resolver.py`, alongside `production`, `tax_base_derivation`, and
-`finance`. `TurnReport`'s cross-report validators extend from three reports to four:
-`LaborMarketReport.allocated_workers` must match `ProductionReport.employed_workers` per
-`SectorCategory` (matched by category identity, never tuple position), and
-`labor_market`/`production`/`tax_base_derivation`/`finance` must be all present or all absent. See
-`docs/economy_methodology.md` and `docs/adr/0006-labor-allocation-at-fixed-prices.md` for the full
-formulas, the largest-remainder allocation algorithm and its tie-breaking rule, and the
+`TurnReport.labor_market` by `resolver.py`, alongside `production`, `tax_base_derivation`,
+`finance`, and (as of Phase 2C1) `resources`. `TurnReport`'s cross-report validators extend from
+three reports to four: `LaborMarketReport.allocated_workers` must match
+`ProductionReport.employed_workers` per `SectorCategory` (matched by category identity, never
+tuple position), and `labor_market`/`production`/`tax_base_derivation`/`finance` must be all
+present or all absent. See `docs/economy_methodology.md` and
+`docs/adr/0006-labor-allocation-at-fixed-prices.md` for the full formulas, the largest-remainder
+allocation algorithm and its tie-breaking rule, and the calibration approach.
+
+### Phase 2C1 resource extraction
+
+No new `PHASE_ORDER` slot: extraction runs immediately after labor allocation, at the start of
+`resolve_production_and_trade`, before per-sector production — same phase, same turn. The
+extraction **sector's** just-allocated workers (`LaborMarketReport.sectors[EXTRACTION]
+.allocated_workers`) are the budget, sub-allocated across the eight resource deposits by the
+shared `simulation/integer_allocation.py` core (see below). Unlike every other helper in this
+phase, resource extraction is **not** pure with respect to `ctx.state`: after computing each
+deposit's closing stock, it writes that value straight back into
+`economy.resource_deposits`, matched by `ResourceCategory` identity — never tuple position, and
+never any field but `remaining_stock`. This is a deliberate, narrow exception to the phase's
+otherwise-unchanged "never mutates state" contract; `resolve_production_and_trade` still never
+reads or writes `ctx.finance`/`ctx.finance_report`/treasury/debt, and resource extraction itself
+never touches anything but `resource_deposits`. Safe because the resolver's single deep copy and
+its post-phase invariant re-check are unaffected by *which* phase performed a mutation — an
+invariant violation later in the same `resolve_turn` call still discards the entire working copy.
+
+`SectorState`'s labor supply and `EconomyState.resource_deposits`'s physical endowments are
+otherwise fully isolated from production/tax bases/revenue (conservation-only boundary, D8):
+resource endowments determine extraction; extraction changes no production, tax base, revenue,
+price, trade, approval, or war outcome this phase. `TurnReport.resources: ResourceExtractionReport
+| None` is a fifth report, copied onto `TurnReport` by `resolver.py`; the completeness rule
+extends from four reports to five, and a new cross-report validator checks
+`labor_market.sectors[EXTRACTION].allocated_workers == resources.extraction_sector_workers`.
+
+The shared largest-remainder allocation core (used by both labor and resources) lives in
+`simulation/integer_allocation.py`, extracted verbatim from the pre-Phase-2C1 labor algorithm
+since it had no labor-specific content. It is **order-sensitive by contract**, not
+permutation-independent: `labor_allocation.allocate_workers` keeps its existing canonical-tuple
+signature byte-for-byte unchanged, while `resource_extraction.allocate_extraction_workers` (the
+one caller needing permutation independence) accepts a category-keyed mapping and canonicalizes to
+`tuple(ResourceCategory)` order *before* calling the core. See `docs/economy_methodology.md` and
+`docs/adr/0007-resource-endowments-and-extraction.md` for the full formulas, the
+regeneration/ceiling/conservation identities, the status-classification tie-break, and the
 calibration approach.
 
 ### Government accounting phases (Phase 2A, extended in Phase 2B2)

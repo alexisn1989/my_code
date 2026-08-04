@@ -271,27 +271,105 @@ labor supply/demand, production investment/depreciation, prices/inflation, GDP/g
 trade, population approval effects — none of it implied or half-built, stated plainly in
 `docs/economy_methodology.md`.
 
-### Phase 2C1 — Resource endowments and extraction — **deferred, not started**
+### Phase 2C1 — Resource endowments and extraction — **complete**
 
-Recorded here so this direction is not silently dropped, not as a commitment to schedule it next.
-No code, fields, formulas, scenarios, or tests exist for this yet — this entry is documentation
-only, per the same "no placeholder feature claims" rule the rest of this roadmap follows.
+Scope: the shallow base-game resource foundation deferred (not designed) at the end of Phase 2B3
+— a conservation layer distinct from Phase 2B's aggregate sector production: eight physical
+natural resources (timber, iron ore, coal, crude oil, natural gas, uranium, copper, critical
+minerals), country-level finite reserves, deterministic timber regeneration, and extraction
+bounded by stock/capacity/labor/productivity. Deliberately **not** the future Resources and Energy
+expansion — see "Explicitly deferred" below. See `docs/economy_methodology.md` for every formula
+and `docs/adr/0007-resource-endowments-and-extraction.md` for the design decisions, including the
+R1–R9 independent-review corrections applied during this phase.
 
-Scope (planned, not designed in detail): natural-resource endowments and extraction as a distinct
-layer from Phase 2B's aggregate sector production — timber, iron ore, coal, crude oil, natural gas,
-uranium, copper, and critical minerals. Country-level deposits initially (later province/map-level,
-once Phase 6's map exists); finite nonrenewable reserves with exact conservation (extraction can
-never exceed remaining reserves); deterministic renewable regeneration for timber; extraction
-bounded by remaining reserves, extraction capacity, labor, and productivity — the same
-capacity/labor shape Phase 2B1/2B3 already established, applied to a physical-resource domain
-instead of aggregate output. Physical resource quantities are a distinct type family from `Money`
-and `RealOutput`, never conflated with either (mirroring the existing `Money`/`RealOutput`/
-`WorkerCount` separation). Resource-rich and import-dependent country configurations become
-possible content, not just uniform fixtures. Future connections (each its own later phase, not
-implied by this entry): energy and industry (resource inputs feeding production), trade (resource
-imports/exports), sanctions (resource-access denial), nationalization and corruption (resource
-rents as a political-economy lever), environmental damage, alliances and war (resource security as
-a motive), and nuclear programs (uranium specifically).
+Acceptance criteria:
+- [x] `ResourceCategory` (8 fixed categories, canonical declaration order) and
+      `EconomyState.resource_deposits: tuple[ResourceDepositState, ...]` — all 8 categories
+      required exactly once, zero-stock/zero-capacity entries legal. **Unlike every other
+      canonical-order validator in the codebase, noncanonical resource order is REJECTED, not
+      silently normalized** (R3) — a deliberate divergence, justified in the ADR.
+- [x] New physical-quantity type family in `core/quantity.py`
+      (`StrictResourceQuantity`/`StrictResourceQuantityPerWorker`) — distinct from `Money` and
+      `RealOutput`; no conversion function to either exists, so "resources feed nothing yet" is
+      structurally true, not just documented. Heterogeneous resource quantities (tonnes, barrels,
+      cubic metres) are never summed together — only worker counts and per-status counts are
+      aggregated.
+- [x] Pure `simulation/resource_extraction.py`: regeneration (renewable only, clamped to a stock
+      ceiling, applied before extraction the same turn), ceiling-division labor demand, extraction
+      bounded by `min(available_stock, extraction_capacity_per_turn, allocated_workers *
+      output_per_worker)`, exact conservation by construction, and a five-way status
+      classification (`inactive`/`depleted`/`stock_constrained`/`capacity_constrained`/
+      `labor_constrained`) with an explicit boundary rule: when available stock exactly ties
+      extraction capacity, the deposit reports `stock_constrained`, not `capacity_constrained` —
+      the stock, not the capacity, determined the outcome (R8).
+- [x] The shared largest-remainder allocation core (labor and resources both use it) moved to a
+      new, category-agnostic `simulation/integer_allocation.py` — **explicitly order-sensitive by
+      contract, not permutation-independent** (R7): `labor_allocation.allocate_workers` keeps its
+      existing canonical-tuple signature byte-for-byte; the resource wrapper
+      (`allocate_extraction_workers`) takes a category-keyed mapping and canonicalizes to
+      `tuple(ResourceCategory)` order *before* calling the core, so permuting the mapping's
+      insertion order provably cannot change the result.
+- [x] Extraction runs at the very start of `resolve_production_and_trade` (phase 3), immediately
+      after labor allocation, sub-allocating the extraction sector's already-allocated workers
+      across the 8 deposits. No `PHASE_ORDER` change. **Depletion is applied in the same step**
+      (R2) — a deliberate, narrow, explicitly-tested exception to phase 3's prior "never mutates
+      state" contract, scoped to `economy.resource_deposits` alone; phase 5 needs no
+      resource-related code at all.
+- [x] Self-validating `ResourceExtractionReport`/`ResourceDepositReport` — the deposit report
+      carries `regeneration_per_turn`/`stock_ceiling` (R1) specifically so regeneration is
+      genuinely re-derivable from the report's own stored fields, not merely trusted. `TurnReport`
+      gains a fifth report and a new cross-report check (labor's extraction-sector allocation
+      matches the resource report's worker budget exactly); the completeness rule extends from
+      four reports to five, rejecting all 30 proper nonempty partial combinations.
+- [x] The relationship stays one-directional and conservation-only (D8): resource endowments
+      determine extraction; extraction changes no production, tax base, revenue, price, trade,
+      approval, or war outcome this phase — actively tested in both directions, including that
+      phase 3's mutation is scoped to `resource_deposits` and nothing else in state.
+- [x] Both scenario fixtures gain resource endowments — `tiny_valid.yaml` resource-rich (all 8
+      categories active), `deficit_demo.yaml` resource-poor/import-dependent (only timber and iron
+      ore endowed) — while every existing Phase 2B3 labor/production/tax-base/revenue/treasury
+      figure in both stays byte-for-byte identical. `deficit_demo`'s timber trajectory is worked
+      out exactly across three regimes: capacity-bound decline (resolutions 1–39), a
+      `stock_constrained` boundary turn where available stock ties capacity exactly (resolution
+      40), and a steady state extracting exactly the regenerated amount forever (resolutions 41+).
+- [x] `RULESET_VERSION` bumped again (`0.5.0 -> 0.6.0`); a Phase-2B3-ruleset save fixture was
+      frozen *before* the bump, mirroring every prior ruleset-bump precedent.
+- [x] CLI `inspect`/`history` extended with a resource-extraction summary and per-deposit
+      breakdown (each in its own physical unit); `inspect` also summarizes endowments at turn 0,
+      directly from state, since (unlike production/labor figures) they exist before any turn is
+      resolved. New `resource_extraction_resolved` reason ID added to the renderer coverage test.
+- [x] 567 backend tests: strict physical-quantity validation, formula/classification correctness
+      including the three-regime timber dynamic and the stock/capacity tie boundary, the neutral
+      allocation core's order-sensitivity pinned directly (not just its wrappers' behavior),
+      mapping-permutation resistance for the resource wrapper, report self-validation corruption
+      (including the two new R1 fields), the extended five-report cross-validation chain (all 30
+      partial combinations), resolver/history tamper detection extended to the new state/report
+      fields, a CLI-level no-stray-temp-file assertion (R5), compatibility fixture rejection,
+      calibration exactness against both real scenarios, same-turn/no-lag verification, phase-3
+      mutation-scope isolation, and the existing 8-turn/100-turn integration and soak runs
+      re-verified with extraction resolving every turn (plus a dedicated 100-turn `deficit_demo`
+      soak exercising the full three-regime timber trajectory).
+
+Explicitly deferred — this is the shallow base-game foundation, not the future **Resources and
+Energy expansion**: market prices/inflation/exchange-rate valuation for resources; imports,
+exports, trade routes, tariffs, embargoes, stockpiles separate from deposits; resource-to-industry
+input-output chains and energy conversion (the extraction sector's `RealOutput` and physical
+tonnage remain two descriptions of the same labor, not two connected activities — see the ADR);
+pipelines, refineries, individual mines/fields, construction, maintenance; ownership, private
+firms, state enterprises, royalties, concessions, foreign investment; nationalization,
+privatization, cartels, lobbying, corruption, sanctions, smuggling; pollution, climate effects,
+reclamation, accidents, environmental politics; military consumption, strategic reserves, resource
+wars, nuclear-weapons inputs; exploration, discovery, technological substitution, reserve
+reclassification; province/field/mine-level geography (waits for Phase 6's map); any new API
+route, database table, migration, or gameplay frontend. None of it implied or half-built, stated
+plainly in `docs/economy_methodology.md`.
+
+**Recommended next bounded ticket — Phase 2C2:** replace (never add to) the extraction sector's
+`RealOutput` derivation with one computed from that turn's physical extraction, through a single
+named unit-bridge function mirroring `base_year_real_output_to_money`. This is what makes
+resources economically meaningful and resolves the "two descriptions of the same labor"
+limitation — but it will move tax bases and revenue, so it needs its own calibration pass and its
+own ticket, not bundled into this one.
 
 ## Phase 3 — Government and political survival
 
