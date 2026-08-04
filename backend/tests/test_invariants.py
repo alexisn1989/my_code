@@ -10,9 +10,12 @@ from app.simulation.invariants import check_invariants
 from app.simulation.resolver import resolve_turn
 from app.simulation.save_format import SAVE_FORMAT_VERSION
 from app.simulation.state import (
+    RENEWABLE_RESOURCES,
     EconomyState,
     InstitutionState,
     PopulationGroupState,
+    ResourceCategory,
+    ResourceDepositState,
     SectorState,
     TaxBaseCoefficients,
 )
@@ -207,6 +210,7 @@ def test_effective_labor_force_share_out_of_range_from_a_bypassed_construction_i
     bypassed_economy = EconomyState.model_construct(
         effective_labor_force_share_bps=99_999,
         sectors=country.economy.sectors,
+        resource_deposits=country.economy.resource_deposits,
     )
     country = country.model_copy(update={"economy": bypassed_economy})
     state = make_game_state(countries={"a": country}, player_country_id="a")
@@ -232,6 +236,203 @@ def test_effective_labor_force_exceeding_population_from_bypassed_population_is_
     violations = check_invariants(state)
     codes = {v.code for v in violations}
     assert "effective_labor_force_exceeds_population" in codes
+
+
+# --- Phase 2C1: resource_deposits structural/renewability backstops ----------
+
+
+def _deposit(
+    category: ResourceCategory,
+    *,
+    remaining_stock: int = 0,
+    extraction_capacity_per_turn: int = 0,
+    output_per_worker: int = 1,
+    regeneration_per_turn: int = 0,
+    stock_ceiling: int | None = None,
+) -> ResourceDepositState:
+    if category in RENEWABLE_RESOURCES and stock_ceiling is None:
+        stock_ceiling = remaining_stock
+    return ResourceDepositState(
+        category=category,
+        remaining_stock=remaining_stock,
+        extraction_capacity_per_turn=extraction_capacity_per_turn,
+        output_per_worker=output_per_worker,
+        regeneration_per_turn=regeneration_per_turn if category in RENEWABLE_RESOURCES else 0,
+        stock_ceiling=stock_ceiling,
+    )
+
+
+def _all_resource_deposits(
+    overrides: dict[ResourceCategory, ResourceDepositState] | None = None,
+) -> tuple[ResourceDepositState, ...]:
+    overrides = overrides or {}
+    return tuple(overrides.get(category, _deposit(category)) for category in ResourceCategory)
+
+
+def test_duplicate_resource_category_from_a_bypassed_construction_is_caught_by_invariants() -> None:
+    """`EconomyState`'s own constructor already rejects this on every legitimate path — this is
+    defense-in-depth for a fully bypassed construction, mirroring `duplicate_sector_category`.
+    """
+    country = make_country("a")
+    assert country.economy is not None
+    deposits = list(_all_resource_deposits())
+    deposits[1] = _deposit(deposits[0].category)  # duplicate the first category
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=country.economy.sectors,
+        resource_deposits=tuple(deposits),
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "duplicate_resource_category" in codes
+
+
+def test_missing_resource_category_from_a_bypassed_construction_is_caught_by_invariants() -> None:
+    country = make_country("a")
+    assert country.economy is not None
+    deposits = _all_resource_deposits()[:-1]  # drop critical_minerals
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=country.economy.sectors,
+        resource_deposits=deposits,
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "missing_resource_category" in codes
+
+
+def test_noncanonical_resource_order_from_a_bypassed_construction_is_caught_by_invariants() -> None:
+    """R3: unlike `noncanonical_sector_order`, `EconomyState`'s own constructor already
+    **rejects** reordered `resource_deposits` outright on every legitimate path (it does not
+    merely normalize, the way the sector validator does) — so this backstop is reachable only
+    through a fully bypassed construction, making it even more purely defense-in-depth than its
+    sector-order counterpart.
+    """
+    country = make_country("a")
+    assert country.economy is not None
+    deposits = list(_all_resource_deposits())
+    deposits[0], deposits[1] = deposits[1], deposits[0]
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=country.economy.sectors,
+        resource_deposits=tuple(deposits),
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "noncanonical_resource_order" in codes
+    assert "duplicate_resource_category" not in codes
+    assert "missing_resource_category" not in codes
+
+
+def test_resource_regeneration_on_nonrenewable_from_a_bypassed_construction_is_caught_by_invariants() -> (
+    None
+):
+    """`ResourceDepositState`'s own constructor already rejects this on every legitimate path —
+    defense-in-depth for a fully bypassed row construction."""
+    country = make_country("a")
+    assert country.economy is not None
+    bypassed_deposit = ResourceDepositState.model_construct(
+        category=ResourceCategory.IRON_ORE,
+        remaining_stock=0,
+        extraction_capacity_per_turn=0,
+        output_per_worker=1,
+        regeneration_per_turn=5,  # illegal for a nonrenewable
+        stock_ceiling=None,
+    )
+    deposits = _all_resource_deposits({ResourceCategory.IRON_ORE: bypassed_deposit})
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=country.economy.sectors,
+        resource_deposits=deposits,
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "resource_regeneration_on_nonrenewable" in codes
+
+
+def test_renewable_missing_stock_ceiling_from_a_bypassed_construction_is_caught_by_invariants() -> (
+    None
+):
+    country = make_country("a")
+    assert country.economy is not None
+    bypassed_deposit = ResourceDepositState.model_construct(
+        category=ResourceCategory.TIMBER,
+        remaining_stock=0,
+        extraction_capacity_per_turn=0,
+        output_per_worker=1,
+        regeneration_per_turn=5,
+        stock_ceiling=None,  # illegal for a renewable
+    )
+    deposits = _all_resource_deposits({ResourceCategory.TIMBER: bypassed_deposit})
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=country.economy.sectors,
+        resource_deposits=deposits,
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "renewable_missing_stock_ceiling" in codes
+
+
+def test_resource_stock_exceeds_ceiling_from_a_bypassed_construction_is_caught_by_invariants() -> (
+    None
+):
+    country = make_country("a")
+    assert country.economy is not None
+    bypassed_deposit = ResourceDepositState.model_construct(
+        category=ResourceCategory.TIMBER,
+        remaining_stock=101,
+        extraction_capacity_per_turn=0,
+        output_per_worker=1,
+        regeneration_per_turn=5,
+        stock_ceiling=100,  # below remaining_stock
+    )
+    deposits = _all_resource_deposits({ResourceCategory.TIMBER: bypassed_deposit})
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=country.economy.sectors,
+        resource_deposits=deposits,
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "resource_stock_exceeds_ceiling" in codes
+
+
+def test_nested_resource_deposit_mutation_into_a_duplicate_category_is_caught_by_invariants() -> (
+    None
+):
+    """The resource-side mirror of `test_nested_sector_mutation_into_a_duplicate_category_is_
+    caught_by_invariants` below: `ResourceDepositState` is deliberately mutable, so a live
+    `deposit.category = ...` assignment re-validates that one row but never re-triggers the
+    *parent* `EconomyState`'s completeness validator.
+    """
+    country = make_country("a")
+    assert country.economy is not None
+    country.economy.resource_deposits[1].category = country.economy.resource_deposits[2].category
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "duplicate_resource_category" in codes
+    assert "missing_resource_category" in codes
 
 
 # --- R1: EconomyState's own construction-time invariant must be re-checked ---
@@ -309,6 +510,7 @@ def test_noncanonical_sector_order_from_a_bypassed_construction_is_caught_by_inv
     bypassed = EconomyState.model_construct(
         effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
         sectors=tuple(sectors),
+        resource_deposits=country.economy.resource_deposits,
     )
     country = country.model_copy(update={"economy": bypassed})
     state = make_game_state(countries={"a": country}, player_country_id="a")

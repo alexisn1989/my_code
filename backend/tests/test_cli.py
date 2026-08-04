@@ -142,6 +142,10 @@ def test_invalid_decisions_file_produces_no_output_and_leaves_input_untouched(
     assert exit_code == 1
     assert not bad_out.exists()
     assert save0.read_bytes() == before_bytes
+    # T18/R5: no stray write_save_atomic temp file left behind either — a general-purpose CLI
+    # safety property (not resource-specific), extended here rather than duplicated into a new
+    # resource-triggered failure test, since it protects any future failure path for free.
+    assert {p.name for p in tmp_path.iterdir()} == {save0.name, bad_decisions_file.name}
 
 
 def test_stale_decisions_file_expected_turn_is_rejected(tmp_path: Path) -> None:

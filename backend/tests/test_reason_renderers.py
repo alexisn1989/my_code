@@ -27,6 +27,12 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "unfilled_jobs": 0,
         "unemployment_rate_bps": 1000,
     },
+    "resource_extraction_resolved": {
+        "deposits_active": 8,
+        "deposits_depleted": 0,
+        "total_extraction_workers": 13500,
+        "unassigned_resource_workers": 6500,
+    },
     "production_summary": {
         "total_employment": 21550,
         "total_gross_output": 1765000,
@@ -121,6 +127,15 @@ def test_real_resolver_output_never_hits_the_fallback_labor_market_resolved() ->
     entries = _resolve_with("tiny_valid.yaml")
     ids = {e.reason_id for e in entries}
     assert "labor_market_resolved" in ids
+    for entry in entries:
+        assert entry.reason_id in REASON_RENDERERS
+        assert "unrendered" not in render_entry(entry)
+
+
+def test_real_resolver_output_never_hits_the_fallback_resource_extraction_resolved() -> None:
+    entries = _resolve_with("tiny_valid.yaml")
+    ids = {e.reason_id for e in entries}
+    assert "resource_extraction_resolved" in ids
     for entry in entries:
         assert entry.reason_id in REASON_RENDERERS
         assert "unrendered" not in render_entry(entry)

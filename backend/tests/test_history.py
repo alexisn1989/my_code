@@ -333,6 +333,68 @@ def test_tampering_with_only_the_tax_base_derivation_report_is_detected() -> Non
     assert any("entry_hash does not match" in p for p in problems)
 
 
+def test_tampering_with_only_the_resource_deposit_state_is_detected() -> None:
+    """Dedicated Phase 2C1 tamper test (T16): `state...economy.resource_deposits` is new surface
+    area covered by `entry_hash`, independent of every other tamper test above. Tampers a
+    nonrenewable category (`IRON_ORE`, index 1) rather than `TIMBER` (index 0) specifically to
+    avoid also tripping the renewable ceiling invariant — `make_resource_deposits`'s default sets
+    a renewable's `stock_ceiling` equal to its `remaining_stock`, so bumping the stock alone
+    would push it past its own ceiling and conflate two different kinds of detection.
+    """
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    tampered_state = original.state()
+    country_id = tampered_state.world.player_country_id
+    country = tampered_state.world.countries[country_id]
+    assert country.economy is not None
+    tampered_state.world.countries[country_id] = country.model_copy(
+        update={
+            "economy": country.economy.model_copy(
+                update={
+                    "resource_deposits": tuple(
+                        d.model_copy(update={"remaining_stock": d.remaining_stock + 1})
+                        if i == 1
+                        else d
+                        for i, d in enumerate(country.economy.resource_deposits)
+                    )
+                }
+            )
+        }
+    )
+    tampered_json = canonical_dumps(tampered_state.model_dump(mode="json"))
+    assert tampered_json != original.state_json
+    tampered_entry = dataclasses.replace(original, state_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry, *save.entries[index + 1 :])
+    tampered = dataclasses.replace(save, entries=entries)
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
+def test_tampering_with_only_the_resource_extraction_report_is_detected() -> None:
+    """Dedicated Phase 2C1 tamper test (T16): `report.resources` is new surface area covered by
+    `entry_hash`, independent of the production/labor-market/tax-base tamper tests above."""
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None
+    assert report.resources is not None
+    tampered_resources = report.resources.model_copy(
+        update={"unassigned_resource_workers": report.resources.unassigned_resource_workers + 1}
+    )
+    tampered_report = report.model_copy(update={"resources": tampered_resources})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered_entry = dataclasses.replace(original, report_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry)
+    tampered = dataclasses.replace(save, entries=entries, entry_count=len(entries))
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
 def test_tampering_with_only_the_tax_base_coefficients_is_detected() -> None:
     """Dedicated Phase 2B2 tamper test: `finance.tax_base_coefficients` is new surface area
     covered by `entry_hash`, independent of the economy-sector tamper test above."""

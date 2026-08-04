@@ -6,6 +6,7 @@ import pytest
 
 from app.core.money import Money
 from app.simulation.state import (
+    RENEWABLE_RESOURCES,
     RULESET_VERSION,
     CountryState,
     EconomyState,
@@ -13,6 +14,8 @@ from app.simulation.state import (
     GovernmentFinanceState,
     InstitutionState,
     PopulationGroupState,
+    ResourceCategory,
+    ResourceDepositState,
     SectorCategory,
     SectorState,
     SpendingPlanState,
@@ -88,6 +91,56 @@ def make_finance(
     )
 
 
+def make_resource_deposits(
+    *,
+    remaining_stock: int = 0,
+    extraction_capacity_per_turn: int = 0,
+    output_per_worker: int = 1,
+    regeneration_per_turn: int = 0,
+    stock_ceiling: int | None = None,
+) -> tuple[ResourceDepositState, ...]:
+    """Build a valid `ResourceDepositState` tuple covering all 8 `ResourceCategory` values.
+
+    Defaults to all-inactive (zero stock, zero capacity) rather than a uniform active shape like
+    `make_economy`'s sectors — the overwhelming majority of existing tests predate Phase 2C1 and
+    don't care about resources at all, so the default must be a trivially valid, side-effect-free
+    block: every deposit's `required_workers == 0` regardless of how many workers the extraction
+    sector happens to have allocated, so adding this field to every `EconomyState` cannot change
+    any pre-Phase-2C1 test's labor/production/finance figures. Tests exercising specific resource
+    behavior build `ResourceDepositState` tuples directly instead of overriding this factory's
+    uniform shape, mirroring `make_economy`'s own documented convention for `SectorState`.
+
+    `output_per_worker` defaults to `1` (the minimum legal `StrictResourceQuantityPerWorker`)
+    since it is never exercised at zero capacity. For the one renewable category (`TIMBER`),
+    `stock_ceiling` defaults to `remaining_stock` when not given explicitly — the minimum legal
+    ceiling (`stock_ceiling >= remaining_stock`) — so the all-zero default satisfies
+    `ResourceDepositState`'s renewability validators without the caller needing to think about it.
+    """
+    deposits: list[ResourceDepositState] = []
+    for category in ResourceCategory:
+        if category in RENEWABLE_RESOURCES:
+            deposits.append(
+                ResourceDepositState(
+                    category=category,
+                    remaining_stock=remaining_stock,
+                    extraction_capacity_per_turn=extraction_capacity_per_turn,
+                    output_per_worker=output_per_worker,
+                    regeneration_per_turn=regeneration_per_turn,
+                    stock_ceiling=(stock_ceiling if stock_ceiling is not None else remaining_stock),
+                )
+            )
+        else:
+            deposits.append(
+                ResourceDepositState(
+                    category=category,
+                    remaining_stock=remaining_stock,
+                    extraction_capacity_per_turn=extraction_capacity_per_turn,
+                    output_per_worker=output_per_worker,
+                )
+            )
+    return tuple(deposits)
+
+
 def make_economy(
     *,
     quarterly_capacity_output: int = 25_000_000,
@@ -95,6 +148,7 @@ def make_economy(
     effective_labor_force_share_bps: int = 10_000,
     value_added_share_bps: int = 5_000,
     labor_income_share_bps: int = 5_000,
+    resource_deposits: tuple[ResourceDepositState, ...] | None = None,
 ) -> EconomyState:
     """Build a valid `EconomyState` covering all 11 `SectorCategory` values with uniform,
     round-number defaults (every sector exactly-balanced: `required_workers * output_per_worker
@@ -109,6 +163,9 @@ def make_economy(
     default `population=100`, gives an effective labor force of 100 — comfortably above the 11
     workers (`len(SectorCategory)`) required at full capacity, so labor stays abundant and every
     sector gets exactly the one worker it asks for, matching the pre-Phase-2B3 authored shape.
+
+    As of Phase 2C1, `resource_deposits` defaults to `make_resource_deposits()`'s all-inactive
+    shape (see that function's docstring) — pass an explicit tuple to exercise real extraction.
 
     Paired with `make_finance`'s default `tax_base_coefficients`, this produces derived tax
     bases (personal=55,000,000, corporate=27,500,000, consumption=41,250,000) that keep
@@ -126,6 +183,9 @@ def make_economy(
                 labor_income_share_bps=labor_income_share_bps,
             )
             for category in SectorCategory
+        ),
+        resource_deposits=(
+            resource_deposits if resource_deposits is not None else make_resource_deposits()
         ),
     )
 
@@ -184,7 +244,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.5.0",
+        content_version="0.6.0",
         seed=seed,
         turn=turn,
         state_version=state_version,
