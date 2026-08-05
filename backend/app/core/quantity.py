@@ -82,6 +82,54 @@ zero allocated workers or zero remaining stock, never by also allowing this to b
 """
 
 
+StrictRealOutputPerResourceUnit: TypeAlias = Annotated[int, Field(strict=True, gt=0)]
+"""Fixed-base-year real output minor units embodied in one physical unit of a specific
+`ResourceCategory` (one cubic metre, tonne, barrel, or thousand cubic metres — the unit is fixed
+by the category, see `simulation.state.RESOURCE_UNITS`). Category-specific by necessity: a tonne
+of uranium and a cubic metre of timber are not interchangeable, so this is never a single
+engine-wide constant (Phase 2C2). Strictly positive — zero is deliberately excluded so "zero
+contribution because nothing was extracted" (legal) stays cleanly distinct from "zero contribution
+despite extraction" (impossible by type); see `docs/adr/0008-physical-extraction-derived-sector-output.md`.
+"""
+
+
+def extracted_resource_to_real_output(
+    *, extracted: ResourceQuantity, real_output_per_unit: int
+) -> RealOutput:
+    """The single named conversion point from a physical resource quantity to fixed-base-year
+    real output — the Phase 2C2 counterpart of `base_year_real_output_to_money`.
+
+    Exact integer multiplication, no division: there is no rounding step and therefore no
+    rounding policy to get wrong. Applies to ONE category at a time; used identically for both an
+    actually-extracted quantity and a potential (stock/capacity-bounded) quantity — same function,
+    two different inputs (see `simulation.resource_output`). Heterogeneous resource quantities are
+    never summed before conversion — only the converted, homogeneous `RealOutput` contributions are
+    summed afterward.
+
+    Rejects bool, non-int, negative `extracted`, and non-positive `real_output_per_unit`
+    explicitly, since this is a plain function rather than a Pydantic field.
+    """
+    if isinstance(extracted, bool) or not isinstance(extracted, int):
+        raise ValueError(
+            f"extracted_resource_to_real_output requires a plain int `extracted`, got {extracted!r}"
+        )
+    if extracted < 0:
+        raise ValueError(
+            f"extracted_resource_to_real_output requires a nonnegative `extracted`, got {extracted}"
+        )
+    if isinstance(real_output_per_unit, bool) or not isinstance(real_output_per_unit, int):
+        raise ValueError(
+            "extracted_resource_to_real_output requires a plain int `real_output_per_unit`, got "
+            f"{real_output_per_unit!r}"
+        )
+    if real_output_per_unit <= 0:
+        raise ValueError(
+            "extracted_resource_to_real_output requires a strictly positive "
+            f"`real_output_per_unit`, got {real_output_per_unit}"
+        )
+    return extracted * real_output_per_unit
+
+
 def base_year_real_output_to_money(value: RealOutput) -> Money:
     """The single named conversion point from fixed-base-year real output to nominal `Money`.
 
