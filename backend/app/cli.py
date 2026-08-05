@@ -59,11 +59,13 @@ from app.simulation.report import (
     FinanceReport,
     LaborMarketReport,
     ProductionReport,
+    ResourceExtractionReport,
     TaxBaseDerivationReport,
     TurnReport,
     TurnReportEntry,
 )
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json, load_save_json
+from app.simulation.state import RESOURCE_UNITS
 
 # --- reason_id -> English rendering (presentation layer only; never stored) --
 
@@ -140,6 +142,19 @@ def _render_production_summary(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_resource_extraction_resolved(params: dict[str, str | int]) -> str:
+    deposits_active = int(params["deposits_active"])
+    deposits_depleted = int(params["deposits_depleted"])
+    total_extraction_workers = int(params["total_extraction_workers"])
+    unassigned_resource_workers = int(params["unassigned_resource_workers"])
+    return (
+        f"Resource extraction resolved: deposits_active={deposits_active} "
+        f"deposits_depleted={deposits_depleted} "
+        f"total_extraction_workers={total_extraction_workers:,} "
+        f"unassigned_resource_workers={unassigned_resource_workers:,}."
+    )
+
+
 def _render_tax_bases_derived(params: dict[str, str | int]) -> str:
     personal = format_money(int(params["personal_income"]))
     corporate = format_money(int(params["corporate_profit"]))
@@ -158,6 +173,7 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "deficit_financed_with_new_borrowing": _render_deficit_financed_with_new_borrowing,
     "sector_inactive": _render_sector_inactive,
     "labor_market_resolved": _render_labor_market_resolved,
+    "resource_extraction_resolved": _render_resource_extraction_resolved,
     "production_summary": _render_production_summary,
     "tax_bases_derived": _render_tax_bases_derived,
 }
@@ -244,6 +260,17 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
             f"  treasury:            cash={format_money(player.treasury.cash_on_hand)} "
             f"debt={format_money(player.treasury.debt)} denars"
         )
+    if player.economy is not None:
+        # Unlike production/labor/tax-base figures (which are turn-local and only exist inside
+        # a resolved TurnReport), resource endowments live in state itself and are available at
+        # turn 0 — a fresh save can show them without having resolved anything yet.
+        print("  resource endowments:")
+        for deposit in player.economy.resource_deposits:
+            unit = RESOURCE_UNITS[deposit.category]
+            print(
+                f"    {deposit.category.value}: remaining_stock={deposit.remaining_stock:,} {unit}"
+            )
+
     if player.economy is not None and save.entries:
         latest_report = save.entries[-1].report()
         if latest_report is not None and latest_report.production is not None:
@@ -315,6 +342,22 @@ def _print_labor_market_report(labor_market: LaborMarketReport) -> None:
         )
 
 
+def _print_resource_extraction_report(resources: ResourceExtractionReport) -> None:
+    print("    resources:")
+    print(
+        f"      extraction_sector_workers={resources.extraction_sector_workers:,} "
+        f"total_extraction_workers={resources.total_extraction_workers:,} "
+        f"unassigned_resource_workers={resources.unassigned_resource_workers:,}"
+    )
+    for deposit in resources.deposits:
+        unit = RESOURCE_UNITS[deposit.category]
+        print(
+            f"      {deposit.category.value}: opening={deposit.opening_stock:,} "
+            f"regenerated={deposit.regenerated:,} extracted={deposit.extracted:,} "
+            f"closing={deposit.closing_stock:,} {unit} status={deposit.status.value}"
+        )
+
+
 def _print_production_report(production: ProductionReport) -> None:
     print("    production:")
     print(
@@ -363,6 +406,8 @@ def _print_report(report: TurnReport) -> None:
         print(f"    [{entry.category}] {render_entry(entry)}")
     if report.labor_market is not None:
         _print_labor_market_report(report.labor_market)
+    if report.resources is not None:
+        _print_resource_extraction_report(report.resources)
     if report.production is not None:
         _print_production_report(report.production)
     if report.tax_base_derivation is not None:
@@ -463,6 +508,8 @@ def _cmd_history(args: argparse.Namespace) -> int:
             print(f"    [{report_entry.category}] {render_entry(report_entry)}")
         if report.labor_market is not None:
             _print_labor_market_report(report.labor_market)
+        if report.resources is not None:
+            _print_resource_extraction_report(report.resources)
         if report.production is not None:
             _print_production_report(report.production)
         if report.tax_base_derivation is not None:

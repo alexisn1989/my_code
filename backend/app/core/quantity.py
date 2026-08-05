@@ -59,6 +59,29 @@ economic claim.
 """
 
 
+ResourceQuantity: TypeAlias = int
+"""An amount of a physical natural resource (timber, ore, oil, ...), for plain function
+signatures. A third distinct concept from `WorkerCount`/`RealOutput`/`Money` (Phase 2C1) — never
+convertible to any of them. Each `ResourceCategory` has its own physical unit (cubic metres,
+tonnes, barrels, or thousand cubic metres — see `simulation.state.RESOURCE_UNITS`), so quantities
+of different resources must never be summed together; only worker counts and per-status counts
+derived from resource activity may be aggregated (see `docs/economy_methodology.md`).
+"""
+
+StrictResourceQuantity: TypeAlias = Annotated[int, Field(strict=True, ge=0)]
+"""A nonnegative physical resource quantity: remaining stock, extraction capacity, regeneration,
+extracted amount, or closing stock. Deliberately no upper bound at the type level (an authoring
+typo in magnitude is not caught here — see `docs/adr/0007-resource-endowments-and-extraction.md`,
+"Known limitations").
+"""
+
+StrictResourceQuantityPerWorker: TypeAlias = Annotated[int, Field(strict=True, gt=0)]
+"""Physical resource units extractable per allocated extraction worker per turn. Strictly
+positive for the same reason `StrictRealOutputPerWorker` is: "no extraction" is expressed only via
+zero allocated workers or zero remaining stock, never by also allowing this to be zero.
+"""
+
+
 def base_year_real_output_to_money(value: RealOutput) -> Money:
     """The single named conversion point from fixed-base-year real output to nominal `Money`.
 

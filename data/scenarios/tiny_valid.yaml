@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.5.0"
+content_version: "0.6.0"
 seed: 42
 player_country_id: arken
 
@@ -194,6 +194,57 @@ countries:
           output_per_worker: 1
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
+
+      # Phase 2C1: resource-rich, all eight categories active, labor abundant. The extraction
+      # sector's allocated_workers this turn is 20,000 (see the required=20,000 row above; abundant
+      # labor means allocated == required). total_required across all eight deposits below is
+      # 2,000*6 + 500 + 1,000 = 13,500 <= 20,000, so every deposit gets exactly its requirement and
+      # unassigned_resource_workers = 20,000 - 13,500 = 6,500.
+      #
+      # Timber (the only renewable): regenerated = min(80,000, 6,000,000 - 5,000,000) = 80,000;
+      # available = 5,080,000; extracted = min(5,080,000, 100,000, 2,000*50=100,000) = 100,000;
+      # closing = 4,980,000. Conservation: 5,000,000 + 80,000 = 100,000 + 4,980,000 = 5,080,000.
+      # Every nonrenewable below follows the identical pattern: extracted == capacity, closing ==
+      # opening - extracted, status CAPACITY_CONSTRAINED. Every deposit declines net of
+      # regeneration each turn under this calibration (timber by 20,000/turn) — none of them holds
+      # steady, and none of them reaches its own stock/capacity boundary within any horizon this
+      # repo's tests exercise (timber's own boundary is ~250 turns out); the three-regime
+      # capacity-bound / boundary / steady-state dynamic is exercised by deficit_demo.yaml instead.
+      resource_deposits:
+        - category: timber
+          remaining_stock: 5000000
+          extraction_capacity_per_turn: 100000
+          output_per_worker: 50
+          regeneration_per_turn: 80000
+          stock_ceiling: 6000000
+        - category: iron_ore
+          remaining_stock: 40000000
+          extraction_capacity_per_turn: 200000
+          output_per_worker: 100
+        - category: coal
+          remaining_stock: 60000000
+          extraction_capacity_per_turn: 300000
+          output_per_worker: 150
+        - category: crude_oil
+          remaining_stock: 90000000
+          extraction_capacity_per_turn: 500000
+          output_per_worker: 250
+        - category: natural_gas
+          remaining_stock: 70000000
+          extraction_capacity_per_turn: 400000
+          output_per_worker: 200
+        - category: uranium
+          remaining_stock: 100000
+          extraction_capacity_per_turn: 500
+          output_per_worker: 1
+        - category: copper
+          remaining_stock: 30000000
+          extraction_capacity_per_turn: 150000
+          output_per_worker: 75
+        - category: critical_minerals
+          remaining_stock: 2000000
+          extraction_capacity_per_turn: 20000
+          output_per_worker: 20
 
   - id: neighbor
     name: "Neighboring State"

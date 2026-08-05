@@ -263,24 +263,53 @@ class TestR1CrossReportValidation:
         "present_fields",
         [
             sorted(combo)
-            for r in range(1, 4)
+            for r in range(1, 5)
             for combo in itertools.combinations(
-                ("labor_market", "production", "tax_base_derivation", "finance"), r
+                ("labor_market", "resources", "production", "tax_base_derivation", "finance"), r
             )
         ],
     )
-    def test_all_partial_combinations_of_four_reports_are_rejected(
+    def test_all_partial_combinations_of_five_reports_are_rejected(
         self, present_fields: list[str]
     ) -> None:
-        """Phase 2B3 extends the completeness rule from three reports to four — every proper
-        nonempty subset of {labor_market, production, tax_base_derivation, finance} (14 of them)
-        must be rejected, not just the three Phase 2B2 originally covered.
+        """Phase 2B3 extended the completeness rule from three reports to four; Phase 2C1 extends
+        it again to five — every proper nonempty subset of {labor_market, resources, production,
+        tax_base_derivation, finance} (30 of them) must be rejected, not just the fourteen
+        Phase 2B3 originally covered.
         """
         data, _ = _valid_turn_report_dict()
-        for field in ("labor_market", "production", "tax_base_derivation", "finance"):
+        for field in (
+            "labor_market",
+            "resources",
+            "production",
+            "tax_base_derivation",
+            "finance",
+        ):
             if field not in present_fields:
                 data[field] = None
         with pytest.raises(ValidationError, match="all present or all absent"):
+            TurnReport.model_validate(data)
+
+    def test_labor_market_extraction_sector_mismatch_with_resources_is_rejected(self) -> None:
+        """Phase 2C1: `LaborMarketReport.sectors[EXTRACTION].allocated_workers` must equal
+        `ResourceExtractionReport.extraction_sector_workers`. Both `extraction_sector_workers`
+        and `unassigned_resource_workers` are incremented together so `ResourceExtractionReport`'s
+        own internal validators stay satisfied — isolating the cross-report check specifically.
+        """
+        state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+        decisions = DecisionSet(expected_turn=0, expected_state_version=0, decisions=())
+        report = resolve_turn(state, decisions).report
+        data = report.model_dump(mode="json")
+        assert data["resources"] is not None
+
+        data["resources"]["extraction_sector_workers"] = (
+            int(data["resources"]["extraction_sector_workers"]) + 1
+        )
+        data["resources"]["unassigned_resource_workers"] = (
+            int(data["resources"]["unassigned_resource_workers"]) + 1
+        )
+
+        with pytest.raises(ValidationError, match="does not match"):
             TurnReport.model_validate(data)
 
     def test_labor_market_allocation_mismatch_with_production_employment_is_rejected(self) -> None:
@@ -309,27 +338,31 @@ class TestR1CrossReportValidation:
         with pytest.raises(ValidationError, match="does not match"):
             TurnReport.model_validate(data)
 
-    def test_all_three_absent_is_valid(self) -> None:
-        """`_valid_turn_report_dict()` now comes from the real resolver, so `labor_market` is
-        also present by default (Phase 2B3 extended the completeness rule to four reports) —
-        it must be nulled out here too, or this becomes a partial (rejected) combination rather
-        than the "all absent" case this test means to exercise.
+    def test_all_five_absent_is_valid(self) -> None:
+        """`_valid_turn_report_dict()` now comes from the real resolver, so `labor_market` and
+        `resources` are also present by default (Phase 2B3 extended the completeness rule to
+        four reports; Phase 2C1 extended it again to five) — both must be nulled out here too,
+        or this becomes a partial (rejected) combination rather than the "all absent" case this
+        test means to exercise.
         """
         data, _ = _valid_turn_report_dict()
         data["labor_market"] = None
+        data["resources"] = None
         data["production"] = None
         data["tax_base_derivation"] = None
         data["finance"] = None
         report = TurnReport.model_validate(data)
         assert report.labor_market is None
+        assert report.resources is None
         assert report.production is None
         assert report.tax_base_derivation is None
         assert report.finance is None
 
-    def test_all_three_present_and_consistent_is_valid(self) -> None:
+    def test_all_five_present_and_consistent_is_valid(self) -> None:
         data, report = _valid_turn_report_dict()
         # Sanity: the fixture itself is genuinely all-present before any corruption.
         assert report.labor_market is not None
+        assert report.resources is not None
         assert report.production is not None
         assert report.tax_base_derivation is not None
         assert report.finance is not None

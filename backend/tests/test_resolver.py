@@ -3,12 +3,12 @@ from __future__ import annotations
 import pytest
 
 from app.core.canonical_json import canonical_dumps
-from app.core.errors import TurnResolutionError
+from app.core.errors import HistoryValidationError, TurnResolutionError
 from app.simulation.decisions import DecisionSet
 from app.simulation.phases import PHASE_IDS
 from app.simulation.report import PhaseStatus
 from app.simulation.resolver import resolve_turn
-from tests.conftest import make_game_state
+from tests.conftest import make_country, make_game_state
 
 
 def _empty_decisions_for(state) -> DecisionSet:  # type: ignore[no-untyped-def]
@@ -86,6 +86,44 @@ def test_invalid_input_state_is_rejected_without_running_phases() -> None:
 
     after = canonical_dumps(state.model_dump(mode="json"))
     assert before == after
+
+
+def test_resolve_turn_rejects_a_nested_resource_deposit_mutation_without_mutating_input_or_history() -> (
+    None
+):
+    """T17 (renamed per R9 — file-output guarantees belong to `test_cli.py`'s T18 exclusively):
+    mirrors `test_invariants.py`'s nested-sector-mutation regression test exactly, for
+    `resource_deposits` — `ResourceDepositState` is deliberately mutable, so a live
+    `deposit.category = ...` assignment re-validates that ONE row (`validate_assignment=True`)
+    but never re-triggers the *parent* `EconomyState`'s own completeness validator, desynchronizing
+    it from "all eight categories, exactly once" without a full bypassed construction. Both
+    `resolve_turn` (no input mutation) and `advance_game` (no appended history entry) must catch
+    it independently.
+    """
+    from app.simulation.history import advance_game, new_game
+    from app.simulation.save_format import SAVE_FORMAT_VERSION
+
+    country = make_country("a")
+    assert country.economy is not None
+    # Both indices are nonrenewable (IRON_ORE, COAL) under the default all-inactive factory
+    # shape, so relabeling one to match the other never trips ResourceDepositState's OWN
+    # renewability validator on assignment (validate_assignment=True reruns it) — only the
+    # *parent* EconomyState's completeness check, which this mutation never re-triggers, is
+    # actually being tested here.
+    country.economy.resource_deposits[1].category = country.economy.resource_deposits[2].category
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    before = canonical_dumps(state.model_dump(mode="json"))
+    decisions = _empty_decisions_for(state)
+    with pytest.raises(TurnResolutionError):
+        resolve_turn(state, decisions)
+    assert canonical_dumps(state.model_dump(mode="json")) == before
+
+    save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+    before_entry_count = save.entry_count
+    with pytest.raises((TurnResolutionError, HistoryValidationError)):
+        advance_game(save, decisions)
+    assert save.entry_count == before_entry_count
 
 
 def test_phases_run_in_the_documented_order() -> None:

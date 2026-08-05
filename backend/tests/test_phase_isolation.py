@@ -1,34 +1,46 @@
 """Phase 2B2 changed the isolation contract from Phase 2B1: production and finance are no
 longer fully isolated — production now affects revenue **through derived tax bases**
 (`simulation.tax_base_derivation`). Phase 2B3 adds labor allocation ahead of production in the
-same chain, under the same one-directional rule:
+same chain; Phase 2C1 adds resource extraction (sub-allocated from the same labor) alongside it,
+under the same one-directional rule:
 
 - population/labor supply -> allocation -> production -> tax bases -> revenue:  MUST hold
-- tax rates / spending -> allocation / production:  MUST NOT hold (still isolated, as in 2B1)
+- resource endowments -> extraction:                                            MUST hold
+- tax rates / spending -> allocation / production / extraction:  MUST NOT hold (still isolated)
+- resource endowments -> production / tax bases / finance:       MUST NOT hold (D8 — conservation-
+  only isolation boundary; extraction is economically inert this phase)
 
-This module tests both directions. `test_finance_report_is_byte_identical_across_wildly_
+This module tests all of these directions. `test_finance_report_is_byte_identical_across_wildly_
 different_economies` (the Phase 2B1 test asserting the *opposite* of the current design)
 is deliberately replaced, not silently deleted — see
 `test_different_economies_produce_different_tax_bases_and_revenue` below, and ADR 0005 for
 why this inversion is intentional. The other two isolation tests keep their original
 premise and become more important now that the dependency is one-directional rather than
-symmetric; both are extended here to also cover `labor_market`.
+symmetric; both are extended here to also cover `labor_market` and `resources`. Phase 2C1 adds
+its own dedicated tests for the resource-specific directions (T21).
 """
 
 from __future__ import annotations
 
 from app.simulation.decisions import BudgetDecision, DecisionSet, SpendingUpdate
 from app.simulation.phases import PhaseContext, run_phases
-from app.simulation.report import FinanceReport, LaborMarketReport, ProductionReport
+from app.simulation.report import (
+    FinanceReport,
+    LaborMarketReport,
+    ProductionReport,
+    ResourceExtractionReport,
+)
 from app.simulation.resolver import resolve_turn
 from app.simulation.state import (
     EconomyState,
     GameState,
+    ResourceCategory,
+    ResourceDepositState,
     SectorCategory,
     SpendingCategory,
     TaxBaseState,
 )
-from tests.conftest import make_economy, make_game_state
+from tests.conftest import make_economy, make_game_state, make_resource_deposits
 
 
 def _run_phases_for(state: GameState) -> PhaseContext:
@@ -118,7 +130,9 @@ def test_tax_rate_change_does_not_affect_derived_tax_bases() -> None:
     """
     economy = make_economy()
 
-    def _resolve_with_rate(rate_bps: int) -> tuple[TaxBaseState, FinanceReport, LaborMarketReport]:
+    def _resolve_with_rate(
+        rate_bps: int,
+    ) -> tuple[TaxBaseState, FinanceReport, LaborMarketReport, ResourceExtractionReport]:
         state = make_game_state(turn=0, state_version=0)
         player_id = state.world.player_country_id
         country = state.world.countries[player_id]
@@ -131,19 +145,23 @@ def test_tax_rate_change_does_not_affect_derived_tax_bases() -> None:
         resolution = resolve_turn(state, decisions)
         assert resolution.report.finance is not None
         assert resolution.report.labor_market is not None
+        assert resolution.report.resources is not None
         return (
             resolution.report.finance.tax_bases,
             resolution.report.finance,
             resolution.report.labor_market,
+            resolution.report.resources,
         )
 
-    bases_low, finance_low, labor_market_low = _resolve_with_rate(1_000)
-    bases_high, finance_high, labor_market_high = _resolve_with_rate(9_000)
+    bases_low, finance_low, labor_market_low, resources_low = _resolve_with_rate(1_000)
+    bases_high, finance_high, labor_market_high, resources_high = _resolve_with_rate(9_000)
 
     assert bases_low == bases_high
     assert finance_low.revenue.personal_income_tax != finance_high.revenue.personal_income_tax
     # Phase 2B3: a tax-rate change must not move labor allocation either.
     assert labor_market_low.model_dump(mode="json") == labor_market_high.model_dump(mode="json")
+    # Phase 2C1: nor resource extraction.
+    assert resources_low.model_dump(mode="json") == resources_high.model_dump(mode="json")
 
 
 def test_spending_change_does_not_affect_production_or_derived_bases() -> None:
@@ -151,7 +169,7 @@ def test_spending_change_does_not_affect_production_or_derived_bases() -> None:
 
     def _resolve_with_spending(
         amount: int,
-    ) -> tuple[ProductionReport, TaxBaseState, LaborMarketReport]:
+    ) -> tuple[ProductionReport, TaxBaseState, LaborMarketReport, ResourceExtractionReport]:
         state = make_game_state(turn=0, state_version=0)
         player_id = state.world.player_country_id
         country = state.world.countries[player_id]
@@ -171,19 +189,23 @@ def test_spending_change_does_not_affect_production_or_derived_bases() -> None:
         assert resolution.report.production is not None
         assert resolution.report.finance is not None
         assert resolution.report.labor_market is not None
+        assert resolution.report.resources is not None
         return (
             resolution.report.production,
             resolution.report.finance.tax_bases,
             resolution.report.labor_market,
+            resolution.report.resources,
         )
 
-    production_low, bases_low, labor_market_low = _resolve_with_spending(1)
-    production_high, bases_high, labor_market_high = _resolve_with_spending(999_999)
+    production_low, bases_low, labor_market_low, resources_low = _resolve_with_spending(1)
+    production_high, bases_high, labor_market_high, resources_high = _resolve_with_spending(999_999)
 
     assert production_low.model_dump(mode="json") == production_high.model_dump(mode="json")
     assert bases_low == bases_high
     # Phase 2B3: a spending change must not move labor allocation either.
     assert labor_market_low.model_dump(mode="json") == labor_market_high.model_dump(mode="json")
+    # Phase 2C1: nor resource extraction.
+    assert resources_low.model_dump(mode="json") == resources_high.model_dump(mode="json")
 
 
 def test_production_report_is_identical_regardless_of_finance_state() -> None:
@@ -236,3 +258,107 @@ def test_report_assembly_does_not_cross_populate_finance_and_production_fields()
     assert "capacity_utilization_bps" not in derivation_dump
     assert {s["category"] for s in production_dump["sectors"]} == {c.value for c in SectorCategory}
     assert {s["category"] for s in derivation_dump["sectors"]} == {c.value for c in SectorCategory}
+
+
+# --- Phase 2C1 (T21): resource endowments -> extraction MUST hold; resource endowments -> -------
+# --- production/derivation/finance MUST NOT hold (D8); phase 3's mutation scope -----------------
+
+
+def _rich_resource_deposits() -> tuple[ResourceDepositState, ...]:
+    return make_resource_deposits(
+        remaining_stock=1_000_000,
+        extraction_capacity_per_turn=100,
+        output_per_worker=1,
+        regeneration_per_turn=0,
+        stock_ceiling=None,
+    )
+
+
+def _resolve_with_resource_deposits(deposits: tuple[ResourceDepositState, ...]):  # type: ignore[no-untyped-def]
+    state = make_game_state(turn=0, state_version=0)
+    player_id = state.world.player_country_id
+    country = state.world.countries[player_id]
+    assert country.economy is not None
+    economy = country.economy.model_copy(update={"resource_deposits": deposits})
+    state.world.countries[player_id] = country.model_copy(update={"economy": economy})
+    decisions = DecisionSet(expected_turn=0, expected_state_version=0, decisions=())
+    return resolve_turn(state, decisions)
+
+
+def test_different_resource_endowments_produce_different_extraction_reports() -> None:
+    """The positive direction: resource endowments must actually determine extraction."""
+    poor = _resolve_with_resource_deposits(make_resource_deposits())  # all-inactive default
+    rich = _resolve_with_resource_deposits(_rich_resource_deposits())
+
+    assert poor.report.resources is not None
+    assert rich.report.resources is not None
+    assert poor.report.resources.model_dump(mode="json") != rich.report.resources.model_dump(
+        mode="json"
+    )
+    assert rich.report.resources.total_extraction_workers > 0
+    assert poor.report.resources.total_extraction_workers == 0
+
+
+def test_different_resource_endowments_do_not_affect_production_derivation_or_finance() -> None:
+    """D8, the conservation-only isolation boundary: production, tax-base derivation, and
+    finance must stay byte-identical regardless of the resource endowments — extraction is
+    economically inert this phase.
+    """
+    poor = _resolve_with_resource_deposits(make_resource_deposits())
+    rich = _resolve_with_resource_deposits(_rich_resource_deposits())
+
+    assert poor.report.production is not None
+    assert rich.report.production is not None
+    assert poor.report.production.model_dump(mode="json") == rich.report.production.model_dump(
+        mode="json"
+    )
+
+    assert poor.report.tax_base_derivation is not None
+    assert rich.report.tax_base_derivation is not None
+    assert poor.report.tax_base_derivation.model_dump(
+        mode="json"
+    ) == rich.report.tax_base_derivation.model_dump(mode="json")
+
+    assert poor.report.finance is not None
+    assert rich.report.finance is not None
+    assert poor.report.finance.model_dump(mode="json") == rich.report.finance.model_dump(
+        mode="json"
+    )
+
+
+def test_resolved_turn_only_mutates_resource_deposits_within_economy_state() -> None:
+    """R2: phase 3's mutation is scoped to `economy.resource_deposits` alone. Proven by
+    resolving two turns that differ ONLY in their initial `resource_deposits`, then asserting
+    every other part of the returned state — `finance`, `treasury`, `population`, `sectors`,
+    `effective_labor_force_share_bps` — is byte-identical between the two, while
+    `resource_deposits` itself genuinely differs.
+    """
+    poor = _resolve_with_resource_deposits(make_resource_deposits())
+    rich = _resolve_with_resource_deposits(_rich_resource_deposits())
+
+    poor_country = poor.state.world.countries[poor.state.world.player_country_id]
+    rich_country = rich.state.world.countries[rich.state.world.player_country_id]
+    assert poor_country.economy is not None
+    assert rich_country.economy is not None
+
+    poor_dump = poor_country.model_dump(mode="json")
+    rich_dump = rich_country.model_dump(mode="json")
+    poor_deposits = poor_dump["economy"].pop("resource_deposits")
+    rich_deposits = rich_dump["economy"].pop("resource_deposits")
+
+    assert poor_dump == rich_dump, "every non-resource part of state must be untouched"
+    assert poor_deposits != rich_deposits, "resource_deposits itself must genuinely differ"
+
+
+def test_resource_deposits_present_in_returned_state_matches_report_closing_stocks() -> None:
+    """A single-turn version of `test_resource_conservation.py`'s multi-turn proof: the returned
+    `resolution.state`'s `resource_deposits` must match `resolution.report.resources`'s closing
+    stocks exactly, matched by `ResourceCategory` identity."""
+    resolution = _resolve_with_resource_deposits(_rich_resource_deposits())
+    assert resolution.report.resources is not None
+    country = resolution.state.world.countries[resolution.state.world.player_country_id]
+    assert country.economy is not None
+    stock_by_category = {d.category: d.remaining_stock for d in country.economy.resource_deposits}
+    for deposit_report in resolution.report.resources.deposits:
+        assert deposit_report.closing_stock == stock_by_category[deposit_report.category]
+    assert set(stock_by_category) == set(ResourceCategory)

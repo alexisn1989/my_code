@@ -3,6 +3,7 @@ from __future__ import annotations
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from app.simulation.integer_allocation import largest_remainder_allocation
 from app.simulation.labor_allocation import (
     aggregate_labor_market,
     allocate_workers,
@@ -208,6 +209,60 @@ class TestAllocateWorkers:
             assert 0 <= result.allocated_workers <= required
         total_allocated = sum(r.allocated_workers for r in results)
         assert total_allocated == min(effective_labor_force, total_required)
+
+
+class TestByteIdenticalToTheNeutralCore:
+    """Phase 2C1 (D7/R7): `allocate_workers` became a thin wrapper over the shared, category-
+    agnostic `integer_allocation.largest_remainder_allocation` core. This proves the wrapper
+    introduces zero behavioral drift — for arbitrary inputs, calling the wrapper produces exactly
+    the same `(category, required, allocated)` triples as calling the core directly on the same
+    pairs and rewrapping, since `allocate_workers`'s canonical-order tuple input is passed through
+    unchanged (unlike the resource wrapper, which canonicalizes a mapping first — see
+    `integer_allocation`'s module docstring and `test_resource_extraction.py`'s permutation test).
+    The full pre-existing Phase 2B3 suite (every test above and in
+    `test_labor_to_production_linkage.py`/`test_phase_isolation.py`) passing unchanged after this
+    refactor is the practical, end-to-end version of this same proof.
+    """
+
+    @given(
+        requireds=st.lists(
+            st.integers(min_value=0, max_value=10_000),
+            min_size=len(_CATEGORIES),
+            max_size=len(_CATEGORIES),
+        ),
+        effective_labor_force=st.integers(min_value=0, max_value=100_000),
+    )
+    @settings(max_examples=1000)
+    def test_wrapper_output_matches_the_core_called_directly(
+        self, requireds: list[int], effective_labor_force: int
+    ) -> None:
+        required_by_category = tuple(zip(_CATEGORIES, requireds, strict=True))
+        wrapper_results = allocate_workers(
+            required_by_category=required_by_category, effective_labor_force=effective_labor_force
+        )
+        core_results = largest_remainder_allocation(
+            weights_by_category=required_by_category, budget=effective_labor_force
+        )
+        assert [(r.category, r.required_workers, r.allocated_workers) for r in wrapper_results] == [
+            (r.category, r.weight, r.allocated) for r in core_results
+        ]
+
+    def test_hand_verified_scarce_tie_break_figures_unchanged_by_the_refactor(self) -> None:
+        """Pins the exact numbers `TestAllocateWorkers.test_scarce_labor_uses_largest_remainder`
+        above already verifies by hand (16/16/21 for weights 30/30/40 under budget 53) — repeated
+        here specifically as a regression marker tied to the refactor commit, not a duplicate of
+        that test's own reasoning.
+        """
+        required = (
+            (SectorCategory.AGRICULTURE, 30),
+            (SectorCategory.MANUFACTURING, 30),
+            (SectorCategory.CONSTRUCTION, 40),
+        )
+        results = allocate_workers(required_by_category=required, effective_labor_force=53)
+        allocated = {r.category: r.allocated_workers for r in results}
+        assert allocated[SectorCategory.AGRICULTURE] == 16
+        assert allocated[SectorCategory.MANUFACTURING] == 16
+        assert allocated[SectorCategory.CONSTRUCTION] == 21
 
 
 class TestAggregateLaborMarket:

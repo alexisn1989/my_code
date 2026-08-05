@@ -22,7 +22,12 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.money import Money, StrictBps, StrictMoney
-from app.core.quantity import StrictRealOutput, StrictRealOutputPerWorker
+from app.core.quantity import (
+    StrictRealOutput,
+    StrictRealOutputPerWorker,
+    StrictResourceQuantity,
+    StrictResourceQuantityPerWorker,
+)
 
 _STRICT_CONFIG = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -245,9 +250,115 @@ class SectorState(BaseModel):
     labor_income_share_bps: StrictBps
 
 
+class ResourceCategory(StrEnum):
+    """The eight physical natural resources modeled in Phase 2C1.
+
+    Declaration order here is the canonical resource ordering used by `EconomyState`'s
+    completeness validator and by `ResourceExtractionReport.deposits` (`report.py`) — changing
+    this order is a ruleset-affecting change, not a cosmetic one, exactly like `SectorCategory`
+    above. Unlike `SectorCategory`'s and every other canonical-order validator in this codebase,
+    the resource-facing validators **reject** noncanonical order rather than silently normalizing
+    it — see `ResourceDepositState`'s sibling validator on `EconomyState` below and
+    `docs/adr/0007-resource-endowments-and-extraction.md` for why.
+    """
+
+    TIMBER = "timber"
+    IRON_ORE = "iron_ore"
+    COAL = "coal"
+    CRUDE_OIL = "crude_oil"
+    NATURAL_GAS = "natural_gas"
+    URANIUM = "uranium"
+    COPPER = "copper"
+    CRITICAL_MINERALS = "critical_minerals"
+
+
+RENEWABLE_RESOURCES: frozenset[ResourceCategory] = frozenset({ResourceCategory.TIMBER})
+"""The only renewable resource this phase — everything else is a finite, nonrenewable reserve
+that only ever depletes. Determines which `ResourceDepositState`/`ResourceDepositReport` fields
+(`regeneration_per_turn`, `stock_ceiling`) are legal to be nonzero/non-`None`.
+"""
+
+RESOURCE_UNITS: dict[ResourceCategory, str] = {
+    ResourceCategory.TIMBER: "m³",
+    ResourceCategory.IRON_ORE: "t",
+    ResourceCategory.COAL: "t",
+    ResourceCategory.CRUDE_OIL: "bbl",
+    ResourceCategory.NATURAL_GAS: "thousand m³",
+    ResourceCategory.URANIUM: "t",
+    ResourceCategory.COPPER: "t",
+    ResourceCategory.CRITICAL_MINERALS: "t",
+}
+"""A physical unit is a fixed property of the category, not authored per-deposit state — a
+per-deposit unit string would be a redundant, driftable value, exactly what Phase 2B2/2B3 removed
+from tax bases and employment. Used by the CLI for display only; never affects arithmetic."""
+
+
+class ResourceDepositState(BaseModel):
+    """One country's physical endowment of one `ResourceCategory` (Phase 2C1).
+
+    `remaining_stock` is the only field this phase's turn resolution ever mutates — and it does
+    so exactly once per turn, inside `resolve_production_and_trade` (phase 3), immediately after
+    `simulation.resource_extraction` computes that turn's extraction — never inside phase 5,
+    which historically owned "closing" mutations for treasury cash/debt. See
+    `docs/adr/0007-resource-endowments-and-extraction.md` for why extraction and its depletion
+    are one domain operation performed together, and what that means for phase 3's previously
+    mutation-free contract.
+
+    `output_per_worker` is strictly positive for the same reason `SectorState`'s is: "no
+    extraction" is expressed only via zero allocated workers or zero remaining stock, never by
+    also allowing this to be zero — one way to model idle, not two redundant ones.
+
+    `regeneration_per_turn`/`stock_ceiling` are legal to be nonzero/non-`None` if and only if
+    `category in RENEWABLE_RESOURCES` — enforced by the two validators below, which **raise**
+    rather than silently correcting a miscategorized deposit.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    category: ResourceCategory
+    remaining_stock: StrictResourceQuantity
+    extraction_capacity_per_turn: StrictResourceQuantity
+    output_per_worker: StrictResourceQuantityPerWorker
+    regeneration_per_turn: StrictResourceQuantity = 0
+    stock_ceiling: StrictResourceQuantity | None = None
+
+    @model_validator(mode="after")
+    def _nonrenewables_have_no_regeneration_or_ceiling(self) -> ResourceDepositState:
+        if self.category not in RENEWABLE_RESOURCES:
+            if self.regeneration_per_turn != 0:
+                raise ValueError(
+                    f"{self.category.value} is nonrenewable but has "
+                    f"regeneration_per_turn={self.regeneration_per_turn}; nonrenewables must "
+                    "have regeneration_per_turn == 0"
+                )
+            if self.stock_ceiling is not None:
+                raise ValueError(
+                    f"{self.category.value} is nonrenewable but has "
+                    f"stock_ceiling={self.stock_ceiling}; nonrenewables must have "
+                    "stock_ceiling == None"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _renewables_have_a_ceiling_not_below_stock(self) -> ResourceDepositState:
+        if self.category in RENEWABLE_RESOURCES:
+            if self.stock_ceiling is None:
+                raise ValueError(
+                    f"{self.category.value} is renewable but has stock_ceiling=None; "
+                    "renewables must declare a stock_ceiling"
+                )
+            if self.stock_ceiling < self.remaining_stock:
+                raise ValueError(
+                    f"{self.category.value} has stock_ceiling={self.stock_ceiling} below its "
+                    f"own remaining_stock={self.remaining_stock}"
+                )
+        return self
+
+
 class EconomyState(BaseModel):
     """A country's Phase-2B1 production state: exactly one `SectorState` per `SectorCategory`,
-    plus (Phase 2B3) the reduced-form labor-supply coefficient that feeds those sectors.
+    plus (Phase 2B3) the reduced-form labor-supply coefficient that feeds those sectors, plus
+    (Phase 2C1) exactly one `ResourceDepositState` per `ResourceCategory`.
 
     All eleven categories must be present, exactly once — a zero-capacity
     sector is a legitimate ("inactive") input, but an absent one is not,
@@ -268,12 +379,19 @@ class EconomyState(BaseModel):
     ADR 0005 R4). It lives here, alongside the sectors it feeds, rather than on
     `CountryState` directly — `CountryState.population` stays the single authoritative
     population source; this coefficient only says what *share* of it is economically active.
+
+    `resource_deposits` (Phase 2C1) covers all eight `ResourceCategory` members exactly once,
+    zero-stock/zero-capacity entries legal (a resource-poor country still declares every
+    category, just at zero — the same "no ambiguous missing-vs-zero concept" reasoning
+    `sectors` already follows). Grouped here, not on `CountryState` directly, because deposits
+    are worked by the same extraction sector's labor this economy already allocates.
     """
 
     model_config = _STRICT_CONFIG
 
     effective_labor_force_share_bps: StrictBps
     sectors: tuple[SectorState, ...]
+    resource_deposits: tuple[ResourceDepositState, ...]
 
     @model_validator(mode="after")
     def _sectors_cover_all_categories_exactly_once_in_canonical_order(self) -> EconomyState:
@@ -292,6 +410,38 @@ class EconomyState(BaseModel):
         canonical_order = tuple(by_category[category] for category in SectorCategory)
         if canonical_order != self.sectors:
             self.sectors = canonical_order
+        return self
+
+    @model_validator(mode="after")
+    def _deposits_cover_all_categories_exactly_once_in_canonical_order(self) -> EconomyState:
+        """Diverges from `_sectors_cover_all_categories_exactly_once_in_canonical_order` above on
+        purpose (R3 — see `docs/adr/0007-resource-endowments-and-extraction.md`): duplicates and
+        missing categories still raise, but noncanonical order also **raises** here rather than
+        being silently reassigned to canonical order. Deterministic canonical serialization
+        should be a property proven of valid input, not a repair silently applied to invalid
+        input — a rule not applied retroactively to `sectors` above, which keeps its established
+        normalize-on-reorder behavior unchanged.
+        """
+        seen: set[ResourceCategory] = set()
+        for deposit in self.resource_deposits:
+            if deposit.category in seen:
+                raise ValueError(f"duplicate resource category: {deposit.category.value!r}")
+            seen.add(deposit.category)
+        missing = [c for c in ResourceCategory if c not in seen]
+        if missing:
+            raise ValueError(
+                "economy is missing resource categories: "
+                f"{[c.value for c in missing]!r} — all {len(ResourceCategory)} are required"
+            )
+        by_category = {deposit.category: deposit for deposit in self.resource_deposits}
+        canonical_order = tuple(by_category[category] for category in ResourceCategory)
+        if canonical_order != self.resource_deposits:
+            got = [d.category.value for d in self.resource_deposits]
+            expected = [c.value for c in ResourceCategory]
+            raise ValueError(
+                "resource_deposits are not in canonical ResourceCategory order: "
+                f"got {got!r}, expected {expected!r}"
+            )
         return self
 
 
@@ -324,7 +474,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.5.0"
+RULESET_VERSION = "0.6.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -333,12 +483,11 @@ gates which values are accepted when loading a save. Bump this when turn-resolut
 changes (which phases do real work, what formulas they use) in a way that must not silently
 apply to already-resolved history — see `docs/adr/0002-snapshot-history-and-versioning.md`,
 `docs/adr/0003-government-accounting.md`, `docs/adr/0004-sector-production-fixed-prices.md`,
-`docs/adr/0005-production-derived-tax-bases.md`, and
-`docs/adr/0006-labor-allocation-at-fixed-prices.md` (bumped `"0.4.0" -> "0.5.0"` for Phase 2B3:
-`SectorState.employed_workers` is removed in favor of a required
-`EconomyState.effective_labor_force_share_bps` — a required state-shape change in both
-directions with no data to migrate an older save from, the same kind of change that justified
-every prior ruleset bump).
+`docs/adr/0005-production-derived-tax-bases.md`,
+`docs/adr/0006-labor-allocation-at-fixed-prices.md`, and
+`docs/adr/0007-resource-endowments-and-extraction.md` (bumped `"0.5.0" -> "0.6.0"` for Phase 2C1:
+`EconomyState.resource_deposits` becomes a new required field with no data to backfill from an
+older save — the same kind of change that justified every prior ruleset bump).
 """
 
 

@@ -51,6 +51,12 @@ in the scarce branch, `effective_labor_force < total_labor_demand` implies `floo
 strictly less than the number of sectors with positive demand, so no sector receives more than one
 extra unit.
 
+As of Phase 2C1, this exact algorithm lives in `simulation.integer_allocation`
+(`largest_remainder_allocation`) as a category-agnostic core — `allocate_workers` below is a thin
+wrapper over it, kept byte-for-byte behavior-identical, and `simulation.resource_extraction` wraps
+the same core for sub-allocating extraction-sector workers across resource deposits. See
+`integer_allocation`'s module docstring for the order-sensitivity contract shared by both wrappers.
+
 ## Identities (all nonnegative exact integers)
 
     total_employment       = sum(allocated_i) = min(effective_labor_force, total_labor_demand)
@@ -76,6 +82,7 @@ from dataclasses import dataclass
 
 from app.core.money import BPS_DENOMINATOR
 from app.core.quantity import WorkerCount
+from app.simulation.integer_allocation import largest_remainder_allocation
 from app.simulation.state import SectorCategory, SectorState
 
 
@@ -116,46 +123,23 @@ def allocate_workers(
     covering all of them) — the caller (`aggregate_labor_market`/`phases.py`) is responsible for
     that, mirroring how `production_accounting.aggregate_production` trusts its caller's ordering.
 
+    A thin wrapper (Phase 2C1, D7/R7) over the shared, category-agnostic
+    `integer_allocation.largest_remainder_allocation` — this function's signature, canonical
+    ordering, and return values are byte-for-byte unchanged from the pre-refactor Phase 2B3
+    algorithm; only the arithmetic body moved. See `integer_allocation`'s module docstring for why
+    the shared core is order-sensitive rather than permutation-independent, and why that is safe
+    here specifically (this function's callers already pass canonical order, exactly as before).
+
     Returns results in the same canonical order as the input.
     """
-    total_labor_demand = sum(required for _, required in required_by_category)
-
-    if total_labor_demand <= effective_labor_force:
-        # Abundant (or exactly sufficient) labor: every sector gets exactly what it asked for.
-        return tuple(
-            SectorLaborAllocationResult(
-                category=category, required_workers=required, allocated_workers=required
-            )
-            for category, required in required_by_category
-        )
-
-    # Scarce: proportional floor allocation, then distribute the leftover units to the sectors
-    # with the largest remainders, ties broken by ascending canonical declaration order (the
-    # order `required_by_category` is already in).
-    floors: list[int] = []
-    remainders: list[int] = []
-    for _, required in required_by_category:
-        numerator = effective_labor_force * required
-        floors.append(numerator // total_labor_demand)
-        remainders.append(numerator % total_labor_demand)
-
-    leftover = effective_labor_force - sum(floors)
-
-    # Sort indices by (-remainder, canonical index) so the largest remainder wins and ties break
-    # by ascending canonical order — Python's sort is stable, but we sort explicitly on both keys
-    # so the tie-break is provable from the sort key alone, not an incidental stability artifact.
-    order = sorted(range(len(required_by_category)), key=lambda i: (-remainders[i], i))
-    bonus = [0] * len(required_by_category)
-    for i in order[:leftover]:
-        bonus[i] = 1
-
+    results = largest_remainder_allocation(
+        weights_by_category=required_by_category, budget=effective_labor_force
+    )
     return tuple(
         SectorLaborAllocationResult(
-            category=category,
-            required_workers=required,
-            allocated_workers=floors[i] + bonus[i],
+            category=r.category, required_workers=r.weight, allocated_workers=r.allocated
         )
-        for i, (category, required) in enumerate(required_by_category)
+        for r in results
     )
 
 

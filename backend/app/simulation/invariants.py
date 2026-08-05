@@ -16,7 +16,13 @@ resolution").
 from __future__ import annotations
 
 from app.core.errors import InvariantViolation
-from app.simulation.state import CountryState, GameState, SectorCategory
+from app.simulation.state import (
+    RENEWABLE_RESOURCES,
+    CountryState,
+    GameState,
+    ResourceCategory,
+    SectorCategory,
+)
 
 GROUP_SHARE_TOLERANCE = 1e-6
 """Documented rounding tolerance (product spec §8) for population-group share reconciliation."""
@@ -137,6 +143,16 @@ def _check_economy(country: CountryState) -> list[InvariantViolation]:
     out-of-range share at every legitimate construction/assignment path, so this is
     defense-in-depth against a fully bypassed construction, mirroring
     `_check_tax_base_coefficients`'s role for the Phase 2B2 coefficients.
+
+    Also re-checks `resource_deposits`'s own completeness/order rule and each deposit's
+    renewability rules (Phase 2C1), for the identical reason: `ResourceDepositState` is mutable,
+    so a nested `deposit.category = ...`/`deposit.regeneration_per_turn = ...` assignment after
+    construction can desynchronize an already-valid `EconomyState` without re-running its own
+    validator. Unlike `noncanonical_sector_order` above, `noncanonical_resource_order` is *even
+    more* purely defense-in-depth (R3): `EconomyState`'s own constructor already **rejects**
+    reordered `resource_deposits` outright (it does not merely normalize, the way the sector
+    validator does), so this backstop is reachable only through a fully bypassed construction on
+    every path, not just the noncanonical-order one.
     """
     if country.economy is None:
         return []
@@ -204,6 +220,89 @@ def _check_economy(country: CountryState) -> list[InvariantViolation]:
                     message=(
                         f"country {country.id!r}: effective_labor_force "
                         f"{effective_labor_force} exceeds population {country.population}"
+                    ),
+                )
+            )
+
+    resource_categories = [deposit.category for deposit in country.economy.resource_deposits]
+
+    seen_resources: set[ResourceCategory] = set()
+    duplicate_resources: set[ResourceCategory] = set()
+    for resource_category in resource_categories:
+        if resource_category in seen_resources:
+            duplicate_resources.add(resource_category)
+        seen_resources.add(resource_category)
+    if duplicate_resources:
+        violations.append(
+            InvariantViolation(
+                code="duplicate_resource_category",
+                message=(
+                    f"country {country.id!r}: duplicate resource categories "
+                    f"{sorted(c.value for c in duplicate_resources)!r}"
+                ),
+            )
+        )
+
+    missing_resources = [c for c in ResourceCategory if c not in seen_resources]
+    if missing_resources:
+        violations.append(
+            InvariantViolation(
+                code="missing_resource_category",
+                message=(
+                    f"country {country.id!r}: missing resource categories "
+                    f"{[c.value for c in missing_resources]!r} — all {len(ResourceCategory)} "
+                    "are required"
+                ),
+            )
+        )
+
+    if (
+        not duplicate_resources
+        and not missing_resources
+        and tuple(resource_categories) != tuple(ResourceCategory)
+    ):
+        violations.append(
+            InvariantViolation(
+                code="noncanonical_resource_order",
+                message=(
+                    f"country {country.id!r}: economy.resource_deposits is not ordered in "
+                    "canonical ResourceCategory declaration order"
+                ),
+            )
+        )
+
+    for deposit in country.economy.resource_deposits:
+        if deposit.category not in RENEWABLE_RESOURCES:
+            if deposit.regeneration_per_turn != 0 or deposit.stock_ceiling is not None:
+                violations.append(
+                    InvariantViolation(
+                        code="resource_regeneration_on_nonrenewable",
+                        message=(
+                            f"country {country.id!r}: nonrenewable deposit "
+                            f"{deposit.category.value!r} has regeneration_per_turn="
+                            f"{deposit.regeneration_per_turn} and/or stock_ceiling="
+                            f"{deposit.stock_ceiling}; both must be 0/None"
+                        ),
+                    )
+                )
+        elif deposit.stock_ceiling is None:
+            violations.append(
+                InvariantViolation(
+                    code="renewable_missing_stock_ceiling",
+                    message=(
+                        f"country {country.id!r}: renewable deposit "
+                        f"{deposit.category.value!r} has no stock_ceiling"
+                    ),
+                )
+            )
+        elif deposit.remaining_stock > deposit.stock_ceiling:
+            violations.append(
+                InvariantViolation(
+                    code="resource_stock_exceeds_ceiling",
+                    message=(
+                        f"country {country.id!r}: deposit {deposit.category.value!r} "
+                        f"remaining_stock={deposit.remaining_stock} exceeds "
+                        f"stock_ceiling={deposit.stock_ceiling}"
                     ),
                 )
             )

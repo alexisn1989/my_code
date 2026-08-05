@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from app.content.scenarios import load_scenario_file
 from app.core.errors import (
     SaveFileError,
     UnsupportedContentVersionError,
@@ -21,7 +22,7 @@ from app.simulation.save_format import (
     load_save_json,
 )
 from app.simulation.state import RULESET_VERSION
-from tests.conftest import make_game_state
+from tests.conftest import SCENARIO_DIR, make_game_state
 
 
 def _fresh_save():
@@ -43,7 +44,7 @@ def test_check_compatibility_accepts_current_versions() -> None:
     check_compatibility(
         save_format_version=SAVE_FORMAT_VERSION,
         ruleset_version=RULESET_VERSION,
-        content_version="0.5.0",
+        content_version="0.6.0",
     )  # must not raise
 
 
@@ -117,6 +118,33 @@ def test_export_import_export_is_byte_identical() -> None:
     second_export = dump_save_json(reloaded)
 
     assert first_export == second_export
+
+
+def test_export_import_export_is_byte_identical_with_real_resource_endowments() -> None:
+    """T15: `make_game_state`'s default (all-zero/inactive) `resource_deposits` alone wouldn't
+    prove much — `tiny_valid.yaml` has real, non-degenerate endowments across all eight
+    categories, so this exercises genuinely nonzero `ResourceDepositState`/
+    `ResourceExtractionReport` fields (including timber's regeneration/ceiling) through a full
+    export -> import -> export round trip.
+    """
+    state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+    save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+    for _ in range(3):
+        current = save.current_state()
+        decisions = DecisionSet(
+            expected_turn=current.turn, expected_state_version=current.state_version, decisions=[]
+        )
+        save = advance_game(save, decisions)
+
+    first_export = dump_save_json(save)
+    reloaded = load_save_json(first_export, source="test")
+    second_export = dump_save_json(reloaded)
+
+    assert first_export == second_export
+    latest_report = reloaded.entries[-1].report()
+    assert latest_report is not None
+    assert latest_report.resources is not None
+    assert any(d.extracted > 0 for d in latest_report.resources.deposits)
 
 
 def test_export_import_export_preserves_entry_count_and_head_hash() -> None:
