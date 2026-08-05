@@ -695,6 +695,8 @@ def _resolve_production_and_trade(ctx: PhaseContext) -> None:
                 "deposits_depleted": status_counts[DepositStatus.DEPLETED.value],
                 "total_extraction_workers": resources.total_extraction_workers,
                 "unassigned_resource_workers": resources.unassigned_resource_workers,
+                "extraction_sector_real_output": resources.extraction_sector_real_output,
+                "extraction_sector_potential_output": resources.extraction_sector_potential_output,
             },
         )
     )

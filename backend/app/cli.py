@@ -147,11 +147,15 @@ def _render_resource_extraction_resolved(params: dict[str, str | int]) -> str:
     deposits_depleted = int(params["deposits_depleted"])
     total_extraction_workers = int(params["total_extraction_workers"])
     unassigned_resource_workers = int(params["unassigned_resource_workers"])
+    extraction_sector_real_output = int(params["extraction_sector_real_output"])
+    extraction_sector_potential_output = int(params["extraction_sector_potential_output"])
     return (
         f"Resource extraction resolved: deposits_active={deposits_active} "
         f"deposits_depleted={deposits_depleted} "
         f"total_extraction_workers={total_extraction_workers:,} "
-        f"unassigned_resource_workers={unassigned_resource_workers:,}."
+        f"unassigned_resource_workers={unassigned_resource_workers:,} "
+        f"extraction_output={extraction_sector_real_output:,} "
+        f"potential={extraction_sector_potential_output:,}."
     )
 
 
@@ -270,6 +274,16 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
             print(
                 f"    {deposit.category.value}: remaining_stock={deposit.remaining_stock:,} {unit}"
             )
+        if args.coefficients:
+            # Read directly from state — never from data/scenarios/*.yaml, which is parsed only
+            # once, at `new` — proving resource_output_coefficients travels with the save itself.
+            print("  resource_output_coefficients:")
+            for coefficient in player.economy.resource_output_coefficients:
+                unit = RESOURCE_UNITS[coefficient.category]
+                print(
+                    f"    {coefficient.category.value}: "
+                    f"real_output_per_unit={coefficient.real_output_per_unit:,} per {unit}"
+                )
 
     if player.economy is not None and save.entries:
         latest_report = save.entries[-1].report()
@@ -349,12 +363,26 @@ def _print_resource_extraction_report(resources: ResourceExtractionReport) -> No
         f"total_extraction_workers={resources.total_extraction_workers:,} "
         f"unassigned_resource_workers={resources.unassigned_resource_workers:,}"
     )
+    utilization_bps = (
+        (resources.extraction_sector_real_output * 10_000)
+        // resources.extraction_sector_potential_output
+        if resources.extraction_sector_potential_output > 0
+        else 0
+    )
+    print(
+        f"      extraction_sector_real_output={resources.extraction_sector_real_output:,} "
+        f"potential={resources.extraction_sector_potential_output:,} "
+        f"utilization={utilization_bps / 100:g}%"
+    )
     for deposit in resources.deposits:
         unit = RESOURCE_UNITS[deposit.category]
         print(
             f"      {deposit.category.value}: opening={deposit.opening_stock:,} "
             f"regenerated={deposit.regenerated:,} extracted={deposit.extracted:,} "
-            f"closing={deposit.closing_stock:,} {unit} status={deposit.status.value}"
+            f"closing={deposit.closing_stock:,} {unit} "
+            f"-> output={deposit.real_output_contribution:,} "
+            f"(potential={deposit.potential_output_contribution:,}) "
+            f"status={deposit.status.value}"
         )
 
 
@@ -531,6 +559,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_inspect = subparsers.add_parser("inspect", help="load a save and report its integrity status")
     p_inspect.add_argument("--state", required=True, help="path to a save file")
+    p_inspect.add_argument(
+        "--coefficients",
+        action="store_true",
+        help="also show the canonical resource_output_coefficients table, read directly from "
+        "state (never re-read from scenario YAML)",
+    )
     p_inspect.set_defaults(func=_cmd_inspect)
 
     p_resolve = subparsers.add_parser("resolve", help="resolve N turns and write a new save file")
