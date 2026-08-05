@@ -34,7 +34,7 @@ from app.simulation.state import (
     SectorCategory,
     SectorState,
 )
-from tests.conftest import make_economy
+from tests.conftest import make_economy, make_resource_output_coefficients
 
 _CATEGORIES = tuple(ResourceCategory)
 
@@ -120,6 +120,7 @@ class TestEconomyStateResourceDepositsCompletenessAndOrder:
                 effective_labor_force_share_bps=10_000,
                 sectors=_minimal_sectors(),
                 resource_deposits=tuple(deposits),
+                resource_output_coefficients=make_resource_output_coefficients(),
             )
 
     def test_missing_category_is_rejected(self) -> None:
@@ -129,6 +130,7 @@ class TestEconomyStateResourceDepositsCompletenessAndOrder:
                 effective_labor_force_share_bps=10_000,
                 sectors=_minimal_sectors(),
                 resource_deposits=deposits,
+                resource_output_coefficients=make_resource_output_coefficients(),
             )
 
     def test_reversed_order_is_rejected_not_normalized(self) -> None:
@@ -140,6 +142,7 @@ class TestEconomyStateResourceDepositsCompletenessAndOrder:
                 effective_labor_force_share_bps=10_000,
                 sectors=_minimal_sectors(),
                 resource_deposits=deposits,
+                resource_output_coefficients=make_resource_output_coefficients(),
             )
 
     def test_valid_complete_canonical_order_constructs_cleanly(self) -> None:
@@ -147,6 +150,7 @@ class TestEconomyStateResourceDepositsCompletenessAndOrder:
             effective_labor_force_share_bps=10_000,
             sectors=_minimal_sectors(),
             resource_deposits=_all_deposits(),
+            resource_output_coefficients=make_resource_output_coefficients(),
         )
         assert tuple(d.category for d in economy.resource_deposits) == tuple(ResourceCategory)
 

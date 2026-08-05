@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.core.money import Money, StrictBps, StrictMoney
 from app.core.quantity import (
     StrictRealOutput,
+    StrictRealOutputPerResourceUnit,
     StrictRealOutputPerWorker,
     StrictResourceQuantity,
     StrictResourceQuantityPerWorker,
@@ -355,10 +356,32 @@ class ResourceDepositState(BaseModel):
         return self
 
 
+class ResourceOutputCoefficient(BaseModel):
+    """How much fixed-base-year `RealOutput` one physical unit of one `ResourceCategory`
+    embodies (Phase 2C2) — the scenario-authored input to
+    `simulation.resource_output.compute_resource_output_contributions`, which multiplies it by
+    that turn's extracted (and separately, potential) quantity via the single named
+    `core.quantity.extracted_resource_to_real_output` bridge. Never zero (`gt=0`,
+    `StrictRealOutputPerResourceUnit`): "zero contribution because nothing was extracted" (legal)
+    must stay cleanly distinct from "zero contribution despite extraction" (impossible by type) —
+    see `docs/adr/0008-physical-extraction-derived-sector-output.md`.
+
+    Persisted on `EconomyState`, not a bare mapping, so it travels with the rest of scenario-
+    authored economy state through `state_json`/the history hash chain exactly like
+    `resource_deposits` does — never re-read from scenario YAML after `new`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    category: ResourceCategory
+    real_output_per_unit: StrictRealOutputPerResourceUnit
+
+
 class EconomyState(BaseModel):
     """A country's Phase-2B1 production state: exactly one `SectorState` per `SectorCategory`,
     plus (Phase 2B3) the reduced-form labor-supply coefficient that feeds those sectors, plus
-    (Phase 2C1) exactly one `ResourceDepositState` per `ResourceCategory`.
+    (Phase 2C1) exactly one `ResourceDepositState` per `ResourceCategory`, plus (Phase 2C2)
+    exactly one `ResourceOutputCoefficient` per `ResourceCategory`.
 
     All eleven categories must be present, exactly once — a zero-capacity
     sector is a legitimate ("inactive") input, but an absent one is not,
@@ -385,6 +408,16 @@ class EconomyState(BaseModel):
     category, just at zero — the same "no ambiguous missing-vs-zero concept" reasoning
     `sectors` already follows). Grouped here, not on `CountryState` directly, because deposits
     are worked by the same extraction sector's labor this economy already allocates.
+
+    `resource_output_coefficients` (Phase 2C2) covers all eight `ResourceCategory` members
+    exactly once, canonical order, **rejected not normalized** on reorder — following the
+    `resource_deposits` precedent (R3, not the `sectors` normalize-on-reorder one), since this is
+    a second resource-facing tuple. Read-only after construction: no decision in this phase
+    mutates it, and it is a genuine schema addition (old-ruleset saves have none), not a
+    per-scenario "content-value fingerprint" — different scenarios routinely carry different
+    coefficients under the same `content_version`, exactly like they already carry different
+    `resource_deposits`/`sectors` values (see `docs/adr/0008-physical-extraction-derived-sector-output.md`,
+    "Content-version policy").
     """
 
     model_config = _STRICT_CONFIG
@@ -392,6 +425,7 @@ class EconomyState(BaseModel):
     effective_labor_force_share_bps: StrictBps
     sectors: tuple[SectorState, ...]
     resource_deposits: tuple[ResourceDepositState, ...]
+    resource_output_coefficients: tuple[ResourceOutputCoefficient, ...]
 
     @model_validator(mode="after")
     def _sectors_cover_all_categories_exactly_once_in_canonical_order(self) -> EconomyState:
@@ -444,6 +478,39 @@ class EconomyState(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _output_coefficients_cover_all_categories_exactly_once_in_canonical_order(
+        self,
+    ) -> EconomyState:
+        """Structurally identical to `_deposits_cover_all_categories_exactly_once_in_canonical_order`
+        above (Phase 2C2) — a second, independent resource-facing tuple that follows the same
+        reject-not-normalize-on-reorder policy (R3)."""
+        seen: set[ResourceCategory] = set()
+        for coefficient in self.resource_output_coefficients:
+            if coefficient.category in seen:
+                raise ValueError(
+                    f"duplicate resource output coefficient category: {coefficient.category.value!r}"
+                )
+            seen.add(coefficient.category)
+        missing = [c for c in ResourceCategory if c not in seen]
+        if missing:
+            raise ValueError(
+                "economy is missing resource output coefficient categories: "
+                f"{[c.value for c in missing]!r} — all {len(ResourceCategory)} are required"
+            )
+        by_category = {
+            coefficient.category: coefficient for coefficient in self.resource_output_coefficients
+        }
+        canonical_order = tuple(by_category[category] for category in ResourceCategory)
+        if canonical_order != self.resource_output_coefficients:
+            got = [c.category.value for c in self.resource_output_coefficients]
+            expected = [c.value for c in ResourceCategory]
+            raise ValueError(
+                "resource_output_coefficients are not in canonical ResourceCategory order: "
+                f"got {got!r}, expected {expected!r}"
+            )
+        return self
+
 
 class CountryState(BaseModel):
     """A single country: player-controlled or AI-controlled.
@@ -474,7 +541,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.6.0"
+RULESET_VERSION = "0.7.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;

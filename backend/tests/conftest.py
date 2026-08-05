@@ -16,6 +16,7 @@ from app.simulation.state import (
     PopulationGroupState,
     ResourceCategory,
     ResourceDepositState,
+    ResourceOutputCoefficient,
     SectorCategory,
     SectorState,
     SpendingPlanState,
@@ -141,6 +142,27 @@ def make_resource_deposits(
     return tuple(deposits)
 
 
+def make_resource_output_coefficients(
+    *,
+    real_output_per_unit: int = 1,
+) -> tuple[ResourceOutputCoefficient, ...]:
+    """Build a valid `ResourceOutputCoefficient` tuple covering all 8 `ResourceCategory` values,
+    uniform, defaulting to `1` (the minimum legal `StrictRealOutputPerResourceUnit`, `gt=0`).
+
+    Unlike `make_resource_deposits`, there is no "inactive" zero shape available here — every
+    coefficient must be strictly positive regardless of whether the paired deposit is active
+    (Phase 2C2, D5) — so this default is chosen purely to be side-effect-free: paired with
+    `make_resource_deposits()`'s all-inactive default (`extracted == 0` for every category), the
+    actual `real_output_per_unit` value is multiplied by zero every turn, so it cannot change any
+    pre-Phase-2C2 test's figures regardless of what it's set to. Tests exercising specific
+    resource-output behavior build `ResourceOutputCoefficient` tuples directly instead.
+    """
+    return tuple(
+        ResourceOutputCoefficient(category=category, real_output_per_unit=real_output_per_unit)
+        for category in ResourceCategory
+    )
+
+
 def make_economy(
     *,
     quarterly_capacity_output: int = 25_000_000,
@@ -149,6 +171,7 @@ def make_economy(
     value_added_share_bps: int = 5_000,
     labor_income_share_bps: int = 5_000,
     resource_deposits: tuple[ResourceDepositState, ...] | None = None,
+    resource_output_coefficients: tuple[ResourceOutputCoefficient, ...] | None = None,
 ) -> EconomyState:
     """Build a valid `EconomyState` covering all 11 `SectorCategory` values with uniform,
     round-number defaults (every sector exactly-balanced: `required_workers * output_per_worker
@@ -166,6 +189,12 @@ def make_economy(
 
     As of Phase 2C1, `resource_deposits` defaults to `make_resource_deposits()`'s all-inactive
     shape (see that function's docstring) — pass an explicit tuple to exercise real extraction.
+
+    As of Phase 2C2, `resource_output_coefficients` defaults to
+    `make_resource_output_coefficients()`'s uniform shape — paired with the all-inactive deposits
+    default above, every category's `extracted == 0`, so the coefficient value multiplies to zero
+    regardless, keeping this default side-effect-free for the overwhelming majority of tests that
+    predate Phase 2C2 and don't care about resource output.
 
     Paired with `make_finance`'s default `tax_base_coefficients`, this produces derived tax
     bases (personal=55,000,000, corporate=27,500,000, consumption=41,250,000) that keep
@@ -186,6 +215,11 @@ def make_economy(
         ),
         resource_deposits=(
             resource_deposits if resource_deposits is not None else make_resource_deposits()
+        ),
+        resource_output_coefficients=(
+            resource_output_coefficients
+            if resource_output_coefficients is not None
+            else make_resource_output_coefficients()
         ),
     )
 
@@ -244,7 +278,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.6.0",
+        content_version="0.7.0",
         seed=seed,
         turn=turn,
         state_version=state_version,
