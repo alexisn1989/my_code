@@ -25,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.6.0"
+content_version: "0.7.0"
 seed: 99
 player_country_id: strapped
 
@@ -219,3 +219,35 @@ countries:
           remaining_stock: 0
           extraction_capacity_per_turn: 0
           output_per_worker: 1
+
+      # Phase 2C2: physical-to-output bridge coefficients. REPLACES the extraction sector's old
+      # capacity/productivity output formula (500,000,000, see the sector block above) with the sum
+      # of each deposit's extracted quantity * its coefficient — chosen so turn 1's total is exactly
+      # 500,000,000 (see docs/economy_methodology.md, "Calibration"), preserving every Phase
+      # 2B/2C1 figure numerically at turn 1 only:
+      #   timber:    10,000 x 10,000 =  100,000,000
+      #   iron_ore:  20,000 x 20,000 =  400,000,000
+      #   six others:      0 x (any) =            0  (positive coefficients required, D5, but
+      #                                                always multiplied by zero here)
+      #   total                     =  500,000,000  (matches the old formula exactly, turn 1 only)
+      # From turn 26 (iron_ore depleted) the total drops to 100,000,000, and from turn 41 (timber's
+      # renewable steady state) it drops again to 50,000,000 — an intentional divergence from the
+      # pre-Phase-2C2 trajectory, not a calibration error; see the ADR/economy_methodology for the
+      # exact hand-worked figures at every turn.
+      resource_output_coefficients:
+        - category: timber
+          real_output_per_unit: 10000
+        - category: iron_ore
+          real_output_per_unit: 20000
+        - category: coal
+          real_output_per_unit: 1000
+        - category: crude_oil
+          real_output_per_unit: 1200
+        - category: natural_gas
+          real_output_per_unit: 1000
+        - category: uranium
+          real_output_per_unit: 100000
+        - category: copper
+          real_output_per_unit: 1000
+        - category: critical_minerals
+          real_output_per_unit: 5000
