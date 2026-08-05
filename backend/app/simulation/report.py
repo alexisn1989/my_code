@@ -40,6 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.core.money import BPS_DENOMINATOR, StrictBps, StrictMoney, StrictSignedMoney
 from app.core.quantity import (
     StrictRealOutput,
+    StrictRealOutputPerResourceUnit,
     StrictRealOutputPerWorker,
     StrictResourceQuantity,
     StrictResourceQuantityPerWorker,
@@ -47,7 +48,6 @@ from app.core.quantity import (
     base_year_real_output_to_money,
 )
 from app.simulation.accounting import compute_quarterly_interest, compute_tax_revenue
-from app.simulation.production_accounting import SectorConstraint
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
@@ -485,7 +485,8 @@ class LaborMarketReport(BaseModel):
 
 
 class ResourceDepositReport(BaseModel):
-    """One resource deposit's self-validated Phase 2C1 extraction outcome.
+    """One resource deposit's self-validated Phase 2C1 extraction outcome, extended (Phase 2C2)
+    with its physical-to-output bridge contribution.
 
     Every derived field is independently re-checked against this row's own stored inputs on
     construction — see the validators below — mirroring `SectorProductionReport`'s pattern
@@ -494,9 +495,19 @@ class ResourceDepositReport(BaseModel):
     than trusting the phase that built it — without them this row could not independently verify
     the one number that makes timber different from every other resource.
 
-    Units: every quantity field except the worker counts is a physical resource quantity
-    (`StrictResourceQuantity`/`StrictResourceQuantityPerWorker`) in the category's own unit
-    (`state.RESOURCE_UNITS`) — never `Money`, never `RealOutput`. No conversion to either exists.
+    `real_output_per_unit`/`real_output_contribution`/`potential_output_contribution` (Phase 2C2,
+    R6) carry both the actual and potential (stock/capacity-bounded, labor-independent) converted
+    contributions on the same row as the physical inputs they're derived from — so both are
+    independently re-derivable from fields this row already stores, without needing a second
+    report. `potential_output_contribution` is what gives the extraction sector's
+    `capacity_utilization_bps` a principled, non-legacy denominator (see
+    `docs/adr/0008-physical-extraction-derived-sector-output.md`).
+
+    Units: every physical-quantity field except the worker counts is a `StrictResourceQuantity`/
+    `StrictResourceQuantityPerWorker` in the category's own unit (`state.RESOURCE_UNITS`) — never
+    `Money`. `real_output_per_unit`/`real_output_contribution`/`potential_output_contribution` are
+    the one deliberate exception: they are `RealOutput`, the single named conversion boundary
+    (`core.quantity.extracted_resource_to_real_output`).
     """
 
     model_config = _STRICT_CONFIG
@@ -514,6 +525,9 @@ class ResourceDepositReport(BaseModel):
     extracted: StrictResourceQuantity
     closing_stock: StrictResourceQuantity
     status: DepositStatus
+    real_output_per_unit: StrictRealOutputPerResourceUnit
+    real_output_contribution: StrictRealOutput
+    potential_output_contribution: StrictRealOutput
 
     @model_validator(mode="after")
     def _regeneration_and_ceiling_respect_renewability_rule(self) -> ResourceDepositReport:
@@ -634,10 +648,59 @@ class ResourceDepositReport(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _real_output_contribution_matches_bridge(self) -> ResourceDepositReport:
+        expected = self.extracted * self.real_output_per_unit
+        if self.real_output_contribution != expected:
+            raise ValueError(
+                f"real_output_contribution={self.real_output_contribution} does not equal "
+                f"extracted * real_output_per_unit ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _potential_output_contribution_matches_bridge(self) -> ResourceDepositReport:
+        potential_quantity = min(self.available_stock, self.extraction_capacity_per_turn)
+        expected = potential_quantity * self.real_output_per_unit
+        if self.potential_output_contribution != expected:
+            raise ValueError(
+                f"potential_output_contribution={self.potential_output_contribution} does not "
+                "equal min(available_stock, extraction_capacity_per_turn) * real_output_per_unit "
+                f"({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _zero_extraction_yields_zero_contribution(self) -> ResourceDepositReport:
+        """Stated separately from `_real_output_contribution_matches_bridge` (which already
+        implies this) so a violation fails with its own, more specific message: output can never
+        be created from resources that were not physically extracted this turn."""
+        if self.extracted == 0 and self.real_output_contribution != 0:
+            raise ValueError(
+                f"real_output_contribution={self.real_output_contribution} is nonzero despite "
+                f"extracted == 0 for {self.category.value} — output cannot be created from "
+                "resources that were not physically extracted"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _real_output_contribution_does_not_exceed_potential(self) -> ResourceDepositReport:
+        """Row-level restatement of the `actual <= potential` inequality proven by construction
+        in `simulation.resource_output` — defense-in-depth at the smallest possible granularity,
+        belt-and-suspenders alongside `ResourceExtractionReport`'s aggregate-level check below."""
+        if self.real_output_contribution > self.potential_output_contribution:
+            raise ValueError(
+                f"real_output_contribution={self.real_output_contribution} exceeds "
+                f"potential_output_contribution={self.potential_output_contribution} for "
+                f"{self.category.value}"
+            )
+        return self
+
 
 class ResourceExtractionReport(BaseModel):
     """Structured, machine-readable Phase 2C1 resource-extraction outcome for the player country,
-    for one turn. Player-only, mirroring `LaborMarketReport`/`ProductionReport`'s scope — AI
+    for one turn, extended (Phase 2C2) with the extraction sector's aggregate physical-to-output
+    bridge totals. Player-only, mirroring `LaborMarketReport`/`ProductionReport`'s scope — AI
     countries may have `economy=None` and get no resource-extraction report.
 
     `deposits` must contain exactly one entry per `ResourceCategory`, in canonical declaration
@@ -646,7 +709,12 @@ class ResourceExtractionReport(BaseModel):
     `docs/adr/0007-resource-endowments-and-extraction.md` for why.
 
     No `total_extracted` field: physical quantities of different resources (tonnes, barrels,
-    cubic metres) are never summed together (D4) — only worker counts are aggregated.
+    cubic metres) are never summed together (D4) — only worker counts are aggregated. But
+    `extraction_sector_real_output`/`extraction_sector_potential_output` (Phase 2C2) sum
+    homogeneous `RealOutput` contributions across all eight deposits — a different, legal kind of
+    sum, since every deposit's contribution is already in the same converted unit. These are the
+    values `TurnReport` cross-validates against `ProductionReport.sectors[EXTRACTION]`, since this
+    row cannot self-validate `actual_output`/`capacity_utilization_bps`/`constraint` in isolation.
     """
 
     model_config = _STRICT_CONFIG
@@ -655,6 +723,8 @@ class ResourceExtractionReport(BaseModel):
     extraction_sector_workers: StrictWorkerCount
     total_extraction_workers: StrictWorkerCount
     unassigned_resource_workers: StrictWorkerCount
+    extraction_sector_real_output: StrictRealOutput
+    extraction_sector_potential_output: StrictRealOutput
 
     @model_validator(mode="after")
     def _deposits_cover_all_categories_exactly_once_in_canonical_order(
@@ -713,6 +783,121 @@ class ResourceExtractionReport(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _extraction_sector_real_output_matches_summed_contributions(
+        self,
+    ) -> ResourceExtractionReport:
+        expected = sum(deposit.real_output_contribution for deposit in self.deposits)
+        if self.extraction_sector_real_output != expected:
+            raise ValueError(
+                f"extraction_sector_real_output={self.extraction_sector_real_output} does not "
+                f"equal the sum of deposits[*].real_output_contribution ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _extraction_sector_potential_output_matches_summed_potential_contributions(
+        self,
+    ) -> ResourceExtractionReport:
+        expected = sum(deposit.potential_output_contribution for deposit in self.deposits)
+        if self.extraction_sector_potential_output != expected:
+            raise ValueError(
+                "extraction_sector_potential_output="
+                f"{self.extraction_sector_potential_output} does not equal the sum of "
+                f"deposits[*].potential_output_contribution ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _extraction_sector_real_output_does_not_exceed_potential(
+        self,
+    ) -> ResourceExtractionReport:
+        """Aggregate-level restatement of the same `actual <= potential` inequality each row
+        already checks — belt-and-suspenders, mirroring the codebase's existing habit of checking
+        both a per-row and an aggregate identity."""
+        if self.extraction_sector_real_output > self.extraction_sector_potential_output:
+            raise ValueError(
+                f"extraction_sector_real_output={self.extraction_sector_real_output} exceeds "
+                "extraction_sector_potential_output="
+                f"{self.extraction_sector_potential_output}"
+            )
+        return self
+
+
+class SectorOutputBasis(StrEnum):
+    """Which formula a `SectorProductionReport` row's derived fields were computed by (Phase
+    2C2). Determined entirely by category identity (`EXTRACTION` -> `RESOURCE_EXTRACTION`, every
+    other category -> `STANDARD`) — never an authored or scenario choice; see
+    `_output_basis_matches_category` below."""
+
+    STANDARD = "standard"
+    RESOURCE_EXTRACTION = "resource_extraction"
+
+
+class SectorProductionConstraint(StrEnum):
+    """The report-facing constraint classification for a `SectorProductionReport` row (Phase
+    2C2, R9) — a superset of `production_accounting.SectorConstraint`'s four members (which
+    `compute_sector_output` still produces, internally, for `STANDARD`-basis rows only — that
+    function and module are unmodified) plus `PHYSICAL_RESOURCE_CONSTRAINED`, which only ever
+    applies to the `RESOURCE_EXTRACTION` row. Defined here rather than added to
+    `production_accounting.SectorConstraint` for the same reason `SectorOutputBasis` is: the pure
+    engine module never produces this value and must stay untouched. The four shared members keep
+    identical string values to `SectorConstraint`'s, so `STANDARD` rows' canonical JSON is
+    byte-for-byte unaffected by this type change.
+    """
+
+    CAPACITY_CONSTRAINED = "capacity_constrained"
+    LABOR_CONSTRAINED = "labor_constrained"
+    EXACTLY_BALANCED = "exactly_balanced"
+    INACTIVE = "inactive"
+    PHYSICAL_RESOURCE_CONSTRAINED = "physical_resource_constrained"
+
+
+def classify_extraction_constraint(
+    *, potential_output: int, actual_output: int
+) -> SectorProductionConstraint:
+    """The Phase 2C2 classification for the extraction sector's `SectorProductionReport` row
+    (R9), called identically from `phases.py` (to construct the row) and `TurnReport`'s
+    cross-validator (to authoritatively check it) — the one deliberate exception to this
+    codebase's usual "independently re-derive, don't share code" self-validation philosophy,
+    because the classification itself has no freedom: given `(potential_output, actual_output)`
+    exactly one outcome is possible, so re-deriving it a second time would only re-prove that the
+    same deterministic function returns the same answer twice, not add any real defense. What
+    genuinely needs independent re-derivation — whether `potential_output`/`actual_output`
+    themselves agree with `ResourceExtractionReport`'s stored totals — is exactly what
+    `TurnReport`'s cross-validators (report.py) already check, separately from this function.
+
+    `actual_output > potential_output` is **REJECTED, never classified** (R9):
+    `simulation.resource_output` proves, by construction, this can never happen via any
+    legitimate code path (`extracted_i <= potential_quantity_i` for every category, hence summed).
+    This function still raises defensively rather than silently assigning a business status to
+    invalid data — belt-and-suspenders alongside `ResourceExtractionReport`'s own
+    does-not-exceed-potential validators (row-level and aggregate-level, above).
+
+    Valid-state table (R9):
+        potential_output == 0                        -> INACTIVE   (implies actual_output == 0)
+        potential_output >  0, actual_output <  potential -> LABOR_CONSTRAINED (includes the
+            zero-employment case — 2B1 precedent: potential existing but unstaffed is a labor
+            fact, not an inactivity fact)
+        potential_output >  0, actual_output == potential -> PHYSICAL_RESOURCE_CONSTRAINED
+            (deterministic tie semantics: this is the outcome whenever labor realized exactly
+            what stock/capacity would allow, regardless of whether labor was scarce-but-exactly-
+            sufficient or merely abundant with the resource itself the true ceiling — per-deposit
+            distinctions of that kind remain `ResourceDepositReport.status`'s job, not this
+            sector-aggregate field's)
+    """
+    if actual_output > potential_output:
+        raise ValueError(
+            f"actual_output={actual_output} exceeds potential_output={potential_output} for "
+            "the extraction row — this state is invalid, not merely unreachable, and must "
+            "never be assigned a business status"
+        )
+    if potential_output == 0:
+        return SectorProductionConstraint.INACTIVE
+    if actual_output < potential_output:
+        return SectorProductionConstraint.LABOR_CONSTRAINED
+    return SectorProductionConstraint.PHYSICAL_RESOURCE_CONSTRAINED
+
 
 class SectorProductionReport(BaseModel):
     """One sector's self-validated Phase 2B1 production outcome.
@@ -740,63 +925,117 @@ class SectorProductionReport(BaseModel):
     model_config = _STRICT_CONFIG
 
     category: SectorCategory
+    output_basis: SectorOutputBasis
     capacity_output: StrictRealOutput
     output_per_worker: StrictRealOutputPerWorker
     employed_workers: StrictWorkerCount
     labor_limited_output: StrictRealOutput
     actual_output: StrictRealOutput
     capacity_utilization_bps: StrictBps
-    constraint: SectorConstraint
+    constraint: SectorProductionConstraint
+
+    @model_validator(mode="after")
+    def _output_basis_matches_category(self) -> SectorProductionReport:
+        expected = (
+            SectorOutputBasis.RESOURCE_EXTRACTION
+            if self.category is SectorCategory.EXTRACTION
+            else SectorOutputBasis.STANDARD
+        )
+        if self.output_basis != expected:
+            raise ValueError(
+                f"output_basis={self.output_basis!r} does not match category="
+                f"{self.category.value!r} (expected {expected!r})"
+            )
+        return self
 
     @model_validator(mode="after")
     def _labor_limited_output_matches_formula(self) -> SectorProductionReport:
-        expected = self.employed_workers * self.output_per_worker
-        if self.labor_limited_output != expected:
-            raise ValueError(
-                f"labor_limited_output={self.labor_limited_output} does not equal "
-                f"employed_workers * output_per_worker ({expected})"
-            )
+        if self.output_basis is SectorOutputBasis.STANDARD:
+            expected = self.employed_workers * self.output_per_worker
+            if self.labor_limited_output != expected:
+                raise ValueError(
+                    f"labor_limited_output={self.labor_limited_output} does not equal "
+                    f"employed_workers * output_per_worker ({expected})"
+                )
+        else:
+            # RESOURCE_EXTRACTION: labor_limited_output is defined to equal actual_output — the
+            # physical bridge total (labor is already incorporated as one of three bounding terms
+            # inside resource_extraction.py's own extraction formula, upstream of this report).
+            if self.labor_limited_output != self.actual_output:
+                raise ValueError(
+                    f"labor_limited_output={self.labor_limited_output} does not equal "
+                    f"actual_output={self.actual_output} for the RESOURCE_EXTRACTION basis "
+                    "(the two fields are definitionally equal on this row)"
+                )
         return self
 
     @model_validator(mode="after")
     def _actual_output_matches_formula(self) -> SectorProductionReport:
-        expected = min(self.capacity_output, self.labor_limited_output)
-        if self.actual_output != expected:
-            raise ValueError(
-                f"actual_output={self.actual_output} does not equal "
-                f"min(capacity_output, labor_limited_output) ({expected})"
-            )
+        if self.output_basis is SectorOutputBasis.STANDARD:
+            expected = min(self.capacity_output, self.labor_limited_output)
+            if self.actual_output != expected:
+                raise ValueError(
+                    f"actual_output={self.actual_output} does not equal "
+                    f"min(capacity_output, labor_limited_output) ({expected})"
+                )
+        else:
+            # RESOURCE_EXTRACTION: NOT independently re-derivable from this row's own fields —
+            # the physical inputs (extracted quantities, coefficients) live in
+            # ResourceExtractionReport, a sibling report. This row-level check is the
+            # self-consistency half only (mirrored above in
+            # _labor_limited_output_matches_formula); the AUTHORITATIVE check — that this value
+            # actually equals ResourceExtractionReport.extraction_sector_real_output — is
+            # TurnReport's cross-validator (below), which fires on every construction/parse path
+            # exactly like every other TurnReport cross-check.
+            if self.actual_output != self.labor_limited_output:
+                raise ValueError(
+                    f"actual_output={self.actual_output} does not equal "
+                    f"labor_limited_output={self.labor_limited_output} for the "
+                    "RESOURCE_EXTRACTION basis (the two fields are definitionally equal on this "
+                    "row)"
+                )
         return self
 
     @model_validator(mode="after")
     def _capacity_utilization_bps_matches_formula(self) -> SectorProductionReport:
-        expected = (
-            (self.actual_output * BPS_DENOMINATOR) // self.capacity_output
-            if self.capacity_output > 0
-            else 0
-        )
-        if self.capacity_utilization_bps != expected:
-            raise ValueError(
-                f"capacity_utilization_bps={self.capacity_utilization_bps} does not match "
-                f"floor(actual_output * 10_000 / capacity_output) ({expected})"
+        if self.output_basis is SectorOutputBasis.STANDARD:
+            expected = (
+                (self.actual_output * BPS_DENOMINATOR) // self.capacity_output
+                if self.capacity_output > 0
+                else 0
             )
+            if self.capacity_utilization_bps != expected:
+                raise ValueError(
+                    f"capacity_utilization_bps={self.capacity_utilization_bps} does not match "
+                    f"floor(actual_output * 10_000 / capacity_output) ({expected})"
+                )
+        # RESOURCE_EXTRACTION: not self-derivable from this row's own fields — the potential-
+        # output total lives in ResourceExtractionReport, a sibling report. No row-level check is
+        # performed; this field is authoritatively checked ONLY by TurnReport's cross-validator
+        # (below). quarterly_capacity_output (this row's capacity_output field) is read NOWHERE
+        # in this branch — it is not even used as a denominator for this basis (R6; see
+        # docs/adr/0008-physical-extraction-derived-sector-output.md, "Legacy field semantics").
         return self
 
     @model_validator(mode="after")
     def _constraint_matches_classification_rule(self) -> SectorProductionReport:
-        if self.capacity_output == 0:
-            expected = SectorConstraint.INACTIVE
-        elif self.labor_limited_output < self.capacity_output:
-            expected = SectorConstraint.LABOR_CONSTRAINED
-        elif self.labor_limited_output > self.capacity_output:
-            expected = SectorConstraint.CAPACITY_CONSTRAINED
-        else:
-            expected = SectorConstraint.EXACTLY_BALANCED
-        if self.constraint != expected:
-            raise ValueError(
-                f"constraint={self.constraint!r} does not match the classification rule "
-                f"applied to capacity_output/labor_limited_output (expected {expected!r})"
-            )
+        if self.output_basis is SectorOutputBasis.STANDARD:
+            if self.capacity_output == 0:
+                expected: SectorProductionConstraint = SectorProductionConstraint.INACTIVE
+            elif self.labor_limited_output < self.capacity_output:
+                expected = SectorProductionConstraint.LABOR_CONSTRAINED
+            elif self.labor_limited_output > self.capacity_output:
+                expected = SectorProductionConstraint.CAPACITY_CONSTRAINED
+            else:
+                expected = SectorProductionConstraint.EXACTLY_BALANCED
+            if self.constraint != expected:
+                raise ValueError(
+                    f"constraint={self.constraint!r} does not match the classification rule "
+                    f"applied to capacity_output/labor_limited_output (expected {expected!r})"
+                )
+        # RESOURCE_EXTRACTION: no row-level check — authoritatively checked by TurnReport's
+        # cross-validator via classify_extraction_constraint (R9), which needs
+        # ResourceExtractionReport's potential/actual totals, not available on this row alone.
         return self
 
 
@@ -1205,5 +1444,80 @@ class TurnReport(BaseModel):
                 "tax_base_derivation.derived_tax_bases does not exactly equal "
                 "finance.tax_bases — the derived bases and the bases finance applied have "
                 "diverged"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _resources_extraction_output_matches_production_extraction_row(self) -> TurnReport:
+        """Phase 2C2: `ResourceExtractionReport.extraction_sector_real_output` must equal
+        `ProductionReport.sectors[EXTRACTION].actual_output` exactly — the extraction row's
+        output IS the physical bridge total, not merely a similar internally-valid number. This
+        is the AUTHORITATIVE check for that row's `actual_output` — `SectorProductionReport`
+        cannot self-validate it in isolation (see `_actual_output_matches_formula`'s
+        `RESOURCE_EXTRACTION` branch above)."""
+        if self.resources is None or self.production is None:
+            return self
+        extraction_row = next(
+            (s for s in self.production.sectors if s.category == SectorCategory.EXTRACTION), None
+        )
+        if extraction_row is None:
+            raise ValueError("production.sectors is missing the EXTRACTION category")
+        if extraction_row.actual_output != self.resources.extraction_sector_real_output:
+            raise ValueError(
+                "production.sectors[EXTRACTION].actual_output="
+                f"{extraction_row.actual_output} does not match "
+                "resources.extraction_sector_real_output="
+                f"{self.resources.extraction_sector_real_output}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _resources_extraction_utilization_matches_potential_output_formula(self) -> TurnReport:
+        """Phase 2C2 (R6): `ProductionReport.sectors[EXTRACTION].capacity_utilization_bps` must
+        equal `floor(extraction_sector_real_output * 10_000 / extraction_sector_potential_output)`,
+        or `0` when the denominator is `0` — the AUTHORITATIVE check (the row's own validator
+        cannot self-derive this; see `_capacity_utilization_bps_matches_formula` above)."""
+        if self.resources is None or self.production is None:
+            return self
+        extraction_row = next(
+            (s for s in self.production.sectors if s.category == SectorCategory.EXTRACTION), None
+        )
+        if extraction_row is None:
+            raise ValueError("production.sectors is missing the EXTRACTION category")
+        potential = self.resources.extraction_sector_potential_output
+        actual = self.resources.extraction_sector_real_output
+        expected = (actual * BPS_DENOMINATOR) // potential if potential > 0 else 0
+        if extraction_row.capacity_utilization_bps != expected:
+            raise ValueError(
+                "production.sectors[EXTRACTION].capacity_utilization_bps="
+                f"{extraction_row.capacity_utilization_bps} does not match "
+                "floor(extraction_sector_real_output * 10_000 / "
+                f"extraction_sector_potential_output), or 0 when potential is 0 ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _resources_extraction_constraint_matches_classification(self) -> TurnReport:
+        """Phase 2C2 (R9): `ProductionReport.sectors[EXTRACTION].constraint` must equal
+        `classify_extraction_constraint(potential, actual)` — the AUTHORITATIVE check. Calls the
+        SAME shared classifier `phases.py` uses to construct the row (see
+        `classify_extraction_constraint`'s own docstring for why this one classification is
+        deliberately shared code, not independently re-derived)."""
+        if self.resources is None or self.production is None:
+            return self
+        extraction_row = next(
+            (s for s in self.production.sectors if s.category == SectorCategory.EXTRACTION), None
+        )
+        if extraction_row is None:
+            raise ValueError("production.sectors is missing the EXTRACTION category")
+        expected = classify_extraction_constraint(
+            potential_output=self.resources.extraction_sector_potential_output,
+            actual_output=self.resources.extraction_sector_real_output,
+        )
+        if extraction_row.constraint != expected:
+            raise ValueError(
+                f"production.sectors[EXTRACTION].constraint={extraction_row.constraint!r} does "
+                f"not match classify_extraction_constraint(potential, actual) (expected "
+                f"{expected!r})"
             )
         return self
