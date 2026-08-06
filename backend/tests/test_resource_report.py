@@ -82,6 +82,9 @@ def _valid_deposit_report() -> ResourceDepositReport:
         extracted=10,
         closing_stock=1_010,
         status=DepositStatus.LABOR_CONSTRAINED,
+        real_output_per_unit=1,
+        real_output_contribution=10,
+        potential_output_contribution=100,
     )
 
 
@@ -118,6 +121,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=10,
                 closing_stock=1_010,
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=10,
+                potential_output_contribution=100,
             )
 
     def test_regenerated_exceeding_the_ceiling_clamp_is_rejected(self) -> None:
@@ -143,6 +149,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=10,
                 closing_stock=1_985,
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=10,
+                potential_output_contribution=100,
             )
 
     def test_nonrenewable_with_nonzero_regeneration_per_turn_is_rejected(self) -> None:
@@ -161,6 +170,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=50,
                 closing_stock=450,
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=50,
+                potential_output_contribution=50,
             )
 
     def test_nonrenewable_with_a_stock_ceiling_is_rejected(self) -> None:
@@ -179,6 +191,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=50,
                 closing_stock=450,
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=50,
+                potential_output_contribution=50,
             )
 
     def test_renewable_without_a_stock_ceiling_is_rejected(self) -> None:
@@ -197,6 +212,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=10,
                 closing_stock=1_010,
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=10,
+                potential_output_contribution=100,
             )
 
     def test_available_stock_exceeding_ceiling_is_rejected(self) -> None:
@@ -215,6 +233,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=10,
                 closing_stock=1_995,
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=10,
+                potential_output_contribution=100,
             )
 
     def test_wrong_available_stock_is_rejected(self) -> None:
@@ -233,6 +254,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=10,
                 closing_stock=1_010,
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=10,
+                potential_output_contribution=100,
             )
 
     def test_wrong_required_workers_is_rejected(self) -> None:
@@ -251,6 +275,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=10,
                 closing_stock=1_010,
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=10,
+                potential_output_contribution=100,
             )
 
     def test_allocated_exceeding_required_is_rejected(self) -> None:
@@ -269,6 +296,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=10,
                 closing_stock=1_010,
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=10,
+                potential_output_contribution=100,
             )
 
     def test_wrong_extracted_is_rejected(self) -> None:
@@ -287,6 +317,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=999,  # should be min(1020, 100, 1*10)=10
                 closing_stock=1_010,
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=10,
+                potential_output_contribution=100,
             )
 
     def test_wrong_closing_stock_is_rejected(self) -> None:
@@ -305,6 +338,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=10,
                 closing_stock=999,  # should be 1020 - 10 = 1010
                 status=DepositStatus.LABOR_CONSTRAINED,
+                real_output_per_unit=1,
+                real_output_contribution=10,
+                potential_output_contribution=100,
             )
 
     def test_wrong_status_is_rejected(self) -> None:
@@ -323,6 +359,9 @@ class TestResourceDepositReportSelfValidation:
                 extracted=10,
                 closing_stock=1_010,
                 status=DepositStatus.CAPACITY_CONSTRAINED,  # should be labor_constrained
+                real_output_per_unit=1,
+                real_output_contribution=10,
+                potential_output_contribution=100,
             )
 
     def test_output_per_worker_zero_is_rejected_at_the_field_level(self) -> None:
@@ -341,7 +380,26 @@ class TestResourceDepositReportSelfValidation:
                 extracted=0,
                 closing_stock=0,
                 status=DepositStatus.INACTIVE,
+                real_output_per_unit=1,
+                real_output_contribution=0,
+                potential_output_contribution=0,
             )
+
+    def test_real_output_contribution_does_not_exceed_potential_validator_detects_a_direct_violation(
+        self,
+    ) -> None:
+        """T38 (R6): the row-level backstop of §6's `actual <= potential` proof, tested directly
+        via `model_construct` (skips every validator) — a different granularity from the
+        `ResourceExtractionReport`-level check above."""
+        valid_row = _valid_deposit_report()
+        unvalidated = ResourceDepositReport.model_construct(
+            **{
+                **valid_row.__dict__,
+                "real_output_contribution": valid_row.potential_output_contribution + 1,
+            }
+        )
+        with pytest.raises(ValueError, match="exceeds"):
+            ResourceDepositReport._real_output_contribution_does_not_exceed_potential(unvalidated)
 
 
 class TestResourceExtractionReportSelfValidation:
@@ -375,6 +433,27 @@ class TestResourceExtractionReportSelfValidation:
         )
         with pytest.raises(ValueError, match="exceeds"):
             ResourceExtractionReport._total_does_not_exceed_sector_workers(unvalidated)
+
+    def test_extraction_sector_real_output_does_not_exceed_potential_validator_detects_a_direct_violation(
+        self,
+    ) -> None:
+        """T38 (R6): the aggregate-level backstop of §6's `actual <= potential` proof, tested
+        directly via `model_construct` (skips every validator) — proving this check catches a
+        corruption independently of the row-level `_real_output_contribution_does_not_exceed_
+        potential` check on `ResourceDepositReport` (a different granularity, tested separately
+        below)."""
+        valid_report = ResourceExtractionReport.model_validate(_valid_resource_report_dict())
+        unvalidated = ResourceExtractionReport.model_construct(
+            **{
+                **valid_report.__dict__,
+                "extraction_sector_real_output": valid_report.extraction_sector_potential_output
+                + 1,
+            }
+        )
+        with pytest.raises(ValueError, match="exceeds"):
+            ResourceExtractionReport._extraction_sector_real_output_does_not_exceed_potential(
+                unvalidated
+            )
 
     def test_duplicate_resource_category_is_rejected(self) -> None:
         data = _valid_resource_report_dict()

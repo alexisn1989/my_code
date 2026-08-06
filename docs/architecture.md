@@ -103,7 +103,7 @@ is marked in dev metadata, not narrated to a hypothetical player as if it were c
 `test_resolver.py::test_only_the_accounting_and_report_phases_are_implemented_so_far` tracks this
 boundary explicitly and is meant to be updated, not weakened, as more phases gain real logic.
 
-### Sector production phase (Phase 2B1, labor allocation added in Phase 2B3, resource extraction added in Phase 2C1)
+### Sector production phase (Phase 2B1, labor allocation added in Phase 2B3, resource extraction added in Phase 2C1, extraction-sector output derivation replaced in Phase 2C2)
 
 `resolve_production_and_trade` — the fixed §7 phase slot this fills; only production (plus, as of
 Phase 2B3, the labor allocation that feeds it, and as of Phase 2C1, the resource extraction
@@ -119,20 +119,27 @@ engine, sub-allocating the extraction sector's just-allocated workers across the
 deposits (see "Phase 2C1 resource extraction" below), assembling the self-validating
 `ResourceExtractionReport` into `PhaseContext.resources_report` — and, in that same step, writing
 each deposit's closing stock back into the working `economy.resource_deposits`. It then computes
-each sector's labor-limited output (using that sector's just-allocated workers, not a stored
-field), actual output (capped at capacity), capacity-utilization bps, and constraint classification
-via the pure `simulation/production_accounting.py` engine, assembling the self-validating
-`ProductionReport` into `PhaseContext.production_report` — no `FinanceScratch`-style intermediate
-workspace for any of the three reports, since none of them span multiple phases the way accounting
-does. This phase runs *before* the three accounting phases in `PHASE_ORDER` (unchanged — no
-reordering); it is written to never read or write `ctx.finance`/`ctx.finance_report`/treasury/debt
-itself. As of Phase 2B2, the revenue phase immediately after it *does* read
-`ctx.production_report` (see below) — that one, one-directional read is deliberate and actively
-tested (`tests/test_phase_isolation.py`), not an accidental crossing; nothing else reaches across
-the shared `PhaseContext` in either direction. Full formulas: `docs/economy_methodology.md`.
-Design rationale: `docs/adr/0004-sector-production-fixed-prices.md`,
+each sector's output via the pure `simulation/production_accounting.py` engine — labor-limited
+output (using that sector's just-allocated workers, not a stored field), actual output (capped at
+capacity), capacity-utilization bps, and constraint classification — **except for the EXTRACTION
+sector**: as of Phase 2C2, that one row never calls `compute_sector_output` at all; its
+`actual_output` is the physical-extraction bridge total computed in the same step as the resource
+report (see "Phase 2C2 physical-extraction-derived output" below), and its
+`capacity_utilization_bps`/`constraint` are derived from the potential-output total, never from
+`quarterly_capacity_output`. The other ten sectors are byte-for-byte unaffected. Every row —
+extraction included — still assembles into the same self-validating `ProductionReport` at
+`PhaseContext.production_report` — no `FinanceScratch`-style intermediate workspace for any of the
+three reports, since none of them span multiple phases the way accounting does. This phase runs
+*before* the three accounting phases in `PHASE_ORDER` (unchanged — no reordering); it is written to
+never read or write `ctx.finance`/`ctx.finance_report`/treasury/debt itself. As of Phase 2B2, the
+revenue phase immediately after it *does* read `ctx.production_report` (see below) — that one,
+one-directional read is deliberate and actively tested (`tests/test_phase_isolation.py`), not an
+accidental crossing; nothing else reaches across the shared `PhaseContext` in either direction.
+Full formulas: `docs/economy_methodology.md`. Design rationale:
+`docs/adr/0004-sector-production-fixed-prices.md`,
 `docs/adr/0006-labor-allocation-at-fixed-prices.md`,
-`docs/adr/0007-resource-endowments-and-extraction.md`.
+`docs/adr/0007-resource-endowments-and-extraction.md`,
+`docs/adr/0008-physical-extraction-derived-sector-output.md`.
 
 ### Phase 2B3 labor allocation
 
@@ -167,12 +174,12 @@ never touches anything but `resource_deposits`. Safe because the resolver's sing
 its post-phase invariant re-check are unaffected by *which* phase performed a mutation — an
 invariant violation later in the same `resolve_turn` call still discards the entire working copy.
 
-`SectorState`'s labor supply and `EconomyState.resource_deposits`'s physical endowments are
-otherwise fully isolated from production/tax bases/revenue (conservation-only boundary, D8):
-resource endowments determine extraction; extraction changes no production, tax base, revenue,
-price, trade, approval, or war outcome this phase. `TurnReport.resources: ResourceExtractionReport
-| None` is a fifth report, copied onto `TurnReport` by `resolver.py`; the completeness rule
-extends from four reports to five, and a new cross-report validator checks
+`SectorState`'s labor supply and `EconomyState.resource_deposits`'s physical endowments were
+originally fully isolated from production/tax bases/revenue (conservation-only boundary, D8) —
+**this isolation boundary was deliberately reversed in Phase 2C2** (below); resource endowments
+now determine the extraction sector's `RealOutput` directly. `TurnReport.resources:
+ResourceExtractionReport | None` is a fifth report, copied onto `TurnReport` by `resolver.py`; the
+completeness rule extends from four reports to five, and a cross-report validator checks
 `labor_market.sectors[EXTRACTION].allocated_workers == resources.extraction_sector_workers`.
 
 The shared largest-remainder allocation core (used by both labor and resources) lives in
@@ -185,6 +192,34 @@ one caller needing permutation independence) accepts a category-keyed mapping an
 `docs/adr/0007-resource-endowments-and-extraction.md` for the full formulas, the
 regeneration/ceiling/conservation identities, the status-classification tie-break, and the
 calibration approach.
+
+### Phase 2C2 physical-extraction-derived output
+
+Still no new `PHASE_ORDER` slot, and `resource_extraction.py` (formulas, conservation,
+regeneration) stays completely unmodified. In the same step that builds
+`ResourceExtractionReport`, a new pure module (`simulation/resource_output.py`) converts each
+deposit's extracted quantity — and, separately, its stock/capacity-bounded *potential* quantity —
+into fixed-base-year `RealOutput` via a single named bridge function
+(`core/quantity.extracted_resource_to_real_output`, mirroring
+`base_year_real_output_to_money`'s shape: exact integer multiplication, no division). The
+per-category coefficients live in the new `EconomyState.resource_output_coefficients` field.
+Both totals — `extraction_sector_real_output`/`extraction_sector_potential_output` — are stored on
+`ResourceExtractionReport`.
+
+Immediately after, the sector-production loop's EXTRACTION branch (see above) reads those two
+totals directly: `actual_output` is the real total (no capacity cap — `quarterly_capacity_output`
+is not read); `capacity_utilization_bps` is `floor(real * 10_000 / potential)`, or `0` if
+`potential == 0`; `constraint` comes from a shared classifier
+(`report.classify_extraction_constraint`) also called by `TurnReport`'s cross-validator — the one
+case in this codebase where a report-level check and its construction site deliberately share
+code, because the classification itself has no freedom given `(potential, actual)` — what needs
+independent re-derivation is whether those two inputs themselves are correct, which two *other*
+new `TurnReport` cross-validators already establish. `actual_output > potential_output` is
+rejected by validation at three independent layers, never assigned a business status, since
+`resource_extraction.py`'s own `min()`-bounded extraction formula makes it provably unreachable via
+any legitimate code path. See `docs/economy_methodology.md` and
+`docs/adr/0008-physical-extraction-derived-sector-output.md` for the full formulas, the
+no-clamp-needed proof, and the calibration approach.
 
 ### Government accounting phases (Phase 2A, extended in Phase 2B2)
 

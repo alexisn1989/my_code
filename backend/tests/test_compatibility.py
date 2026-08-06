@@ -30,6 +30,7 @@ PHASE2A_SAVE_PATH = FIXTURES_DIR / "phase2a_save_ruleset_0.2.0.json"
 PHASE2B1_SAVE_PATH = FIXTURES_DIR / "phase2b1_save_ruleset_0.3.0.json"
 PHASE2B2_SAVE_PATH = FIXTURES_DIR / "phase2b2_save_ruleset_0.4.0.json"
 PHASE2B3_SAVE_PATH = FIXTURES_DIR / "phase2b3_save_ruleset_0.5.0.json"
+PHASE2C1_SAVE_PATH = FIXTURES_DIR / "phase2c1_save_ruleset_0.6.0.json"
 
 
 def test_frozen_phase1_save_fixture_declares_the_old_ruleset_version() -> None:
@@ -250,3 +251,34 @@ def test_phase2b3_save_compatibility_is_checked_before_any_entry_payload_is_pars
 
     with pytest.raises(UnsupportedRulesetVersionError):
         load_save_json(json.dumps(raw), source="corrupted-and-incompatible-2b3")
+
+
+def test_frozen_phase2c1_save_fixture_declares_the_old_ruleset_version() -> None:
+    raw = json.loads(PHASE2C1_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.6.0"
+    assert raw["ruleset_version"] != RULESET_VERSION
+
+
+def test_phase2c1_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
+    """T27: rejected specifically via the ruleset-version gate, not incidentally via a missing
+    `resource_output_coefficients` field — proving compatibility is checked before any entry
+    payload is parsed, and that the fixture was frozen (genuinely, with the unmodified 0.6.0
+    engine) before the Phase 2C2 bump — no equality assertion against any 2C2 save anywhere in
+    this test (§10, R7): rejection alone is what's asserted.
+    """
+    raw_text = read_save_file(PHASE2C1_SAVE_PATH)
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(raw_text, source=str(PHASE2C1_SAVE_PATH))
+
+    message = str(exc_info.value)
+    assert "0.6.0" in message
+    assert RULESET_VERSION in message
+    assert "not loaded" in message
+
+
+def test_phase2c1_save_compatibility_is_checked_before_any_entry_payload_is_parsed() -> None:
+    raw = json.loads(read_save_file(PHASE2C1_SAVE_PATH))
+    raw["entries"][0]["state_json"] = "{not even valid json"
+
+    with pytest.raises(UnsupportedRulesetVersionError):
+        load_save_json(json.dumps(raw), source="corrupted-and-incompatible-2c1")

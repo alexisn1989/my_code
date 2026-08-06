@@ -110,10 +110,13 @@ avoid obvious dead ends against these, without building unused abstraction now.
 The base-game economy (§13) includes only a **shallow** natural-resource foundation: finite
 country-level reserves for eight resources, exact conservation, and deterministic extraction
 bounded by stock/capacity/labor (Phase 2C1 — see `docs/roadmap.md` and
-`docs/adr/0007-resource-endowments-and-extraction.md`). A fuller **Resources and Energy
-expansion** — resource-to-industry input-output chains, trade in resources, province/field-level
-deposits, ownership/nationalization/corruption as a resource lever, and environmental effects — is
-explicitly deferred beyond the vertical slice, not implied by the base-game foundation existing.
+`docs/adr/0007-resource-endowments-and-extraction.md`), with physical extraction driving the
+extraction sector's own output and, through it, tax revenue (Phase 2C2 — see
+`docs/adr/0008-physical-extraction-derived-sector-output.md`). A fuller **Resources and Energy
+expansion** — resource-to-industry input-output chains for the other ten sectors, trade in
+resources, province/field-level deposits, ownership/nationalization/corruption as a resource
+lever, and environmental effects — is explicitly deferred beyond the vertical slice, not implied
+by the base-game foundation existing.
 
 ## 42. Final product standard
 

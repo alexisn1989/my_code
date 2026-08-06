@@ -35,7 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from app.core.money import Money
+from app.core.money import BPS_DENOMINATOR, Money
 from app.core.rng import derive_rng
 from app.simulation.accounting import (
     compute_quarterly_interest,
@@ -50,12 +50,7 @@ from app.simulation.labor_allocation import (
     compute_effective_labor_force,
     compute_required_workers,
 )
-from app.simulation.production_accounting import (
-    SectorConstraint,
-    SectorProductionResult,
-    aggregate_production,
-    compute_sector_output,
-)
+from app.simulation.production_accounting import compute_sector_output
 from app.simulation.report import (
     TAX_RATE_CHANGE_FIELDS,
     BudgetChangeEntry,
@@ -68,10 +63,13 @@ from app.simulation.report import (
     ResourceExtractionReport,
     RevenueBreakdown,
     SectorLaborAllocationReport,
+    SectorOutputBasis,
+    SectorProductionConstraint,
     SectorProductionReport,
     SectorTaxBaseReport,
     TaxBaseDerivationReport,
     TurnReportEntry,
+    classify_extraction_constraint,
     direction_for,
 )
 from app.simulation.resource_extraction import (
@@ -83,6 +81,10 @@ from app.simulation.resource_extraction import (
 )
 from app.simulation.resource_extraction import (
     compute_required_workers as compute_required_resource_workers,
+)
+from app.simulation.resource_output import (
+    aggregate_extraction_sector_output,
+    compute_resource_output_contributions,
 )
 from app.simulation.state import (
     GameState,
@@ -530,7 +532,11 @@ def _extract_resources(
     after labor allocation and before aggregate sector production, inside
     `resolve_production_and_trade`. `extraction_sector_workers` is this same turn's
     `LaborMarketReport.sectors[EXTRACTION].allocated_workers` — the worker budget sub-allocated
-    across the eight deposits.
+    across the eight deposits. As of Phase 2C2, also computes each deposit's actual and potential
+    physical-to-output bridge contribution (`simulation.resource_output`), which the caller
+    (`_resolve_production_and_trade`) uses to derive the extraction sector's
+    `SectorProductionReport` row — replacing, never adding to, that sector's former
+    capacity/productivity formula.
 
     Unlike `_allocate_labor` and every other helper in this phase, this function is **not** pure
     with respect to `ctx.state` (R2, `docs/adr/0007-resource-endowments-and-extraction.md`):
@@ -559,12 +565,32 @@ def _extract_resources(
     )
     allocation_by_category = {result.category: result for result in allocation_results}
 
-    deposit_reports: list[ResourceDepositReport] = []
     extraction_results: list[DepositExtractionResult] = []
     for deposit in economy.resource_deposits:
         allocation = allocation_by_category[deposit.category]
         extraction_result = compute_deposit_extraction(deposit=deposit, allocation=allocation)
         extraction_results.append(extraction_result)
+        # R2: extraction and its depletion are one domain operation, performed together right
+        # here — `deposit` is the live model instance inside `ctx.state`'s working copy (not a
+        # fresh parse), so this assignment mutates the working state directly. Matched by
+        # `deposit.category` identity, never by loop/tuple position.
+        deposit.remaining_stock = extraction_result.closing_stock
+
+    coefficients_by_category = {
+        coefficient.category: coefficient.real_output_per_unit
+        for coefficient in economy.resource_output_coefficients
+    }
+    contributions = compute_resource_output_contributions(
+        extraction_results=tuple(extraction_results),
+        coefficients=coefficients_by_category,
+    )
+    contribution_by_category = {
+        contribution.category: contribution for contribution in contributions
+    }
+
+    deposit_reports: list[ResourceDepositReport] = []
+    for extraction_result in extraction_results:
+        contribution = contribution_by_category[extraction_result.category]
         deposit_reports.append(
             ResourceDepositReport(
                 category=extraction_result.category,
@@ -580,17 +606,18 @@ def _extract_resources(
                 extracted=extraction_result.extracted,
                 closing_stock=extraction_result.closing_stock,
                 status=extraction_result.status,
+                real_output_per_unit=contribution.real_output_per_unit,
+                real_output_contribution=contribution.real_output_contribution,
+                potential_output_contribution=contribution.potential_output_contribution,
             )
         )
-        # R2: extraction and its depletion are one domain operation, performed together right
-        # here — `deposit` is the live model instance inside `ctx.state`'s working copy (not a
-        # fresh parse), so this assignment mutates the working state directly. Matched by
-        # `deposit.category` identity, never by loop/tuple position.
-        deposit.remaining_stock = extraction_result.closing_stock
 
     aggregates = aggregate_extraction(
         extraction_sector_workers=extraction_sector_workers,
         results=tuple(extraction_results),
+    )
+    extraction_sector_real_output, extraction_sector_potential_output = (
+        aggregate_extraction_sector_output(contributions)
     )
 
     return ResourceExtractionReport(
@@ -598,6 +625,8 @@ def _extract_resources(
         extraction_sector_workers=aggregates.extraction_sector_workers,
         total_extraction_workers=aggregates.total_extraction_workers,
         unassigned_resource_workers=aggregates.unassigned_resource_workers,
+        extraction_sector_real_output=extraction_sector_real_output,
+        extraction_sector_potential_output=extraction_sector_potential_output,
     )
 
 
@@ -666,33 +695,67 @@ def _resolve_production_and_trade(ctx: PhaseContext) -> None:
                 "deposits_depleted": status_counts[DepositStatus.DEPLETED.value],
                 "total_extraction_workers": resources.total_extraction_workers,
                 "unassigned_resource_workers": resources.unassigned_resource_workers,
+                "extraction_sector_real_output": resources.extraction_sector_real_output,
+                "extraction_sector_potential_output": resources.extraction_sector_potential_output,
             },
         )
     )
 
     sector_reports: list[SectorProductionReport] = []
-    results: list[SectorProductionResult] = []
     allocated_workers_in_order: list[int] = []
     counts: dict[str, int] = {}
     for sector in economy.sectors:
         allocated_workers = allocated_by_category[sector.category]
         allocated_workers_in_order.append(allocated_workers)
-        result = compute_sector_output(sector, allocated_workers)
-        results.append(result)
-        sector_reports.append(
-            SectorProductionReport(
-                category=sector.category,
-                capacity_output=sector.quarterly_capacity_output,
-                output_per_worker=sector.output_per_worker,
-                employed_workers=allocated_workers,
-                labor_limited_output=result.labor_limited_output,
-                actual_output=result.actual_output,
-                capacity_utilization_bps=result.capacity_utilization_bps,
-                constraint=result.constraint,
+
+        if sector.category is SectorCategory.EXTRACTION:
+            # Phase 2C2 (D3, R6): the extraction sector's output IS the physical bridge total —
+            # REPLACING, never adding to, the standard capacity/productivity formula in the else
+            # branch below. `compute_sector_output` (production_accounting.py, unmodified) is
+            # simply never called for this one category. sector.quarterly_capacity_output/
+            # .output_per_worker are read NOWHERE in this branch — completely inert for this
+            # basis (see docs/adr/0008-physical-extraction-derived-sector-output.md, "Legacy
+            # field semantics").
+            actual_output = resources.extraction_sector_real_output
+            potential_output = resources.extraction_sector_potential_output
+            constraint: SectorProductionConstraint = classify_extraction_constraint(
+                potential_output=potential_output, actual_output=actual_output
             )
-        )
-        counts[result.constraint.value] = counts.get(result.constraint.value, 0) + 1
-        if result.constraint.value == SectorConstraint.INACTIVE.value:
+            capacity_utilization_bps = (
+                (actual_output * BPS_DENOMINATOR) // potential_output if potential_output > 0 else 0
+            )
+            sector_reports.append(
+                SectorProductionReport(
+                    category=sector.category,
+                    output_basis=SectorOutputBasis.RESOURCE_EXTRACTION,
+                    capacity_output=sector.quarterly_capacity_output,
+                    output_per_worker=sector.output_per_worker,
+                    employed_workers=allocated_workers,
+                    labor_limited_output=actual_output,
+                    actual_output=actual_output,
+                    capacity_utilization_bps=capacity_utilization_bps,
+                    constraint=constraint,
+                )
+            )
+        else:
+            result = compute_sector_output(sector, allocated_workers)
+            constraint = SectorProductionConstraint(result.constraint.value)
+            sector_reports.append(
+                SectorProductionReport(
+                    category=sector.category,
+                    output_basis=SectorOutputBasis.STANDARD,
+                    capacity_output=sector.quarterly_capacity_output,
+                    output_per_worker=sector.output_per_worker,
+                    employed_workers=allocated_workers,
+                    labor_limited_output=result.labor_limited_output,
+                    actual_output=result.actual_output,
+                    capacity_utilization_bps=result.capacity_utilization_bps,
+                    constraint=constraint,
+                )
+            )
+
+        counts[constraint.value] = counts.get(constraint.value, 0) + 1
+        if constraint is SectorProductionConstraint.INACTIVE:
             ctx.report_entries.append(
                 TurnReportEntry(
                     category="production",
@@ -701,27 +764,37 @@ def _resolve_production_and_trade(ctx: PhaseContext) -> None:
                 )
             )
 
-    aggregates = aggregate_production(tuple(allocated_workers_in_order), tuple(results))
+    # production_accounting.aggregate_production is not called here (Phase 2C2): it takes a
+    # tuple of SectorProductionResult, a type the extraction row no longer has (it never calls
+    # compute_sector_output). total_employment/total_gross_output are simple, basis-agnostic
+    # sums, computed directly from sector_reports — which already has all 11 rows — instead.
+    total_employment = sum(row.employed_workers for row in sector_reports)
+    total_gross_output = sum(row.actual_output for row in sector_reports)
     ctx.production_report = ProductionReport(
         sectors=tuple(sector_reports),
-        total_employment=aggregates.total_employment,
-        total_gross_output=aggregates.total_gross_output,
+        total_employment=total_employment,
+        total_gross_output=total_gross_output,
     )
     ctx.report_entries.append(
         TurnReportEntry(
             category="production",
             reason_id="production_summary",
             params={
-                "total_employment": aggregates.total_employment,
-                "total_gross_output": aggregates.total_gross_output,
+                "total_employment": total_employment,
+                "total_gross_output": total_gross_output,
                 "sectors_capacity_constrained": counts.get(
-                    SectorConstraint.CAPACITY_CONSTRAINED.value, 0
+                    SectorProductionConstraint.CAPACITY_CONSTRAINED.value, 0
                 ),
                 "sectors_labor_constrained": counts.get(
-                    SectorConstraint.LABOR_CONSTRAINED.value, 0
+                    SectorProductionConstraint.LABOR_CONSTRAINED.value, 0
                 ),
-                "sectors_exactly_balanced": counts.get(SectorConstraint.EXACTLY_BALANCED.value, 0),
-                "sectors_inactive": counts.get(SectorConstraint.INACTIVE.value, 0),
+                "sectors_exactly_balanced": counts.get(
+                    SectorProductionConstraint.EXACTLY_BALANCED.value, 0
+                ),
+                "sectors_physical_resource_constrained": counts.get(
+                    SectorProductionConstraint.PHYSICAL_RESOURCE_CONSTRAINED.value, 0
+                ),
+                "sectors_inactive": counts.get(SectorProductionConstraint.INACTIVE.value, 0),
             },
         )
     )

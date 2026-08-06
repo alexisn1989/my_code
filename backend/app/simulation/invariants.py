@@ -307,6 +307,68 @@ def _check_economy(country: CountryState) -> list[InvariantViolation]:
                 )
             )
 
+    coefficient_categories = [
+        coefficient.category for coefficient in country.economy.resource_output_coefficients
+    ]
+
+    seen_coefficients: set[ResourceCategory] = set()
+    duplicate_coefficients: set[ResourceCategory] = set()
+    for coefficient_category in coefficient_categories:
+        if coefficient_category in seen_coefficients:
+            duplicate_coefficients.add(coefficient_category)
+        seen_coefficients.add(coefficient_category)
+    if duplicate_coefficients:
+        violations.append(
+            InvariantViolation(
+                code="duplicate_resource_output_coefficient",
+                message=(
+                    f"country {country.id!r}: duplicate resource output coefficient categories "
+                    f"{sorted(c.value for c in duplicate_coefficients)!r}"
+                ),
+            )
+        )
+
+    missing_coefficients = [c for c in ResourceCategory if c not in seen_coefficients]
+    if missing_coefficients:
+        violations.append(
+            InvariantViolation(
+                code="missing_resource_output_coefficient",
+                message=(
+                    f"country {country.id!r}: missing resource output coefficient categories "
+                    f"{[c.value for c in missing_coefficients]!r} — all {len(ResourceCategory)} "
+                    "are required"
+                ),
+            )
+        )
+
+    if (
+        not duplicate_coefficients
+        and not missing_coefficients
+        and tuple(coefficient_categories) != tuple(ResourceCategory)
+    ):
+        violations.append(
+            InvariantViolation(
+                code="noncanonical_resource_output_coefficient_order",
+                message=(
+                    f"country {country.id!r}: economy.resource_output_coefficients is not "
+                    "ordered in canonical ResourceCategory declaration order"
+                ),
+            )
+        )
+
+    for coefficient in country.economy.resource_output_coefficients:
+        if coefficient.real_output_per_unit <= 0:
+            violations.append(
+                InvariantViolation(
+                    code="resource_output_coefficient_out_of_range",
+                    message=(
+                        f"country {country.id!r}: resource output coefficient for "
+                        f"{coefficient.category.value!r} has real_output_per_unit="
+                        f"{coefficient.real_output_per_unit}, must be > 0"
+                    ),
+                )
+            )
+
     return violations
 
 

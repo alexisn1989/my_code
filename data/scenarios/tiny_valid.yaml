@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.6.0"
+content_version: "0.7.0"
 seed: 42
 player_country_id: arken
 
@@ -245,6 +245,42 @@ countries:
           remaining_stock: 2000000
           extraction_capacity_per_turn: 20000
           output_per_worker: 20
+
+      # Phase 2C2: physical-to-output bridge coefficients. REPLACES the extraction sector's old
+      # capacity/productivity output formula (2,000,000,000, see the sector block above) with the
+      # sum of each deposit's extracted quantity * its coefficient — chosen so this turn's total is
+      # exactly 2,000,000,000, preserving every Phase 2B/2C1 production/tax-base/revenue/treasury
+      # figure numerically (see docs/economy_methodology.md, "Calibration"):
+      #   timber:             100,000 x 1,000   =   100,000,000
+      #   iron_ore:            200,000 x 1,500   =   300,000,000
+      #   coal:                300,000 x 1,000   =   300,000,000
+      #   crude_oil:           500,000 x 1,200   =   600,000,000
+      #   natural_gas:         400,000 x 1,000   =   400,000,000
+      #   uranium:                 500 x 100,000 =    50,000,000
+      #   copper:              150,000 x 1,000   =   150,000,000
+      #   critical_minerals:    20,000 x 5,000   =   100,000,000
+      #   total                                  = 2,000,000,000  (matches the old formula exactly)
+      # Every deposit here is capacity-bound (extracted == potential_quantity every turn), so
+      # extraction_sector_potential_output also equals 2,000,000,000 — capacity_utilization_bps is
+      # 10,000 (100%) and constraint is physical_resource_constrained for the full 100-turn tested
+      # horizon (critical_minerals, the shortest-lived deposit, lasts exactly 100 turns).
+      resource_output_coefficients:
+        - category: timber
+          real_output_per_unit: 1000
+        - category: iron_ore
+          real_output_per_unit: 1500
+        - category: coal
+          real_output_per_unit: 1000
+        - category: crude_oil
+          real_output_per_unit: 1200
+        - category: natural_gas
+          real_output_per_unit: 1000
+        - category: uranium
+          real_output_per_unit: 100000
+        - category: copper
+          real_output_per_unit: 1000
+        - category: critical_minerals
+          real_output_per_unit: 5000
 
   - id: neighbor
     name: "Neighboring State"

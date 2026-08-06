@@ -14,35 +14,39 @@ every decision.
   [`docs/adr/0004-sector-production-fixed-prices.md`](docs/adr/0004-sector-production-fixed-prices.md),
   [`docs/adr/0005-production-derived-tax-bases.md`](docs/adr/0005-production-derived-tax-bases.md),
   [`docs/adr/0006-labor-allocation-at-fixed-prices.md`](docs/adr/0006-labor-allocation-at-fixed-prices.md),
-  [`docs/adr/0007-resource-endowments-and-extraction.md`](docs/adr/0007-resource-endowments-and-extraction.md)
+  [`docs/adr/0007-resource-endowments-and-extraction.md`](docs/adr/0007-resource-endowments-and-extraction.md),
+  [`docs/adr/0008-physical-extraction-derived-sector-output.md`](docs/adr/0008-physical-extraction-derived-sector-output.md)
 - **Economy formulas:** [`docs/economy_methodology.md`](docs/economy_methodology.md)
 
 ## Current status
 
 **Phase 0, Phase 1 (pure simulation foundation), Phase 2A (government accounting and budget
 gameplay), Phase 2B1 (sector production at fixed prices), Phase 2B2 (production-derived tax
-bases), Phase 2B3 (labor allocation and unemployment at fixed prices), and Phase 2C1 (resource
-endowments and extraction) are complete and verified.** The player can change tax rates and
-spending; eleven aggregate economic sectors resolve deterministic quarterly output at fixed
-base-year prices, staffed every turn by a deterministic labor allocation **derived** from
-population (replacing the fixed, scenario-authored `employed_workers` Phase 2B1 started with),
-which in turn **derives** the tax bases revenue is computed against (replacing the fixed,
-scenario-authored bases Phase 2A started with) — population, capacity, labor productivity, and
-employment genuinely drive government revenue. Alongside that economic chain, eight physical
-natural resources (timber, iron ore, coal, crude oil, natural gas, uranium, copper, critical
-minerals) hold finite, country-level, exactly-conserved reserves; the extraction sector's
-already-allocated workers sub-allocate across the eight deposits each turn, bounded by stock,
-capacity, and labor, with timber the only renewable resource, regenerating (and clamped to a
-ceiling) before extraction each turn. The relationship is one-directional throughout: population/
-labor supply affects allocation and production; production affects tax bases and revenue; resource
-endowments affect extraction and nothing else — extraction changes no production, tax base,
-revenue, price, trade, or political outcome this phase; tax rates and spending still do not affect
-allocation, production, or extraction. Revenue, spending, interest, and debt resolve
-deterministically and reconcile exactly every turn, with a self-validating report chain proving
-labor allocation, resource extraction, production, tax-base derivation, and finance agree with
-each other, not just internally. All of it is wrapped in the same hash-chained, immutable history
-from Phase 1. There is no API and no database yet, and no prices, inflation, wages, hiring
-friction, resource trade, or resource-to-production linkage — see `docs/roadmap.md` for what's
+bases), Phase 2B3 (labor allocation and unemployment at fixed prices), Phase 2C1 (resource
+endowments and extraction), and Phase 2C2 (physical extraction drives extraction-sector output)
+are complete and verified.** The player can change tax rates and spending; eleven aggregate
+economic sectors resolve deterministic quarterly output at fixed base-year prices, staffed every
+turn by a deterministic labor allocation **derived** from population (replacing the fixed,
+scenario-authored `employed_workers` Phase 2B1 started with), which in turn **derives** the tax
+bases revenue is computed against (replacing the fixed, scenario-authored bases Phase 2A started
+with) — population, capacity, labor productivity, and employment genuinely drive government
+revenue. Alongside that economic chain, eight physical natural resources (timber, iron ore, coal,
+crude oil, natural gas, uranium, copper, critical minerals) hold finite, country-level,
+exactly-conserved reserves; the extraction sector's already-allocated workers sub-allocate across
+the eight deposits each turn, bounded by stock, capacity, and labor, with timber the only
+renewable resource, regenerating (and clamped to a ceiling) before extraction each turn. As of
+Phase 2C2, that physical extraction — converted through a single named unit-bridge, never
+double-counted — **is** the extraction sector's output: depleting a reserve now costs real tax
+revenue, closing the gap Phase 2C1 deliberately left open. The relationship is one-directional
+throughout: population/labor supply affects allocation and production; resource endowments affect
+extraction, which affects the extraction sector's production, which (like every sector) affects
+tax bases and revenue; tax rates and spending still do not affect allocation, production, or
+extraction. Revenue, spending, interest, and debt resolve deterministically and reconcile exactly
+every turn, with a self-validating report chain proving labor allocation, resource extraction,
+production, tax-base derivation, and finance agree with each other, not just internally. All of it
+is wrapped in the same hash-chained, immutable history from Phase 1. There is no API and no
+database yet, and no prices, inflation, wages, hiring friction, resource trade, or
+resource-to-industry linkage for the other ten sectors — see `docs/roadmap.md` for what's
 implemented per phase and `docs/economy_methodology.md` for exactly what's simulated and what
 isn't.
 
@@ -164,15 +168,37 @@ algorithm labor allocation uses, and each deposit's extraction is capped at
 `min(available_stock, extraction_capacity_per_turn, allocated_workers * output_per_worker)` —
 exact conservation by construction, with a five-way status classification
 (inactive/depleted/stock-constrained/capacity-constrained/labor-constrained) explaining which
-bound applied. The relationship is conservation-only: resource endowments determine extraction;
-extraction changes no production, tax base, revenue, price, trade, or political outcome this
-phase — actively tested in both directions. `ResourceExtractionReport` self-validates the same way
-the other reports do, and `TurnReport` cross-validates that labor allocation's extraction-sector
-worker count matches the resource report's budget exactly. Full formulas, the three-regime timber
-trajectory worked out against the `deficit_demo` scenario, and what's explicitly not yet simulated
-(prices, trade, resource-to-industry input-output chains, ownership, environmental effects, …):
+bound applied. `ResourceExtractionReport` self-validates the same way the other reports do, and
+`TurnReport` cross-validates that labor allocation's extraction-sector worker count matches the
+resource report's budget exactly. Originally (Phase 2C1) this relationship was conservation-only —
+extraction changed no production, tax base, or revenue; **Phase 2C2 (below) deliberately reverses
+that boundary.** Full formulas, the three-regime timber trajectory worked out against the
+`deficit_demo` scenario, and what's explicitly not yet simulated (prices, trade,
+resource-to-industry input-output chains, ownership, environmental effects, …):
 [`docs/economy_methodology.md`](docs/economy_methodology.md) and
 [`docs/adr/0007-resource-endowments-and-extraction.md`](docs/adr/0007-resource-endowments-and-extraction.md).
+
+### Physical extraction drives extraction-sector output (Phase 2C2)
+
+The extraction sector no longer computes its `RealOutput` the same way the other ten sectors do.
+Each turn, every deposit's extracted quantity — and, separately, its stock/capacity-bounded
+*potential* quantity — is converted through a single named bridge function
+(`extracted_resource_to_real_output`, exact integer multiplication, no rounding) using a
+scenario-authored, strictly-positive coefficient per resource category
+(`EconomyState.resource_output_coefficients`). The summed actual and potential totals become the
+extraction row's `actual_output` and the basis for its `capacity_utilization_bps`/`constraint` —
+never the legacy `quarterly_capacity_output`/`output_per_worker` fields every other sector still
+uses, which are now completely inert for this one row. Because `extracted <= potential` holds by
+construction (the same `min()`-bounded formula extraction already used), the utilization ratio
+never needs clamping and `actual_output > potential_output` is rejected by validation at three
+independent layers rather than ever being assigned a business status. The extraction sector's
+contribution now flows through `total_gross_output` exactly once, into tax bases and revenue,
+exactly like every other sector — depleting a reserve costs real revenue. Both scenarios are
+recalibrated so `tiny_valid.yaml` preserves its full 100-turn output exactly and `deficit_demo.yaml`
+preserves turn 1 before diverging at the same turn-26/turn-41 boundaries its physical trajectory
+already established. Full formulas and the R1–R10 review corrections:
+[`docs/economy_methodology.md`](docs/economy_methodology.md) and
+[`docs/adr/0008-physical-extraction-derived-sector-output.md`](docs/adr/0008-physical-extraction-derived-sector-output.md).
 
 ## Frontend
 

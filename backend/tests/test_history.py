@@ -395,6 +395,92 @@ def test_tampering_with_only_the_resource_extraction_report_is_detected() -> Non
     assert any("entry_hash does not match" in p for p in problems)
 
 
+def test_tampering_with_only_the_resource_output_coefficients_is_detected() -> None:
+    """Dedicated Phase 2C2 tamper test (T24): `state...economy.resource_output_coefficients` is
+    new surface area covered by `entry_hash`, independent of every other tamper test above."""
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    tampered_state = original.state()
+    country_id = tampered_state.world.player_country_id
+    country = tampered_state.world.countries[country_id]
+    assert country.economy is not None
+    tampered_state.world.countries[country_id] = country.model_copy(
+        update={
+            "economy": country.economy.model_copy(
+                update={
+                    "resource_output_coefficients": tuple(
+                        c.model_copy(update={"real_output_per_unit": c.real_output_per_unit + 1})
+                        if i == 0
+                        else c
+                        for i, c in enumerate(country.economy.resource_output_coefficients)
+                    )
+                }
+            )
+        }
+    )
+    tampered_json = canonical_dumps(tampered_state.model_dump(mode="json"))
+    assert tampered_json != original.state_json
+    tampered_entry = dataclasses.replace(original, state_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry, *save.entries[index + 1 :])
+    tampered = dataclasses.replace(save, entries=entries)
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
+def test_tampering_with_only_the_extraction_sector_output_totals_is_detected() -> None:
+    """Dedicated Phase 2C2 tamper test (T24): `report.resources.extraction_sector_real_output`/
+    `.extraction_sector_potential_output` are new surface area covered by `entry_hash`,
+    independent of `test_tampering_with_only_the_resource_extraction_report_is_detected` above
+    (which tampers a pre-existing Phase 2C1 field)."""
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None
+    assert report.resources is not None
+    tampered_resources = report.resources.model_copy(
+        update={"extraction_sector_real_output": report.resources.extraction_sector_real_output + 1}
+    )
+    tampered_report = report.model_copy(update={"resources": tampered_resources})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered_entry = dataclasses.replace(original, report_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry)
+    tampered = dataclasses.replace(save, entries=entries, entry_count=len(entries))
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
+def test_tampering_with_only_a_deposit_real_output_contribution_is_detected() -> None:
+    """Dedicated Phase 2C2 tamper test (T24): `ResourceDepositReport.real_output_contribution`
+    is new surface area covered by `entry_hash`."""
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None
+    assert report.resources is not None
+    tampered_deposits = tuple(
+        d.model_copy(update={"real_output_contribution": d.real_output_contribution + 1})
+        if i == 0
+        else d
+        for i, d in enumerate(report.resources.deposits)
+    )
+    tampered_resources = report.resources.model_copy(update={"deposits": tampered_deposits})
+    tampered_report = report.model_copy(update={"resources": tampered_resources})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered_entry = dataclasses.replace(original, report_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry)
+    tampered = dataclasses.replace(save, entries=entries, entry_count=len(entries))
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
 def test_tampering_with_only_the_tax_base_coefficients_is_detected() -> None:
     """Dedicated Phase 2B2 tamper test: `finance.tax_base_coefficients` is new surface area
     covered by `entry_hash`, independent of the economy-sector tamper test above."""

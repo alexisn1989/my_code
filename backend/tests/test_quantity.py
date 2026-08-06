@@ -3,7 +3,12 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from app.core.quantity import StrictRealOutput, StrictRealOutputPerWorker, StrictWorkerCount
+from app.core.quantity import (
+    StrictRealOutput,
+    StrictRealOutputPerResourceUnit,
+    StrictRealOutputPerWorker,
+    StrictWorkerCount,
+)
 
 
 class _WorkerCountHolder(BaseModel):
@@ -16,6 +21,10 @@ class _RealOutputHolder(BaseModel):
 
 class _RealOutputPerWorkerHolder(BaseModel):
     value: StrictRealOutputPerWorker
+
+
+class _RealOutputPerResourceUnitHolder(BaseModel):
+    value: StrictRealOutputPerResourceUnit
 
 
 INVALID_INT_REPRESENTATIONS = [
@@ -46,6 +55,14 @@ def test_strict_real_output_rejects_invalid_representations(bad_value: object) -
 def test_strict_real_output_per_worker_rejects_invalid_representations(bad_value: object) -> None:
     with pytest.raises(ValidationError):
         _RealOutputPerWorkerHolder(value=bad_value)
+
+
+@pytest.mark.parametrize("bad_value", INVALID_INT_REPRESENTATIONS)
+def test_strict_real_output_per_resource_unit_rejects_invalid_representations(
+    bad_value: object,
+) -> None:
+    with pytest.raises(ValidationError):
+        _RealOutputPerResourceUnitHolder(value=bad_value)
 
 
 def test_strict_worker_count_rejects_negative() -> None:
@@ -82,6 +99,22 @@ def test_strict_real_output_per_worker_accepts_positive() -> None:
     assert _RealOutputPerWorkerHolder(value=1).value == 1
 
 
+def test_strict_real_output_per_resource_unit_rejects_zero() -> None:
+    # gt=0, not ge=0 (Phase 2C2, D5): "no output from this resource" is expressed only via
+    # extracted == 0, not by zeroing the coefficient too.
+    with pytest.raises(ValidationError):
+        _RealOutputPerResourceUnitHolder(value=0)
+
+
+def test_strict_real_output_per_resource_unit_rejects_negative() -> None:
+    with pytest.raises(ValidationError):
+        _RealOutputPerResourceUnitHolder(value=-1)
+
+
+def test_strict_real_output_per_resource_unit_accepts_positive() -> None:
+    assert _RealOutputPerResourceUnitHolder(value=1).value == 1
+
+
 def test_ordinary_integers_still_work() -> None:
     assert _WorkerCountHolder(value=42).value == 42
     assert _RealOutputHolder(value=42).value == 42
@@ -92,6 +125,7 @@ def test_very_large_integers_still_work_deterministically() -> None:
     assert _WorkerCountHolder(value=large).value == large
     assert _RealOutputHolder(value=large).value == large
     assert _RealOutputPerWorkerHolder(value=large).value == large
+    assert _RealOutputPerResourceUnitHolder(value=large).value == large
 
 
 def test_no_actual_bool_subclass_leaks_through() -> None:

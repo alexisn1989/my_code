@@ -3,6 +3,12 @@ report-closing-stocks-match-returned-state (T12, proving R2's same-step phase-3 
 correct, not merely structural), two-independent-games determinism (T14), and exact
 hand-computed calibration for both real scenarios including the corrected three-regime
 `deficit_demo` timber trajectory (T20, R4/R8).
+
+Phase 2C2 adds the physical-extraction-to-real-output bridge end to end: the accounting
+identity proving extraction output is counted exactly once (T21), and the exact hand-computed
+turn-26/turn-41 boundaries and turn-26..40 plateau for `deficit_demo`'s extraction-sector output
+(T28/T29/T30) — see `data/scenarios/deficit_demo.yaml`'s header and
+`docs/economy_methodology.md` for the underlying trajectory this pins.
 """
 
 from __future__ import annotations
@@ -10,10 +16,11 @@ from __future__ import annotations
 from app.content.scenarios import load_scenario_file
 from app.simulation.decisions import DecisionSet
 from app.simulation.history import advance_game, new_game
+from app.simulation.report import SectorProductionConstraint
 from app.simulation.resolver import resolve_turn
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.save_format import SAVE_FORMAT_VERSION
-from app.simulation.state import ResourceCategory
+from app.simulation.state import ResourceCategory, SectorCategory
 from tests.conftest import SCENARIO_DIR
 
 # --- T12: report closing stocks == returned state stocks, matched by category identity ----------
@@ -235,3 +242,111 @@ class TestDeficitDemoTimberThreeRegimeTrajectoryThroughTheRealEngine:
             assert row.closing_stock == 0, f"resolution {i}"
             assert row.status == DepositStatus.STOCK_CONSTRAINED, f"resolution {i}"
             assert row.status != DepositStatus.DEPLETED, f"resolution {i}"
+
+
+# --- Phase 2C2, T21: the direct accounting identity — extraction output is counted exactly ------
+# --- once, end to end through the real engine ----------------------------------------------------
+
+
+def test_tiny_valid_extraction_contribution_appears_exactly_once_in_total_gross_output() -> None:
+    """Σ(deposit.real_output_contribution) == extraction_sector_real_output ==
+    production.sectors[EXTRACTION].actual_output, and this exact figure appears in
+    total_gross_output exactly once (proven by subtracting every other sector's contribution)."""
+    state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+    decisions = DecisionSet(expected_turn=0, expected_state_version=0, decisions=())
+    resolution = resolve_turn(state, decisions)
+    resources = resolution.report.resources
+    production = resolution.report.production
+    assert resources is not None
+    assert production is not None
+
+    summed_contributions = sum(d.real_output_contribution for d in resources.deposits)
+    assert summed_contributions == resources.extraction_sector_real_output == 2_000_000_000
+
+    extraction_row = next(s for s in production.sectors if s.category is SectorCategory.EXTRACTION)
+    assert extraction_row.actual_output == resources.extraction_sector_real_output
+    assert extraction_row.output_basis.value == "resource_extraction"
+    assert extraction_row.constraint is SectorProductionConstraint.PHYSICAL_RESOURCE_CONSTRAINED
+
+    other_sectors_total = sum(
+        s.actual_output for s in production.sectors if s.category is not SectorCategory.EXTRACTION
+    )
+    assert production.total_gross_output == other_sectors_total + extraction_row.actual_output
+
+
+class TestDeficitDemoExtractionSectorOutputTrajectoryThroughTheRealEngine:
+    """Phase 2C2's extraction-sector output tracks the timber/iron_ore physical trajectory
+    (`TestDeficitDemoTimberThreeRegimeTrajectoryThroughTheRealEngine` above) through the exact
+    hand-worked figures from the plan's §8: 500,000,000 through turn 25, stepping to
+    100,000,000 at turn 26 (iron_ore depletion), holding through turn 40, then stepping to
+    50,000,000 at turn 41 (timber's steady state).
+    """
+
+    def _run(self, turns: int) -> list:
+        state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
+        save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+        reports = []
+        for _ in range(turns):
+            current = save.current_state()
+            decisions = DecisionSet(
+                expected_turn=current.turn,
+                expected_state_version=current.state_version,
+                decisions=(),
+            )
+            save = advance_game(save, decisions)
+            report = save.entries[-1].report()
+            assert report is not None
+            assert report.resources is not None
+            reports.append(report.resources)
+        return reports
+
+    def test_turns_1_to_25_hold_at_500_million(self) -> None:
+        reports = self._run(25)
+        for i, resources in enumerate(reports, start=1):
+            assert resources.extraction_sector_real_output == 500_000_000, f"turn {i}"
+            assert resources.extraction_sector_potential_output == 500_000_000, f"turn {i}"
+
+    def test_turn_26_is_the_first_divergent_turn_at_100_million(self) -> None:
+        reports = self._run(26)
+        turn_25, turn_26 = reports[24], reports[25]
+        assert turn_25.extraction_sector_real_output == 500_000_000
+        assert turn_26.extraction_sector_real_output == 100_000_000
+        assert turn_26.extraction_sector_potential_output == 100_000_000
+
+    def test_turns_26_to_40_plateau_at_100_million(self) -> None:
+        reports = self._run(40)
+        for i, resources in enumerate(reports[25:40], start=26):
+            assert resources.extraction_sector_real_output == 100_000_000, f"turn {i}"
+            assert resources.extraction_sector_potential_output == 100_000_000, f"turn {i}"
+
+    def test_turn_41_is_the_second_boundary_at_50_million(self) -> None:
+        reports = self._run(41)
+        turn_40, turn_41 = reports[39], reports[40]
+        assert turn_40.extraction_sector_real_output == 100_000_000
+        assert turn_41.extraction_sector_real_output == 50_000_000
+        assert turn_41.extraction_sector_potential_output == 50_000_000
+
+    def test_extraction_row_stays_physical_resource_constrained_throughout(self) -> None:
+        """Labor never binds in this fixture (a known, documented limitation, §18) — every turn
+        classifies as PHYSICAL_RESOURCE_CONSTRAINED, never LABOR_CONSTRAINED, across all three
+        regimes."""
+        state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
+        save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+        for i in range(1, 46):
+            current = save.current_state()
+            decisions = DecisionSet(
+                expected_turn=current.turn,
+                expected_state_version=current.state_version,
+                decisions=(),
+            )
+            save = advance_game(save, decisions)
+            report = save.entries[-1].report()
+            assert report is not None
+            assert report.production is not None
+            extraction_row = next(
+                s for s in report.production.sectors if s.category is SectorCategory.EXTRACTION
+            )
+            assert (
+                extraction_row.constraint
+                is SectorProductionConstraint.PHYSICAL_RESOURCE_CONSTRAINED
+            ), f"turn {i}"
