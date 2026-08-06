@@ -19,6 +19,7 @@ import time
 from app.content.scenarios import load_scenario_file
 from app.simulation.decisions import DecisionSet
 from app.simulation.history import advance_game, new_game, validate_history
+from app.simulation.report import SectorProductionConstraint
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.save_format import SAVE_FORMAT_VERSION
 from app.simulation.state import ResourceCategory, SectorCategory
@@ -115,6 +116,17 @@ def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustai
                 deposit.opening_stock + deposit.regenerated
                 == deposit.extracted + deposit.closing_stock
             )
+        # Phase 2C2, T32: every deposit is capacity-bound for `tiny_valid`'s full tested
+        # horizon (the shortest-lived deposit, critical_minerals, lasts exactly 100 turns), so
+        # the extraction-sector output is preserved at its calibrated turn-1 figure for all
+        # 100 turns — no clamp, no drift.
+        extraction_row = next(
+            s for s in report.production.sectors if s.category is SectorCategory.EXTRACTION
+        )
+        assert report.resources.extraction_sector_real_output == 2_000_000_000
+        assert report.resources.extraction_sector_potential_output == 2_000_000_000
+        assert extraction_row.actual_output == 2_000_000_000
+        assert extraction_row.constraint is SectorProductionConstraint.PHYSICAL_RESOURCE_CONSTRAINED
 
     print(
         f"\n{TURNS}-turn soak (real scenario, labor+resources+production+derivation+finance "
@@ -149,11 +161,13 @@ def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() 
     assert validate_history(save) == []
 
     timber_by_turn = []
+    extraction_output_by_turn = []
     for entry in save.entries[1:]:
         report = entry.report()
         assert report is not None
         assert report.labor_market is not None
         assert report.resources is not None
+        assert report.production is not None
         allocated_by_category = {
             s.category: s.allocated_workers for s in report.labor_market.sectors
         }
@@ -170,6 +184,12 @@ def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() 
         timber_by_turn.append(
             next(d for d in report.resources.deposits if d.category == ResourceCategory.TIMBER)
         )
+        extraction_row = next(
+            s for s in report.production.sectors if s.category is SectorCategory.EXTRACTION
+        )
+        assert report.resources.extraction_sector_real_output == extraction_row.actual_output
+        assert extraction_row.constraint is SectorProductionConstraint.PHYSICAL_RESOURCE_CONSTRAINED
+        extraction_output_by_turn.append(report.resources.extraction_sector_real_output)
 
     for i, row in enumerate(timber_by_turn[:39], start=1):
         assert row.status == DepositStatus.CAPACITY_CONSTRAINED, f"resolution {i}"
@@ -180,6 +200,16 @@ def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() 
         assert row.status == DepositStatus.STOCK_CONSTRAINED, f"resolution {i}"
         assert row.extracted == 5_000, f"resolution {i}"
         assert row.closing_stock == 0, f"resolution {i}"
+
+    # Phase 2C2, T31: the exact three-regime extraction-sector output trajectory (§8), held
+    # through the full 100-turn soak horizon — 500,000,000 through turn 25, 100,000,000 for
+    # turns 26-40 (iron_ore depleted), 50,000,000 from turn 41 onward (timber's steady state).
+    for i, output in enumerate(extraction_output_by_turn[:25], start=1):
+        assert output == 500_000_000, f"turn {i}"
+    for i, output in enumerate(extraction_output_by_turn[25:40], start=26):
+        assert output == 100_000_000, f"turn {i}"
+    for i, output in enumerate(extraction_output_by_turn[40:], start=41):
+        assert output == 50_000_000, f"turn {i}"
 
     print(
         f"\n{TURNS}-turn soak (deficit_demo, full three-regime timber trajectory): "

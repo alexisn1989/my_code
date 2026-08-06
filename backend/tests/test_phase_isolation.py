@@ -1,23 +1,29 @@
 """Phase 2B2 changed the isolation contract from Phase 2B1: production and finance are no
 longer fully isolated — production now affects revenue **through derived tax bases**
 (`simulation.tax_base_derivation`). Phase 2B3 adds labor allocation ahead of production in the
-same chain; Phase 2C1 adds resource extraction (sub-allocated from the same labor) alongside it,
-under the same one-directional rule:
+same chain; Phase 2C1 adds resource extraction (sub-allocated from the same labor) alongside it.
+Phase 2C2 (ADR 0008) then **reverses** Phase 2C1's own D8 conservation-only isolation boundary:
+extraction stops being economically inert and starts driving the EXTRACTION sector's production
+row directly, under the same one-directional rule as everything else in this chain:
 
 - population/labor supply -> allocation -> production -> tax bases -> revenue:  MUST hold
-- resource endowments -> extraction:                                            MUST hold
+- resource endowments -> extraction -> extraction-sector production -> tax bases -> revenue:
+  MUST hold (Phase 2C2 — see ADR 0008)
 - tax rates / spending -> allocation / production / extraction:  MUST NOT hold (still isolated)
-- resource endowments -> production / tax bases / finance:       MUST NOT hold (D8 — conservation-
-  only isolation boundary; extraction is economically inert this phase)
 
 This module tests all of these directions. `test_finance_report_is_byte_identical_across_wildly_
 different_economies` (the Phase 2B1 test asserting the *opposite* of the current design)
 is deliberately replaced, not silently deleted — see
 `test_different_economies_produce_different_tax_bases_and_revenue` below, and ADR 0005 for
-why this inversion is intentional. The other two isolation tests keep their original
-premise and become more important now that the dependency is one-directional rather than
-symmetric; both are extended here to also cover `labor_market` and `resources`. Phase 2C1 adds
-its own dedicated tests for the resource-specific directions (T21).
+why this inversion is intentional. `test_different_resource_endowments_do_not_affect_production_
+derivation_or_finance` (the Phase 2C1 test asserting D8's now-reversed isolation) is likewise
+deliberately replaced, not silently deleted — see
+`test_different_resource_endowments_affect_extraction_sector_production_and_downstream_tax_and_
+finance` below, and ADR 0008 for why this second inversion is intentional. The other two
+isolation tests keep their original premise and become more important now that the dependency is
+one-directional rather than symmetric; both are extended here to also cover `labor_market` and
+`resources`. Phase 2C1 adds its own dedicated tests for the resource-specific directions (T21);
+Phase 2C2 adds T22.
 """
 
 from __future__ import annotations
@@ -40,7 +46,7 @@ from app.simulation.state import (
     SpendingCategory,
     TaxBaseState,
 )
-from tests.conftest import make_economy, make_game_state, make_resource_deposits
+from tests.conftest import make_country, make_economy, make_game_state, make_resource_deposits
 
 
 def _run_phases_for(state: GameState) -> PhaseContext:
@@ -260,8 +266,9 @@ def test_report_assembly_does_not_cross_populate_finance_and_production_fields()
     assert {s["category"] for s in derivation_dump["sectors"]} == {c.value for c in SectorCategory}
 
 
-# --- Phase 2C1 (T21): resource endowments -> extraction MUST hold; resource endowments -> -------
-# --- production/derivation/finance MUST NOT hold (D8); phase 3's mutation scope -----------------
+# --- Phase 2C1 (T21) / Phase 2C2 (T22): resource endowments -> extraction -> extraction-sector --
+# --- production -> tax bases -> revenue MUST hold; tax rates / spending -> allocation / --------
+# --- production / extraction MUST NOT hold (still isolated); phase 3's mutation scope -----------
 
 
 def _rich_resource_deposits() -> tuple[ResourceDepositState, ...]:
@@ -299,31 +306,70 @@ def test_different_resource_endowments_produce_different_extraction_reports() ->
     assert poor.report.resources.total_extraction_workers == 0
 
 
-def test_different_resource_endowments_do_not_affect_production_derivation_or_finance() -> None:
-    """D8, the conservation-only isolation boundary: production, tax-base derivation, and
-    finance must stay byte-identical regardless of the resource endowments — extraction is
-    economically inert this phase.
+def test_different_resource_endowments_affect_extraction_sector_production_and_downstream_tax_and_finance() -> (
+    None
+):
+    """Phase 2C2 reverses Phase 2C1's D8 conservation-only isolation boundary (ADR 0008):
+    extraction is no longer economically inert. Resource endowments now determine the
+    EXTRACTION row's `actual_output` (via the physical-extraction bridge in `resource_output.py`),
+    which flows through `total_gross_output`, the EXTRACTION row's derived tax base, and
+    ultimately revenue and the treasury — while the other ten sectors, driven entirely by labor
+    allocation (untouched by this phase), stay completely unaffected. This is the one-way
+    dependency D7 establishes: resource endowments -> extraction -> extraction-sector output ->
+    tax bases -> revenue.
     """
+    significant_deposits = make_resource_deposits(
+        remaining_stock=10_000_000,
+        extraction_capacity_per_turn=1_000_000,
+        output_per_worker=1_000_000,
+        regeneration_per_turn=0,
+        stock_ceiling=None,
+    )
     poor = _resolve_with_resource_deposits(make_resource_deposits())
-    rich = _resolve_with_resource_deposits(_rich_resource_deposits())
+    rich = _resolve_with_resource_deposits(significant_deposits)
 
     assert poor.report.production is not None
     assert rich.report.production is not None
-    assert poor.report.production.model_dump(mode="json") == rich.report.production.model_dump(
-        mode="json"
+    poor_sectors = {s.category: s for s in poor.report.production.sectors}
+    rich_sectors = {s.category: s for s in rich.report.production.sectors}
+    assert poor_sectors.keys() == rich_sectors.keys()
+    for category in poor_sectors:
+        if category is SectorCategory.EXTRACTION:
+            assert poor_sectors[category] != rich_sectors[category], (
+                "the EXTRACTION row must differ — this is the whole point of Phase 2C2"
+            )
+        else:
+            assert poor_sectors[category] == rich_sectors[category], (
+                f"{category} must stay untouched by resource endowments"
+            )
+
+    # Accounting identity (§6c/D7): extraction is counted exactly once, so total_gross_output
+    # moves by exactly the extraction row's own delta — no other row moved.
+    extraction_delta = (
+        rich_sectors[SectorCategory.EXTRACTION].actual_output
+        - poor_sectors[SectorCategory.EXTRACTION].actual_output
+    )
+    assert extraction_delta > 0
+    assert (
+        rich.report.production.total_gross_output - poor.report.production.total_gross_output
+        == extraction_delta
     )
 
     assert poor.report.tax_base_derivation is not None
     assert rich.report.tax_base_derivation is not None
-    assert poor.report.tax_base_derivation.model_dump(
-        mode="json"
-    ) == rich.report.tax_base_derivation.model_dump(mode="json")
+    poor_tbd_sectors = {s.category: s for s in poor.report.tax_base_derivation.sectors}
+    rich_tbd_sectors = {s.category: s for s in rich.report.tax_base_derivation.sectors}
+    for category in poor_tbd_sectors:
+        if category is SectorCategory.EXTRACTION:
+            assert poor_tbd_sectors[category] != rich_tbd_sectors[category]
+        else:
+            assert poor_tbd_sectors[category] == rich_tbd_sectors[category]
 
+    # At this magnitude the shift survives bps rounding all the way through to revenue and the
+    # treasury, proving the dependency reaches finance, not just the intermediate reports.
     assert poor.report.finance is not None
     assert rich.report.finance is not None
-    assert poor.report.finance.model_dump(mode="json") == rich.report.finance.model_dump(
-        mode="json"
-    )
+    assert poor.report.finance.revenue.total_revenue != rich.report.finance.revenue.total_revenue
 
 
 def test_resolved_turn_only_mutates_resource_deposits_within_economy_state() -> None:
@@ -362,3 +408,160 @@ def test_resource_deposits_present_in_returned_state_matches_report_closing_stoc
     for deposit_report in resolution.report.resources.deposits:
         assert deposit_report.closing_stock == stock_by_category[deposit_report.category]
     assert set(stock_by_category) == set(ResourceCategory)
+
+
+# --- Phase 2C2, T18/T19: quarterly_capacity_output/output_per_worker are completely inert -------
+# --- for the EXTRACTION row (R6/§6b) — contrasted with a STANDARD sector, where the same --------
+# --- mutation DOES change output, proving the inertness is basis-specific, not a general bug ----
+
+
+def _resolve_with_sector_legacy_fields(
+    *, category: SectorCategory, quarterly_capacity_output: int, output_per_worker: int
+):  # type: ignore[no-untyped-def]
+    economy = make_economy(
+        resource_deposits=make_resource_deposits(
+            remaining_stock=1_000_000,
+            extraction_capacity_per_turn=1_000,
+            output_per_worker=1_000,
+            regeneration_per_turn=0,
+            stock_ceiling=None,
+        )
+    )
+    sector = next(s for s in economy.sectors if s.category is category)
+    sector.quarterly_capacity_output = quarterly_capacity_output
+    sector.output_per_worker = output_per_worker
+    country = make_country("testland", economy=economy)
+    state = make_game_state(countries={"testland": country}, player_country_id="testland")
+    decisions = DecisionSet(expected_turn=0, expected_state_version=0, decisions=())
+    return resolve_turn(state, decisions)
+
+
+class TestLegacyFieldInertnessForExtraction:
+    """Mutating the EXTRACTION sector's `quarterly_capacity_output`/`output_per_worker` alone —
+    with resource endowments held fixed — must change nothing observable on the extraction row:
+    not `actual_output` (Rev 1), not `capacity_utilization_bps`, and not `constraint` either (R6
+    strengthens Rev 1's two-of-three claim to all three)."""
+
+    def test_quarterly_capacity_output_does_not_affect_the_extraction_row(self) -> None:
+        baseline = _resolve_with_sector_legacy_fields(
+            category=SectorCategory.EXTRACTION,
+            quarterly_capacity_output=25_000_000,
+            output_per_worker=25_000_000,
+        )
+        absurd = _resolve_with_sector_legacy_fields(
+            category=SectorCategory.EXTRACTION,
+            quarterly_capacity_output=1,
+            output_per_worker=25_000_000,
+        )
+        assert baseline.report.production is not None
+        assert absurd.report.production is not None
+        b_row = next(
+            s for s in baseline.report.production.sectors if s.category is SectorCategory.EXTRACTION
+        )
+        a_row = next(
+            s for s in absurd.report.production.sectors if s.category is SectorCategory.EXTRACTION
+        )
+        assert b_row.actual_output == a_row.actual_output
+        assert b_row.capacity_utilization_bps == a_row.capacity_utilization_bps
+        assert b_row.constraint == a_row.constraint
+
+    def test_output_per_worker_does_not_affect_the_extraction_row(self) -> None:
+        """`output_per_worker` is also read by `labor_allocation.py` (untouched by 2C2) to
+        compute a sector's labor DEMAND, which can change `employed_workers` — a real, expected
+        effect unrelated to R6's claim. The "absurd" value here is chosen large enough (rather
+        than small) that `required_workers` still floors to the same 1 worker as the baseline,
+        isolating the derivation-formula inertness this test actually targets from that upstream
+        labor-demand effect.
+        """
+        baseline = _resolve_with_sector_legacy_fields(
+            category=SectorCategory.EXTRACTION,
+            quarterly_capacity_output=25_000_000,
+            output_per_worker=25_000_000,
+        )
+        absurd = _resolve_with_sector_legacy_fields(
+            category=SectorCategory.EXTRACTION,
+            quarterly_capacity_output=25_000_000,
+            output_per_worker=1_000_000_000,
+        )
+        assert baseline.report.labor_market is not None
+        assert absurd.report.labor_market is not None
+        baseline_workers = next(
+            s
+            for s in baseline.report.labor_market.sectors
+            if s.category is SectorCategory.EXTRACTION
+        ).allocated_workers
+        absurd_workers = next(
+            s for s in absurd.report.labor_market.sectors if s.category is SectorCategory.EXTRACTION
+        ).allocated_workers
+        assert baseline_workers == absurd_workers, (
+            "sanity: this test isolates the derivation-formula claim, not the labor-demand one"
+        )
+        assert baseline.report.production is not None
+        assert absurd.report.production is not None
+        b_row = next(
+            s for s in baseline.report.production.sectors if s.category is SectorCategory.EXTRACTION
+        )
+        a_row = next(
+            s for s in absurd.report.production.sectors if s.category is SectorCategory.EXTRACTION
+        )
+        assert b_row.actual_output == a_row.actual_output
+        assert b_row.capacity_utilization_bps == a_row.capacity_utilization_bps
+        assert b_row.constraint == a_row.constraint
+
+    def test_contrast_a_standard_sector_output_does_change_under_the_equivalent_mutation(
+        self,
+    ) -> None:
+        """The negative-control proof that inertness is specific to the RESOURCE_EXTRACTION
+        basis, not a general property of the test harness or an accidental no-op mutation."""
+        baseline = _resolve_with_sector_legacy_fields(
+            category=SectorCategory.MANUFACTURING,
+            quarterly_capacity_output=25_000_000,
+            output_per_worker=25_000_000,
+        )
+        changed = _resolve_with_sector_legacy_fields(
+            category=SectorCategory.MANUFACTURING,
+            quarterly_capacity_output=1,
+            output_per_worker=25_000_000,
+        )
+        assert baseline.report.production is not None
+        assert changed.report.production is not None
+        b_row = next(
+            s
+            for s in baseline.report.production.sectors
+            if s.category is SectorCategory.MANUFACTURING
+        )
+        c_row = next(
+            s
+            for s in changed.report.production.sectors
+            if s.category is SectorCategory.MANUFACTURING
+        )
+        assert b_row.actual_output != c_row.actual_output
+
+    def test_legacy_field_mutations_do_not_affect_downstream_tax_base_or_finance_totals(
+        self,
+    ) -> None:
+        """Uses the same large-`output_per_worker` trick as the test above to keep
+        `employed_workers` fixed at 1 in both runs — isolating the derivation-formula inertness
+        claim from labor demand's real, unrelated use of these same two fields.
+        """
+        baseline = _resolve_with_sector_legacy_fields(
+            category=SectorCategory.EXTRACTION,
+            quarterly_capacity_output=25_000_000,
+            output_per_worker=25_000_000,
+        )
+        absurd = _resolve_with_sector_legacy_fields(
+            category=SectorCategory.EXTRACTION,
+            quarterly_capacity_output=1,
+            output_per_worker=1_000_000_000,
+        )
+        assert baseline.report.tax_base_derivation is not None
+        assert absurd.report.tax_base_derivation is not None
+        assert baseline.report.tax_base_derivation.model_dump(
+            mode="json"
+        ) == absurd.report.tax_base_derivation.model_dump(mode="json")
+
+        assert baseline.report.finance is not None
+        assert absurd.report.finance is not None
+        assert baseline.report.finance.model_dump(mode="json") == absurd.report.finance.model_dump(
+            mode="json"
+        )

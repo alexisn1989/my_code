@@ -16,10 +16,17 @@ from app.simulation.state import (
     PopulationGroupState,
     ResourceCategory,
     ResourceDepositState,
+    ResourceOutputCoefficient,
     SectorState,
     TaxBaseCoefficients,
 )
-from tests.conftest import make_country, make_economy, make_finance, make_game_state
+from tests.conftest import (
+    make_country,
+    make_economy,
+    make_finance,
+    make_game_state,
+    make_resource_output_coefficients,
+)
 
 
 def test_valid_state_has_no_violations() -> None:
@@ -211,6 +218,7 @@ def test_effective_labor_force_share_out_of_range_from_a_bypassed_construction_i
         effective_labor_force_share_bps=99_999,
         sectors=country.economy.sectors,
         resource_deposits=country.economy.resource_deposits,
+        resource_output_coefficients=country.economy.resource_output_coefficients,
     )
     country = country.model_copy(update={"economy": bypassed_economy})
     state = make_game_state(countries={"a": country}, player_country_id="a")
@@ -281,6 +289,7 @@ def test_duplicate_resource_category_from_a_bypassed_construction_is_caught_by_i
         effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
         sectors=country.economy.sectors,
         resource_deposits=tuple(deposits),
+        resource_output_coefficients=country.economy.resource_output_coefficients,
     )
     country = country.model_copy(update={"economy": bypassed_economy})
     state = make_game_state(countries={"a": country}, player_country_id="a")
@@ -298,6 +307,7 @@ def test_missing_resource_category_from_a_bypassed_construction_is_caught_by_inv
         effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
         sectors=country.economy.sectors,
         resource_deposits=deposits,
+        resource_output_coefficients=country.economy.resource_output_coefficients,
     )
     country = country.model_copy(update={"economy": bypassed_economy})
     state = make_game_state(countries={"a": country}, player_country_id="a")
@@ -322,6 +332,7 @@ def test_noncanonical_resource_order_from_a_bypassed_construction_is_caught_by_i
         effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
         sectors=country.economy.sectors,
         resource_deposits=tuple(deposits),
+        resource_output_coefficients=country.economy.resource_output_coefficients,
     )
     country = country.model_copy(update={"economy": bypassed_economy})
     state = make_game_state(countries={"a": country}, player_country_id="a")
@@ -353,6 +364,7 @@ def test_resource_regeneration_on_nonrenewable_from_a_bypassed_construction_is_c
         effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
         sectors=country.economy.sectors,
         resource_deposits=deposits,
+        resource_output_coefficients=country.economy.resource_output_coefficients,
     )
     country = country.model_copy(update={"economy": bypassed_economy})
     state = make_game_state(countries={"a": country}, player_country_id="a")
@@ -380,6 +392,7 @@ def test_renewable_missing_stock_ceiling_from_a_bypassed_construction_is_caught_
         effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
         sectors=country.economy.sectors,
         resource_deposits=deposits,
+        resource_output_coefficients=country.economy.resource_output_coefficients,
     )
     country = country.model_copy(update={"economy": bypassed_economy})
     state = make_game_state(countries={"a": country}, player_country_id="a")
@@ -407,6 +420,7 @@ def test_resource_stock_exceeds_ceiling_from_a_bypassed_construction_is_caught_b
         effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
         sectors=country.economy.sectors,
         resource_deposits=deposits,
+        resource_output_coefficients=country.economy.resource_output_coefficients,
     )
     country = country.model_copy(update={"economy": bypassed_economy})
     state = make_game_state(countries={"a": country}, player_country_id="a")
@@ -433,6 +447,124 @@ def test_nested_resource_deposit_mutation_into_a_duplicate_category_is_caught_by
     codes = {v.code for v in violations}
     assert "duplicate_resource_category" in codes
     assert "missing_resource_category" in codes
+
+
+# --- Phase 2C2: resource_output_coefficients structural checks (4 of the plan's 14 proposed --
+# --- codes; the other 10 are report-vs-formula "mismatch" checks that check_invariants cannot --
+# --- implement — check_invariants(state: GameState) never sees a TurnReport, and resolver.py --
+# --- calls it strictly before TurnReport is even constructed. report.py's 7 new self- ---------
+# --- validators plus 3 new TurnReport cross-validators cover that surface instead, more -------
+# --- thoroughly and on every construction/replay path, not just resolve_turn's checkpoints. ---
+
+
+def _all_resource_output_coefficients(
+    overrides: dict[ResourceCategory, ResourceOutputCoefficient] | None = None,
+) -> tuple[ResourceOutputCoefficient, ...]:
+    overrides = overrides or {}
+    base = {c.category: c for c in make_resource_output_coefficients()}
+    base.update(overrides)
+    return tuple(base[category] for category in ResourceCategory)
+
+
+def test_duplicate_resource_output_coefficient_from_a_bypassed_construction_is_caught_by_invariants() -> (
+    None
+):
+    """`EconomyState`'s own constructor already rejects this on every legitimate path — this is
+    defense-in-depth for a fully bypassed construction, mirroring `duplicate_resource_category`.
+    """
+    country = make_country("a")
+    assert country.economy is not None
+    coefficients = list(_all_resource_output_coefficients())
+    coefficients[1] = ResourceOutputCoefficient(
+        category=coefficients[0].category, real_output_per_unit=1
+    )
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=country.economy.sectors,
+        resource_deposits=country.economy.resource_deposits,
+        resource_output_coefficients=tuple(coefficients),
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "duplicate_resource_output_coefficient" in codes
+
+
+def test_missing_resource_output_coefficient_from_a_bypassed_construction_is_caught_by_invariants() -> (
+    None
+):
+    country = make_country("a")
+    assert country.economy is not None
+    coefficients = _all_resource_output_coefficients()[:-1]  # drop critical_minerals
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=country.economy.sectors,
+        resource_deposits=country.economy.resource_deposits,
+        resource_output_coefficients=coefficients,
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "missing_resource_output_coefficient" in codes
+
+
+def test_noncanonical_resource_output_coefficient_order_from_a_bypassed_construction_is_caught_by_invariants() -> (
+    None
+):
+    """R3: `EconomyState`'s own constructor already **rejects** reordered
+    `resource_output_coefficients` outright (it does not merely normalize) — so this backstop is
+    reachable only through a fully bypassed construction, mirroring
+    `noncanonical_resource_order`."""
+    country = make_country("a")
+    assert country.economy is not None
+    coefficients = list(_all_resource_output_coefficients())
+    coefficients[0], coefficients[1] = coefficients[1], coefficients[0]
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=country.economy.sectors,
+        resource_deposits=country.economy.resource_deposits,
+        resource_output_coefficients=tuple(coefficients),
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "noncanonical_resource_output_coefficient_order" in codes
+    assert "duplicate_resource_output_coefficient" not in codes
+    assert "missing_resource_output_coefficient" not in codes
+
+
+def test_resource_output_coefficient_out_of_range_from_a_bypassed_construction_is_caught_by_invariants() -> (
+    None
+):
+    """`StrictRealOutputPerResourceUnit`'s `gt=0` already rejects this on every legitimate
+    path — defense-in-depth for a fully bypassed row construction (D5/§10: zero is always
+    invalid, never a legal "no contribution" encoding)."""
+    country = make_country("a")
+    assert country.economy is not None
+    bypassed_coefficient = ResourceOutputCoefficient.model_construct(
+        category=ResourceCategory.IRON_ORE, real_output_per_unit=0
+    )
+    coefficients = _all_resource_output_coefficients(
+        {ResourceCategory.IRON_ORE: bypassed_coefficient}
+    )
+    bypassed_economy = EconomyState.model_construct(
+        effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
+        sectors=country.economy.sectors,
+        resource_deposits=country.economy.resource_deposits,
+        resource_output_coefficients=coefficients,
+    )
+    country = country.model_copy(update={"economy": bypassed_economy})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "resource_output_coefficient_out_of_range" in codes
 
 
 # --- R1: EconomyState's own construction-time invariant must be re-checked ---
@@ -511,6 +643,7 @@ def test_noncanonical_sector_order_from_a_bypassed_construction_is_caught_by_inv
         effective_labor_force_share_bps=country.economy.effective_labor_force_share_bps,
         sectors=tuple(sectors),
         resource_deposits=country.economy.resource_deposits,
+        resource_output_coefficients=country.economy.resource_output_coefficients,
     )
     country = country.model_copy(update={"economy": bypassed})
     state = make_game_state(countries={"a": country}, player_country_id="a")

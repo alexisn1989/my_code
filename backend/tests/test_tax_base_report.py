@@ -384,3 +384,69 @@ class TestR1CrossReportValidation:
         report = TurnReport.model_validate(data)
         assert report.production is not None
         assert report.tax_base_derivation is not None
+
+
+class TestPhase2C2ExtractionCrossReportValidation:
+    """T17: the three new `TurnReport` cross-validators authoritatively checking the
+    RESOURCE_EXTRACTION row's `actual_output`/`capacity_utilization_bps`/`constraint` against
+    `ResourceExtractionReport`'s totals — fields `SectorProductionReport` cannot self-validate
+    in isolation for this basis (§6a)."""
+
+    def test_extraction_actual_output_mismatch_with_resources_total_is_rejected(self) -> None:
+        """Bump the row's `actual_output`/`labor_limited_output` together (keeping the row's own
+        self-consistency check satisfied), `total_gross_output` (keeping `ProductionReport`'s
+        own sum check satisfied), and `tax_base_derivation`'s mirrored `actual_output` (keeping
+        the pre-existing production<->derivation R1 check satisfied — the default fixture's
+        extraction row starts at 0, so bumping to 1 leaves `modeled_value_added`'s floor-division
+        formula still at 0, self-consistent with no further changes needed) — isolating the new
+        cross-report check against `resources.extraction_sector_real_output` specifically.
+        """
+        data, _ = _valid_turn_report_dict()
+        assert data["resources"] is not None
+        assert data["production"] is not None
+        assert data["tax_base_derivation"] is not None
+        extraction = next(s for s in data["production"]["sectors"] if s["category"] == "extraction")
+        assert extraction["actual_output"] == 0  # default fixture: extraction inactive
+        extraction["actual_output"] = 1
+        extraction["labor_limited_output"] = 1
+        data["production"]["total_gross_output"] = int(data["production"]["total_gross_output"]) + 1
+        tbd_extraction = next(
+            s for s in data["tax_base_derivation"]["sectors"] if s["category"] == "extraction"
+        )
+        tbd_extraction["actual_output"] = 1
+
+        with pytest.raises(ValidationError, match="extraction_sector_real_output"):
+            TurnReport.model_validate(data)
+
+    def test_extraction_utilization_mismatch_with_potential_output_formula_is_rejected(
+        self,
+    ) -> None:
+        """`capacity_utilization_bps` has no row-level check for the RESOURCE_EXTRACTION basis —
+        corrupting it alone isolates the cross-report check specifically."""
+        data, _ = _valid_turn_report_dict()
+        assert data["resources"] is not None
+        assert data["production"] is not None
+        extraction = next(s for s in data["production"]["sectors"] if s["category"] == "extraction")
+        current = int(extraction["capacity_utilization_bps"])
+        extraction["capacity_utilization_bps"] = current - 1 if current == 10_000 else current + 1
+
+        with pytest.raises(ValidationError, match="capacity_utilization_bps"):
+            TurnReport.model_validate(data)
+
+    def test_extraction_constraint_mismatch_with_classification_is_rejected(self) -> None:
+        """`constraint` has no row-level check for the RESOURCE_EXTRACTION basis either —
+        corrupting it alone isolates the cross-report check, which calls
+        `classify_extraction_constraint` directly (R9)."""
+        data, _ = _valid_turn_report_dict()
+        assert data["resources"] is not None
+        assert data["production"] is not None
+        extraction = next(s for s in data["production"]["sectors"] if s["category"] == "extraction")
+        wrong = (
+            "labor_constrained"
+            if extraction["constraint"] != "labor_constrained"
+            else "physical_resource_constrained"
+        )
+        extraction["constraint"] = wrong
+
+        with pytest.raises(ValidationError, match="constraint"):
+            TurnReport.model_validate(data)

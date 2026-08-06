@@ -32,6 +32,8 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "deposits_depleted": 0,
         "total_extraction_workers": 13500,
         "unassigned_resource_workers": 6500,
+        "extraction_sector_real_output": 2_000_000_000,
+        "extraction_sector_potential_output": 2_000_000_000,
     },
     "production_summary": {
         "total_employment": 21550,

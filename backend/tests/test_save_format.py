@@ -41,10 +41,11 @@ def test_current_versions_load_normally() -> None:
 
 
 def test_check_compatibility_accepts_current_versions() -> None:
+    save = _fresh_save()
     check_compatibility(
         save_format_version=SAVE_FORMAT_VERSION,
         ruleset_version=RULESET_VERSION,
-        content_version="0.6.0",
+        content_version=save.content_version,
     )  # must not raise
 
 
