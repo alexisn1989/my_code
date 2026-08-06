@@ -364,12 +364,76 @@ reclassification; province/field/mine-level geography (waits for Phase 6's map);
 route, database table, migration, or gameplay frontend. None of it implied or half-built, stated
 plainly in `docs/economy_methodology.md`.
 
-**Recommended next bounded ticket — Phase 2C2:** replace (never add to) the extraction sector's
-`RealOutput` derivation with one computed from that turn's physical extraction, through a single
-named unit-bridge function mirroring `base_year_real_output_to_money`. This is what makes
-resources economically meaningful and resolves the "two descriptions of the same labor"
-limitation — but it will move tax bases and revenue, so it needs its own calibration pass and its
-own ticket, not bundled into this one.
+### Phase 2C2 — Physical extraction drives extraction-sector output — **complete**
+
+Scope: replace (never add to) the extraction sector's `RealOutput` derivation with one computed
+from that turn's physical extraction, through a single named unit-bridge function mirroring
+`base_year_real_output_to_money`. Resolves ADR 0007's limitation 2 ("two descriptions of the same
+labor, not two connected activities"). See `docs/economy_methodology.md` for every formula and
+`docs/adr/0008-physical-extraction-derived-sector-output.md` for the design decisions, including
+the R1–R10 independent-review corrections applied before implementation.
+
+Acceptance criteria:
+- [x] `EconomyState.resource_output_coefficients: tuple[ResourceOutputCoefficient, ...]` — one
+      strictly-positive (`gt=0`) `real_output_per_unit` per `ResourceCategory`, all 8 required
+      exactly once, canonical order **rejected, not normalized** (mirroring the resource-deposit
+      precedent, not the sector-order normalize-on-reorder one). A single named bridge function
+      (`core/quantity.extracted_resource_to_real_output`) performs exact integer multiplication,
+      no division anywhere, mirroring `base_year_real_output_to_money`'s shape.
+- [x] The extraction sector stops calling `production_accounting.compute_sector_output` entirely
+      — that module stays completely unmodified. A new pure `simulation/resource_output.py`
+      converts both the actual extracted quantity and the potential (stock/capacity-bounded)
+      quantity per deposit, then aggregates both totals in canonical order.
+- [x] `capacity_utilization_bps`/`constraint` for the extraction row are computed from the
+      potential-output total, never from the legacy `quarterly_capacity_output` — proven to need
+      no saturating clamp, since `actual <= potential` holds by construction (a property test
+      confirms this for arbitrary valid inputs). Both legacy sector-level fields
+      (`quarterly_capacity_output`/`output_per_worker`) are completely inert for every derived
+      field on the extraction row, contrasted against a STANDARD sibling sector where the
+      identical mutation does change output.
+- [x] A dedicated `SectorProductionConstraint.PHYSICAL_RESOURCE_CONSTRAINED` value (report.py-local,
+      not added to the engine's own `SectorConstraint`); `actual_output > potential_output` is
+      **rejected by validation, never classified**, at three independent layers (row-level,
+      aggregate-level, and the shared classification function's own `raise`). Zero employment
+      with positive potential stays `LABOR_CONSTRAINED`, matching the 2B1 precedent.
+- [x] `TurnReport` gains three new cross-validators authoritatively checking the extraction row's
+      `actual_output`/`capacity_utilization_bps`/`constraint` against `ResourceExtractionReport`'s
+      totals — `TurnReport` stays at five reports, the 30-subset completeness rule unchanged.
+- [x] The accounting identity — extraction contributes to `total_gross_output` exactly once —
+      proven end to end through the real resolver, not merely asserted structurally.
+- [x] Both scenarios recalibrated with honest round-integer coefficients: `tiny_valid.yaml`
+      preserves every pre-2C2 figure exactly for its full 100-turn tested horizon;
+      `deficit_demo.yaml` preserves turn 1 only, then diverges exactly at the same turn-26
+      (iron_ore depletion) and turn-41 (timber steady state) boundaries ADR 0007 already
+      established for the physical trajectory — pinned by dedicated boundary tests, not
+      spot-checked.
+- [x] `RULESET_VERSION` bumped again (`0.6.0 -> 0.7.0`) in the same lockstep every prior phase has
+      used, justified by schema-shape compatibility alone — the corrected content-version policy
+      explicitly documents that same-ruleset scenarios routinely carry different coefficient
+      values, retracting an earlier drafted claim to the contrary. A Phase-2C1-ruleset save
+      fixture was frozen with the genuinely unmodified engine before the bump.
+- [x] CLI `inspect --coefficients` shows the full coefficient table read directly from state;
+      `resolve`/`history` extended with per-resource output/potential contributions and the
+      sector-aggregate totals/utilization/constraint.
+- [x] 660 backend tests: bridge exactness and no-rounding (including a Hypothesis property test),
+      `output_basis` structural design, the no-clamp-needed proof, reject-not-classify behavior
+      and its zero-employment/deterministic-tie corollaries, the direct accounting identity,
+      strengthened legacy-field inertness, the reversed resource-endowment isolation boundary
+      (ADR 0007's own test rewritten, not deleted), exact turn-26/turn-41 boundaries extended
+      through the 100-turn soak, tamper detection extended to the new state/report fields, and
+      frozen-fixture compatibility rejection.
+- [x] Only 4 of the originally-proposed 14 invariant codes were implemented, deliberately: 10
+      would have checked report-vs-formula correctness, which `check_invariants` cannot see
+      (it runs on `GameState` alone, before `TurnReport` is even constructed). That intent is
+      covered more thoroughly by report.py's self-validators and `TurnReport`'s cross-validators
+      instead — see the ADR's "Known limitations" for the full reasoning.
+
+Explicitly deferred, unchanged from ADR 0007: market prices/inflation/exchange-rate valuation;
+imports, exports, trade routes, tariffs, embargoes, stockpiles separate from deposits; ownership,
+private firms, royalties, concessions, nationalization; environmental effects; military
+consumption or strategic reserves; exploration/discovery/reserve reclassification;
+province/field-level geography; education/productivity policy; approval/politics; diplomacy/
+military/war; any new API route, database table, or gameplay frontend.
 
 ## Phase 3 — Government and political survival
 

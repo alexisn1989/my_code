@@ -845,7 +845,7 @@ labor_market.sectors[EXTRACTION].allocated_workers == resources.extraction_secto
 The all-present-or-all-absent completeness rule extends from four reports to five — all 30 proper
 nonempty partial combinations are rejected.
 
-## Isolation — conservation-only, extraction is economically inert this phase
+## Isolation — conservation-only, extraction is economically inert this phase (superseded by Phase 2C2)
 
 Production, tax bases, revenue, and treasury stay **byte-identical** regardless of resource
 endowments. The relationship is one-directional: resource endowments determine extraction;
@@ -857,6 +857,12 @@ The alternative — deriving some extraction-sector `RealOutput` from physical e
 **double-count**, since the sector already produces `RealOutput` from those same workers (see
 "Labor integration" above). Making that connection non-duplicative requires *replacing* the
 sector's output derivation, recorded as the Phase 2C2 follow-up, not attempted here.
+
+**This isolation boundary no longer holds as of Phase 2C2** (below), which deliberately reverses
+it: resource endowments now determine the extraction sector's `RealOutput` directly, and that
+figure flows through to tax bases, revenue, and treasury exactly like every other sector's output.
+This section is retained as an accurate historical record of Phase 2C1's own boundary, not a
+statement of current behavior.
 
 ## Calibration — the corrected three-regime `deficit_demo.yaml` timber trajectory
 
@@ -914,8 +920,186 @@ reclassification; province/field/mine-level geography (waits for Phase 6's map);
 the Phase 2A/2B1/2B2/2B3 exclusion lists above already cover. All of it stays honestly absent
 rather than faked.
 
-**Recommended next bounded ticket — Phase 2C2:** replace (never add to) the extraction sector's
-`RealOutput` derivation with one computed from that turn's physical extraction, through a single
-named unit-bridge function mirroring `base_year_real_output_to_money`. This resolves the "two
-descriptions of the same labor" limitation and is what makes resources economically meaningful —
-but it will move tax bases and revenue, so it needs its own calibration pass and its own ticket.
+Phase 2C1's own recommended follow-up — replacing the extraction sector's `RealOutput` derivation
+with one computed from physical extraction — is Phase 2C2, below.
+
+# Phase 2C2: Physical Extraction Drives Extraction-Sector Output
+
+Replaces (never adds to) the extraction sector's `RealOutput` derivation with one computed from
+that turn's physical extraction — resolving Phase 2C1's own "two descriptions of the same labor"
+limitation:
+
+```
+resource endowments -> extraction -> extraction-sector RealOutput -> other-sector production
+    -> production-derived tax bases -> tax revenue -> spending/interest -> treasury and debt
+```
+
+See `docs/adr/0008-physical-extraction-derived-sector-output.md` for the design decisions,
+including the R1–R10 corrections applied during three independent review rounds.
+
+## The bridge — physical quantity to real output, exactly once, no rounding
+
+`core/quantity.py` gains `StrictRealOutputPerResourceUnit` (`gt=0`) and
+`extracted_resource_to_real_output(*, extracted, real_output_per_unit) -> RealOutput` — the named
+conversion point, mirroring `base_year_real_output_to_money`'s shape: a real function, explicit
+type rejection, exact integer multiplication, **no division anywhere**. The same function converts
+both the actual extracted quantity and the potential (stock/capacity-bounded) quantity for a
+category — same bridge, two different inputs.
+
+## Coefficients — scenario-authored, strictly positive, one per category
+
+```python
+class ResourceOutputCoefficient(BaseModel):
+    category: ResourceCategory
+    real_output_per_unit: StrictRealOutputPerResourceUnit   # gt=0 — zero is never legal
+```
+
+`EconomyState.resource_output_coefficients: tuple[ResourceOutputCoefficient, ...]` — all 8
+categories required exactly once, canonical order **rejected, not normalized** (the resource
+precedent, not the sector one). Zero is deliberately invalid: it keeps "zero contribution because
+nothing was extracted" (the only legal path) cleanly distinct from "zero contribution despite
+extraction" (impossible by type). Persisted in `state_json`, hash-protected, validated on every
+construction and re-checked by `check_invariants` every turn — identical treatment to every other
+piece of scenario-authored state.
+
+## Formulas — potential output eliminates the need for a clamp
+
+```
+per category, canonical order:
+    contribution_i           = extracted_i * real_output_per_unit_i
+    potential_quantity_i     = min(available_stock_i, extraction_capacity_per_turn_i)
+    potential_contribution_i = potential_quantity_i * real_output_per_unit_i
+
+extraction_sector_real_output      = sum(contribution_i)
+extraction_sector_potential_output = sum(potential_contribution_i)
+
+capacity_utilization_bps (extraction row only)
+    = floor(extraction_sector_real_output * 10_000 / extraction_sector_potential_output)
+      if extraction_sector_potential_output > 0 else 0
+```
+
+`potential_quantity_i` reuses fields `DepositExtractionResult` already carries
+(`resource_extraction.py` — **unmodified** by this phase) — `available_stock` and
+`extraction_capacity_per_turn`, the same two terms `min()`-bounded in the extraction formula
+itself. Since `extracted_i = min(available_i, capacity_i, allocated_i * output_per_worker_i)` is a
+`min` over those same two terms plus one more, `extracted_i <= potential_quantity_i`
+unconditionally; multiplying by a positive coefficient and summing preserves the inequality, so
+`extraction_sector_real_output <= extraction_sector_potential_output` **always, by construction**.
+`capacity_utilization_bps` therefore never needs clamping to satisfy `StrictBps`'s `[0, 10_000]`
+bound — exact and lossless, exactly like every other sector. When the denominator is `0`, the
+numerator is provably `0` too (the same proof), so `capacity_utilization_bps := 0` by convention,
+never a `ZeroDivisionError`.
+
+## Constraint classification — `PHYSICAL_RESOURCE_CONSTRAINED`, and rejection over classification
+
+```python
+class SectorProductionConstraint(StrEnum):   # report.py-local; superset of the engine's own
+    CAPACITY_CONSTRAINED = "capacity_constrained"              # STANDARD basis only
+    LABOR_CONSTRAINED = "labor_constrained"                    # both bases
+    EXACTLY_BALANCED = "exactly_balanced"                      # STANDARD basis only
+    INACTIVE = "inactive"                                      # both bases
+    PHYSICAL_RESOURCE_CONSTRAINED = "physical_resource_constrained"   # RESOURCE_EXTRACTION only
+```
+
+```
+potential_output == 0                              -> INACTIVE           (implies actual == 0)
+potential_output >  0, actual_output <  potential   -> LABOR_CONSTRAINED  (includes zero
+                                                          employment — a resource existing but
+                                                          unstaffed is a labor fact, mirroring
+                                                          the Phase 2B1 precedent)
+potential_output >  0, actual_output == potential   -> PHYSICAL_RESOURCE_CONSTRAINED
+```
+
+**`actual_output > potential_output` is rejected outright — a `raise`, not a classifiable branch —
+before any classification is attempted.** This state is invalid, not merely unreachable by
+legitimate code paths; three independent layers guard it: a row-level check on each deposit's
+contribution, an aggregate-level check on the sector totals, and the classification function's own
+refusal to assign any status to it.
+
+## `output_basis` — forced by category, never authored
+
+```python
+class SectorOutputBasis(StrEnum):
+    STANDARD = "standard"
+    RESOURCE_EXTRACTION = "resource_extraction"
+```
+
+`SectorProductionReport.output_basis` is cross-validated against `category` on every construction
+— `EXTRACTION` must be `RESOURCE_EXTRACTION`, every other category must be `STANDARD`. The four
+STANDARD-basis validators (`labor_limited_output`/`actual_output`/`capacity_utilization_bps`/
+`constraint`) are byte-for-byte the pre-2C2 formulas for the ten non-extraction sectors; the
+RESOURCE_EXTRACTION branch performs only a definitional self-consistency check
+(`labor_limited_output == actual_output`) at the row level, deferring the *authoritative* checks
+entirely to three new `TurnReport` cross-validators matching by category identity against
+`ResourceExtractionReport`'s totals — `TurnReport` stays at five reports, the 30-subset
+completeness rule unchanged.
+
+## Legacy fields — completely inert for the extraction row
+
+`SectorState.quarterly_capacity_output`/`.output_per_worker` remain on every sector, including
+EXTRACTION, but are read **nowhere** in the RESOURCE_EXTRACTION derivation — not for output, not
+for utilization, not for classification. A scenario author can set either to any value with zero
+observable effect on the extraction row. (Both are still read by `labor_allocation.py`, unmodified
+by this phase, to compute the sector's labor *demand* — a real, separate effect on
+`employed_workers` that this phase's inertness claim deliberately does not cover.)
+`employed_workers` itself is not legacy — it is true extraction-sector employment, simply no
+longer an input to any *derived output* field on this row.
+
+## Accounting identity — extraction counted exactly once
+
+`ProductionReport._total_gross_output_matches_sum` — unmodified since before this phase — sums
+`sectors[*].actual_output` unconditionally, and the extraction row's `actual_output` is now the
+physical bridge total. No other code path adds it anywhere else; the eight per-category
+contributions sum to `extraction_sector_real_output`, which equals the extraction row's
+`actual_output`, which appears in `total_gross_output` exactly once alongside the other ten
+sectors' untouched figures.
+
+## Calibration — both fixtures preserve their pre-2C2 output exactly, at their own turn scope
+
+`tiny_valid.yaml` — every deposit is capacity-bound throughout its full 100-turn tested horizon, so
+Σ = 2,000,000,000 is preserved for all 100 turns:
+
+| Resource | `real_output_per_unit` | contribution/turn |
+|---|---|---|
+| timber | 1,000 | 100,000,000 |
+| iron_ore | 1,500 | 300,000,000 |
+| coal | 1,000 | 300,000,000 |
+| crude_oil | 1,200 | 600,000,000 |
+| natural_gas | 1,000 | 400,000,000 |
+| uranium | 100,000 | 50,000,000 |
+| copper | 1,000 | 150,000,000 |
+| critical_minerals | 5,000 | 100,000,000 |
+| **total** | | **2,000,000,000** |
+
+`deficit_demo.yaml` — preserved at turn 1 only (Σ = 500,000,000), then diverges exactly at the
+same two boundaries the physical timber trajectory (Phase 2C1, above) already established:
+
+| Turns | timber | iron_ore | extraction output | driver |
+|---|---|---|---|---|
+| 1–25 | 10,000 | 20,000 | 500,000,000 | both deposits producing |
+| 26–40 | 10,000 | 0 (depleted) | 100,000,000 | iron_ore exhausted after turn 25 |
+| 41–100 | 5,000 | 0 | 50,000,000 | timber's renewable steady state |
+
+No test in this suite asserts equality of any save, state, report, or hash across the 0.6.0/0.7.0
+ruleset boundary — only these specific enumerated fields, at exactly these turn ranges.
+
+## Version compatibility (Phase 2C2)
+
+`RULESET_VERSION` bumps again, `0.6.0 -> 0.7.0`, `content_version` alongside it — schema-shape
+compatibility, not a claim about content-value uniqueness (`tiny_valid.yaml` and
+`deficit_demo.yaml` already carry different coefficient values under the same `content_version`,
+exactly like every other piece of scenario content they already disagree on). A Phase-2C1-ruleset
+save fixture (`backend/tests/fixtures/phase2c1_save_ruleset_0.6.0.json`) was frozen with the
+genuinely unmodified 0.6.0 engine before this bump landed. `SAVE_FORMAT_VERSION` is unchanged.
+
+## Explicitly not yet simulated (Phase 2C2)
+
+Unchanged from Phase 2C1's own exclusion list: market prices, inflation, exchange-rate valuation;
+imports, exports, trade routes, tariffs, embargoes, stockpiles separate from deposits; pipelines,
+refineries, individual mines/fields; ownership, private firms, royalties, concessions,
+nationalization; environmental effects; military consumption or strategic reserves; exploration,
+discovery, reserve reclassification; province/field-level geography; education/productivity
+policy; approval/politics; diplomacy/military/war; any new API route, database table, or gameplay
+frontend. Neither committed fixture ever reaches `LABOR_CONSTRAINED` for the extraction row —
+labor stays abundant throughout both — a known, documented limitation, not a defect in the
+classification logic (see the ADR for the synthetic test that exercises that branch directly).
