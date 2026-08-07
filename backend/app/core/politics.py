@@ -57,15 +57,36 @@ democracy with the same authored order support and the same economic observation
 legitimacy. See `docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`.
 """
 
+StrictSignedBps: TypeAlias = Annotated[int, Field(strict=True)]
+"""An **unbounded** signed basis-point quantity: a raw rate of change, or any uncapped intermediate
+derived directly from one.
+
+Deliberately carries no range constraint, because the arithmetic genuinely produces values outside
+the legitimacy scale. A previous-turn output baseline of 1 rising to 3 is a `+20,000 bps` change,
+and a hundredfold rebound is `+9,999,990,000`; typing those `StrictSignedLegitimacyBps` would reject
+values that are arithmetically correct. The negative direction happens to fit — a complete collapse
+to zero output is exactly `-10,000 bps`, since output cannot fall below nothing — but a type must be
+symmetric about what the formula can actually produce, not about what looks tidy.
+
+Only `strict=True` applies, which still rejects bool, whole-number floats, numeric strings, NaN and
++/-inf. The bound arrives later, as an explicit and independently re-derivable clamp in
+`simulation.legitimacy`, which is stronger than a type bound: a validator can tell a correctly
+capped value from an uncapped one, whereas a type can only refuse to hold it.
+"""
+
 StrictSignedLegitimacyBps: TypeAlias = Annotated[
     int, Field(strict=True, ge=-BPS_DENOMINATOR, le=BPS_DENOMINATOR)
 ]
-"""A legitimacy *change* or *contribution*: signed, bounded by the metric's own full range.
+"""A legitimacy *change* or *contribution* that the formula provably keeps within the scale.
 
 Separate from `StrictLegitimacyBps` because a level and a delta are different quantities: a level
-can never be negative, a delta routinely is. The bound is the full scale rather than a per-turn cap
-so that a report field can hold any arithmetically reachable contribution before clamping, and the
-clamp itself stays an explicit, re-derivable step in `simulation.legitimacy` rather than something
+can never be negative, a delta routinely is. Used **only** where a bound is genuinely imposed by the
+arithmetic itself — an unemployment change (a difference of two `StrictBps` values), a contribution
+that is a fraction of a within-scale gap, or a value the formula has already clamped. Anything
+upstream of such a bound uses `StrictSignedBps` instead.
+
+The bound is the full scale rather than a per-turn cap, so a report field can hold any contribution
+reachable before clamping and the clamp stays an explicit, re-derivable step rather than something
 the type silently performs.
 """
 
@@ -92,10 +113,14 @@ def trunc_div_toward_zero(numerator: int, denominator: int) -> int:
     """Exact integer division truncated **toward zero** — the single rounding step used by every
     signed political formula in `simulation.legitimacy`.
 
-    Returns `0` when `denominator == 0`, which is the defined behavior for the one place that can
-    happen: a zero previous-turn output baseline, where there is no proportional change to measure
-    against nothing (see `simulation.legitimacy.assess_economic_performance`). No
-    `ZeroDivisionError` path exists.
+    **Requires `denominator > 0` and raises `ValueError` otherwise.** Every denominator this
+    codebase divides by is either `BPS_DENOMINATOR` or a magnitude (an output baseline), so a
+    negative denominator has no meaning here at all. A zero denominator is not silently absorbed
+    either: it is only reachable from a zero previous-turn output baseline, and that case carries a
+    specific meaning — "no proportional change to measure against nothing" — that the caller must
+    state explicitly (see `simulation.legitimacy.assess_economic_performance`'s
+    `baseline_output == 0` branch, checked *before* this function is ever called). Absorbing that
+    precondition here would hide it instead of stating it where the decision is actually made.
 
     Deliberately **not** Python's `//`, which floors toward negative infinity. Every prior phase
     applied `//` to strictly nonnegative values, where flooring and truncation coincide; political
@@ -104,10 +129,10 @@ def trunc_div_toward_zero(numerator: int, denominator: int) -> int:
     pessimism bias with no modeling justification. Truncation is symmetric by construction:
     `trunc_div_toward_zero(-n, d) == -trunc_div_toward_zero(n, d)` exactly, for every `n` and `d`.
     """
-    if denominator == 0:
-        return 0
-    quotient = abs(numerator) // abs(denominator)
-    return -quotient if (numerator < 0) != (denominator < 0) else quotient
+    if denominator <= 0:
+        raise ValueError(f"trunc_div_toward_zero: denominator must be positive, got {denominator}")
+    quotient = abs(numerator) // denominator
+    return -quotient if numerator < 0 else quotient
 
 
 def clamp_bps(value: int, *, low: int = LEGITIMACY_MIN_BPS, high: int = LEGITIMACY_MAX_BPS) -> int:

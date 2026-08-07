@@ -1,5 +1,5 @@
 """Tests for `app.core.politics`' bounded political metric aliases and the signed-division
-helper every legitimacy formula rounds with (Phase 3A, T-M1..T-M4).
+helper every legitimacy formula rounds with (Phase 3A, T-M1..T-M6).
 
 Mirrors `test_quantity.py`'s structure: a tiny holder model per alias, one shared table of
 invalid integer representations, then boundary and behavior tests.
@@ -18,6 +18,7 @@ from app.core.politics import (
     StrictLegitimacyBps,
     StrictPoliticalCapital,
     StrictPoliticalCapitalCapacity,
+    StrictSignedBps,
     StrictSignedLegitimacyBps,
     clamp_bps,
     trunc_div_toward_zero,
@@ -30,6 +31,10 @@ class _LegitimacyHolder(BaseModel):
 
 class _SignedLegitimacyHolder(BaseModel):
     value: StrictSignedLegitimacyBps
+
+
+class _SignedBpsHolder(BaseModel):
+    value: StrictSignedBps
 
 
 class _PoliticalCapitalHolder(BaseModel):
@@ -137,8 +142,6 @@ def test_truncation_rounds_toward_zero_not_negative_infinity() -> None:
         pytest.param(8, 2, 4, id="positive-exact"),
         pytest.param(-8, 2, -4, id="negative-exact"),
         pytest.param(0, 5, 0, id="zero-numerator"),
-        pytest.param(7, -2, -3, id="negative-denominator"),
-        pytest.param(-7, -2, 3, id="both-negative"),
         pytest.param(1, 2, 0, id="truncates-toward-zero-not-away"),
         pytest.param(-1, 2, 0, id="negative-truncates-to-zero"),
     ],
@@ -174,14 +177,72 @@ def test_truncation_never_exceeds_the_true_quotient_magnitude(
     assert abs(result) * denominator <= abs(numerator)
 
 
-# --- T-M4: zero denominator --------------------------------------------------
+# --- T-M4 (R5): the helper requires a positive denominator -------------------
 
 
 @pytest.mark.parametrize("numerator", [-(10**9), -1, 0, 1, 10**9])
-def test_zero_denominator_returns_zero_and_never_raises(numerator: int) -> None:
-    """The one reachable zero-denominator case is a zero previous-turn output baseline: there is no
-    proportional change to measure against nothing."""
-    assert trunc_div_toward_zero(numerator, 0) == 0
+def test_zero_denominator_raises(numerator: int) -> None:
+    """A zero denominator is never silently absorbed. The one reachable case — a zero previous-turn
+    output baseline — is handled by the CALLER (`assess_economic_performance`'s explicit
+    `baseline_output == 0` branch) before this function is ever invoked."""
+    with pytest.raises(ValueError, match="denominator must be positive"):
+        trunc_div_toward_zero(numerator, 0)
+
+
+@pytest.mark.parametrize("denominator", [-1, -2, -(10**9)])
+@pytest.mark.parametrize("numerator", [-1, 0, 1, 10**9])
+def test_negative_denominator_raises(numerator: int, denominator: int) -> None:
+    """Every real denominator in this codebase is either `BPS_DENOMINATOR` or a magnitude (an
+    output baseline); a negative denominator has no meaning here at all."""
+    with pytest.raises(ValueError, match="denominator must be positive"):
+        trunc_div_toward_zero(numerator, denominator)
+
+
+# --- T-M5 (R5): unbounded signed rates ----------------------------------------
+
+
+def test_output_change_from_a_tripled_baseline_is_20000_bps() -> None:
+    """The R5 motivating case: a previous-turn output baseline of 1 rising to 3 is a +200% change,
+    +20,000 bps — arithmetically correct, and larger than the legitimacy scale itself."""
+    change = trunc_div_toward_zero((3 - 1) * 10_000, 1)
+    assert change == 20_000
+    assert _SignedBpsHolder(value=change).value == 20_000
+    with pytest.raises(ValidationError):
+        _SignedLegitimacyHolder(value=change)
+
+
+def test_output_change_from_a_millionfold_rebound_is_unbounded() -> None:
+    """Baseline 1 -> current 1,000,000 is +9,999,990,000 bps; `StrictSignedBps` holds it,
+    `StrictSignedLegitimacyBps` rejects it."""
+    change = trunc_div_toward_zero((1_000_000 - 1) * 10_000, 1)
+    assert change == 9_999_990_000
+    assert _SignedBpsHolder(value=change).value == 9_999_990_000
+    with pytest.raises(ValidationError):
+        _SignedLegitimacyHolder(value=change)
+
+
+def test_complete_output_collapse_is_exactly_negative_10000_bps() -> None:
+    """Current output 0 against any positive baseline is a complete collapse: -100%, -10,000 bps.
+    The negative direction happens to fit the legitimacy scale; the positive direction does not."""
+    change = trunc_div_toward_zero((0 - 5_000_000) * 10_000, 5_000_000)
+    assert change == -10_000
+    assert _SignedLegitimacyHolder(value=change).value == -10_000
+    assert _SignedBpsHolder(value=change).value == -10_000
+
+
+# --- T-M6 (R5): strict rejection on both signed aliases -----------------------
+
+
+@pytest.mark.parametrize("bad_value", INVALID_INT_REPRESENTATIONS)
+def test_strict_signed_bps_rejects_invalid_representations(bad_value: object) -> None:
+    with pytest.raises(ValidationError):
+        _SignedBpsHolder(value=bad_value)
+
+
+@pytest.mark.parametrize("bad_value", INVALID_INT_REPRESENTATIONS)
+def test_strict_signed_legitimacy_bps_rejects_invalid_representations(bad_value: object) -> None:
+    with pytest.raises(ValidationError):
+        _SignedLegitimacyHolder(value=bad_value)
 
 
 # --- clamp_bps ---------------------------------------------------------------
