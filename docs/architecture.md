@@ -355,9 +355,12 @@ every entry's hash and chain link) before every single turn, so N sequential tur
 total. Phase 3A (§9.4 of its plan) extended this per-entry pass to also parse `report_json` into a
 `TurnReport` and re-run `reconcile_political_report` against the neighbouring entry's state — a
 genuinely new cost, not a free addition, deliberately measured before and after landing rather than
-assumed: the three 100-turn soaks moved from roughly 0.6s/turn to roughly 0.8-0.9s/turn total
-(≈1.5-1.6x), safely under the ~2x stop threshold the plan set in advance. Measured at n=100
-(`tests/test_soak.py`), current figures: ~7.8-8.6s total, ~76-86ms/turn. This build favors
+assumed. Using isolated git worktrees at the commit immediately before and immediately after this
+change (one discarded warm-up run plus three measured runs each, median taken), all three 100-turn
+soaks moved from a ~4.2-4.8s/100-turns (~42-48ms/turn) median to a ~6.3-7.1s/100-turns
+(~63-71ms/turn) median — a ~1.48-1.50x ratio, safely under the ~2x stop threshold the plan set in
+advance. Measured at n=100 (`tests/test_soak.py`) on the current `HEAD`, later commits (invariants,
+CLI, additional tests) push this further: ~7.8-8.6s total, ~76-86ms/turn. This build favors
 correctness over optimization — validation strength is not weakened to make this faster. If a
 later phase's soak testing shows this matters at realistic game lengths, the options are
 incremental tail-only validation (trust everything before the last known-good entry) or a trusted
