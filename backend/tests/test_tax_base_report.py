@@ -263,19 +263,27 @@ class TestR1CrossReportValidation:
         "present_fields",
         [
             sorted(combo)
-            for r in range(1, 5)
+            for r in range(1, 6)
             for combo in itertools.combinations(
-                ("labor_market", "resources", "production", "tax_base_derivation", "finance"), r
+                (
+                    "labor_market",
+                    "resources",
+                    "production",
+                    "tax_base_derivation",
+                    "finance",
+                    "political",
+                ),
+                r,
             )
         ],
     )
-    def test_all_partial_combinations_of_five_reports_are_rejected(
+    def test_all_partial_combinations_of_six_reports_are_rejected(
         self, present_fields: list[str]
     ) -> None:
         """Phase 2B3 extended the completeness rule from three reports to four; Phase 2C1 extends
-        it again to five — every proper nonempty subset of {labor_market, resources, production,
-        tax_base_derivation, finance} (30 of them) must be rejected, not just the fourteen
-        Phase 2B3 originally covered.
+        it again to five; Phase 3A extends it again to six — every proper nonempty subset of
+        {labor_market, resources, production, tax_base_derivation, finance, political} (62 of
+        them, up from 30) must be rejected.
         """
         data, _ = _valid_turn_report_dict()
         for field in (
@@ -284,6 +292,7 @@ class TestR1CrossReportValidation:
             "production",
             "tax_base_derivation",
             "finance",
+            "political",
         ):
             if field not in present_fields:
                 data[field] = None
