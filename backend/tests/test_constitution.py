@@ -69,10 +69,8 @@ def test_c2_parliamentary_requires_legislative_selection() -> None:
         )
 
 
-def test_c3_presidential_requires_elected_or_appointed_executive() -> None:
-    with pytest.raises(
-        ValidationError, match="presidential_requires_elected_or_appointed_executive"
-    ):
+def test_c3_presidential_forbids_legislative_selection() -> None:
+    with pytest.raises(ValidationError, match="presidential_forbids_legislative_selection"):
         _constitution(
             executive_system=ExecutiveSystem.PRESIDENTIAL,
             executive_selection=ExecutiveSelection.LEGISLATIVE_SELECTION,
@@ -338,7 +336,7 @@ def _expected_violation_code(
         system is ExecutiveSystem.PRESIDENTIAL
         and selection is ExecutiveSelection.LEGISLATIVE_SELECTION
     ):
-        return "presidential_requires_elected_or_appointed_executive"
+        return "presidential_forbids_legislative_selection"
     if system is ExecutiveSystem.SEMI_PRESIDENTIAL and (
         selection is not ExecutiveSelection.DIRECT_ELECTION or legislature is Legislature.NONE
     ):

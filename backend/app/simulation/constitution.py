@@ -198,7 +198,7 @@ def first_constitutional_violation(
         and selection is ExecutiveSelection.LEGISLATIVE_SELECTION
     ):
         return (
-            "presidential_requires_elected_or_appointed_executive",
+            "presidential_forbids_legislative_selection",
             "a presidential executive cannot be selected by the legislature; that is a "
             "parliamentary arrangement",
         )
