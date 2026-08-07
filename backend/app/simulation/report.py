@@ -37,7 +37,17 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.canonical_json import canonical_digest
 from app.core.money import BPS_DENOMINATOR, StrictBps, StrictMoney, StrictSignedMoney
+from app.core.politics import (
+    StrictLegitimacyBps,
+    StrictPoliticalCapital,
+    StrictPoliticalCapitalCapacity,
+    StrictSignedBps,
+    StrictSignedLegitimacyBps,
+    clamp_bps,
+    trunc_div_toward_zero,
+)
 from app.core.quantity import (
     StrictRealOutput,
     StrictRealOutputPerResourceUnit,
@@ -48,6 +58,24 @@ from app.core.quantity import (
     base_year_real_output_to_money,
 )
 from app.simulation.accounting import compute_quarterly_interest, compute_tax_revenue
+from app.simulation.constitution import (
+    AmendmentDifficulty,
+    DecreeAuthority,
+    ExecutiveSelection,
+    ExecutiveSystem,
+    JudicialReview,
+    Legislature,
+    TerritorialOrganization,
+)
+from app.simulation.legitimacy import (
+    DRIFT_RATE_BPS,
+    LEGITIMACY_REGENERATION_COEFFICIENT,
+    MAX_PERFORMANCE_CONTRIBUTION_BPS,
+    MAX_TOTAL_LEGITIMACY_CHANGE_BPS,
+    OUTPUT_SENSITIVITY_BPS,
+    POLITICAL_CAPITAL_BASE_REGENERATION,
+    UNEMPLOYMENT_SENSITIVITY_BPS,
+)
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
@@ -1301,6 +1329,315 @@ class TaxBaseDerivationReport(BaseModel):
         return self
 
 
+class ConstitutionSummary(BaseModel):
+    """A country's constitutional structure by value, for the report (Phase 3A, §9.1).
+
+    Carries no legitimacy meaning — no anchor, no score, no weight. `constitution_digest` is
+    re-derived from the other nine fields by `_constitution_digest_matches_axes` below, so a
+    report can never claim a digest that disagrees with its own stored axes.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    executive_system: ExecutiveSystem
+    executive_selection: ExecutiveSelection
+    legislature: Legislature
+    territorial_organization: TerritorialOrganization
+    judicial_review: JudicialReview
+    amendment_difficulty: AmendmentDifficulty
+    decree_authority: DecreeAuthority
+    executive_term_limit_terms: int | None
+    national_election_interval_turns: int | None
+    constitution_digest: str
+
+
+class EconomicBaselineReport(BaseModel):
+    """One resolved turn's economic observations, as published in a `PoliticalReport` (Phase 3A,
+    §9.1). Structurally identical to `simulation.state.EconomicBaselineState` but kept as a
+    separate type — state and report are different concerns even when their shape coincides, the
+    same reasoning that keeps every other report type distinct from its state counterpart."""
+
+    model_config = _STRICT_CONFIG
+
+    source_turn: int = Field(ge=0)
+    total_gross_output: StrictRealOutput
+    unemployment_rate_bps: StrictBps
+
+
+class PoliticalReport(BaseModel):
+    """Structured, machine-readable Phase 3A political outcome for the player country, for one
+    turn: full economic-baseline lifecycle (opening, observations, deltas, contribution, closing —
+    §6.4), legitimacy resolution, and political-capital resolution.
+
+    Self-validating like `FinanceReport`/`TaxBaseDerivationReport`: ten `@model_validator`s below
+    each independently re-derive one equation from the report's own stored fields, using the same
+    low-level helpers (`trunc_div_toward_zero`, `clamp_bps`) and calibration constants
+    `simulation.legitimacy` uses — but **never by calling `simulation.legitimacy`'s functions**,
+    so a bug in one code path is likely to be caught by the other.
+
+    `opening_economic_baseline is None` *is* the "no prior baseline" signal — there is no
+    redundant boolean to trust or re-derive alongside it, unlike the original draft's rejected
+    `baseline_available: bool` field.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    constitution: ConstitutionSummary
+    constitutional_order_support_bps: StrictLegitimacyBps
+    """The authored value in force this turn. R1: never derived from `constitution`'s axes —
+    `_order_support_contribution_matches_drift_formula` below only ever reads this field and
+    `opening_legitimacy_bps`, by construction never `self.constitution`."""
+
+    opening_legitimacy_bps: StrictLegitimacyBps
+    opening_economic_baseline: EconomicBaselineReport | None = None
+    """`None` only on the very first resolution of a fresh scenario (R2, §6.4)."""
+    current_total_gross_output: StrictRealOutput
+    current_unemployment_rate_bps: StrictBps
+    output_change_bps: StrictSignedBps
+    """(R5) Unbounded: a baseline of 1 rising to 3 is `+20,000 bps`, larger than the legitimacy
+    scale itself. `0` both when `opening_economic_baseline is None` and when its
+    `total_gross_output == 0` — two different reasons for the same value, never conflated."""
+    output_contribution_bps: StrictSignedBps
+    """(R5) Unbounded, inheriting `output_change_bps`'s range at a quarter scale."""
+    unemployment_change_bps: StrictSignedLegitimacyBps
+    unemployment_contribution_bps: StrictSignedLegitimacyBps
+    performance_contribution_bps: StrictSignedLegitimacyBps
+    """Capped to `+/-MAX_PERFORMANCE_CONTRIBUTION_BPS` — the first field in this chain the scale
+    bound actually applies to."""
+    order_support_contribution_bps: StrictSignedLegitimacyBps
+    total_legitimacy_change_bps: StrictSignedLegitimacyBps
+    """The *applied* change (`closing - opening`), not the requested one — see
+    `_total_change_and_closing_legitimacy_match_clamped_formula`."""
+    closing_legitimacy_bps: StrictLegitimacyBps
+    closing_economic_baseline: EconomicBaselineReport
+    """Never `None` after any resolved turn (R2, §6.4)."""
+
+    opening_political_capital: StrictPoliticalCapital
+    political_capital_regeneration: StrictPoliticalCapital
+    political_capital_spent: StrictPoliticalCapital
+    """Always `0` in Phase 3A — nothing spends political capital yet (§7). Carried so the
+    reconciliation identity shipped now is already Phase 3B's final one."""
+    political_capital_capacity: StrictPoliticalCapitalCapacity
+    closing_political_capital: StrictPoliticalCapital
+
+    @model_validator(mode="after")
+    def _constitution_digest_matches_axes(self) -> PoliticalReport:
+        """(R7) Digest equality alone is not a substitute for field equality — this re-derives the
+        digest from the *other nine* stored fields, so a report whose digest and axes have been
+        independently tampered can never both look consistent."""
+        payload = {
+            "executive_system": self.constitution.executive_system.value,
+            "executive_selection": self.constitution.executive_selection.value,
+            "legislature": self.constitution.legislature.value,
+            "territorial_organization": self.constitution.territorial_organization.value,
+            "judicial_review": self.constitution.judicial_review.value,
+            "amendment_difficulty": self.constitution.amendment_difficulty.value,
+            "decree_authority": self.constitution.decree_authority.value,
+            "executive_term_limit_terms": self.constitution.executive_term_limit_terms,
+            "national_election_interval_turns": self.constitution.national_election_interval_turns,
+        }
+        expected = canonical_digest(payload)
+        if self.constitution.constitution_digest != expected:
+            raise ValueError(
+                f"constitution.constitution_digest={self.constitution.constitution_digest!r} "
+                f"does not match canonical_digest of the other nine constitution fields "
+                f"({expected!r})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _output_change_matches_formula(self) -> PoliticalReport:
+        if (
+            self.opening_economic_baseline is None
+            or self.opening_economic_baseline.total_gross_output == 0
+        ):
+            expected = 0
+        else:
+            expected = trunc_div_toward_zero(
+                (
+                    self.current_total_gross_output
+                    - self.opening_economic_baseline.total_gross_output
+                )
+                * BPS_DENOMINATOR,
+                self.opening_economic_baseline.total_gross_output,
+            )
+        if self.output_change_bps != expected:
+            raise ValueError(
+                f"output_change_bps={self.output_change_bps} does not match the formula "
+                f"({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _output_contribution_matches_formula(self) -> PoliticalReport:
+        expected = trunc_div_toward_zero(
+            self.output_change_bps * OUTPUT_SENSITIVITY_BPS, BPS_DENOMINATOR
+        )
+        if self.output_contribution_bps != expected:
+            raise ValueError(
+                f"output_contribution_bps={self.output_contribution_bps} does not match "
+                f"trunc_div_toward_zero(output_change_bps * OUTPUT_SENSITIVITY_BPS, 10_000) "
+                f"({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _unemployment_change_matches_difference(self) -> PoliticalReport:
+        expected = (
+            0
+            if self.opening_economic_baseline is None
+            else self.current_unemployment_rate_bps
+            - self.opening_economic_baseline.unemployment_rate_bps
+        )
+        if self.unemployment_change_bps != expected:
+            raise ValueError(
+                f"unemployment_change_bps={self.unemployment_change_bps} does not match "
+                f"current_unemployment_rate_bps - opening_economic_baseline.unemployment_rate_bps "
+                f"({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _unemployment_contribution_matches_formula(self) -> PoliticalReport:
+        expected = trunc_div_toward_zero(
+            -self.unemployment_change_bps * UNEMPLOYMENT_SENSITIVITY_BPS, BPS_DENOMINATOR
+        )
+        if self.unemployment_contribution_bps != expected:
+            raise ValueError(
+                f"unemployment_contribution_bps={self.unemployment_contribution_bps} does not "
+                f"match trunc_div_toward_zero(-unemployment_change_bps * "
+                f"UNEMPLOYMENT_SENSITIVITY_BPS, 10_000) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _performance_contribution_matches_capped_sum(self) -> PoliticalReport:
+        expected = clamp_bps(
+            self.output_contribution_bps + self.unemployment_contribution_bps,
+            low=-MAX_PERFORMANCE_CONTRIBUTION_BPS,
+            high=MAX_PERFORMANCE_CONTRIBUTION_BPS,
+        )
+        if self.performance_contribution_bps != expected:
+            raise ValueError(
+                f"performance_contribution_bps={self.performance_contribution_bps} does not "
+                f"match clamp(output_contribution_bps + unemployment_contribution_bps, "
+                f"+/-{MAX_PERFORMANCE_CONTRIBUTION_BPS}) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _order_support_contribution_matches_drift_formula(self) -> PoliticalReport:
+        """(R1) The derivation has exactly two inputs — `constitutional_order_support_bps` and
+        `opening_legitimacy_bps` — and by construction cannot reference any constitutional axis;
+        there is no `self.constitution` anywhere in this method."""
+        expected = trunc_div_toward_zero(
+            (self.constitutional_order_support_bps - self.opening_legitimacy_bps) * DRIFT_RATE_BPS,
+            BPS_DENOMINATOR,
+        )
+        if self.order_support_contribution_bps != expected:
+            raise ValueError(
+                f"order_support_contribution_bps={self.order_support_contribution_bps} does not "
+                f"match trunc_div_toward_zero((constitutional_order_support_bps - "
+                f"opening_legitimacy_bps) * DRIFT_RATE_BPS, 10_000) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _total_change_and_closing_legitimacy_match_clamped_formula(self) -> PoliticalReport:
+        requested = self.order_support_contribution_bps + self.performance_contribution_bps
+        capped = clamp_bps(
+            requested,
+            low=-MAX_TOTAL_LEGITIMACY_CHANGE_BPS,
+            high=MAX_TOTAL_LEGITIMACY_CHANGE_BPS,
+        )
+        expected_closing = clamp_bps(
+            self.opening_legitimacy_bps + capped, low=0, high=BPS_DENOMINATOR
+        )
+        expected_applied = expected_closing - self.opening_legitimacy_bps
+        if self.total_legitimacy_change_bps != expected_applied:
+            raise ValueError(
+                f"total_legitimacy_change_bps={self.total_legitimacy_change_bps} does not match "
+                f"the applied (post-clamp) change ({expected_applied})"
+            )
+        if self.closing_legitimacy_bps != expected_closing:
+            raise ValueError(
+                f"closing_legitimacy_bps={self.closing_legitimacy_bps} does not match "
+                f"clamp(opening_legitimacy_bps + clamp(requested, +/-"
+                f"{MAX_TOTAL_LEGITIMACY_CHANGE_BPS}), 0, {BPS_DENOMINATOR}) ({expected_closing})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _political_capital_reconciles(self) -> PoliticalReport:
+        expected_regeneration = POLITICAL_CAPITAL_BASE_REGENERATION + trunc_div_toward_zero(
+            self.closing_legitimacy_bps * LEGITIMACY_REGENERATION_COEFFICIENT, BPS_DENOMINATOR
+        )
+        if self.political_capital_regeneration != expected_regeneration:
+            raise ValueError(
+                f"political_capital_regeneration={self.political_capital_regeneration} does not "
+                f"match POLITICAL_CAPITAL_BASE_REGENERATION + trunc_div_toward_zero("
+                f"closing_legitimacy_bps * LEGITIMACY_REGENERATION_COEFFICIENT, 10_000) "
+                f"({expected_regeneration})"
+            )
+        available = self.opening_political_capital + self.political_capital_regeneration
+        if self.political_capital_spent > available:
+            raise ValueError(
+                f"political_capital_spent={self.political_capital_spent} exceeds "
+                f"opening_political_capital + political_capital_regeneration ({available})"
+            )
+        expected_closing = min(
+            self.political_capital_capacity, available - self.political_capital_spent
+        )
+        if self.closing_political_capital != expected_closing:
+            raise ValueError(
+                f"closing_political_capital={self.closing_political_capital} does not match "
+                f"min(political_capital_capacity, opening_political_capital + "
+                f"political_capital_regeneration - political_capital_spent) ({expected_closing})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _baseline_lifecycle_is_coherent(self) -> PoliticalReport:
+        """(R2) The four-stage lifecycle (§6.4), enforced end to end."""
+        if self.opening_economic_baseline is None:
+            for field_name in (
+                "output_change_bps",
+                "output_contribution_bps",
+                "unemployment_change_bps",
+                "unemployment_contribution_bps",
+            ):
+                if getattr(self, field_name) != 0:
+                    raise ValueError(
+                        f"opening_economic_baseline is None but {field_name}="
+                        f"{getattr(self, field_name)} (expected 0 — no prior turn, no performance "
+                        "to assess)"
+                    )
+        else:
+            expected_source_turn = self.opening_economic_baseline.source_turn + 1
+            if self.closing_economic_baseline.source_turn != expected_source_turn:
+                raise ValueError(
+                    "closing_economic_baseline.source_turn="
+                    f"{self.closing_economic_baseline.source_turn} does not equal "
+                    f"opening_economic_baseline.source_turn + 1 ({expected_source_turn})"
+                )
+        if self.closing_economic_baseline.total_gross_output != self.current_total_gross_output:
+            raise ValueError(
+                "closing_economic_baseline.total_gross_output="
+                f"{self.closing_economic_baseline.total_gross_output} does not equal "
+                f"current_total_gross_output ({self.current_total_gross_output})"
+            )
+        if (
+            self.closing_economic_baseline.unemployment_rate_bps
+            != self.current_unemployment_rate_bps
+        ):
+            raise ValueError(
+                "closing_economic_baseline.unemployment_rate_bps="
+                f"{self.closing_economic_baseline.unemployment_rate_bps} does not equal "
+                f"current_unemployment_rate_bps ({self.current_unemployment_rate_bps})"
+            )
+        return self
+
+
 class TurnReport(BaseModel):
     """The full report produced by one `resolve_turn` call."""
 
@@ -1330,15 +1667,19 @@ class TurnReport(BaseModel):
     """`None` only when resource extraction did not run (never for a successful Phase 2C1+ turn
     on a valid player state). Runs immediately after labor allocation and before resource
     depletion is written back to state, in the same phase; see `phases.py`."""
+    political: PoliticalReport | None = None
+    """`None` only when the political phase did not run (never for a successful Phase 3A+ turn
+    on a valid player state — `simulation.invariants` requires player politics before resolution
+    can even begin). Runs in slot 10, after every economic phase; see `phases.py`."""
 
     @model_validator(mode="after")
-    def _labor_resources_production_derivation_and_finance_are_all_present_or_all_absent(
+    def _labor_resources_production_derivation_finance_and_political_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
-        """R1 (extended, Phase 2B3; extended again, Phase 2C1): a partial combination of the five
-        player-economy reports would represent a broken audit chain (e.g. production ran but
-        derivation silently didn't) — reject it outright rather than accepting whatever subset
-        happens to be present.
+        """R1 (extended, Phase 2B3; extended again, Phase 2C1 and Phase 3A): a partial combination
+        of the six player-economy/politics reports would represent a broken audit chain (e.g.
+        production ran but derivation silently didn't) — reject it outright rather than accepting
+        whatever subset happens to be present.
         """
         present = (
             self.labor_market is not None,
@@ -1346,13 +1687,76 @@ class TurnReport(BaseModel):
             self.production is not None,
             self.tax_base_derivation is not None,
             self.finance is not None,
+            self.political is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
-                "labor_market, resources, production, tax_base_derivation, and finance must be "
-                f"all present or all absent on a TurnReport — got present={present} "
-                "(labor_market, resources, production, tax_base_derivation, finance)"
+                "labor_market, resources, production, tax_base_derivation, finance, and political "
+                f"must be all present or all absent on a TurnReport — got present={present} "
+                "(labor_market, resources, production, tax_base_derivation, finance, political)"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _political_current_output_matches_production(self) -> TurnReport:
+        """Phase 3A: `PoliticalReport.current_total_gross_output` must equal
+        `ProductionReport.total_gross_output` — the political phase must have assessed THIS
+        turn's actual economy, not a stale or fabricated figure."""
+        if self.political is None or self.production is None:
+            return self
+        if self.political.current_total_gross_output != self.production.total_gross_output:
+            raise ValueError(
+                "political.current_total_gross_output="
+                f"{self.political.current_total_gross_output} does not match "
+                f"production.total_gross_output ({self.production.total_gross_output})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _political_current_unemployment_matches_labor_market(self) -> TurnReport:
+        """Phase 3A: `PoliticalReport.current_unemployment_rate_bps` must equal
+        `LaborMarketReport.unemployment_rate_bps` — same reasoning as the output check above."""
+        if self.political is None or self.labor_market is None:
+            return self
+        if self.political.current_unemployment_rate_bps != self.labor_market.unemployment_rate_bps:
+            raise ValueError(
+                "political.current_unemployment_rate_bps="
+                f"{self.political.current_unemployment_rate_bps} does not match "
+                f"labor_market.unemployment_rate_bps ({self.labor_market.unemployment_rate_bps})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _political_baseline_source_turns_match_resolved_turn(self) -> TurnReport:
+        """Phase 3A: the closing baseline this turn writes is stamped with the turn it actually
+        describes, and — when present — the opening baseline is stamped with the PREVIOUS turn,
+        proving the baseline the political phase read really was the prior turn's, not a stale or
+        substituted one.
+
+        `resolved_turn` is `state.turn` *before* resolution (see that field's docstring), but
+        `EconomicBaselineState.source_turn` is `state.turn` of the state that CARRIES the
+        baseline — i.e. the state produced by this resolution, `resolved_turn + 1` (R6: "after
+        resolving turn 0 the new state has turn == 1 and carries a baseline stamped
+        source_turn == 1"). The opening baseline, read from the state going INTO this
+        resolution, is therefore stamped with `resolved_turn` itself.
+        """
+        if self.political is None:
+            return self
+        expected_closing_turn = self.resolved_turn + 1
+        if self.political.closing_economic_baseline.source_turn != expected_closing_turn:
+            raise ValueError(
+                "political.closing_economic_baseline.source_turn="
+                f"{self.political.closing_economic_baseline.source_turn} does not match "
+                f"resolved_turn + 1 ({expected_closing_turn})"
+            )
+        if self.political.opening_economic_baseline is not None:
+            expected_opening_turn = self.resolved_turn
+            if self.political.opening_economic_baseline.source_turn != expected_opening_turn:
+                raise ValueError(
+                    "political.opening_economic_baseline.source_turn="
+                    f"{self.political.opening_economic_baseline.source_turn} does not match "
+                    f"resolved_turn ({expected_opening_turn})"
+                )
         return self
 
     @model_validator(mode="after")

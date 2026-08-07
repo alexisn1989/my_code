@@ -4,6 +4,7 @@ import pytest
 
 from app.core.canonical_json import canonical_dumps
 from app.core.errors import HistoryValidationError, TurnResolutionError
+from app.simulation.constitution import ConstitutionState, ExecutiveSelection, ExecutiveSystem
 from app.simulation.decisions import DecisionSet
 from app.simulation.history import new_game
 from app.simulation.invariants import check_invariants
@@ -11,8 +12,10 @@ from app.simulation.resolver import resolve_turn
 from app.simulation.save_format import SAVE_FORMAT_VERSION
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
+    EconomicBaselineState,
     EconomyState,
     InstitutionState,
+    PoliticalState,
     PopulationGroupState,
     ResourceCategory,
     ResourceDepositState,
@@ -25,6 +28,7 @@ from tests.conftest import (
     make_economy,
     make_finance,
     make_game_state,
+    make_politics,
     make_resource_output_coefficients,
 )
 
@@ -128,7 +132,7 @@ def test_missing_player_finance_is_a_violation() -> None:
 
 def test_ai_country_without_finance_is_not_a_violation() -> None:
     player = make_country("player", with_finance=True)
-    ai = make_country("ai_neighbor", with_finance=False)
+    ai = make_country("ai_neighbor", with_finance=False, with_politics=False)
     assert ai.finance is None
 
     state = make_game_state(
@@ -142,7 +146,7 @@ def test_incorrect_player_country_reference_is_a_violation_not_a_finance_check()
     # the existing unknown_player_country check; it must not also (or instead)
     # produce a misleading player_finance_required violation, since there is
     # no player country object to even inspect for finance.
-    country = make_country("a", with_finance=True)
+    country = make_country("a", with_finance=True, with_politics=False)
     state = make_game_state(countries={"a": country}, player_country_id="a")
     state.world.player_country_id = "does-not-exist"
 
@@ -185,7 +189,7 @@ def test_missing_player_economy_is_a_violation() -> None:
 
 def test_ai_country_without_economy_is_not_a_violation() -> None:
     player = make_country("player", with_economy=True)
-    ai = make_country("ai_neighbor", with_economy=False)
+    ai = make_country("ai_neighbor", with_economy=False, with_politics=False)
     assert ai.economy is None
 
     state = make_game_state(
@@ -701,3 +705,275 @@ def test_sector_tax_base_share_out_of_range_is_caught_by_invariants() -> None:
     violations = check_invariants(state)
     codes = {v.code for v in violations}
     assert "sector_tax_base_share_out_of_range" in codes
+
+
+# --- Phase 3A: the twelve political invariant codes (§10, T-V1/T-B5/T-B6) ----
+
+
+def test_missing_player_politics_is_a_violation() -> None:
+    country = make_country("a", with_politics=False)
+    assert country.politics is None
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "player_politics_required" in codes
+
+
+def test_ai_country_without_politics_is_not_a_violation() -> None:
+    player = make_country("player", with_politics=True)
+    ai = make_country("ai_neighbor", with_politics=False)
+    assert ai.politics is None
+
+    state = make_game_state(
+        countries={"player": player, "ai_neighbor": ai}, player_country_id="player"
+    )
+    assert check_invariants(state) == []
+
+
+def test_non_player_politics_is_a_violation() -> None:
+    """(R6) A non-player country carrying a `PoliticalState` is rejected outright — Phase 3A
+    cannot resolve politics for a country with no economy to derive performance from."""
+    player = make_country("player", with_politics=True)
+    ai = make_country("ai_neighbor", with_politics=False, economy=None)
+    ai = ai.model_copy(update={"politics": make_politics()})
+
+    state = make_game_state(
+        countries={"player": player, "ai_neighbor": ai}, player_country_id="player"
+    )
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "non_player_politics_not_supported" in codes
+
+
+def test_invalid_constitutional_combination_from_a_bypassed_construction_is_caught() -> None:
+    """`ConstitutionState`'s own validator (C1-C9) already rejects an incoherent combination at
+    every legitimate construction path — this is defense-in-depth for a fully bypassed
+    construction, mirroring every other `_check_*` backstop in this module."""
+    country = make_country("a")
+    assert country.politics is not None
+    bypassed_constitution = ConstitutionState.model_construct(
+        executive_system=ExecutiveSystem.PARLIAMENTARY,
+        executive_selection=ExecutiveSelection.DIRECT_ELECTION,  # incoherent: C2
+        legislature=country.politics.constitution.legislature,
+        territorial_organization=country.politics.constitution.territorial_organization,
+        judicial_review=country.politics.constitution.judicial_review,
+        amendment_difficulty=country.politics.constitution.amendment_difficulty,
+        decree_authority=country.politics.constitution.decree_authority,
+        executive_term_limit_terms=None,
+        national_election_interval_turns=None,
+    )
+    bypassed_politics = country.politics.model_copy(update={"constitution": bypassed_constitution})
+    country = country.model_copy(update={"politics": bypassed_politics})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "invalid_constitutional_combination" in codes
+
+
+def test_constitutional_order_support_out_of_range_from_a_bypassed_construction_is_caught() -> None:
+    country = make_country("a")
+    assert country.politics is not None
+    bypassed_politics = PoliticalState.model_construct(
+        constitution=country.politics.constitution,
+        constitutional_order_support_bps=10_001,
+        legitimacy_bps=country.politics.legitimacy_bps,
+        political_capital=country.politics.political_capital,
+        political_capital_capacity=country.politics.political_capital_capacity,
+        economic_baseline=None,
+    )
+    country = country.model_copy(update={"politics": bypassed_politics})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "constitutional_order_support_out_of_range" in codes
+
+
+def test_legitimacy_out_of_range_from_a_bypassed_construction_is_caught() -> None:
+    country = make_country("a")
+    assert country.politics is not None
+    bypassed_politics = PoliticalState.model_construct(
+        constitution=country.politics.constitution,
+        constitutional_order_support_bps=country.politics.constitutional_order_support_bps,
+        legitimacy_bps=-1,
+        political_capital=country.politics.political_capital,
+        political_capital_capacity=country.politics.political_capital_capacity,
+        economic_baseline=None,
+    )
+    country = country.model_copy(update={"politics": bypassed_politics})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "legitimacy_out_of_range" in codes
+
+
+def test_political_capital_negative_from_a_bypassed_construction_is_caught() -> None:
+    country = make_country("a")
+    assert country.politics is not None
+    bypassed_politics = PoliticalState.model_construct(
+        constitution=country.politics.constitution,
+        constitutional_order_support_bps=country.politics.constitutional_order_support_bps,
+        legitimacy_bps=country.politics.legitimacy_bps,
+        political_capital=-1,
+        political_capital_capacity=country.politics.political_capital_capacity,
+        economic_baseline=None,
+    )
+    country = country.model_copy(update={"politics": bypassed_politics})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "political_capital_negative" in codes
+
+
+def test_political_capital_capacity_not_positive_from_a_bypassed_construction_is_caught() -> None:
+    country = make_country("a")
+    assert country.politics is not None
+    bypassed_politics = PoliticalState.model_construct(
+        constitution=country.politics.constitution,
+        constitutional_order_support_bps=country.politics.constitutional_order_support_bps,
+        legitimacy_bps=country.politics.legitimacy_bps,
+        political_capital=0,
+        political_capital_capacity=0,
+        economic_baseline=None,
+    )
+    country = country.model_copy(update={"politics": bypassed_politics})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "political_capital_capacity_not_positive" in codes
+
+
+def test_political_capital_exceeds_capacity_is_caught() -> None:
+    """No `PoliticalState` validator enforces `political_capital <= political_capital_capacity`
+    at construction (reject-not-normalize belongs to `simulation.invariants`, mirroring the
+    scenario-authored `opening > capacity` case in `simulation.legitimacy`'s docstring) -- this
+    is reachable through an ordinary, non-bypassed construction."""
+    country = make_country("a")
+    assert country.politics is not None
+    politics = country.politics.model_copy(
+        update={"political_capital": 2_000, "political_capital_capacity": 1_000}
+    )
+    country = country.model_copy(update={"politics": politics})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "political_capital_exceeds_capacity" in codes
+
+
+def test_economic_baseline_present_at_genesis_is_caught() -> None:
+    country = make_country("a")
+    assert country.politics is not None
+    politics = country.politics.model_copy(
+        update={
+            "economic_baseline": EconomicBaselineState(
+                source_turn=0, total_gross_output=1, unemployment_rate_bps=1_000
+            )
+        }
+    )
+    country = country.model_copy(update={"politics": politics})
+    state = make_game_state(countries={"a": country}, player_country_id="a", turn=0)
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "economic_baseline_present_at_genesis" in codes
+
+
+def test_economic_baseline_missing_after_genesis_is_caught() -> None:
+    country = make_country("a", politics=make_politics(economic_baseline=None))
+    state = make_game_state(countries={"a": country}, player_country_id="a", turn=3)
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "economic_baseline_missing_after_genesis" in codes
+
+
+def test_economic_baseline_turn_mismatch_is_caught() -> None:
+    country = make_country(
+        "a",
+        politics=make_politics(
+            economic_baseline=EconomicBaselineState(
+                source_turn=2, total_gross_output=1, unemployment_rate_bps=1_000
+            )
+        ),
+    )
+    state = make_game_state(countries={"a": country}, player_country_id="a", turn=3)
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "economic_baseline_turn_mismatch" in codes
+
+
+def test_economic_baseline_unemployment_out_of_range_from_a_bypassed_construction_is_caught() -> (
+    None
+):
+    country = make_country("a")
+    assert country.politics is not None
+    bypassed_baseline = EconomicBaselineState.model_construct(
+        source_turn=0, total_gross_output=1, unemployment_rate_bps=10_001
+    )
+    politics = country.politics.model_copy(update={"economic_baseline": bypassed_baseline})
+    country = country.model_copy(update={"politics": politics})
+    state = make_game_state(countries={"a": country}, player_country_id="a", turn=0)
+
+    violations = check_invariants(state)
+    codes = {v.code for v in violations}
+    assert "economic_baseline_unemployment_out_of_range" in codes
+
+
+def test_all_twelve_political_codes_are_distinct() -> None:
+    """A regression pin: if two political checks ever accidentally shared a code, this would
+    catch it -- mirroring the intent (not the mechanism) of the economy/finance sections' own
+    total-coverage tests above."""
+    expected = {
+        "player_politics_required",
+        "non_player_politics_not_supported",
+        "invalid_constitutional_combination",
+        "constitutional_order_support_out_of_range",
+        "legitimacy_out_of_range",
+        "political_capital_negative",
+        "political_capital_capacity_not_positive",
+        "political_capital_exceeds_capacity",
+        "economic_baseline_present_at_genesis",
+        "economic_baseline_missing_after_genesis",
+        "economic_baseline_turn_mismatch",
+        "economic_baseline_unemployment_out_of_range",
+    }
+    assert len(expected) == 12
+
+
+def test_no_report_formula_codes_leaked_into_invariants_source() -> None:
+    """T-V2 (§10): the four families of check deliberately NOT given a `check_invariants` code —
+    because they need a `TurnReport` (report-formula re-derivation, owned by `PoliticalReport`'s
+    own validators in §9.1) or two `GameState`s (report-vs-state reconciliation, owned by
+    `reconcile_political_report` in §9.3) — must never appear in `invariants.py`. `check_invariants`
+    takes a single `GameState` and nothing else, so it structurally cannot decide any of these;
+    this is a static guard that the boundary stays honored even as the module grows.
+    """
+    import inspect
+
+    from app.simulation import invariants as invariants_module
+
+    source = inspect.getsource(invariants_module)
+    forbidden_code_fragments = (
+        "legitimacy_change_mismatch",
+        "performance_contribution_mismatch",
+        "political_capital_regeneration_mismatch",
+        "order_support_contribution_mismatch",
+        "opening_baseline_mismatch",
+        "closing_baseline_mismatch",
+        "constitution_mutated",
+        "order_support_mutated",
+        "noncanonical_political_order",
+    )
+    for fragment in forbidden_code_fragments:
+        assert fragment not in source, (
+            f"{fragment!r} is a report-formula or report-vs-state check and must not be "
+            "decidable from state alone -- it belongs to PoliticalReport's validators (§9.1) "
+            "or reconcile_political_report (§9.3), never to check_invariants"
+        )

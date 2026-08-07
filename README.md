@@ -15,7 +15,8 @@ every decision.
   [`docs/adr/0005-production-derived-tax-bases.md`](docs/adr/0005-production-derived-tax-bases.md),
   [`docs/adr/0006-labor-allocation-at-fixed-prices.md`](docs/adr/0006-labor-allocation-at-fixed-prices.md),
   [`docs/adr/0007-resource-endowments-and-extraction.md`](docs/adr/0007-resource-endowments-and-extraction.md),
-  [`docs/adr/0008-physical-extraction-derived-sector-output.md`](docs/adr/0008-physical-extraction-derived-sector-output.md)
+  [`docs/adr/0008-physical-extraction-derived-sector-output.md`](docs/adr/0008-physical-extraction-derived-sector-output.md),
+  [`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`](docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md)
 - **Economy formulas:** [`docs/economy_methodology.md`](docs/economy_methodology.md)
 
 ## Current status
@@ -23,10 +24,11 @@ every decision.
 **Phase 0, Phase 1 (pure simulation foundation), Phase 2A (government accounting and budget
 gameplay), Phase 2B1 (sector production at fixed prices), Phase 2B2 (production-derived tax
 bases), Phase 2B3 (labor allocation and unemployment at fixed prices), Phase 2C1 (resource
-endowments and extraction), and Phase 2C2 (physical extraction drives extraction-sector output)
-are complete and verified.** The player can change tax rates and spending; eleven aggregate
-economic sectors resolve deterministic quarterly output at fixed base-year prices, staffed every
-turn by a deterministic labor allocation **derived** from population (replacing the fixed,
+endowments and extraction), Phase 2C2 (physical extraction drives extraction-sector output), and
+Phase 3A (constitutional foundation, legitimacy and political capital) are complete and
+verified.** The player can change tax rates and spending; eleven aggregate economic sectors
+resolve deterministic quarterly output at fixed base-year prices, staffed every turn by a
+deterministic labor allocation **derived** from population (replacing the fixed,
 scenario-authored `employed_workers` Phase 2B1 started with), which in turn **derives** the tax
 bases revenue is computed against (replacing the fixed, scenario-authored bases Phase 2A started
 with) — population, capacity, labor productivity, and employment genuinely drive government
@@ -37,15 +39,20 @@ the eight deposits each turn, bounded by stock, capacity, and labor, with timber
 renewable resource, regenerating (and clamped to a ceiling) before extraction each turn. As of
 Phase 2C2, that physical extraction — converted through a single named unit-bridge, never
 double-counted — **is** the extraction sector's output: depleting a reserve now costs real tax
-revenue, closing the gap Phase 2C1 deliberately left open. The relationship is one-directional
-throughout: population/labor supply affects allocation and production; resource endowments affect
-extraction, which affects the extraction sector's production, which (like every sector) affects
-tax bases and revenue; tax rates and spending still do not affect allocation, production, or
-extraction. Revenue, spending, interest, and debt resolve deterministically and reconcile exactly
-every turn, with a self-validating report chain proving labor allocation, resource extraction,
-production, tax-base derivation, and finance agree with each other, not just internally. All of it
-is wrapped in the same hash-chained, immutable history from Phase 1. There is no API and no
-database yet, and no prices, inflation, wages, hiring friction, resource trade, or
+revenue, closing the gap Phase 2C1 deliberately left open. As of Phase 3A, the player also has a
+constitutional structure and a legitimacy score: legitimacy drifts toward a scenario-authored
+acceptance level and responds to this same economy's output and unemployment — **never** to the
+form of government, a compile-time-checked guarantee — and political capital regenerates from
+legitimacy. The relationship is one-directional throughout: population/labor supply affects
+allocation and production; resource endowments affect extraction, which affects the extraction
+sector's production, which (like every sector) affects tax bases and revenue; economic performance
+affects legitimacy; tax rates, spending, and politics still do not affect allocation, production,
+or extraction, and politics cannot yet affect the economy at all. Revenue, spending, interest, and
+debt resolve deterministically and reconcile exactly every turn, with a self-validating report
+chain proving labor allocation, resource extraction, production, tax-base derivation, finance, and
+politics agree with each other, not just internally. All of it is wrapped in the same hash-chained,
+immutable history from Phase 1. There is no API and no database yet, no parties, legislature,
+elections, or coups, and no prices, inflation, wages, hiring friction, resource trade, or
 resource-to-industry linkage for the other ten sectors — see `docs/roadmap.md` for what's
 implemented per phase and `docs/economy_methodology.md` for exactly what's simulated and what
 isn't.
@@ -93,6 +100,8 @@ uv run python -m app.cli resolve --state save.json --turns 1 \
 - `new` creates a save containing only the genesis (turn-0) entry.
 - `inspect` loads a save and reports its version envelope, current turn, entry count, and
   integrity status — even an invalid save can be inspected; that's the point of "integrity status."
+  It also shows the player's legitimacy and political capital by default; `--politics` adds the
+  full constitutional axis table and the persisted economic-baseline record.
 - `resolve` appends N turns to history and writes the result atomically; it refuses to overwrite
   its input, and on any failure nothing is written and the input is untouched. `--decisions-file`
   applies a JSON `DecisionSet` (requires `--turns 1`) instead of the default "no decision, continue
@@ -199,6 +208,30 @@ preserves turn 1 before diverging at the same turn-26/turn-41 boundaries its phy
 already established. Full formulas and the R1–R10 review corrections:
 [`docs/economy_methodology.md`](docs/economy_methodology.md) and
 [`docs/adr/0008-physical-extraction-derived-sector-output.md`](docs/adr/0008-physical-extraction-derived-sector-output.md).
+
+### Constitutional foundation, legitimacy and political capital (Phase 3A)
+
+Each country now has a nine-axis `ConstitutionState` (executive system, executive selection,
+legislature, territorial organization, judicial review, amendment difficulty, decree authority,
+plus optional term-limit/election-interval scalars) checked against nine validity rules — which
+reject internally *incoherent* arrangements (a hereditary presidency, a parliament with no
+legislature) but say nothing about whether a valid arrangement is accepted, good, or stable. That
+is the job of `constitutional_order_support_bps`, a scenario-authored acceptance level, and
+`legitimacy_bps`, which drifts toward it every turn and additionally responds to this same
+economy's output and unemployment — a resource-depletion shock that shrinks production now costs
+the government real legitimacy, through the same extraction→production chain Phase 2C2 built, with
+no new economic engineering. **Government form cannot influence legitimacy**: `simulation/
+legitimacy.py`'s public functions accept no constitutional type in their signatures at all, a
+`mypy`-checked guarantee, not merely a tested convention — proven by a dedicated test matrix
+showing five differently-formed governments at matched authored-support levels produce identical
+legitimacy trajectories turn by turn, while their constitutions and hashes genuinely differ.
+Political capital regenerates each turn from legitimacy alone (200 at zero legitimacy, up to 500 at
+full legitimacy); nothing spends it yet — that starts in Phase 3B. A new reconciliation step
+(`simulation/reconciliation.py`) checks the political report against both the turn's opening and
+closing state across eleven groups, and history replay re-runs it on every entry, so even a
+tamperer who edits a value *and* recomputes the hash to match is still caught. Full formulas:
+[`docs/economy_methodology.md`](docs/economy_methodology.md) and
+[`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`](docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md).
 
 ## Frontend
 

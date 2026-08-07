@@ -58,6 +58,7 @@ from app.simulation.history import GameSave, advance_game, new_game, validate_hi
 from app.simulation.report import (
     FinanceReport,
     LaborMarketReport,
+    PoliticalReport,
     ProductionReport,
     ResourceExtractionReport,
     TaxBaseDerivationReport,
@@ -169,6 +170,32 @@ def _render_tax_bases_derived(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_legitimacy_resolved(params: dict[str, str | int]) -> str:
+    opening = _bps_to_percent_str(params["opening_legitimacy_bps"])
+    order_support = _bps_to_percent_str(params["order_support_contribution_bps"])
+    performance = _bps_to_percent_str(params["performance_contribution_bps"])
+    total_change = _bps_to_percent_str(params["total_legitimacy_change_bps"])
+    closing = _bps_to_percent_str(params["closing_legitimacy_bps"])
+    support = _bps_to_percent_str(params["constitutional_order_support_bps"])
+    return (
+        f"Legitimacy resolved: opening={opening} order_support_drift={order_support} "
+        f"(toward authored support {support}) performance={performance} "
+        f"total_change={total_change} closing={closing}."
+    )
+
+
+def _render_political_capital_resolved(params: dict[str, str | int]) -> str:
+    opening = int(params["opening"])
+    regeneration = int(params["regeneration"])
+    spent = int(params["spent"])
+    capacity = int(params["capacity"])
+    closing = int(params["closing"])
+    return (
+        f"Political capital resolved: opening={opening:,} regeneration=+{regeneration:,} "
+        f"spent={spent:,} -> closing={closing:,} / {capacity:,}."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -180,6 +207,8 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "resource_extraction_resolved": _render_resource_extraction_resolved,
     "production_summary": _render_production_summary,
     "tax_bases_derived": _render_tax_bases_derived,
+    "legitimacy_resolved": _render_legitimacy_resolved,
+    "political_capital_resolved": _render_political_capital_resolved,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -302,6 +331,53 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                 f"corporate={format_money(derived.corporate_profit)} "
                 f"consumption={format_money(derived.taxable_consumption)} denars"
             )
+
+    if player.politics is not None:
+        # Read directly from state, like resource endowments above -- legitimacy and political
+        # capital are turn-0-available state, not turn-local report detail.
+        politics = player.politics
+        print(f"  legitimacy:          {_bps_to_percent_str(politics.legitimacy_bps)}")
+        print(
+            f"  political capital:   {politics.political_capital:,} / "
+            f"{politics.political_capital_capacity:,}"
+        )
+        if args.politics:
+            axes = politics.constitution
+            election = (
+                f"every {axes.national_election_interval_turns} turns"
+                if axes.national_election_interval_turns is not None
+                else "none scheduled"
+            )
+            term_limit = (
+                f"{axes.executive_term_limit_terms} terms"
+                if axes.executive_term_limit_terms is not None
+                else "none"
+            )
+            print(
+                f"  constitution:        {axes.executive_system.value} / "
+                f"{axes.executive_selection.value} / {axes.legislature.value} / "
+                f"{axes.territorial_organization.value}"
+            )
+            print(
+                f"                       judicial_review={axes.judicial_review.value} "
+                f"amendment={axes.amendment_difficulty.value} "
+                f"decree={axes.decree_authority.value}"
+            )
+            print(f"                       term_limit={term_limit}  national_election={election}")
+            print(
+                "  order support:       "
+                f"{_bps_to_percent_str(politics.constitutional_order_support_bps)}   "
+                "(authored acceptance of this constitutional order)"
+            )
+            if politics.economic_baseline is None:
+                print("  economic baseline:   (none yet — no turn resolved)")
+            else:
+                baseline = politics.economic_baseline
+                print(
+                    f"  economic baseline:   turn {baseline.source_turn}  "
+                    f"output={baseline.total_gross_output:,}  "
+                    f"unemployment={_bps_to_percent_str(baseline.unemployment_rate_bps)}"
+                )
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -428,6 +504,64 @@ def _print_tax_base_derivation_report(derivation: TaxBaseDerivationReport) -> No
         )
 
 
+def _print_political_report(political: PoliticalReport) -> None:
+    print("    political:")
+    axes = political.constitution
+    election = (
+        f"every {axes.national_election_interval_turns} turns"
+        if axes.national_election_interval_turns is not None
+        else "none scheduled"
+    )
+    term_limit = (
+        f"{axes.executive_term_limit_terms} terms"
+        if axes.executive_term_limit_terms is not None
+        else "none"
+    )
+    print(
+        f"      constitution: {axes.executive_system.value}/{axes.executive_selection.value}/"
+        f"{axes.legislature.value}/{axes.territorial_organization.value} "
+        f"judicial_review={axes.judicial_review.value} "
+        f"amendment={axes.amendment_difficulty.value} decree={axes.decree_authority.value} "
+        f"term_limit={term_limit} national_election={election} "
+        f"digest={axes.constitution_digest[:8]}..."
+    )
+    print(f"      order support: {_bps_to_percent_str(political.constitutional_order_support_bps)}")
+    print(
+        f"      legitimacy: opening={_bps_to_percent_str(political.opening_legitimacy_bps)} "
+        f"order_support={_bps_to_percent_str(political.order_support_contribution_bps)} "
+        f"performance={_bps_to_percent_str(political.performance_contribution_bps)} -> "
+        f"closing={_bps_to_percent_str(political.closing_legitimacy_bps)}"
+    )
+    if political.opening_economic_baseline is None:
+        print("      opening baseline: (none — first resolved turn, performance contribution 0)")
+    else:
+        opening_baseline = political.opening_economic_baseline
+        print(
+            f"      opening baseline: turn {opening_baseline.source_turn} "
+            f"output={opening_baseline.total_gross_output:,} "
+            f"unemployment={_bps_to_percent_str(opening_baseline.unemployment_rate_bps)}"
+        )
+    print(
+        "      observations: "
+        f"output={political.current_total_gross_output:,} "
+        f"unemployment={_bps_to_percent_str(political.current_unemployment_rate_bps)}"
+    )
+    closing_baseline = political.closing_economic_baseline
+    print(
+        f"      closing baseline: turn {closing_baseline.source_turn} "
+        f"output={closing_baseline.total_gross_output:,} "
+        f"unemployment={_bps_to_percent_str(closing_baseline.unemployment_rate_bps)}"
+    )
+    print(
+        "      political capital: "
+        f"opening={political.opening_political_capital:,} "
+        f"regeneration=+{political.political_capital_regeneration:,} "
+        f"spent={political.political_capital_spent:,} -> "
+        f"closing={political.closing_political_capital:,} / "
+        f"{political.political_capital_capacity:,}"
+    )
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
@@ -442,6 +576,8 @@ def _print_report(report: TurnReport) -> None:
         _print_tax_base_derivation_report(report.tax_base_derivation)
     if report.finance is not None:
         _print_finance_report(report.finance)
+    if report.political is not None:
+        _print_political_report(report.political)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -544,6 +680,8 @@ def _cmd_history(args: argparse.Namespace) -> int:
             _print_tax_base_derivation_report(report.tax_base_derivation)
         if report.finance is not None:
             _print_finance_report(report.finance)
+        if report.political is not None:
+            _print_political_report(report.political)
     return 0
 
 
@@ -564,6 +702,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also show the canonical resource_output_coefficients table, read directly from "
         "state (never re-read from scenario YAML)",
+    )
+    p_inspect.add_argument(
+        "--politics",
+        action="store_true",
+        help="also show the full constitutional axis table and the persisted economic "
+        "baseline, read directly from state",
     )
     p_inspect.set_defaults(func=_cmd_inspect)
 

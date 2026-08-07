@@ -12,7 +12,11 @@ resolution", for the full contract. In short:
 4. Re-validate invariants on the result. A violation discards the working
    copy entirely; the caller's original `state` is still exactly what they
    passed in.
-5. Return the new state and an explainable `TurnReport`.
+5. Build the `TurnReport`, then (Phase 3A) reconcile its political section against both the
+   input state and the resulting state (`simulation.reconciliation`) — a disagreement discards
+   the working copy exactly like an invariant violation, since `TurnReport` itself has no
+   `GameState` reference and so cannot perform this check on its own (§9.3).
+6. Return the new state and an explainable `TurnReport`.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from app.core.errors import DecisionSetError, StateValidationError, TurnResoluti
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
 from app.simulation.phases import PhaseContext, run_phases
+from app.simulation.reconciliation import reconcile_political_report
 from app.simulation.report import TurnReport, TurnReportDevMeta
 from app.simulation.state import GameState
 
@@ -96,5 +101,17 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
         finance=ctx.finance_report,
         production=ctx.production_report,
         tax_base_derivation=ctx.tax_base_derivation_report,
+        political=ctx.political_report,
     )
+
+    reconciliation_problems = reconcile_political_report(
+        opening_state=state, closing_state=working, report=report
+    )
+    if reconciliation_problems:
+        summary = "; ".join(reconciliation_problems)
+        raise TurnResolutionError(
+            f"political report does not reconcile against state, discarded: "
+            f"{len(reconciliation_problems)} problem(s): {summary}"
+        )
+
     return TurnResolution(state=working, report=report)

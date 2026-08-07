@@ -22,6 +22,11 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.money import Money, StrictBps, StrictMoney
+from app.core.politics import (
+    StrictLegitimacyBps,
+    StrictPoliticalCapital,
+    StrictPoliticalCapitalCapacity,
+)
 from app.core.quantity import (
     StrictRealOutput,
     StrictRealOutputPerResourceUnit,
@@ -29,6 +34,7 @@ from app.core.quantity import (
     StrictResourceQuantity,
     StrictResourceQuantityPerWorker,
 )
+from app.simulation.constitution import ConstitutionState
 
 _STRICT_CONFIG = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -512,6 +518,53 @@ class EconomyState(BaseModel):
         return self
 
 
+class EconomicBaselineState(BaseModel):
+    """The economic observations of one specific resolved turn, persisted so the next turn's
+    political phase can compute a change without reading history (Phase 3A, §6.4).
+
+    Written by the political phase from that same turn's own reports; never scenario-authored, and
+    nothing else reads or writes it. `source_turn` is `state.turn` of the state that carries this
+    baseline — the closing baseline written on resolving turn *N* has `source_turn == N`, and the
+    following turn reads it back as its opening baseline. `simulation.invariants` checks this
+    relationship (`economic_baseline_turn_mismatch`); `simulation.legitimacy` never sees this type
+    at all — it takes and returns plain integers, per `PerformanceSignals`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    source_turn: int = Field(ge=0)
+    total_gross_output: StrictRealOutput
+    unemployment_rate_bps: StrictBps
+
+
+class PoliticalState(BaseModel):
+    """A country's constitutional order, its current legitimacy, and its political capital
+    (Phase 3A, §4.3).
+
+    **`constitutional_order_support_bps` is scenario-authored, never derived from `constitution`'s
+    axes.** This is the load-bearing guarantee behind R1: the engine has no legitimacy-anchor table
+    keyed on government form. A monarchy may be authored at 8,500 and a democracy at 2,000, or the
+    reverse — both are equally valid, and both drift toward their own authored value at the same
+    rate (`simulation.legitimacy.DRIFT_RATE_BPS`). Static in Phase 3A (nothing in this phase mutates
+    it or `constitution`, proven by `simulation.reconciliation`); Phase 3B/3C amendments and coups
+    may move it.
+
+    `economic_baseline` is `None` at scenario authoring and before the first resolution; the
+    political phase sets it at the end of every resolved turn (§6.4). `None` is legal *only* at
+    `state.turn == 0` — `simulation.invariants` enforces both directions
+    (`economic_baseline_present_at_genesis`, `economic_baseline_missing_after_genesis`).
+    """
+
+    model_config = _STRICT_CONFIG
+
+    constitution: ConstitutionState
+    constitutional_order_support_bps: StrictLegitimacyBps
+    legitimacy_bps: StrictLegitimacyBps
+    political_capital: StrictPoliticalCapital
+    political_capital_capacity: StrictPoliticalCapitalCapacity
+    economic_baseline: EconomicBaselineState | None = None
+
+
 class CountryState(BaseModel):
     """A single country: player-controlled or AI-controlled.
 
@@ -530,6 +583,11 @@ class CountryState(BaseModel):
     treasury: TreasuryState
     finance: GovernmentFinanceState | None = None
     economy: EconomyState | None = None
+    politics: PoliticalState | None = None
+    """Optional like `finance`/`economy`: AI countries may omit it — Phase 3A cannot resolve
+    politics for a country with no economy to derive performance from
+    (`non_player_politics_not_supported`). Required for the player, enforced by
+    `player_politics_required`, mirroring `player_finance_required`/`player_economy_required`."""
 
 
 class WorldState(BaseModel):
@@ -541,7 +599,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.7.0"
+RULESET_VERSION = "0.8.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -551,10 +609,14 @@ changes (which phases do real work, what formulas they use) in a way that must n
 apply to already-resolved history — see `docs/adr/0002-snapshot-history-and-versioning.md`,
 `docs/adr/0003-government-accounting.md`, `docs/adr/0004-sector-production-fixed-prices.md`,
 `docs/adr/0005-production-derived-tax-bases.md`,
-`docs/adr/0006-labor-allocation-at-fixed-prices.md`, and
+`docs/adr/0006-labor-allocation-at-fixed-prices.md`,
 `docs/adr/0007-resource-endowments-and-extraction.md` (bumped `"0.5.0" -> "0.6.0"` for Phase 2C1:
 `EconomyState.resource_deposits` becomes a new required field with no data to backfill from an
-older save — the same kind of change that justified every prior ruleset bump).
+older save — the same kind of change that justified every prior ruleset bump), and
+`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md` (bumped `"0.7.0" ->
+"0.8.0"` for Phase 3A: `CountryState.politics` becomes a new required field for the player, with
+no constitution, authored order support, legitimacy or political capital to backfill from an
+older save).
 """
 
 

@@ -133,11 +133,11 @@ def test_phases_run_in_the_documented_order() -> None:
 
 
 def test_only_the_accounting_and_report_phases_are_implemented_so_far() -> None:
-    # As of Phase 2B1: government accounting (3 phases) + sector production (1 phase) +
-    # report generation are real; every other resolution-order step remains an honest
-    # no-op. This test's job is to track that boundary exactly as it moves phase by phase
-    # — update the IMPLEMENTED set here, not the underlying assertion, as more
-    # phases gain real logic.
+    # As of Phase 3A: government accounting (3 phases) + sector production (1 phase) +
+    # legitimacy/political-capital resolution (1 phase, slot 10) + report generation are real;
+    # every other resolution-order step remains an honest no-op. This test's job is to track
+    # that boundary exactly as it moves phase by phase — update the IMPLEMENTED set here, not
+    # the underlying assertion, as more phases gain real logic.
     state = make_game_state(turn=0, state_version=0)
     resolution = resolve_turn(state, _empty_decisions_for(state))
     statuses = resolution.report.dev.phase_statuses
@@ -147,6 +147,7 @@ def test_only_the_accounting_and_report_phases_are_implemented_so_far() -> None:
         "resolve_production_and_trade",
         "resolve_government_revenue_and_expenditure",
         "update_prices_inflation_employment_debt_reserves",
+        "update_group_welfare_approval_trust_radicalization",
         "generate_turn_report",
     }
     for phase_id, status in statuses.items():
@@ -163,3 +164,84 @@ def test_report_resolved_turn_matches_the_turn_that_was_played() -> None:
     resolution = resolve_turn(state, _empty_decisions_for(state))
     assert resolution.report.resolved_turn == 3
     assert resolution.state.turn == 4
+
+
+def test_political_reconciliation_failure_is_atomic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """(T-D4, Phase 3A) A forced reconciliation mismatch raises `TurnResolutionError`, leaves the
+    caller's input `state` byte-identical, and produces no `TurnResolution` -- exactly like an
+    invariant violation. `reconcile_political_report` is monkeypatched to force a mismatch,
+    since the real resolver's own output never disagrees with itself (see
+    `test_reconciliation.py::test_a_clean_resolution_reconciles_with_no_problems`)."""
+    import app.simulation.resolver as resolver_module
+
+    state = make_game_state(turn=0, state_version=0)
+    before = canonical_dumps(state.model_dump(mode="json"))
+
+    monkeypatch.setattr(
+        resolver_module,
+        "reconcile_political_report",
+        lambda **_kwargs: ["forced mismatch for T-D4"],
+    )
+
+    with pytest.raises(TurnResolutionError, match="does not reconcile"):
+        resolve_turn(state, _empty_decisions_for(state))
+
+    after = canonical_dumps(state.model_dump(mode="json"))
+    assert after == before, "input state must be byte-identical after a discarded resolution"
+
+
+def test_stale_decision_set_leaves_politics_and_its_baseline_untouched() -> None:
+    """(T-D2, Phase 3A) `test_stale_decision_set_is_rejected_and_state_is_untouched` already
+    proves whole-state byte identity at turn 0 (baseline `None`); this variant runs one real turn
+    first so a genuine `EconomicBaselineState` exists, then submits a stale decision set and
+    checks `politics` specifically -- not just via the whole-state dump, but field by field, so
+    the political phase's opening-snapshot pattern (§8) cannot be silently bypassed on a rejected
+    turn."""
+    state = make_game_state(turn=0, state_version=0)
+    first = resolve_turn(state, _empty_decisions_for(state))
+    resolved_state = first.state
+    player_id = resolved_state.world.player_country_id
+    politics_before = resolved_state.world.countries[player_id].politics
+    assert politics_before is not None
+    assert politics_before.economic_baseline is not None
+    before = canonical_dumps(resolved_state.model_dump(mode="json"))
+
+    stale_decisions = DecisionSet(expected_turn=0, expected_state_version=0, decisions=[])
+    with pytest.raises(TurnResolutionError):
+        resolve_turn(resolved_state, stale_decisions)
+
+    after = canonical_dumps(resolved_state.model_dump(mode="json"))
+    assert after == before
+    politics_after = resolved_state.world.countries[player_id].politics
+    assert politics_after is not None
+    assert politics_after.legitimacy_bps == politics_before.legitimacy_bps
+    assert politics_after.political_capital == politics_before.political_capital
+    assert politics_after.economic_baseline == politics_before.economic_baseline
+
+
+def test_invalid_political_state_is_rejected_atomically() -> None:
+    """(T-D3, Phase 3A) A bypassed-construction out-of-range `legitimacy_bps` on the *input*
+    state is rejected by `check_invariants` before any phase runs -- mirroring
+    `test_invalid_input_state_is_rejected_without_running_phases` for the finance/population
+    case, now for politics."""
+    from app.simulation.state import PoliticalState
+
+    country = make_country("a")
+    assert country.politics is not None
+    bypassed_politics = PoliticalState.model_construct(
+        constitution=country.politics.constitution,
+        constitutional_order_support_bps=country.politics.constitutional_order_support_bps,
+        legitimacy_bps=10_001,
+        political_capital=country.politics.political_capital,
+        political_capital_capacity=country.politics.political_capital_capacity,
+        economic_baseline=None,
+    )
+    country = country.model_copy(update={"politics": bypassed_politics})
+    state = make_game_state(countries={"a": country}, player_country_id="a")
+    before = canonical_dumps(state.model_dump(mode="json"))
+
+    with pytest.raises(TurnResolutionError):
+        resolve_turn(state, _empty_decisions_for(state))
+
+    after = canonical_dumps(state.model_dump(mode="json"))
+    assert after == before

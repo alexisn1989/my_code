@@ -627,3 +627,239 @@ def test_entry_version_mismatch_with_envelope_is_detected() -> None:
     bad_genesis = dataclasses.replace(save.entries[0], ruleset_version="9.9.9")
     bad = dataclasses.replace(save, entries=(bad_genesis,))
     assert any("ruleset_version" in p for p in validate_history(bad))
+
+
+# --- T-R7 (Phase 3A, §9.4): tampered history re-runs reconciliation, not just the hash chain ----
+
+
+def _retamper_state_with_consistent_hash(save: GameSave, *, index: int, tampered_state_json: str):  # type: ignore[no-untyped-def]
+    """Replace one entry's `state_json` AND recompute `entry_hash` to match — simulating a
+    knowledgeable tamperer who edits a value and does the hash arithmetic themselves, rather
+    than the "forgot to update the hash" tamper every other test in this file exercises. The
+    resulting chain passes every hash check; only a check that understands what the DATA means
+    (not just whether it's internally consistent) can still catch it.
+    """
+    import json
+
+    from app.core.canonical_json import canonical_digest
+    from app.simulation.history import _entry_hash_payload
+
+    original = save.entries[index]
+    decisions_payload = json.loads(original.decisions_json) if original.decisions_json else None
+    report_payload = json.loads(original.report_json) if original.report_json else None
+    new_hash = canonical_digest(
+        _entry_hash_payload(
+            turn=original.turn,
+            previous_entry_hash=original.previous_entry_hash,
+            state=json.loads(tampered_state_json),
+            decisions=decisions_payload,
+            report=report_payload,
+            ruleset_version=original.ruleset_version,
+            content_version=original.content_version,
+        )
+    )
+    tampered_entry = dataclasses.replace(
+        original, state_json=tampered_state_json, entry_hash=new_hash
+    )
+    entries = (*save.entries[:index], tampered_entry, *save.entries[index + 1 :])
+    new_head = entries[-1].entry_hash if index == len(save.entries) - 1 else save.head_entry_hash
+    return dataclasses.replace(save, entries=entries, head_entry_hash=new_head)
+
+
+def _tamper_player_politics(state, **updates):  # type: ignore[no-untyped-def]
+    country_id = state.world.player_country_id
+    country = state.world.countries[country_id]
+    assert country.politics is not None
+    tampered_politics = country.politics.model_copy(update=updates)
+    state.world.countries[country_id] = country.model_copy(update={"politics": tampered_politics})
+    return canonical_dumps(state.model_dump(mode="json"))
+
+
+def test_consistently_rehashed_legitimacy_tamper_still_fails_reconciliation() -> None:
+    """The hash chain passes (entry_hash was recomputed to match); the stored report's
+    `closing_legitimacy_bps` still describes the ORIGINAL value, so reconciliation -- not the
+    hash check -- is what catches this."""
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    state = save.entries[index].state()
+    tampered_json = _tamper_player_politics(
+        state,
+        legitimacy_bps=state.world.countries[state.world.player_country_id].politics.legitimacy_bps
+        + 1,
+    )
+    tampered = _retamper_state_with_consistent_hash(
+        save, index=index, tampered_state_json=tampered_json
+    )
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems), (
+        "the hash was recomputed consistently and must NOT trip the hash check"
+    )
+    assert any("closing_legitimacy_bps" in p for p in problems)
+
+
+def test_consistently_rehashed_constitutional_field_tamper_still_fails_reconciliation() -> None:
+    from app.simulation.constitution import JudicialReview
+
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    state = save.entries[index].state()
+    current = state.world.countries[state.world.player_country_id].politics.constitution
+    new_review = (
+        JudicialReview.STRONG
+        if current.judicial_review != JudicialReview.STRONG
+        else JudicialReview.WEAK
+    )
+    country_id = state.world.player_country_id
+    country = state.world.countries[country_id]
+    tampered_constitution = country.politics.constitution.model_copy(
+        update={"judicial_review": new_review}
+    )
+    tampered_politics = country.politics.model_copy(update={"constitution": tampered_constitution})
+    state.world.countries[country_id] = country.model_copy(update={"politics": tampered_politics})
+    tampered_json = canonical_dumps(state.model_dump(mode="json"))
+    tampered = _retamper_state_with_consistent_hash(
+        save, index=index, tampered_state_json=tampered_json
+    )
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("judicial_review" in p for p in problems)
+
+
+def test_consistently_rehashed_political_capital_capacity_tamper_still_fails_reconciliation() -> (
+    None
+):
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    state = save.entries[index].state()
+    capacity = state.world.countries[
+        state.world.player_country_id
+    ].politics.political_capital_capacity
+    tampered_json = _tamper_player_politics(state, political_capital_capacity=capacity + 1)
+    tampered = _retamper_state_with_consistent_hash(
+        save, index=index, tampered_state_json=tampered_json
+    )
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("political_capital_capacity" in p for p in problems)
+
+
+# --- T-H1 (Phase 3A, §14): traditional stale-hash tamper -- entry_hash NOT recomputed ------------
+#
+# The complement of the T-R7 tests above: an ordinary tamperer who edits a stored value and
+# forgets to redo the hash arithmetic. Every case here must be caught by the *hash* check alone
+# ("entry_hash does not match"), exactly like every pre-3A tamper test in this file
+# (`test_tampering_with_only_the_economy_state_is_detected` et al.) — proving political fields are
+# ordinary `entry_hash`-covered surface area, not a special case.
+
+
+def test_traditional_stale_hash_tamper_of_legitimacy_bps_is_detected() -> None:
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    state = original.state()
+    tampered_json = _tamper_player_politics(
+        state,
+        legitimacy_bps=state.world.countries[state.world.player_country_id].politics.legitimacy_bps
+        + 1,
+    )
+    assert tampered_json != original.state_json
+    tampered_entry = dataclasses.replace(original, state_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry, *save.entries[index + 1 :])
+    tampered = dataclasses.replace(save, entries=entries)
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
+def test_traditional_stale_hash_tamper_of_political_capital_is_detected() -> None:
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    state = original.state()
+    tampered_json = _tamper_player_politics(
+        state,
+        political_capital=state.world.countries[
+            state.world.player_country_id
+        ].politics.political_capital
+        + 1,
+    )
+    assert tampered_json != original.state_json
+    tampered_entry = dataclasses.replace(original, state_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry, *save.entries[index + 1 :])
+    tampered = dataclasses.replace(save, entries=entries)
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
+def test_traditional_stale_hash_tamper_of_constitutional_order_support_bps_is_detected() -> None:
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    state = original.state()
+    current_support = state.world.countries[
+        state.world.player_country_id
+    ].politics.constitutional_order_support_bps
+    tampered_json = _tamper_player_politics(
+        state, constitutional_order_support_bps=current_support + 1
+    )
+    assert tampered_json != original.state_json
+    tampered_entry = dataclasses.replace(original, state_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry, *save.entries[index + 1 :])
+    tampered = dataclasses.replace(save, entries=entries)
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
+def test_traditional_stale_hash_tamper_of_a_constitution_axis_is_detected() -> None:
+    from app.simulation.constitution import JudicialReview
+
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    state = original.state()
+    country_id = state.world.player_country_id
+    country = state.world.countries[country_id]
+    assert country.politics is not None
+    current = country.politics.constitution
+    new_review = (
+        JudicialReview.STRONG
+        if current.judicial_review != JudicialReview.STRONG
+        else JudicialReview.WEAK
+    )
+    tampered_constitution = current.model_copy(update={"judicial_review": new_review})
+    tampered_politics = country.politics.model_copy(update={"constitution": tampered_constitution})
+    state.world.countries[country_id] = country.model_copy(update={"politics": tampered_politics})
+    tampered_json = canonical_dumps(state.model_dump(mode="json"))
+    assert tampered_json != original.state_json
+    tampered_entry = dataclasses.replace(original, state_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry, *save.entries[index + 1 :])
+    tampered = dataclasses.replace(save, entries=entries)
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)
+
+
+def test_traditional_stale_hash_tamper_of_report_closing_legitimacy_bps_is_detected() -> None:
+    save = _advance_n(_fresh_save(), 2)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None
+    assert report.political is not None
+    tampered_political = report.political.model_copy(
+        update={"closing_legitimacy_bps": report.political.closing_legitimacy_bps + 1}
+    )
+    tampered_report = report.model_copy(update={"political": tampered_political})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered_entry = dataclasses.replace(original, report_json=tampered_json)
+    entries = (*save.entries[:index], tampered_entry)
+    tampered = dataclasses.replace(save, entries=entries, entry_count=len(entries))
+
+    problems = validate_history(tampered)
+    assert any("entry_hash does not match" in p for p in problems)

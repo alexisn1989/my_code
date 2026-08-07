@@ -48,6 +48,21 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "corporate_profit": 2000000000,
         "taxable_consumption": 3000000000,
     },
+    "legitimacy_resolved": {
+        "opening_legitimacy_bps": 6459,
+        "order_support_contribution_bps": 4,
+        "performance_contribution_bps": -250,
+        "total_legitimacy_change_bps": -246,
+        "closing_legitimacy_bps": 6213,
+        "constitutional_order_support_bps": 6500,
+    },
+    "political_capital_resolved": {
+        "opening": 500,
+        "regeneration": 413,
+        "spent": 0,
+        "capacity": 1000,
+        "closing": 913,
+    },
 }
 
 

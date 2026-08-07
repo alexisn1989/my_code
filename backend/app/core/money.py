@@ -86,10 +86,10 @@ def format_money(amount: Money) -> str:
 def clamp01_100(value: float) -> float:
     """Clamp a bounded political/social metric to the documented [0, 100] range.
 
-    Used for approval, trust, loyalty, legitimacy, and similar scores. Unlike
-    `Money`, these do not need to reconcile to zero across a ledger — they only
-    need to stay within their documented bounds, which `simulation.invariants`
-    checks independently of this helper.
+    Used for `PopulationGroupState`/`InstitutionState`'s float approval/trust/loyalty scores
+    (Phase 0 scaffolding, read by no formula anywhere yet). NOT used for legitimacy: Phase 3A's
+    `legitimacy_bps` is a strict integer basis-point quantity (`core.politics.
+    StrictLegitimacyBps`), validated by Pydantic, never by this helper.
     """
     if math.isnan(value):
         raise ValueError("bounded metric value must not be NaN")

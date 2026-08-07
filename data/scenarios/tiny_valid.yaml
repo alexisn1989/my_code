@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.7.0"
+content_version: "0.8.0"
 seed: 42
 player_country_id: arken
 
@@ -281,6 +281,27 @@ countries:
           real_output_per_unit: 1000
         - category: critical_minerals
           real_output_per_unit: 5000
+
+    # Phase 3A: a well-accepted parliamentary order (see docs/adr/0009 and
+    # docs/economy_methodology.md, "Political calibration"). Economy is flat every turn (see
+    # above), so legitimacy moves only by order-support drift: 7,000 -> 7,100 -> 7,190 -> 7,271
+    # -> ... -> 7,991 at turn 100 (asymptotic, never overshooting 8,000). Political capital
+    # regenerates from 500 and clamps to its 1,000 capacity from turn 2 onward.
+    politics:
+      constitution:
+        executive_system: parliamentary
+        executive_selection: legislative_selection
+        legislature: bicameral
+        territorial_organization: unitary
+        judicial_review: strong
+        amendment_difficulty: supermajority
+        decree_authority: emergency_only
+        executive_term_limit_terms: 2
+        national_election_interval_turns: 16
+      constitutional_order_support_bps: 8000    # 80.00% authored acceptance of this order
+      legitimacy_bps: 7000                      # 70.00% current legitimacy
+      political_capital: 500
+      political_capital_capacity: 1000
 
   - id: neighbor
     name: "Neighboring State"

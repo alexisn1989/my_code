@@ -439,11 +439,107 @@ military/war; any new API route, database table, or gameplay frontend.
 
 Scope: §9 (constitutional system), §10 (political capital/action capacity), §12 (parties/
 legislature), §19 (coups/revolutions — risk surfacing), §20 (elections — scheduling/polling), §21
-(leaders/cabinet).
+(leaders/cabinet). Split into three sub-phases: **3A** lays the constitutional and metric
+foundation (this is the smallest slice that later sub-phases can build onto without reshaping the
+state model); **3B** spends political capital through legislative/faction bargaining; **3C** adds
+government survival (elections, coups, removal).
 
-Acceptance criteria: parliamentary-republic government type fully modeled per §9's composable
-dimensions; political capital and administrative capacity constrain actions; legislative
-support-score model; institution loyalty/power/competence tracked; coup/unrest risk indicators
+### Phase 3A — Constitutional foundation, legitimacy and political capital — **complete**
+
+Scope: the nine-axis `ConstitutionState` and its C1–C9 validity rules (§9's composable dimensions,
+structural validity only — never a legitimacy judgment); scenario-authored
+`constitutional_order_support_bps` and a form-blind legitimacy formula that drifts toward it;
+economic performance (`total_gross_output`, `unemployment_rate_bps`) as the only other legitimacy
+input; political capital that regenerates from legitimacy alone. No parties, legislature, elections,
+coups, or removal from power — those are 3B/3C. See `docs/economy_methodology.md` for every formula
+and `docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md` for the R1–R8
+independent-review corrections applied before implementation.
+
+Acceptance criteria:
+- [x] `simulation/constitution.py`: seven `StrEnum` axes (`ExecutiveSystem` incl. `MONARCHICAL`,
+      `ExecutiveSelection`, `Legislature`, `TerritorialOrganization`, `JudicialReview`,
+      `AmendmentDifficulty`, `DecreeAuthority`) plus two optional scalars
+      (`executive_term_limit_terms`, `national_election_interval_turns`); C1–C9 validity rules
+      rejecting incoherent combinations only, exporting no legitimacy scoring of any kind; full
+      10,368-configuration coverage computed and pinned (2,862 valid, 7,506 rejected, every rule
+      independently reachable).
+- [x] `simulation/legitimacy.py`: a pure module whose public functions accept no constitutional
+      type at all — a compile-time, `mypy`-checked neutrality guarantee. Legitimacy drifts toward
+      the scenario-authored `constitutional_order_support_bps` at a uniform, form-independent rate;
+      economic performance (output change + unemployment change, each independently sensitivity-
+      weighted and capped) is the only other input. Five authored orders spanning
+      accepted/illegitimate monarchy and accepted/unpopular democracy proven to agree on an
+      explicitly enumerated six-field numeric projection turn by turn, while their constitution
+      digests genuinely differ.
+- [x] `PoliticalState`/`EconomicBaselineState` on `CountryState.politics` (optional, player-required
+      like `finance`/`economy`); the baseline is a turn-scoped observation record with a four-stage
+      lifecycle (read/assess/write/report), `None` only on the first resolved turn, never a
+      fabricated zero.
+- [x] `PoliticalReport` (ten self-validators, each independently re-deriving one equation from the
+      report's own stored fields) and `TurnReport.political` (three cross-validators against the
+      production/labor-market observations and the resolved turn number); the all-present-or-all-
+      absent completeness rule extends from five reports (30 rejected subsets) to six (62).
+- [x] `simulation/reconciliation.py`: `reconcile_political_report` compares the political report
+      against both the opening and closing `GameState` across eleven check groups (every field of
+      every group independently corruptible and independently rejected), called from
+      `resolver.py` immediately after `TurnReport` construction — the same architectural seam
+      `TurnReport`'s own lack of state access forced onto its own module, not a validator.
+- [x] `validate_history` parses each entry's `report_json` and re-runs `reconcile_political_report`
+      against the neighbouring entry's state, catching consistently re-hashed tampers a stale-hash
+      check alone would miss; the one change in this phase with a measurable performance cost,
+      measured immediately before and after (soaks stayed at roughly 1.5–1.6x their pre-change
+      duration, safely under the plan's ~2x stop threshold).
+- [x] Slot 10 (`update_group_welfare_approval_trust_radicalization`) implements the political phase
+      — no sixteenth `PHASE_ORDER` slot, following the precedent four consecutive prior phases
+      established. `OpeningPoliticalSnapshot` (mirroring `OpeningFinanceSnapshot`) captures opening
+      values by value before any mutation.
+- [x] Twelve state-structural invariant codes (`_check_politics`), each decidable from a
+      `GameState` alone; report-formula and report-vs-state checks are deliberately not
+      duplicated here, guarded by a static source-scan test.
+- [x] Both scenarios recalibrated with a `politics:` block on their player country only: `tiny_
+      valid.yaml` (well-accepted parliamentary order, support 8,000, monotone legitimacy to 7,991
+      over 100 turns) and `deficit_demo.yaml` (less-accepted presidential order, support 6,500,
+      legitimacy dipping exactly at the existing turn-26/turn-41 resource-depletion boundaries).
+- [x] CLI `inspect --politics` shows the full axis table, authored order support, legitimacy,
+      political capital and the persisted baseline; `resolve`/`history` show the political block
+      on both display code paths independently.
+- [x] `RULESET_VERSION` bumped again (`0.7.0 -> 0.8.0`) in the same lockstep every prior phase has
+      used, justified by schema-shape compatibility — `CountryState.politics` becomes required for
+      the player. A Phase-2C2-ruleset save fixture was frozen with the genuinely unmodified engine
+      before the bump.
+- [x] 944 backend tests: constitutional validity and full configuration coverage, legitimacy/
+      political-capital unit and Hypothesis-property tests, the form/support-independence
+      projection matrix, the baseline lifecycle end to end through the real resolver, report self-
+      validation and cross-checks, reconciliation, history-replay revalidation (both consistently
+      re-hashed and traditional stale-hash tampers), phase isolation in both directions, resolver
+      atomicity for stale decisions and invalid political state, the resource-depletion shock
+      reproduced exactly, soak bounds and trajectories, and CLI display coverage.
+
+Explicitly deferred to 3B/3C or later: political-capital expenditure (nothing spends it yet — it
+regenerates and pins to capacity); parties, legislators, law passage; elections, coups, removal
+from power; characters, appointments, institutional loyalty/power/competence; courts deciding
+cases; repression, protests, uprisings, civil war; AI-country politics (rejected outright, not
+silently unmodeled); `PopulationGroupState`/`InstitutionState`'s float approval/trust/loyalty
+fields (unconverted, read by no formula); `FinanceReport`/`TreasuryState` reconciliation (a
+pre-existing, unrelated gap, tracked separately).
+
+### Phase 3B — Political-capital expenditure and legislative/faction bargaining
+
+Scope: §10 (political capital spent on concrete actions), §12 (parties/legislature, faction
+support-score model). Builds on 3A's `PoliticalState.political_capital` and
+`constitutional_order_support_bps`, which first become genuinely dynamic here.
+
+Acceptance criteria: at least one political-capital-spending action wired through the resolver;
+parties/factions with a legislative support-score model; `political_capital_spent` becomes nonzero
+on at least one tested path; AI-country politics extended once AI economies exist.
+
+### Phase 3C — Government survival
+
+Scope: §19 (coups/revolutions — risk surfacing), §20 (elections — scheduling/polling), §21
+(leaders/cabinet). The first sub-phase that can remove the player from power — by construction,
+not by omission, in 3A/3B.
+
+Acceptance criteria: institution loyalty/power/competence tracked; coup/unrest risk indicators
 visible with named contributing factors; election scheduling and polling with uncertainty; ~20–40
 cabinet-relevant characters for the first scenario.
 

@@ -1,4 +1,4 @@
-# MANDATE — Economy Methodology (Phase 2A + 2B1 + 2B2 + 2B3 + 2C1)
+# MANDATE — Economy Methodology (Phase 2A + 2B1 + 2B2 + 2B3 + 2C1 + 2C2 + 3A)
 
 Scope of this document: the government-finance slice implemented in Phase 2A (tax revenue,
 spending, quarterly debt interest, deficit financing), the sector-production slice implemented in
@@ -7,11 +7,15 @@ output at fixed base-year prices), the production-derived tax-base slice impleme
 Phase 2B2 (deriving Phase 2A's tax bases from Phase 2B1's production, replacing the fixed
 scenario-authored bases), the labor-allocation slice implemented in Phase 2B3 (deriving
 Phase 2B1's employment from population and sector labor demand, replacing the fixed
-scenario-authored `employed_workers`), and the resource-extraction slice implemented in Phase 2C1
+scenario-authored `employed_workers`), the resource-extraction slice implemented in Phase 2C1
 (deterministic extraction and depletion of eight physical natural resources, sub-allocated from
-Phase 2B3's extraction-sector labor, entirely isolated from production/tax/revenue this phase).
-Nothing else in §13 of the product spec (prices, inflation, wages, central banking, exchange
-rates) is implemented yet; see "Explicitly not yet simulated" below.
+Phase 2B3's extraction-sector labor, entirely isolated from production/tax/revenue this phase),
+the physical-extraction-drives-output slice implemented in Phase 2C2 (replacing the extraction
+sector's abstract output derivation with one computed from that turn's physical extraction), and
+the constitutional-foundation/legitimacy/political-capital slice implemented in Phase 3A (the
+first political layer, driven one-way by this economy's own output and unemployment signals,
+never by government form). Nothing else in §13 of the product spec (prices, inflation, wages,
+central banking, exchange rates) is implemented yet; see "Explicitly not yet simulated" below.
 
 ## Units and conventions
 
@@ -1103,3 +1107,221 @@ policy; approval/politics; diplomacy/military/war; any new API route, database t
 frontend. Neither committed fixture ever reaches `LABOR_CONSTRAINED` for the extraction row —
 labor stays abundant throughout both — a known, documented limitation, not a defect in the
 classification logic (see the ADR for the synthetic test that exercises that branch directly).
+
+# Phase 3A: Constitutional Foundation, Legitimacy and Political Capital
+
+The first political layer: a nine-axis constitutional structure with validity rules (never a
+legitimacy judgment), scenario-authored public acceptance of that structure, a legitimacy score
+that drifts toward that acceptance and responds to this economy's own performance, and political
+capital that regenerates from legitimacy. See
+`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md` for the full design
+rationale and the R1-R8 independent-review corrections applied before implementation.
+
+## Constitutional structure — validity, never legitimacy
+
+`ConstitutionState` (`simulation/constitution.py`) has seven axes — `executive_system`
+(`presidential`/`parliamentary`/`semi_presidential`/`monarchical`), `executive_selection`
+(`direct_election`/`legislative_selection`/`hereditary`/`appointed`), `legislature`
+(`none`/`unicameral`/`bicameral`), `territorial_organization` (`unitary`/`federal`),
+`judicial_review` (`none`/`weak`/`strong`), `amendment_difficulty`
+(`simple_majority`/`supermajority`/`entrenched`), `decree_authority`
+(`none`/`emergency_only`/`unlimited`) — plus two optional scalars, `executive_term_limit_terms` and
+`national_election_interval_turns` (`None` means genuinely absent, mirroring
+`ResourceDepositState.stock_ceiling`'s established convention).
+
+Nine validity rules (C1-C9) reject internally incoherent combinations only — a hereditary
+executive that is also presidential, a parliamentary system with no legislature, a scheduled
+national election with nothing to elect. They say nothing about whether a valid arrangement is
+accepted, good, or stable; that is entirely the job of `constitutional_order_support_bps` and
+`legitimacy_bps` below, which are independent of every C1-C9 rule. The full 10,368-configuration
+space (2,592 axis combinations × term-limit presence × election-interval presence) is enumerated
+and checked computationally: 2,862 valid, 7,506 rejected, every rule independently reachable as a
+first violation.
+
+`constitution_digest(constitution)` is a deterministic structural version marker (via
+`core.canonical_json.canonical_digest` over the nine axis fields) — an amendment-tracking
+identifier for later phases, carrying no legitimacy meaning of its own.
+
+## Legitimacy — form-blind by signature, not by convention
+
+`simulation/legitimacy.py` is pure and accepts **no constitutional type anywhere in its public
+function signatures** — a `mypy`-checked guarantee that government form cannot reach the
+legitimacy formula, stronger than any test. Two sources feed legitimacy each turn, and nothing
+else does:
+
+```
+closing_legitimacy_bps = clamp(
+    opening_legitimacy_bps + clamp(order_support_contribution_bps + performance_contribution_bps,
+                                    ±MAX_TOTAL_LEGITIMACY_CHANGE_BPS),
+    0, 10_000)
+```
+
+**Order-support drift** — a partial-adjustment model closing a fixed fraction of the gap between
+current legitimacy and the scenario-authored `constitutional_order_support_bps` every turn:
+
+```
+order_support_contribution_bps = trunc_div_toward_zero(
+    (constitutional_order_support_bps - opening_legitimacy_bps) * DRIFT_RATE_BPS, 10_000)
+```
+
+`DRIFT_RATE_BPS = 1,000` (10% of the gap per turn) is a single engine constant applied identically
+to every government form — the neutrality guarantee in formula form: there is no per-form rate,
+no per-axis modifier, no scoring table of any kind.
+
+**Performance contribution** — the two signals this economy actually models, output and
+unemployment, each independently sensitivity-weighted and capped:
+
+```
+output_change_bps        = 0 if baseline_output == 0 else
+                            trunc_div_toward_zero((current_output - baseline_output) * 10_000,
+                                                   baseline_output)
+output_contribution_bps  = trunc_div_toward_zero(output_change_bps * OUTPUT_SENSITIVITY_BPS,
+                                                  10_000)
+
+unemployment_change_bps       = current_unemployment_bps - baseline_unemployment_bps
+unemployment_contribution_bps = trunc_div_toward_zero(-unemployment_change_bps *
+                                                        UNEMPLOYMENT_SENSITIVITY_BPS, 10_000)
+
+performance_contribution_bps = clamp(output_contribution_bps + unemployment_contribution_bps,
+                                      ±MAX_PERFORMANCE_CONTRIBUTION_BPS)
+```
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `OUTPUT_SENSITIVITY_BPS` | 2,500 | a 1% output change moves legitimacy 0.25pp |
+| `UNEMPLOYMENT_SENSITIVITY_BPS` | 5,000 | a 1pp unemployment rise costs 0.5pp — twice as sharp per point as output |
+| `MAX_PERFORMANCE_CONTRIBUTION_BPS` | 300 | caps a single turn's performance swing at 3pp |
+| `MAX_TOTAL_LEGITIMACY_CHANGE_BPS` | 500 | caps the combined per-turn swing at 5pp |
+| `DRIFT_RATE_BPS` | 1,000 | 10% gap closure per turn |
+
+**The zero-baseline case is handled by the caller, before any division**, not by the divisor
+helper: `assess_economic_performance` tests `baseline_output == 0` and returns
+`output_change_bps = 0` directly, since there is no proportional change to measure against
+nothing. `trunc_div_toward_zero` itself **requires a positive denominator and raises otherwise** —
+the one legitimate zero-denominator case is stated explicitly by its caller, never silently
+absorbed. Truncation is toward zero, not floor: `deficit_demo` turn 41 gives `output_change_bps ==
+-138`, not floor's `-139` — a hundredfold rebound illustrates why this matters:
+`trunc(999,900,000/100) = 9,999` while `floor` on the negative-direction equivalent would round an
+equal-magnitude loss one bps further away from zero, a systematic pessimism bias with no modeling
+justification.
+
+`output_change_bps`/`output_contribution_bps` are genuinely unbounded (a baseline of 1 rising to 3
+is +20,000 bps) and carry `StrictSignedBps`, not the ±10,000-bounded `StrictSignedLegitimacyBps`
+every other signed political field uses — see `docs/architecture.md`'s "Money and bounded values"
+for the type distinction.
+
+## The economic-baseline lifecycle — a turn-scoped observation record
+
+`EconomicBaselineState` (`source_turn`, `total_gross_output`, `unemployment_rate_bps`) is written
+by the political phase from that same turn's own already-validated `ProductionReport`/
+`LaborMarketReport`, never scenario-authored. Four stages every turn: **read** the previous
+closing baseline as this turn's opening (`None` only on the first resolved turn — never a
+fabricated zero-output baseline); **assess** performance against it; **write** this turn's own
+observations as the new closing baseline; **report** the whole chain into `PoliticalReport`. A
+turn's closing baseline always has `source_turn == state.turn` (the turn *after* the one whose
+economy it describes — `resolving_turn` in the resolver is the pre-resolution turn number, the
+mutated state's own `turn` is post-resolution); the following turn's opening baseline is exactly
+the previous turn's closing baseline, proven to hold across a 100-turn horizon by
+`test_baseline_lifecycle.py`.
+
+## Political capital
+
+```
+regeneration = POLITICAL_CAPITAL_BASE_REGENERATION
+             + trunc_div_toward_zero(legitimacy_bps * LEGITIMACY_REGENERATION_COEFFICIENT, 10_000)
+closing      = min(capacity, opening + regeneration - spent)
+```
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `POLITICAL_CAPITAL_BASE_REGENERATION` | 200 | any functioning government recovers some capacity each turn regardless of standing |
+| `LEGITIMACY_REGENERATION_COEFFICIENT` | 300 | at full legitimacy, regeneration is 500 — 2.5x the illegitimate-government floor |
+
+Regeneration depends on legitimacy alone, never on government form: a legitimate monarchy and a
+legitimate democracy at the same `legitimacy_bps` regenerate identically. `spent` is always 0 in
+Phase 3A — nothing spends political capital yet, so it pins to `capacity` once regeneration
+outpaces the gap (as `tiny_valid.yaml` does from turn 2 onward). The report still carries
+`political_capital_spent` so the reconciliation identity shipped here is the one Phase 3B will use
+unchanged.
+
+## Worked example — the resource-depletion shock reaches legitimacy
+
+No special-cased resource-to-legitimacy formula exists. Depletion reduces
+`extraction_sector_real_output` (Phase 2C2) → the extraction row's `actual_output` →
+`ProductionReport.total_gross_output` → the `current_output` term above — the same chain every
+prior phase built, simply read by one more consumer. `deficit_demo.yaml` turn 26 (iron-ore
+depletion, legitimacy at 6,459 after 25 turns of drift toward its authored 6,500 support):
+
+```
+opening baseline (turn 25)   total_gross_output 4,000,000,000   unemployment 1000
+observations      (turn 26)  total_gross_output 3,600,000,000   unemployment 1000
+output_change_bps              = trunc((-400,000,000 * 10,000) / 4,000,000,000) = -1,000  (-10.00%)
+output_contribution_bps        = trunc(-1,000 * 2,500 / 10,000)                 =   -250
+performance_contribution_bps   = clamp(-250, +-300)                             =   -250
+order_support_contribution_bps = trunc((6,500 - 6,459) * 1,000 / 10,000)        =     +4
+total_change                   = clamp(4 + (-250), +-500)                       =   -246
+closing_legitimacy             = clamp(6,459 - 246, 0, 10,000)                  =  6,213
+```
+
+Turn 41 (timber's renewable steady state, the truncation case, legitimacy at 6,431):
+`output_change_bps = trunc(-50,000,000 * 10,000 / 3,600,000,000) = -138` (not floor's `-139`),
+`output_contribution_bps = -34`, `order_support_contribution_bps = +6`, total `-28`, closing
+`6,403`. Both figures are reproduced exactly through the real resolver by
+`test_political_economy_linkage.py`.
+
+## Report design and self-validation
+
+`PoliticalReport` carries ten independent `@model_validator(mode="after")` checks, each
+re-deriving one equation from the report's own stored fields — never by calling
+`simulation.legitimacy`'s functions, so a bug in one code path is caught by the other. `TurnReport`
+gains `political: PoliticalReport | None`, three cross-validators matching
+`current_total_gross_output`/`current_unemployment_rate_bps` against `production`/`labor_market`
+by field identity (never tuple position) and the closing/opening baseline `source_turn`s against
+`resolved_turn`, and the all-present-or-all-absent completeness rule extends from five reports (30
+rejected subsets) to six (62).
+
+`simulation/reconciliation.py`'s `reconcile_political_report` is the report-vs-*state* check
+`TurnReport` itself cannot own (it has no `GameState` reference) — eleven check groups comparing
+the political report against both the opening and closing state: opening/closing
+legitimacy/political-capital, the opening/closing economic baseline, all nine constitutional
+fields against both states independently (not just the digest — the report's summary fields and
+digest are stored independently and could disagree with each other), the digest itself against
+both states, authored `constitutional_order_support_bps`, and `political_capital_capacity`. A
+nonempty result discards the turn atomically, exactly like an invariant violation.
+`validate_history` re-runs the same reconciliation per history entry, which is what makes a
+consistently re-hashed tamper (edit a value, recompute `entry_hash` to match) detectable — the
+hash chain alone would miss it.
+
+## Calibration
+
+`tiny_valid.yaml` — parliamentary/legislative-selection/bicameral/unitary, strong judicial review,
+`constitutional_order_support_bps = 8,000`, opening `legitimacy_bps = 7,000`, political capital
+500/1,000. Flat economy means legitimacy moves by order-support drift alone: 7,000 → 7,100 (turn
+1) → ... → 7,991 (turn 100), monotone, never overshooting; political capital clamps to its 1,000
+capacity from turn 2 onward.
+
+`deficit_demo.yaml` — presidential/direct-election/unicameral/unitary, weak judicial review,
+`constitutional_order_support_bps = 6,500`, opening `legitimacy_bps = 6,000`, political capital
+300/800. Reuses Phase 2C2's own iron-ore/timber depletion calibration: legitimacy dips exactly at
+turns 26 and 41 (see the worked example above), closing at 6,491 by turn 100.
+
+## Version compatibility (Phase 3A)
+
+`RULESET_VERSION` bumps `0.7.0 -> 0.8.0`, `content_version` alongside it — schema-shape
+compatibility, since `CountryState.politics` becomes required for the player. A Phase-2C2-ruleset
+save fixture (`backend/tests/fixtures/phase2c2_save_ruleset_0.7.0.json`) was frozen with the
+genuinely unmodified 0.7.0 engine before this bump landed. `SAVE_FORMAT_VERSION` is unchanged. No
+fabricated migration: an older save has no constitution, no authored order support, no legitimacy
+and no political capital, and none is invented — it is rejected outright by
+`UnsupportedRulesetVersionError` before any entry payload is parsed.
+
+## Explicitly not yet simulated (Phase 3A)
+
+Political-capital expenditure (nothing spends it yet); parties, legislators, law passage;
+elections, coups, removal from power; characters, appointments, institutional loyalty/power/
+competence; courts deciding cases; repression, protests, uprisings, civil war; military; diplomacy;
+AI-country politics (rejected outright — `non_player_politics_not_supported` — rather than silently
+unmodeled, since only the player has an economy to derive performance from); `PopulationGroupState`/
+`InstitutionState`'s float approval/trust/loyalty fields (unconverted, read by no formula);
+`FinanceReport`/`TreasuryState` reconciliation (a real, pre-existing, unrelated gap, tracked
+separately); any new API route, database table, or gameplay frontend.

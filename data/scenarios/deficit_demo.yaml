@@ -25,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.7.0"
+content_version: "0.8.0"
 seed: 99
 player_country_id: strapped
 
@@ -251,3 +251,23 @@ countries:
           real_output_per_unit: 1000
         - category: critical_minerals
           real_output_per_unit: 5000
+
+    # Phase 3A: a less-accepted presidential order under resource decline (see docs/adr/0009
+    # and docs/economy_methodology.md, "Political calibration"). Two real, already-calibrated
+    # production shocks (iron-ore depletion at turn 26, timber steady-state at turn 41 — see
+    # ADR 0007/0008) cost this government legitimacy on top of drift: 6,000 -> ... -> 6,459
+    # (turn 25) -> 6,213 (turn 26, -246) -> ... -> 6,431 (turn 40) -> 6,403 (turn 41, -28).
+    politics:
+      constitution:
+        executive_system: presidential
+        executive_selection: direct_election
+        legislature: unicameral
+        territorial_organization: unitary
+        judicial_review: weak
+        amendment_difficulty: simple_majority
+        decree_authority: emergency_only
+        national_election_interval_turns: 20
+      constitutional_order_support_bps: 6500    # 65.00% authored acceptance of this order
+      legitimacy_bps: 6000                      # 60.00% current legitimacy
+      political_capital: 300
+      political_capital_capacity: 800

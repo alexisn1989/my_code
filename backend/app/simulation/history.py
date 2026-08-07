@@ -63,6 +63,7 @@ from app.core.canonical_json import canonical_digest, canonical_dumps
 from app.core.errors import HistoryValidationError, SnapshotNotFoundError
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
+from app.simulation.reconciliation import reconcile_political_report
 from app.simulation.report import TurnReport
 from app.simulation.resolver import resolve_turn
 from app.simulation.state import GameState
@@ -311,6 +312,7 @@ def validate_history(save: GameSave) -> list[str]:
     if genesis.report_json is not None:
         problems.append("genesis entry (turn 0) must have report=None")
 
+    previous_state_model: GameState | None = None
     for index, entry in enumerate(save.entries):
         if entry.turn != index:
             problems.append(
@@ -345,7 +347,28 @@ def validate_history(save: GameSave) -> list[str]:
                 f"the save envelope's {save.content_version!r}"
             )
 
-        problems.extend(_validate_entry_payload(entry))
+        entry_problems, state_model, report_model = _validate_entry_payload(entry)
+        problems.extend(entry_problems)
+
+        # (Phase 3A, §9.4) Entry N-1's parsed state IS entry N's opening state -- the history
+        # chain supplies both sides of reconcile_political_report with no extra information and
+        # no additional state parse (the per-entry GameState parse above is not new work; only
+        # the TurnReport parse in _validate_entry_payload is genuinely new).
+        if (
+            index > 0
+            and previous_state_model is not None
+            and state_model is not None
+            and report_model is not None
+        ):
+            problems.extend(
+                f"turn {entry.turn}: {problem}"
+                for problem in reconcile_political_report(
+                    opening_state=previous_state_model,
+                    closing_state=state_model,
+                    report=report_model,
+                )
+            )
+        previous_state_model = state_model
 
     if save.entry_count != len(save.entries):
         problems.append(
@@ -362,14 +385,22 @@ def validate_history(save: GameSave) -> list[str]:
     return problems
 
 
-def _validate_entry_payload(entry: HistoryEntry) -> list[str]:
-    """Canonical-payload, hash-recompute, and state-invariant checks for one entry."""
+def _validate_entry_payload(
+    entry: HistoryEntry,
+) -> tuple[list[str], GameState | None, TurnReport | None]:
+    """Canonical-payload, hash-recompute, state-invariant, and (Phase 3A) report-schema checks
+    for one entry.
+
+    Returns `(problems, state_model, report_model)` — the parsed models (or `None` if parsing
+    failed) are handed back so `validate_history`'s loop can thread the state forward to the
+    NEXT entry's reconciliation check without a second parse of the same JSON (§9.4).
+    """
     problems: list[str] = []
 
     try:
         parsed_state = json.loads(entry.state_json)
     except json.JSONDecodeError as exc:
-        return [f"turn {entry.turn}: state payload is not valid JSON: {exc}"]
+        return [f"turn {entry.turn}: state payload is not valid JSON: {exc}"], None, None
     if canonical_dumps(parsed_state) != entry.state_json:
         problems.append(f"turn {entry.turn}: stored state payload is not canonical JSON")
 
@@ -379,7 +410,7 @@ def _validate_entry_payload(entry: HistoryEntry) -> list[str]:
             parsed_decisions = json.loads(entry.decisions_json)
         except json.JSONDecodeError as exc:
             problems.append(f"turn {entry.turn}: decisions payload is not valid JSON: {exc}")
-            return problems
+            return problems, None, None
         if canonical_dumps(parsed_decisions) != entry.decisions_json:
             problems.append(f"turn {entry.turn}: stored decisions payload is not canonical JSON")
 
@@ -389,7 +420,7 @@ def _validate_entry_payload(entry: HistoryEntry) -> list[str]:
             parsed_report = json.loads(entry.report_json)
         except json.JSONDecodeError as exc:
             problems.append(f"turn {entry.turn}: report payload is not valid JSON: {exc}")
-            return problems
+            return problems, None, None
         if canonical_dumps(parsed_report) != entry.report_json:
             problems.append(f"turn {entry.turn}: stored report payload is not canonical JSON")
 
@@ -408,6 +439,7 @@ def _validate_entry_payload(entry: HistoryEntry) -> list[str]:
             "(state, decisions, report, turn, versions, or previous_entry_hash was modified)"
         )
 
+    state_model: GameState | None = None
     try:
         state_model = GameState.model_validate(parsed_state)
     except ValidationError as exc:
@@ -415,5 +447,18 @@ def _validate_entry_payload(entry: HistoryEntry) -> list[str]:
     else:
         for violation in check_invariants(state_model):
             problems.append(f"turn {entry.turn}: {violation.code}: {violation.message}")
+
+    report_model: TurnReport | None = None
+    if entry.report_json is not None:
+        # (Phase 3A, §9.4) Parsing via model_validate re-runs EVERY report self-validator
+        # (PoliticalReport's ten, TurnReport's own cross-validators, every prior phase's report
+        # validators too) -- so a report tampered and then re-hashed consistently is still
+        # caught here, even though the hash chain itself would pass.
+        try:
+            report_model = TurnReport.model_validate(parsed_report)
+        except ValidationError as exc:
+            problems.append(f"turn {entry.turn}: stored report fails schema validation: {exc}")
+
+    return problems, state_model, report_model
 
     return problems

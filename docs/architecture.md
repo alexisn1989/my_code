@@ -221,6 +221,41 @@ any legitimate code path. See `docs/economy_methodology.md` and
 `docs/adr/0008-physical-extraction-derived-sector-output.md` for the full formulas, the
 no-clamp-needed proof, and the calibration approach.
 
+### Phase 3A legitimacy and political capital
+
+Still no new `PHASE_ORDER` slot: the political phase implements the existing slot 10,
+`update_group_welfare_approval_trust_radicalization`, which runs after every economic phase (3-5)
+so `ctx.production_report`/`ctx.labor_market_report` already exist and are self-validated. Sharing
+that slot's name is a scheduling convenience, not a concept merger — legitimacy is never called
+"approval" anywhere in the codebase, and nothing in this phase reads or writes
+`PopulationGroupState.approval`.
+
+The handler captures `OpeningPoliticalSnapshot` (`phases.py`, mirroring `OpeningFinanceSnapshot`) —
+the player's constitution, authored order support, legitimacy, political capital and economic
+baseline, by value, before any mutation — then calls the pure `simulation/legitimacy.py` functions
+with two numbers read from the already-validated reports (`total_gross_output`,
+`unemployment_rate_bps`) against the snapshot's baseline. `simulation/legitimacy.py` accepts no
+constitutional type anywhere in its public signatures: government form cannot reach the legitimacy
+formula, a guarantee `mypy` enforces at every call site, not merely a tested convention.
+`constitutional_order_support_bps` is scenario-authored and static in Phase 3A — nothing here moves
+it. The handler writes the resolved legitimacy, political capital and a fresh
+`EconomicBaselineState` (this turn's own observations) back into `player.politics`, and builds
+`PoliticalReport` from the snapshot plus those results — `PoliticalReport` never holds, and cannot
+reach, a `GameState`.
+
+`resolver.py` copies the political report onto `TurnReport.political`, then calls
+`simulation/reconciliation.py`'s `reconcile_political_report(opening_state, closing_state, report)`
+— a plain function, not a `TurnReport` validator, because `TurnReport` has no state reference at
+all (the same structural limit a late Phase 2C2 deviation ran into). `resolve_turn` already holds
+both the caller's untouched input state and the mutated working copy in one scope, which is what
+lets this function exist without giving `TurnReport` itself any new capability. A nonempty result
+raises `TurnResolutionError` before `TurnResolution` is returned, discarding the working copy
+exactly like an invariant violation. `validate_history` calls the same function per history entry,
+threading the previous entry's parsed state forward — see "Performance boundary" below for the
+measured cost. See `docs/economy_methodology.md` for every formula and
+`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md` for the R1-R8
+independent-review corrections applied before implementation.
+
 ### Government accounting phases (Phase 2A, extended in Phase 2B2)
 
 `apply_legal_and_administrative_changes` captures a frozen `OpeningFinanceSnapshot`
@@ -317,7 +352,15 @@ platforms without a directory file descriptor to sync, e.g. Windows).
 
 **Performance boundary.** `advance_game` runs `validate_history` (a full O(n) re-verification of
 every entry's hash and chain link) before every single turn, so N sequential turns cost O(n²)
-total. Measured at n=100 (`tests/test_soak.py`): ~0.7s total, ~7ms/turn. This build favors
+total. Phase 3A (§9.4 of its plan) extended this per-entry pass to also parse `report_json` into a
+`TurnReport` and re-run `reconcile_political_report` against the neighbouring entry's state — a
+genuinely new cost, not a free addition, deliberately measured before and after landing rather than
+assumed. Using isolated git worktrees at the commit immediately before and immediately after this
+change (one discarded warm-up run plus three measured runs each, median taken), all three 100-turn
+soaks moved from a ~4.2-4.8s/100-turns (~42-48ms/turn) median to a ~6.3-7.1s/100-turns
+(~63-71ms/turn) median — a ~1.48-1.50x ratio, safely under the ~2x stop threshold the plan set in
+advance. Measured at n=100 (`tests/test_soak.py`) on the current `HEAD`, later commits (invariants,
+CLI, additional tests) push this further: ~7.8-8.6s total, ~76-86ms/turn. This build favors
 correctness over optimization — validation strength is not weakened to make this faster. If a
 later phase's soak testing shows this matters at realistic game lengths, the options are
 incremental tail-only validation (trust everything before the last known-good entry) or a trusted
@@ -329,9 +372,10 @@ reason to.
 `Money` is declared as `Money: TypeAlias = int` in `core/money.py` (Python 3.11 target — no PEP 695
 `type` statement). One unit = 1/100 of the in-fiction currency. All treasury, debt, revenue, and
 expenditure fields use `Money`; arithmetic is plain integer arithmetic, so ledgers either reconcile
-exactly or fail a test — no binary-float drift. Bounded political metrics (approval, loyalty,
-trust, 0–100 scale) are `float` with a shared `clamp01_100` helper; they don't need to balance to
-zero the way money does, only to stay in range, which `check_invariants` enforces.
+exactly or fail a test — no binary-float drift. `PopulationGroupState`/`InstitutionState`'s
+approval/loyalty/trust fields (0–100 scale, Phase 0 scaffolding, read by no formula yet) are
+`float` with a shared `clamp01_100` helper; they don't need to balance to zero the way money does,
+only to stay in range, which `check_invariants` enforces.
 
 Government-accounting fields (Phase 2A) use `StrictMoney`/`StrictSignedMoney`/`StrictBps` —
 `Annotated[int, Field(strict=True, ...)]` aliases in `core/money.py`. Pydantic's `strict=True` on
@@ -339,6 +383,15 @@ an `int` field rejects whole-number floats (`10.0`), numeric strings (`"10"`), b
 `bool` being an `int` subclass in plain Python), NaN, and ±infinity — verified empirically rather
 than assumed, and pinned by `tests/test_money.py`. Rate fields (`StrictBps`) are additionally
 bounded to `[0, 10_000]` (0%–100%).
+
+Phase 3A's political metrics (`core/politics.py`) follow the same strict-integer-bps convention,
+**not** the float `approval`/`loyalty` convention — `legitimacy_bps` is a validated
+`StrictLegitimacyBps`, never a `clamp01_100`-managed float. Two further aliases handle signed
+deltas: `StrictSignedLegitimacyBps` (bounded to `[-10_000, 10_000]`, for quantities a formula
+provably keeps in scale) and `StrictSignedBps` (genuinely unbounded, for raw rate changes like
+`output_change_bps` that can exceed the legitimacy scale — a baseline of 1 rising to 3 is +20,000
+bps). `trunc_div_toward_zero`, the one rounding step every signed political formula uses, requires
+a positive denominator and raises otherwise, rather than silently treating a zero denominator as 0.
 
 ## Persistence: file-based now, database at Phase 4
 

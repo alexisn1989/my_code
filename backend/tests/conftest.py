@@ -5,14 +5,26 @@ from pathlib import Path
 import pytest
 
 from app.core.money import Money
+from app.simulation.constitution import (
+    AmendmentDifficulty,
+    DecreeAuthority,
+    ExecutiveSelection,
+    ExecutiveSystem,
+    JudicialReview,
+    Legislature,
+    TerritorialOrganization,
+)
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
     RULESET_VERSION,
+    ConstitutionState,
     CountryState,
+    EconomicBaselineState,
     EconomyState,
     GameState,
     GovernmentFinanceState,
     InstitutionState,
+    PoliticalState,
     PopulationGroupState,
     ResourceCategory,
     ResourceDepositState,
@@ -224,6 +236,48 @@ def make_economy(
     )
 
 
+def make_politics(
+    *,
+    executive_system: ExecutiveSystem = ExecutiveSystem.PRESIDENTIAL,
+    executive_selection: ExecutiveSelection = ExecutiveSelection.DIRECT_ELECTION,
+    legislature: Legislature = Legislature.UNICAMERAL,
+    territorial_organization: TerritorialOrganization = TerritorialOrganization.UNITARY,
+    judicial_review: JudicialReview = JudicialReview.WEAK,
+    amendment_difficulty: AmendmentDifficulty = AmendmentDifficulty.SUPERMAJORITY,
+    decree_authority: DecreeAuthority = DecreeAuthority.EMERGENCY_ONLY,
+    executive_term_limit_terms: int | None = None,
+    national_election_interval_turns: int | None = None,
+    constitutional_order_support_bps: int = 7_000,
+    legitimacy_bps: int = 7_000,
+    political_capital: int = 500,
+    political_capital_capacity: int = 1_000,
+    economic_baseline: EconomicBaselineState | None = None,
+) -> PoliticalState:
+    """Build a valid `PoliticalState` (Phase 3A) with reasonable round-number defaults: a
+    coherent presidential republic, moderate authored support, and legitimacy already at that
+    same 7,000 level so a fresh test country starts at drift-equilibrium. `economic_baseline`
+    defaults to `None` (legal only at `state.turn == 0`) — pass one explicitly for a country
+    built at a later turn; see `make_game_state`, which does this automatically."""
+    return PoliticalState(
+        constitution=ConstitutionState(
+            executive_system=executive_system,
+            executive_selection=executive_selection,
+            legislature=legislature,
+            territorial_organization=territorial_organization,
+            judicial_review=judicial_review,
+            amendment_difficulty=amendment_difficulty,
+            decree_authority=decree_authority,
+            executive_term_limit_terms=executive_term_limit_terms,
+            national_election_interval_turns=national_election_interval_turns,
+        ),
+        constitutional_order_support_bps=constitutional_order_support_bps,
+        legitimacy_bps=legitimacy_bps,
+        political_capital=political_capital,
+        political_capital_capacity=political_capital_capacity,
+        economic_baseline=economic_baseline,
+    )
+
+
 def make_country(
     country_id: str = "testland",
     *,
@@ -233,14 +287,17 @@ def make_country(
     finance: GovernmentFinanceState | None = None,
     with_economy: bool = True,
     economy: EconomyState | None = None,
+    with_politics: bool = True,
+    politics: PoliticalState | None = None,
 ) -> CountryState:
     """Build a minimal, valid `CountryState` for unit tests that don't need YAML.
 
-    Has finance and economy by default (`with_finance=True`, `with_economy=True`) because
-    every existing caller uses this to build what ends up being the player country, and the
-    player is required to have both `GovernmentFinanceState` and `EconomyState` (see
-    `simulation.invariants`). Pass `with_finance=False`/`with_economy=False` to build an
-    AI-style country with neither, or `finance=...`/`economy=...` to supply a specific one
+    Has finance, economy, and politics by default (`with_finance=True`, `with_economy=True`,
+    `with_politics=True`) because every existing caller uses this to build what ends up being
+    the player country, and the player is required to have `GovernmentFinanceState`,
+    `EconomyState`, and (Phase 3A) `PoliticalState` (see `simulation.invariants`). Pass
+    `with_finance=False`/`with_economy=False`/`with_politics=False` to build an AI-style country
+    with none of them, or `finance=...`/`economy=...`/`politics=...` to supply a specific one
     (implies the corresponding `with_*` flag is ignored).
     """
     groups = [
@@ -253,6 +310,9 @@ def make_country(
     resolved_economy = (
         economy if economy is not None else (make_economy() if with_economy else None)
     )
+    resolved_politics = (
+        politics if politics is not None else (make_politics() if with_politics else None)
+    )
     return CountryState(
         id=country_id,
         name=country_id.title(),
@@ -262,6 +322,7 @@ def make_country(
         treasury=TreasuryState(cash_on_hand=1_000_00, debt=100_00),
         finance=resolved_finance,
         economy=resolved_economy,
+        politics=resolved_politics,
     )
 
 
@@ -273,12 +334,29 @@ def make_game_state(
     turn: int = 0,
     state_version: int = 0,
 ) -> GameState:
-    """Build a minimal, valid `GameState` for unit tests that don't need YAML."""
+    """Build a minimal, valid `GameState` for unit tests that don't need YAML.
+
+    When `countries` is omitted and `turn > 0`, the auto-built player's `politics` carries a
+    baseline stamped `source_turn == turn` (R6: a baseline is legal only at `turn == 0` when
+    absent) — `total_gross_output=0` is a deliberately inert placeholder (§6.3's explicit
+    zero-baseline branch means it contributes no performance effect if this state is ever
+    resolved). A caller who passes `countries=...` explicitly is responsible for its own
+    politics, exactly as they already are for finance/economy.
+    """
     if countries is None:
-        countries = {player_country_id: make_country(player_country_id)}
+        politics = (
+            make_politics(
+                economic_baseline=EconomicBaselineState(
+                    source_turn=turn, total_gross_output=0, unemployment_rate_bps=1_000
+                )
+            )
+            if turn > 0
+            else None
+        )
+        countries = {player_country_id: make_country(player_country_id, politics=politics)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.7.0",
+        content_version="0.8.0",
         seed=seed,
         turn=turn,
         state_version=state_version,
