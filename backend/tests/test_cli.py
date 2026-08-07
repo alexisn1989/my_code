@@ -207,3 +207,71 @@ def test_history_shows_a_deficit_scenarios_borrowing(
     assert main(["resolve", "--state", str(save0), "--turns", "1", "--out", str(save1)]) == 0
     resolve_out = capsys.readouterr().out
     assert "issued" in resolve_out and "denars of new debt" in resolve_out
+
+
+# --- Phase 3A: politics in inspect/history (T-N2) -----------------------------
+
+
+def test_inspect_shows_legitimacy_and_political_capital_by_default(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    save0 = tmp_path / "save0.json"
+    assert main(["new", "--scenario", SCENARIO_PATH, "--out", str(save0)]) == 0
+    capsys.readouterr()
+
+    assert main(["inspect", "--state", str(save0)]) == 0
+    out = capsys.readouterr().out
+    assert "legitimacy:          70%" in out
+    assert "political capital:   500 / 1,000" in out
+    # The full axis table is --politics-gated, not shown by default.
+    assert "constitution:" not in out
+    assert "order support:" not in out
+
+
+def test_inspect_politics_flag_shows_the_full_axis_table_and_baseline(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    save0 = tmp_path / "save0.json"
+    assert main(["new", "--scenario", SCENARIO_PATH, "--out", str(save0)]) == 0
+    capsys.readouterr()
+
+    assert main(["inspect", "--state", str(save0), "--politics"]) == 0
+    out = capsys.readouterr().out
+    assert "constitution:        parliamentary / legislative_selection / bicameral / unitary" in out
+    assert "national_election=every 16 turns" in out
+    assert "order support:       80%" in out
+    assert "economic baseline:   (none yet — no turn resolved)" in out
+
+
+def test_history_turn_shows_the_political_block(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    save0 = tmp_path / "save0.json"
+    save1 = tmp_path / "save1.json"
+    assert main(["new", "--scenario", SCENARIO_PATH, "--out", str(save0)]) == 0
+    capsys.readouterr()
+    assert main(["resolve", "--state", str(save0), "--turns", "1", "--out", str(save1)]) == 0
+    capsys.readouterr()
+
+    assert main(["history", "--state", str(save1), "--turn", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "political:" in out
+    assert "legitimacy: opening=70% order_support=1% performance=0% -> closing=71%" in out
+    assert "opening baseline: (none — first resolved turn, performance contribution 0)" in out
+    assert "political capital: opening=500 regeneration=+413 spent=0 -> closing=913 / 1,000" in out
+
+
+def test_resolve_output_also_shows_the_political_block(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`_cmd_resolve` prints via `_print_report`, a separate code path from `_cmd_history`'s
+    inline printing -- both must show the political block independently."""
+    save0 = tmp_path / "save0.json"
+    save1 = tmp_path / "save1.json"
+    assert main(["new", "--scenario", SCENARIO_PATH, "--out", str(save0)]) == 0
+    capsys.readouterr()
+
+    assert main(["resolve", "--state", str(save0), "--turns", "1", "--out", str(save1)]) == 0
+    out = capsys.readouterr().out
+    assert "political:" in out
+    assert "closing=71%" in out
