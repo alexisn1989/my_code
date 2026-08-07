@@ -115,9 +115,11 @@ def assess_economic_performance(signals: PerformanceSignals | None) -> Performan
 
     When `baseline_total_gross_output == 0` (a genuine zero-output economy on a later turn),
     `output_change_bps` is `0`: there is no proportional change to measure against nothing, and the
-    alternative is an unbounded percentage with no meaning. `trunc_div_toward_zero` returns 0 for a
-    zero denominator, so no `ZeroDivisionError` path exists. Unemployment needs no such guard — it
-    is a difference of two basis-point values, never a quotient.
+    alternative is an unbounded percentage with no meaning. **(R5)** This case is now checked
+    explicitly, before any division, and `trunc_div_toward_zero` is never called with a zero
+    denominator — it requires a positive one and raises `ValueError` otherwise, so the precondition
+    is stated here rather than silently absorbed by the helper. Unemployment needs no such guard —
+    it is a difference of two basis-point values, never a quotient.
     """
     if signals is None:
         return PerformanceAssessment(
@@ -128,11 +130,20 @@ def assess_economic_performance(signals: PerformanceSignals | None) -> Performan
             performance_contribution_bps=0,
         )
 
-    output_change_bps = trunc_div_toward_zero(
-        (signals.current_total_gross_output - signals.baseline_total_gross_output)
-        * BPS_DENOMINATOR,
-        signals.baseline_total_gross_output,
-    )
+    # (R5) A zero-output baseline is checked explicitly, BEFORE any division, and never reaches
+    # `trunc_div_toward_zero` — which now requires a positive denominator and raises otherwise.
+    # `baseline_total_gross_output == 0` is a genuine later-turn state (a real economy that
+    # produced nothing), distinct from `signals is None` (no prior turn at all): there is no
+    # proportional change to measure against nothing, and the alternative -- an unbounded
+    # percentage with no meaning -- is worse than stating the change is 0.
+    if signals.baseline_total_gross_output == 0:
+        output_change_bps = 0
+    else:
+        output_change_bps = trunc_div_toward_zero(
+            (signals.current_total_gross_output - signals.baseline_total_gross_output)
+            * BPS_DENOMINATOR,
+            signals.baseline_total_gross_output,
+        )
     output_contribution_bps = trunc_div_toward_zero(
         output_change_bps * OUTPUT_SENSITIVITY_BPS, BPS_DENOMINATOR
     )

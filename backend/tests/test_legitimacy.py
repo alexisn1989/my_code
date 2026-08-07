@@ -142,6 +142,31 @@ def test_zero_output_baseline_is_distinct_from_an_absent_baseline() -> None:
     assert absent_baseline.performance_contribution_bps == 0
 
 
+# --- T-M7 (R5): capped contribution alongside its uncapped intermediate ------
+
+
+def test_a_tripled_baseline_produces_an_uncapped_intermediate_and_a_capped_final() -> None:
+    """Baseline 1 -> current 3 is +20,000 bps raw -- unbounded and larger than the legitimacy
+    scale itself -- but the published `performance_contribution_bps` is still capped to +/-300.
+    Both values are published: the uncapped intermediate is not hidden once capping applies."""
+    assessment = assess_economic_performance(_signals(1, 3))
+    assert assessment.output_change_bps == 20_000
+    assert assessment.output_contribution_bps == 5_000  # uncapped: 20,000 * 2,500 / 10,000
+    assert assessment.performance_contribution_bps == MAX_PERFORMANCE_CONTRIBUTION_BPS
+
+
+def test_a_millionfold_rebound_is_unbounded_before_the_cap() -> None:
+    assessment = assess_economic_performance(_signals(1, 1_000_000))
+    assert assessment.output_change_bps == 9_999_990_000
+    assert assessment.performance_contribution_bps == MAX_PERFORMANCE_CONTRIBUTION_BPS
+
+
+def test_complete_collapse_is_exactly_negative_10000_output_change_bps() -> None:
+    assessment = assess_economic_performance(_signals(5_000_000, 0))
+    assert assessment.output_change_bps == -10_000
+    assert assessment.performance_contribution_bps == -MAX_PERFORMANCE_CONTRIBUTION_BPS
+
+
 # --- T-L5: per-turn caps ------------------------------------------------------
 
 
