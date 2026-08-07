@@ -1,8 +1,8 @@
-"""Tests for `simulation.constitution` (Phase 3A, T-C1..T-C3, T-C6..T-C8).
+"""Tests for `simulation.constitution` (Phase 3A, T-C1..T-C10).
 
 Two things this file exists to pin:
 
-1. **Validity rules C1-C7 are total and exact** — every one of the 7,776 reachable configurations
+1. **Validity rules C1-C9 are total and exact** — every one of the 10,368 reachable configurations
    is accepted or rejected exactly as the rules predict, so "valid" is a closed, enumerable set
    rather than whatever the validator happens to do.
 2. **Validity is not legitimacy** — the arrangements a reader might expect to be penalised
@@ -48,7 +48,7 @@ def _constitution(**overrides: object) -> ConstitutionState:
     return ConstitutionState(**base)  # type: ignore[arg-type]
 
 
-# --- T-C1: every rule C1-C7 rejects, with its own code -----------------------
+# --- T-C1: every rule C1-C9 rejects, with its own code -----------------------
 
 
 def test_c1_parliamentary_requires_legislature() -> None:
@@ -69,8 +69,10 @@ def test_c2_parliamentary_requires_legislative_selection() -> None:
         )
 
 
-def test_c3_presidential_forbids_legislative_selection() -> None:
-    with pytest.raises(ValidationError, match="presidential_forbids_legislative_selection"):
+def test_c3_presidential_requires_elected_or_appointed_executive() -> None:
+    with pytest.raises(
+        ValidationError, match="presidential_requires_elected_or_appointed_executive"
+    ):
         _constitution(
             executive_system=ExecutiveSystem.PRESIDENTIAL,
             executive_selection=ExecutiveSelection.LEGISLATIVE_SELECTION,
@@ -101,8 +103,9 @@ def test_c4_semi_presidential_requires_legislature() -> None:
 
 
 def test_c5_legislative_selection_requires_legislature() -> None:
-    """Reachable independently of C1/C2/C4: a semi-presidential system is rejected by C4 first, and
-    a presidential one by C3, so this fires for the remaining combination."""
+    """Reachable independently of C1/C2/C3/C4/C6: neither a parliamentary, presidential, semi-
+    presidential nor hereditary/monarchical combination applies, so this fires for the remaining
+    combination — a monarchy that tries to be selected by a nonexistent legislature."""
     violation = first_constitutional_violation(
         ConstitutionState.model_construct(
             executive_system=ExecutiveSystem.PARLIAMENTARY,
@@ -113,13 +116,13 @@ def test_c5_legislative_selection_requires_legislature() -> None:
             amendment_difficulty=AmendmentDifficulty.SUPERMAJORITY,
             decree_authority=DecreeAuthority.NONE,
             executive_term_limit_terms=None,
-            executive_election_interval_turns=None,
+            national_election_interval_turns=None,
         )
     )
     assert violation is None  # sanity: the coherent case really is coherent
 
     bypassed = ConstitutionState.model_construct(
-        executive_system=ExecutiveSystem.PRESIDENTIAL,
+        executive_system=ExecutiveSystem.MONARCHICAL,
         executive_selection=ExecutiveSelection.LEGISLATIVE_SELECTION,
         legislature=Legislature.NONE,
         territorial_organization=TerritorialOrganization.UNITARY,
@@ -127,29 +130,48 @@ def test_c5_legislative_selection_requires_legislature() -> None:
         amendment_difficulty=AmendmentDifficulty.SUPERMAJORITY,
         decree_authority=DecreeAuthority.NONE,
         executive_term_limit_terms=None,
-        executive_election_interval_turns=None,
+        national_election_interval_turns=None,
     )
     code, _ = first_constitutional_violation(bypassed)  # type: ignore[misc]
-    assert code == "presidential_forbids_legislative_selection"
+    assert code == "legislative_selection_requires_legislature"
 
 
-def test_c6_term_limit_requires_selected_executive() -> None:
-    with pytest.raises(ValidationError, match="term_limit_requires_selected_executive"):
+def test_c6_hereditary_requires_monarchical_system() -> None:
+    """The rule that makes the previously-incoherent PRESIDENTIAL + HEREDITARY impossible."""
+    with pytest.raises(ValidationError, match="hereditary_requires_monarchical_system"):
         _constitution(
             executive_system=ExecutiveSystem.PRESIDENTIAL,
+            executive_selection=ExecutiveSelection.HEREDITARY,
+            legislature=Legislature.NONE,
+        )
+
+
+def test_c7_monarchical_requires_hereditary_or_appointed() -> None:
+    with pytest.raises(ValidationError, match="monarchical_requires_hereditary_or_appointed"):
+        _constitution(
+            executive_system=ExecutiveSystem.MONARCHICAL,
+            executive_selection=ExecutiveSelection.DIRECT_ELECTION,
+            legislature=Legislature.UNICAMERAL,
+        )
+
+
+def test_c8_term_limit_requires_non_hereditary_executive() -> None:
+    with pytest.raises(ValidationError, match="term_limit_requires_non_hereditary_executive"):
+        _constitution(
+            executive_system=ExecutiveSystem.MONARCHICAL,
             executive_selection=ExecutiveSelection.HEREDITARY,
             legislature=Legislature.NONE,
             executive_term_limit_terms=2,
         )
 
 
-def test_c7_election_interval_requires_elected_executive() -> None:
-    with pytest.raises(ValidationError, match="election_interval_requires_elected_executive"):
+def test_c9_national_election_requires_something_elected() -> None:
+    with pytest.raises(ValidationError, match="national_election_requires_something_elected"):
         _constitution(
-            executive_system=ExecutiveSystem.PRESIDENTIAL,
-            executive_selection=ExecutiveSelection.HEREDITARY,
+            executive_system=ExecutiveSystem.MONARCHICAL,
+            executive_selection=ExecutiveSelection.APPOINTED,
             legislature=Legislature.NONE,
-            executive_election_interval_turns=16,
+            national_election_interval_turns=16,
         )
 
 
@@ -158,8 +180,8 @@ def test_c7_election_interval_requires_elected_executive() -> None:
 
 def test_all_required_archetypes_construct_cleanly() -> None:
     """The routes Phase 3A must leave open — including a dictatorship that introduces competitive
-    elections, and a monarchy. None is privileged or penalised here; that is what
-    `test_legitimacy_neutrality.py` proves numerically."""
+    elections, and both hereditary and elective monarchy. None is privileged or penalised here;
+    that is what `test_legitimacy_neutrality.py` proves numerically."""
     archetypes = {
         "stable parliamentary democracy": dict(
             executive_system=ExecutiveSystem.PARLIAMENTARY,
@@ -167,7 +189,7 @@ def test_all_required_archetypes_construct_cleanly() -> None:
             legislature=Legislature.BICAMERAL,
             judicial_review=JudicialReview.STRONG,
             executive_term_limit_terms=2,
-            executive_election_interval_turns=16,
+            national_election_interval_turns=16,
         ),
         "presidential democracy": dict(
             executive_system=ExecutiveSystem.PRESIDENTIAL,
@@ -175,7 +197,7 @@ def test_all_required_archetypes_construct_cleanly() -> None:
             legislature=Legislature.UNICAMERAL,
             territorial_organization=TerritorialOrganization.FEDERAL,
             executive_term_limit_terms=2,
-            executive_election_interval_turns=16,
+            national_election_interval_turns=16,
         ),
         "backsliding democracy": dict(
             executive_system=ExecutiveSystem.PRESIDENTIAL,
@@ -184,7 +206,7 @@ def test_all_required_archetypes_construct_cleanly() -> None:
             judicial_review=JudicialReview.NONE,
             amendment_difficulty=AmendmentDifficulty.SIMPLE_MAJORITY,
             decree_authority=DecreeAuthority.UNLIMITED,
-            executive_election_interval_turns=20,
+            national_election_interval_turns=20,
         ),
         "one-party government": dict(
             executive_system=ExecutiveSystem.PARLIAMENTARY,
@@ -203,12 +225,27 @@ def test_all_required_archetypes_construct_cleanly() -> None:
             decree_authority=DecreeAuthority.UNLIMITED,
         ),
         "hereditary monarchy": dict(
-            executive_system=ExecutiveSystem.PRESIDENTIAL,
+            executive_system=ExecutiveSystem.MONARCHICAL,
             executive_selection=ExecutiveSelection.HEREDITARY,
             legislature=Legislature.NONE,
             judicial_review=JudicialReview.NONE,
             amendment_difficulty=AmendmentDifficulty.ENTRENCHED,
             decree_authority=DecreeAuthority.UNLIMITED,
+        ),
+        "elective monarchy": dict(
+            executive_system=ExecutiveSystem.MONARCHICAL,
+            executive_selection=ExecutiveSelection.APPOINTED,
+            legislature=Legislature.NONE,
+            judicial_review=JudicialReview.WEAK,
+            amendment_difficulty=AmendmentDifficulty.ENTRENCHED,
+            decree_authority=DecreeAuthority.EMERGENCY_ONLY,
+        ),
+        "constitutional monarchy": dict(
+            executive_system=ExecutiveSystem.MONARCHICAL,
+            executive_selection=ExecutiveSelection.HEREDITARY,
+            legislature=Legislature.BICAMERAL,
+            judicial_review=JudicialReview.STRONG,
+            decree_authority=DecreeAuthority.NONE,
         ),
         "dictatorship that introduced elections": dict(
             executive_system=ExecutiveSystem.PRESIDENTIAL,
@@ -216,13 +253,13 @@ def test_all_required_archetypes_construct_cleanly() -> None:
             legislature=Legislature.UNICAMERAL,
             judicial_review=JudicialReview.WEAK,
             executive_term_limit_terms=2,
-            executive_election_interval_turns=16,
+            national_election_interval_turns=16,
         ),
         "semi-presidential republic": dict(
             executive_system=ExecutiveSystem.SEMI_PRESIDENTIAL,
             executive_selection=ExecutiveSelection.DIRECT_ELECTION,
             legislature=Legislature.BICAMERAL,
-            executive_election_interval_turns=20,
+            national_election_interval_turns=20,
         ),
     }
     for label, axes in archetypes.items():
@@ -246,7 +283,7 @@ def test_unlimited_decree_with_elections_and_term_limits_is_legal() -> None:
     assert _constitution(
         decree_authority=DecreeAuthority.UNLIMITED,
         executive_term_limit_terms=2,
-        executive_election_interval_turns=16,
+        national_election_interval_turns=16,
     )
 
 
@@ -268,6 +305,18 @@ def test_federal_organization_without_a_legislature_is_legal() -> None:
     )
 
 
+def test_monarchical_with_legislature_judicial_review_and_election_is_legal() -> None:
+    """Constitutional monarchies exist and must not be forced into absolutism: a legislature,
+    strong courts and a scheduled national election are all legal alongside MONARCHICAL."""
+    assert _constitution(
+        executive_system=ExecutiveSystem.MONARCHICAL,
+        executive_selection=ExecutiveSelection.HEREDITARY,
+        legislature=Legislature.BICAMERAL,
+        judicial_review=JudicialReview.STRONG,
+        national_election_interval_turns=16,
+    )
+
+
 # --- T-C8: total rule coverage over every reachable configuration ------------
 
 
@@ -278,8 +327,8 @@ def _expected_violation_code(
     has_term_limit: bool,
     has_election_interval: bool,
 ) -> str | None:
-    """An independent re-statement of C1-C7, written from the rule table rather than from the
-    implementation, so the two must agree for all 7,776 configurations."""
+    """An independent re-statement of C1-C9, written from the rule table rather than from the
+    implementation, so the two must agree for all 10,368 configurations."""
     if system is ExecutiveSystem.PARLIAMENTARY:
         if legislature is Legislature.NONE:
             return "parliamentary_requires_legislature"
@@ -289,26 +338,34 @@ def _expected_violation_code(
         system is ExecutiveSystem.PRESIDENTIAL
         and selection is ExecutiveSelection.LEGISLATIVE_SELECTION
     ):
-        return "presidential_forbids_legislative_selection"
+        return "presidential_requires_elected_or_appointed_executive"
     if system is ExecutiveSystem.SEMI_PRESIDENTIAL and (
         selection is not ExecutiveSelection.DIRECT_ELECTION or legislature is Legislature.NONE
     ):
         return "semi_presidential_requires_direct_election_and_legislature"
     if selection is ExecutiveSelection.LEGISLATIVE_SELECTION and legislature is Legislature.NONE:
         return "legislative_selection_requires_legislature"
-    if has_term_limit and selection is ExecutiveSelection.HEREDITARY:
-        return "term_limit_requires_selected_executive"
-    if has_election_interval and selection not in (
-        ExecutiveSelection.DIRECT_ELECTION,
-        ExecutiveSelection.LEGISLATIVE_SELECTION,
+    if selection is ExecutiveSelection.HEREDITARY and system is not ExecutiveSystem.MONARCHICAL:
+        return "hereditary_requires_monarchical_system"
+    if system is ExecutiveSystem.MONARCHICAL and selection not in (
+        ExecutiveSelection.HEREDITARY,
+        ExecutiveSelection.APPOINTED,
     ):
-        return "election_interval_requires_elected_executive"
+        return "monarchical_requires_hereditary_or_appointed"
+    if has_term_limit and selection is ExecutiveSelection.HEREDITARY:
+        return "term_limit_requires_non_hereditary_executive"
+    if (
+        has_election_interval
+        and legislature is Legislature.NONE
+        and selection is not (ExecutiveSelection.DIRECT_ELECTION)
+    ):
+        return "national_election_requires_something_elected"
     return None
 
 
 def test_every_reachable_configuration_matches_the_rule_table() -> None:
-    """All 3 x 4 x 3 x 2 x 3 x 3 x 3 = 1,944 axis combinations, times term-limit present/absent
-    times election-interval present/absent = 7,776 configurations."""
+    """All 4 x 4 x 3 x 2 x 3 x 3 x 3 = 2,592 axis combinations, times term-limit present/absent
+    times election-interval present/absent = 10,368 configurations."""
     checked = 0
     for (
         system,
@@ -344,7 +401,7 @@ def test_every_reachable_configuration_matches_the_rule_table() -> None:
             amendment_difficulty=amendment,
             decree_authority=decree,
             executive_term_limit_terms=term_limit,
-            executive_election_interval_turns=interval,
+            national_election_interval_turns=interval,
         )
         actual = first_constitutional_violation(bypassed)
         actual_code = None if actual is None else actual[0]
@@ -353,7 +410,7 @@ def test_every_reachable_configuration_matches_the_rule_table() -> None:
             f"term_limit={term_limit} interval={interval}: "
             f"expected {expected!r}, got {actual_code!r}"
         )
-    assert checked == 7_776
+    assert checked == 10_368
 
 
 def test_the_valid_configuration_count_is_stable() -> None:
@@ -372,7 +429,7 @@ def test_the_valid_configuration_count_is_stable() -> None:
     # The four purely-descriptive axes (territorial, judicial, amendment, decree) never affect
     # validity, so total valid configurations = valid (system, selection, legislature, limit,
     # interval) tuples x 2 x 3 x 3 x 3.
-    assert valid * 2 * 3 * 3 * 3 == sum(
+    total_valid = sum(
         1
         for combo in itertools.product(
             ExecutiveSystem,
@@ -390,6 +447,72 @@ def test_the_valid_configuration_count_is_stable() -> None:
         )
         is None
     )
+    assert valid * 2 * 3 * 3 * 3 == total_valid
+    assert total_valid == 2_862
+
+
+# --- T-C9: R8 — the incoherent pairing is gone --------------------------------
+
+
+def test_c9_presidential_hereditary_is_rejected_by_c6() -> None:
+    with pytest.raises(ValidationError, match="hereditary_requires_monarchical_system"):
+        _constitution(
+            executive_system=ExecutiveSystem.PRESIDENTIAL,
+            executive_selection=ExecutiveSelection.HEREDITARY,
+            legislature=Legislature.NONE,
+        )
+
+
+def test_c9_monarchical_direct_election_and_legislative_selection_are_rejected_by_c7() -> None:
+    with pytest.raises(ValidationError, match="monarchical_requires_hereditary_or_appointed"):
+        _constitution(
+            executive_system=ExecutiveSystem.MONARCHICAL,
+            executive_selection=ExecutiveSelection.DIRECT_ELECTION,
+            legislature=Legislature.UNICAMERAL,
+        )
+    with pytest.raises(ValidationError, match="monarchical_requires_hereditary_or_appointed"):
+        _constitution(
+            executive_system=ExecutiveSystem.MONARCHICAL,
+            executive_selection=ExecutiveSelection.LEGISLATIVE_SELECTION,
+            legislature=Legislature.UNICAMERAL,
+        )
+
+
+def test_c9_both_hereditary_and_elective_monarchy_construct() -> None:
+    assert _constitution(
+        executive_system=ExecutiveSystem.MONARCHICAL,
+        executive_selection=ExecutiveSelection.HEREDITARY,
+        legislature=Legislature.NONE,
+    )
+    assert _constitution(
+        executive_system=ExecutiveSystem.MONARCHICAL,
+        executive_selection=ExecutiveSelection.APPOINTED,
+        legislature=Legislature.NONE,
+    )
+
+
+# --- T-C10: R8 — the renamed election field -----------------------------------
+
+
+def test_c10_parliamentary_national_election_with_legislative_selection_is_legal() -> None:
+    """The old executive-only rule wrongly rejected this: a parliamentary national election elects
+    a legislature, which then selects the executive."""
+    assert _constitution(
+        executive_system=ExecutiveSystem.PARLIAMENTARY,
+        executive_selection=ExecutiveSelection.LEGISLATIVE_SELECTION,
+        legislature=Legislature.UNICAMERAL,
+        national_election_interval_turns=16,
+    )
+
+
+def test_c10_no_legislature_and_non_direct_election_rejects_a_scheduled_national_election() -> None:
+    with pytest.raises(ValidationError, match="national_election_requires_something_elected"):
+        _constitution(
+            executive_system=ExecutiveSystem.MONARCHICAL,
+            executive_selection=ExecutiveSelection.APPOINTED,
+            legislature=Legislature.NONE,
+            national_election_interval_turns=16,
+        )
 
 
 # --- T-C6/T-C7: digest stability and enum value stability --------------------
@@ -408,7 +531,7 @@ def test_identical_axes_produce_identical_digests() -> None:
         pytest.param("amendment_difficulty", AmendmentDifficulty.ENTRENCHED, id="amendment"),
         pytest.param("decree_authority", DecreeAuthority.UNLIMITED, id="decree"),
         pytest.param("executive_term_limit_terms", 2, id="term-limit"),
-        pytest.param("executive_election_interval_turns", 16, id="election-interval"),
+        pytest.param("national_election_interval_turns", 16, id="election-interval"),
     ],
 )
 def test_changing_any_single_axis_changes_the_digest(field: str, value: object) -> None:
@@ -424,6 +547,7 @@ def test_enum_values_are_stable_strings() -> None:
         "presidential",
         "parliamentary",
         "semi_presidential",
+        "monarchical",
     ]
     assert [m.value for m in ExecutiveSelection] == [
         "direct_election",
@@ -465,4 +589,4 @@ def test_term_limit_and_election_interval_reject_zero() -> None:
     with pytest.raises(ValidationError):
         _constitution(executive_term_limit_terms=0)
     with pytest.raises(ValidationError):
-        _constitution(executive_election_interval_turns=0)
+        _constitution(national_election_interval_turns=0)

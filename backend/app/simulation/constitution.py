@@ -37,16 +37,23 @@ StrictTermCount: TypeAlias = Annotated[int, Field(strict=True, gt=0)]
 zero, so an absent limit and a nonsensical zero-term limit can never be confused."""
 
 StrictTurnInterval: TypeAlias = Annotated[int, Field(strict=True, gt=0)]
-"""A number of turns between constitutionally required elections. Strictly positive for the same
-reason: "no required election" is `None`, not `0`."""
+"""A number of turns between constitutionally required national elections. Strictly positive for
+the same reason: "no required election" is `None`, not `0`."""
 
 
 class ExecutiveSystem(StrEnum):
-    """How the executive relates to the legislature."""
+    """How the executive relates to the legislature.
+
+    **(R8)** `MONARCHICAL` exists because `PRESIDENTIAL + HEREDITARY` is incoherent: a presidential
+    executive's defining feature is a separate origin from, and accountability distinct from, the
+    legislature — a mandate or an appointment, never an inheritance. `MONARCHICAL` is the value that
+    makes a hereditary (or elective) head of state honest, bound by C6/C7 below.
+    """
 
     PRESIDENTIAL = "presidential"
     PARLIAMENTARY = "parliamentary"
     SEMI_PRESIDENTIAL = "semi_presidential"
+    MONARCHICAL = "monarchical"
 
 
 class ExecutiveSelection(StrEnum):
@@ -116,11 +123,16 @@ class ConstitutionState(BaseModel):
     """One country's constitutional order: seven independent axes plus two optional scalars.
 
     `executive_term_limit_terms is None` means there is no term limit, and
-    `executive_election_interval_turns is None` means no constitutionally required election —
-    genuinely absent, never a sentinel zero, matching `ResourceDepositState.stock_ceiling`'s
-    established `| None` precedent.
+    `national_election_interval_turns is None` means no constitutionally required national
+    election — genuinely absent, never a sentinel zero, matching
+    `ResourceDepositState.stock_ceiling`'s established `| None` precedent.
 
-    The validator below applies C1-C7 so an incoherent constitution can never be constructed on any
+    **(R8)** `national_election_interval_turns`, not `executive_election_interval_turns`: a
+    parliamentary national election selects a *legislature*, which then selects the executive — the
+    electorate never votes for the executive directly in that arrangement, so a name built around
+    "executive election" would misdescribe it. The new name states what is actually scheduled.
+
+    The validator below applies C1-C9 so an incoherent constitution can never be constructed on any
     path — fresh build, scenario load, or `model_validate_json` history replay.
     `simulation.invariants` re-checks the same rules independently against state, to catch a
     bypassed construction (`model_construct`).
@@ -136,7 +148,7 @@ class ConstitutionState(BaseModel):
     amendment_difficulty: AmendmentDifficulty
     decree_authority: DecreeAuthority
     executive_term_limit_terms: StrictTermCount | None = None
-    executive_election_interval_turns: StrictTurnInterval | None = None
+    national_election_interval_turns: StrictTurnInterval | None = None
 
     @model_validator(mode="after")
     def _combination_is_internally_coherent(self) -> ConstitutionState:
@@ -150,7 +162,7 @@ class ConstitutionState(BaseModel):
 def first_constitutional_violation(
     constitution: ConstitutionState,
 ) -> tuple[str, str] | None:
-    """Return `(code, message)` for the first violated rule C1-C7, or `None` if coherent.
+    """Return `(code, message)` for the first violated rule C1-C9, or `None` if coherent.
 
     Shared by `ConstitutionState`'s own validator and by `simulation.invariants`'s bypassed-
     construction backstop, so the two can never disagree about what "valid" means. Both callers
@@ -176,13 +188,17 @@ def first_constitutional_violation(
                 f"executive_selection is {selection.value!r}",
             )
 
-    # C3: separate origin and survival of the executive is what makes a system presidential.
+    # C3: a presidential executive has a separate origin from the legislature, so not
+    # LEGISLATIVE_SELECTION. (It also cannot inherit office -- not HEREDITARY -- but that half of
+    # the same logical constraint is enforced by C6 below, which fires first for that sub-case; see
+    # C6's comment. APPOINTED stays legal here: an appointed presidency is exactly how many
+    # authoritarian republics are constituted.)
     if (
         system is ExecutiveSystem.PRESIDENTIAL
         and selection is ExecutiveSelection.LEGISLATIVE_SELECTION
     ):
         return (
-            "presidential_forbids_legislative_selection",
+            "presidential_requires_elected_or_appointed_executive",
             "a presidential executive cannot be selected by the legislature; that is a "
             "parliamentary arrangement",
         )
@@ -210,26 +226,57 @@ def first_constitutional_violation(
             "perform the selection",
         )
 
-    # C6: a hereditary executive serves for life; "terms" is not a coherent unit for it.
+    # C6 (R8, new): a hereditary executive is a monarchical arrangement -- not presidential,
+    # parliamentary or semi-presidential. This is the rule that makes the previously-incoherent
+    # PRESIDENTIAL + HEREDITARY impossible. (PARLIAMENTARY + HEREDITARY and SEMI_PRESIDENTIAL +
+    # HEREDITARY are already caught above by C1/C2 and C4 respectively -- this is what makes THOSE
+    # combinations impossible too, just reported under their own more specific codes. C6 is the
+    # first rule to fire only for the PRESIDENTIAL + HEREDITARY combination, which no earlier rule
+    # addresses.)
+    if selection is ExecutiveSelection.HEREDITARY and system is not ExecutiveSystem.MONARCHICAL:
+        return (
+            "hereditary_requires_monarchical_system",
+            "executive_selection is 'hereditary' but executive_system is "
+            f"{system.value!r}, not 'monarchical'",
+        )
+
+    # C7 (R8, new): a monarch inherits, or is chosen by a restricted body (APPOINTED covers
+    # elective monarchy) -- never directly elected by the nation, nor selected by a legislature it
+    # does not answer to.
+    if system is ExecutiveSystem.MONARCHICAL and selection not in (
+        ExecutiveSelection.HEREDITARY,
+        ExecutiveSelection.APPOINTED,
+    ):
+        return (
+            "monarchical_requires_hereditary_or_appointed",
+            "executive_system is 'monarchical' but executive_selection is "
+            f"{selection.value!r}, which is neither 'hereditary' nor 'appointed'",
+        )
+
+    # C8: a hereditary executive serves for life; "terms" is not a coherent unit for it.
     if (
         constitution.executive_term_limit_terms is not None
         and selection is ExecutiveSelection.HEREDITARY
     ):
         return (
-            "term_limit_requires_selected_executive",
+            "term_limit_requires_non_hereditary_executive",
             "a hereditary executive cannot have a term limit; terms are not a unit of a "
             "lifetime office",
         )
 
-    # C7: an election cannot be scheduled for an office that is not filled by election.
-    if constitution.executive_election_interval_turns is not None and selection not in (
-        ExecutiveSelection.DIRECT_ELECTION,
-        ExecutiveSelection.LEGISLATIVE_SELECTION,
+    # C9 (R8, rewritten): a scheduled national election must have something nationally elected --
+    # either a legislature (which the electorate elects even under a parliamentary executive), or a
+    # directly-elected executive. This correctly admits the parliamentary case the old executive-
+    # only rule wrongly rejected.
+    if (
+        constitution.national_election_interval_turns is not None
+        and legislature is Legislature.NONE
+        and selection is not ExecutiveSelection.DIRECT_ELECTION
     ):
         return (
-            "election_interval_requires_elected_executive",
-            "executive_election_interval_turns is set but executive_selection is "
-            f"{selection.value!r}, which is not filled by election",
+            "national_election_requires_something_elected",
+            "national_election_interval_turns is set but there is no legislature and "
+            f"executive_selection is {selection.value!r}, not 'direct_election'",
         )
 
     return None
