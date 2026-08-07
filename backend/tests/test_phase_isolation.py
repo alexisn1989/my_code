@@ -138,7 +138,7 @@ def test_tax_rate_change_does_not_affect_derived_tax_bases() -> None:
 
     def _resolve_with_rate(
         rate_bps: int,
-    ) -> tuple[TaxBaseState, FinanceReport, LaborMarketReport, ResourceExtractionReport]:
+    ) -> tuple[TaxBaseState, FinanceReport, LaborMarketReport, ResourceExtractionReport, object]:
         state = make_game_state(turn=0, state_version=0)
         player_id = state.world.player_country_id
         country = state.world.countries[player_id]
@@ -152,15 +152,21 @@ def test_tax_rate_change_does_not_affect_derived_tax_bases() -> None:
         assert resolution.report.finance is not None
         assert resolution.report.labor_market is not None
         assert resolution.report.resources is not None
+        assert resolution.report.political is not None
         return (
             resolution.report.finance.tax_bases,
             resolution.report.finance,
             resolution.report.labor_market,
             resolution.report.resources,
+            resolution.report.political,
         )
 
-    bases_low, finance_low, labor_market_low, resources_low = _resolve_with_rate(1_000)
-    bases_high, finance_high, labor_market_high, resources_high = _resolve_with_rate(9_000)
+    bases_low, finance_low, labor_market_low, resources_low, political_low = _resolve_with_rate(
+        1_000
+    )
+    bases_high, finance_high, labor_market_high, resources_high, political_high = (
+        _resolve_with_rate(9_000)
+    )
 
     assert bases_low == bases_high
     assert finance_low.revenue.personal_income_tax != finance_high.revenue.personal_income_tax
@@ -168,6 +174,9 @@ def test_tax_rate_change_does_not_affect_derived_tax_bases() -> None:
     assert labor_market_low.model_dump(mode="json") == labor_market_high.model_dump(mode="json")
     # Phase 2C1: nor resource extraction.
     assert resources_low.model_dump(mode="json") == resources_high.model_dump(mode="json")
+    # Phase 3A, T-I3: nor legitimacy or political capital -- taxation is not one of the two
+    # signals (unemployment, gross output) the political phase reads.
+    assert political_low.model_dump(mode="json") == political_high.model_dump(mode="json")
 
 
 def test_spending_change_does_not_affect_production_or_derived_bases() -> None:
@@ -175,7 +184,7 @@ def test_spending_change_does_not_affect_production_or_derived_bases() -> None:
 
     def _resolve_with_spending(
         amount: int,
-    ) -> tuple[ProductionReport, TaxBaseState, LaborMarketReport, ResourceExtractionReport]:
+    ) -> tuple[ProductionReport, TaxBaseState, LaborMarketReport, ResourceExtractionReport, object]:
         state = make_game_state(turn=0, state_version=0)
         player_id = state.world.player_country_id
         country = state.world.countries[player_id]
@@ -196,15 +205,21 @@ def test_spending_change_does_not_affect_production_or_derived_bases() -> None:
         assert resolution.report.finance is not None
         assert resolution.report.labor_market is not None
         assert resolution.report.resources is not None
+        assert resolution.report.political is not None
         return (
             resolution.report.production,
             resolution.report.finance.tax_bases,
             resolution.report.labor_market,
             resolution.report.resources,
+            resolution.report.political,
         )
 
-    production_low, bases_low, labor_market_low, resources_low = _resolve_with_spending(1)
-    production_high, bases_high, labor_market_high, resources_high = _resolve_with_spending(999_999)
+    production_low, bases_low, labor_market_low, resources_low, political_low = (
+        _resolve_with_spending(1)
+    )
+    production_high, bases_high, labor_market_high, resources_high, political_high = (
+        _resolve_with_spending(999_999)
+    )
 
     assert production_low.model_dump(mode="json") == production_high.model_dump(mode="json")
     assert bases_low == bases_high
@@ -212,6 +227,90 @@ def test_spending_change_does_not_affect_production_or_derived_bases() -> None:
     assert labor_market_low.model_dump(mode="json") == labor_market_high.model_dump(mode="json")
     # Phase 2C1: nor resource extraction.
     assert resources_low.model_dump(mode="json") == resources_high.model_dump(mode="json")
+    # Phase 3A, T-I3: nor legitimacy or political capital.
+    assert political_low.model_dump(mode="json") == political_high.model_dump(mode="json")
+
+
+def test_differing_political_starting_values_never_move_the_economy() -> None:
+    """Phase 3A, T-I2: the converse direction of the resource-deposits test above -- politics
+    must never mutate economy/finance/treasury. Two otherwise-identical countries differing only
+    in their starting `PoliticalState` (a different constitution, authored support and legitimacy)
+    must resolve to byte-identical `production`/`labor_market`/`resources`/`finance` reports and
+    byte-identical `economy`/`finance`/`treasury` state, since the political phase (slot 10) runs
+    last and writes only `politics`.
+    """
+    from app.simulation.constitution import (
+        AmendmentDifficulty,
+        DecreeAuthority,
+        ExecutiveSelection,
+        ExecutiveSystem,
+        JudicialReview,
+        Legislature,
+        TerritorialOrganization,
+    )
+    from tests.conftest import make_politics
+
+    def _resolve_with_politics(politics_state: object) -> tuple[GameState, object]:
+        state = make_game_state(turn=0, state_version=0)
+        player_id = state.world.player_country_id
+        country = state.world.countries[player_id]
+        state.world.countries[player_id] = country.model_copy(update={"politics": politics_state})
+        decisions = DecisionSet(expected_turn=0, expected_state_version=0, decisions=())
+        resolution = resolve_turn(state, decisions)
+        return resolution.state, resolution.report
+
+    presidential = make_politics(
+        constitutional_order_support_bps=6_500, legitimacy_bps=6_000, political_capital=300
+    )
+    monarchical = make_politics(
+        executive_system=ExecutiveSystem.MONARCHICAL,
+        executive_selection=ExecutiveSelection.HEREDITARY,
+        legislature=Legislature.NONE,
+        territorial_organization=TerritorialOrganization.UNITARY,
+        judicial_review=JudicialReview.NONE,
+        amendment_difficulty=AmendmentDifficulty.ENTRENCHED,
+        decree_authority=DecreeAuthority.UNLIMITED,
+        constitutional_order_support_bps=9_000,
+        legitimacy_bps=8_500,
+        political_capital=900,
+    )
+    state_a, report_a = _resolve_with_politics(presidential)
+    state_b, report_b = _resolve_with_politics(monarchical)
+
+    player_id = state_a.world.player_country_id
+    country_a = state_a.world.countries[player_id]
+    country_b = state_b.world.countries[player_id]
+    assert country_a.economy is not None
+    assert country_b.economy is not None
+    assert country_a.economy.model_dump(mode="json") == country_b.economy.model_dump(mode="json")
+    assert country_a.finance is not None
+    assert country_b.finance is not None
+    assert country_a.finance.model_dump(mode="json") == country_b.finance.model_dump(mode="json")
+    assert country_a.treasury.model_dump(mode="json") == country_b.treasury.model_dump(mode="json")
+
+    assert report_a.production is not None
+    assert report_b.production is not None
+    assert report_a.production.model_dump(mode="json") == report_b.production.model_dump(
+        mode="json"
+    )
+    assert report_a.labor_market is not None
+    assert report_b.labor_market is not None
+    assert report_a.labor_market.model_dump(mode="json") == report_b.labor_market.model_dump(
+        mode="json"
+    )
+    assert report_a.resources is not None
+    assert report_b.resources is not None
+    assert report_a.resources.model_dump(mode="json") == report_b.resources.model_dump(mode="json")
+    assert report_a.finance is not None
+    assert report_b.finance is not None
+    assert report_a.finance.model_dump(mode="json") == report_b.finance.model_dump(mode="json")
+
+    # And the political reports genuinely differ, so the test is not vacuous.
+    assert report_a.political is not None
+    assert report_b.political is not None
+    assert report_a.political.constitution.constitution_digest != (
+        report_b.political.constitution.constitution_digest
+    )
 
 
 def test_production_report_is_identical_regardless_of_finance_state() -> None:

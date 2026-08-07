@@ -945,3 +945,35 @@ def test_all_twelve_political_codes_are_distinct() -> None:
         "economic_baseline_unemployment_out_of_range",
     }
     assert len(expected) == 12
+
+
+def test_no_report_formula_codes_leaked_into_invariants_source() -> None:
+    """T-V2 (§10): the four families of check deliberately NOT given a `check_invariants` code —
+    because they need a `TurnReport` (report-formula re-derivation, owned by `PoliticalReport`'s
+    own validators in §9.1) or two `GameState`s (report-vs-state reconciliation, owned by
+    `reconcile_political_report` in §9.3) — must never appear in `invariants.py`. `check_invariants`
+    takes a single `GameState` and nothing else, so it structurally cannot decide any of these;
+    this is a static guard that the boundary stays honored even as the module grows.
+    """
+    import inspect
+
+    from app.simulation import invariants as invariants_module
+
+    source = inspect.getsource(invariants_module)
+    forbidden_code_fragments = (
+        "legitimacy_change_mismatch",
+        "performance_contribution_mismatch",
+        "political_capital_regeneration_mismatch",
+        "order_support_contribution_mismatch",
+        "opening_baseline_mismatch",
+        "closing_baseline_mismatch",
+        "constitution_mutated",
+        "order_support_mutated",
+        "noncanonical_political_order",
+    )
+    for fragment in forbidden_code_fragments:
+        assert fragment not in source, (
+            f"{fragment!r} is a report-formula or report-vs-state check and must not be "
+            "decidable from state alone -- it belongs to PoliticalReport's validators (§9.1) "
+            "or reconcile_political_report (§9.3), never to check_invariants"
+        )

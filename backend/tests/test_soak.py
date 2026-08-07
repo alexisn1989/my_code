@@ -88,6 +88,12 @@ def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustai
     )
     assert final_country.treasury.cash_on_hand > 0
 
+    # Phase 3A, T-S1: legitimacy trajectory is monotone toward 7,991 (order-support drift only,
+    # since tiny_valid's economy is flat) and never leaves its declared bounds.
+    assert final_country.politics is not None
+    assert final_country.politics.legitimacy_bps == 7_991
+    legitimacy_by_turn = []
+
     for entry in save.entries[1:]:
         report = entry.report()
         assert report is not None
@@ -98,6 +104,14 @@ def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustai
         assert report.finance is not None
         assert report.finance.reconciliation_status == "reconciled"
         assert report.finance.new_borrowing == 0
+        assert report.political is not None
+        assert 0 <= report.political.closing_legitimacy_bps <= 10_000
+        assert (
+            0
+            <= report.political.closing_political_capital
+            <= (report.political.political_capital_capacity)
+        )
+        legitimacy_by_turn.append(report.political.closing_legitimacy_bps)
         # Phase 2B3: labor allocation feeds production every turn, same-turn, no lag.
         allocated_by_category = {
             s.category: s.allocated_workers for s in report.labor_market.sectors
@@ -127,6 +141,11 @@ def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustai
         assert report.resources.extraction_sector_potential_output == 2_000_000_000
         assert extraction_row.actual_output == 2_000_000_000
         assert extraction_row.constraint is SectorProductionConstraint.PHYSICAL_RESOURCE_CONSTRAINED
+
+    assert all(a <= b for a, b in zip(legitimacy_by_turn, legitimacy_by_turn[1:], strict=False)), (
+        "tiny_valid's economy is flat, so legitimacy must move monotonically toward the "
+        "authored constitutional_order_support_bps with no performance-driven reversal"
+    )
 
     print(
         f"\n{TURNS}-turn soak (real scenario, labor+resources+production+derivation+finance "
@@ -162,12 +181,21 @@ def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() 
 
     timber_by_turn = []
     extraction_output_by_turn = []
+    legitimacy_by_turn = []
     for entry in save.entries[1:]:
         report = entry.report()
         assert report is not None
         assert report.labor_market is not None
         assert report.resources is not None
         assert report.production is not None
+        assert report.political is not None
+        assert 0 <= report.political.closing_legitimacy_bps <= 10_000
+        assert (
+            0
+            <= report.political.closing_political_capital
+            <= (report.political.political_capital_capacity)
+        )
+        legitimacy_by_turn.append(report.political.closing_legitimacy_bps)
         allocated_by_category = {
             s.category: s.allocated_workers for s in report.labor_market.sectors
         }
@@ -210,6 +238,19 @@ def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() 
         assert output == 100_000_000, f"turn {i}"
     for i, output in enumerate(extraction_output_by_turn[40:], start=41):
         assert output == 50_000_000, f"turn {i}"
+
+    # Phase 3A, T-S1: legitimacy dips at exactly the two resource-depletion shocks (turns 26 and
+    # 41, matching the extraction-output regime boundaries above) and nowhere else — every other
+    # turn's order-support drift is non-negative on its own.
+    dip_turns = [
+        turn
+        for turn, (previous, current) in enumerate(
+            zip(legitimacy_by_turn, legitimacy_by_turn[1:], strict=False), start=2
+        )
+        if current < previous
+    ]
+    assert dip_turns == [26, 41]
+    assert legitimacy_by_turn[99] == 6_491
 
     print(
         f"\n{TURNS}-turn soak (deficit_demo, full three-regime timber trajectory): "
