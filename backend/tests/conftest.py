@@ -19,6 +19,7 @@ from app.simulation.state import (
     RULESET_VERSION,
     ConstitutionState,
     CountryState,
+    EconomicBaselineState,
     EconomyState,
     GameState,
     GovernmentFinanceState,
@@ -250,11 +251,13 @@ def make_politics(
     legitimacy_bps: int = 7_000,
     political_capital: int = 500,
     political_capital_capacity: int = 1_000,
+    economic_baseline: EconomicBaselineState | None = None,
 ) -> PoliticalState:
     """Build a valid `PoliticalState` (Phase 3A) with reasonable round-number defaults: a
     coherent presidential republic, moderate authored support, and legitimacy already at that
-    same 7,000 level so a fresh test country starts at drift-equilibrium (no economic-performance
-    signal yet either, since `economic_baseline` defaults to `None`)."""
+    same 7,000 level so a fresh test country starts at drift-equilibrium. `economic_baseline`
+    defaults to `None` (legal only at `state.turn == 0`) — pass one explicitly for a country
+    built at a later turn; see `make_game_state`, which does this automatically."""
     return PoliticalState(
         constitution=ConstitutionState(
             executive_system=executive_system,
@@ -271,6 +274,7 @@ def make_politics(
         legitimacy_bps=legitimacy_bps,
         political_capital=political_capital,
         political_capital_capacity=political_capital_capacity,
+        economic_baseline=economic_baseline,
     )
 
 
@@ -330,9 +334,26 @@ def make_game_state(
     turn: int = 0,
     state_version: int = 0,
 ) -> GameState:
-    """Build a minimal, valid `GameState` for unit tests that don't need YAML."""
+    """Build a minimal, valid `GameState` for unit tests that don't need YAML.
+
+    When `countries` is omitted and `turn > 0`, the auto-built player's `politics` carries a
+    baseline stamped `source_turn == turn` (R6: a baseline is legal only at `turn == 0` when
+    absent) — `total_gross_output=0` is a deliberately inert placeholder (§6.3's explicit
+    zero-baseline branch means it contributes no performance effect if this state is ever
+    resolved). A caller who passes `countries=...` explicitly is responsible for its own
+    politics, exactly as they already are for finance/economy.
+    """
     if countries is None:
-        countries = {player_country_id: make_country(player_country_id)}
+        politics = (
+            make_politics(
+                economic_baseline=EconomicBaselineState(
+                    source_turn=turn, total_gross_output=0, unemployment_rate_bps=1_000
+                )
+            )
+            if turn > 0
+            else None
+        )
+        countries = {player_country_id: make_country(player_country_id, politics=politics)}
     return GameState(
         ruleset_version=RULESET_VERSION,
         content_version="0.8.0",

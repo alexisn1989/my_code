@@ -16,6 +16,7 @@ resolution").
 from __future__ import annotations
 
 from app.core.errors import InvariantViolation
+from app.simulation.constitution import first_constitutional_violation
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
     CountryState,
@@ -372,6 +373,151 @@ def _check_economy(country: CountryState) -> list[InvariantViolation]:
     return violations
 
 
+def _check_politics(
+    country: CountryState, *, state_turn: int, is_player: bool
+) -> list[InvariantViolation]:
+    """Phase 3A structural backstops for `PoliticalState` (§10), mirroring `_check_economy`'s
+    role: every field here is already enforced at every legitimate construction/assignment path
+    by `PoliticalState`/`ConstitutionState`'s own Pydantic validators, but both are mutable, so a
+    nested assignment after construction can desynchronize an already-valid instance without
+    re-running those validators. This is the every-turn, bypassed-construction backstop.
+
+    `state_turn` and `is_player` come from `check_invariants` (this function has no access to
+    `GameState` itself) — needed for the R6 baseline-lifecycle checks (which turn is this?) and
+    the non-player-politics check (is this country allowed to have politics at all?).
+    """
+    violations: list[InvariantViolation] = []
+
+    if not is_player and country.politics is not None:
+        violations.append(
+            InvariantViolation(
+                code="non_player_politics_not_supported",
+                message=(
+                    f"country {country.id!r} is not the player but has a PoliticalState; "
+                    "Phase 3A cannot resolve politics for a country with no economy to derive "
+                    "performance from — AI-country politics is deferred (see roadmap ticket "
+                    "POL-4)"
+                ),
+            )
+        )
+
+    if country.politics is None:
+        return violations
+
+    politics = country.politics
+
+    if not (_BPS_MIN <= politics.constitutional_order_support_bps <= _BPS_MAX):
+        violations.append(
+            InvariantViolation(
+                code="constitutional_order_support_out_of_range",
+                message=(
+                    f"country {country.id!r}: constitutional_order_support_bps="
+                    f"{politics.constitutional_order_support_bps} outside "
+                    f"[{_BPS_MIN}, {_BPS_MAX}]"
+                ),
+            )
+        )
+
+    if not (_BPS_MIN <= politics.legitimacy_bps <= _BPS_MAX):
+        violations.append(
+            InvariantViolation(
+                code="legitimacy_out_of_range",
+                message=(
+                    f"country {country.id!r}: legitimacy_bps={politics.legitimacy_bps} outside "
+                    f"[{_BPS_MIN}, {_BPS_MAX}]"
+                ),
+            )
+        )
+
+    if politics.political_capital < 0:
+        violations.append(
+            InvariantViolation(
+                code="political_capital_negative",
+                message=(
+                    f"country {country.id!r}: political_capital={politics.political_capital} "
+                    "is negative"
+                ),
+            )
+        )
+
+    if politics.political_capital_capacity <= 0:
+        violations.append(
+            InvariantViolation(
+                code="political_capital_capacity_not_positive",
+                message=(
+                    f"country {country.id!r}: political_capital_capacity="
+                    f"{politics.political_capital_capacity} is not positive"
+                ),
+            )
+        )
+    elif politics.political_capital > politics.political_capital_capacity:
+        violations.append(
+            InvariantViolation(
+                code="political_capital_exceeds_capacity",
+                message=(
+                    f"country {country.id!r}: political_capital={politics.political_capital} "
+                    f"exceeds political_capital_capacity={politics.political_capital_capacity}"
+                ),
+            )
+        )
+
+    problem = first_constitutional_violation(politics.constitution)
+    if problem is not None:
+        rule_code, rule_message = problem
+        violations.append(
+            InvariantViolation(
+                code="invalid_constitutional_combination",
+                message=f"country {country.id!r}: {rule_code}: {rule_message}",
+            )
+        )
+
+    baseline = politics.economic_baseline
+    if state_turn == 0:
+        if baseline is not None:
+            violations.append(
+                InvariantViolation(
+                    code="economic_baseline_present_at_genesis",
+                    message=(
+                        f"country {country.id!r}: state.turn == 0 but politics.economic_baseline "
+                        "is present; no turn has been resolved, so no observations can exist"
+                    ),
+                )
+            )
+    elif baseline is None:
+        violations.append(
+            InvariantViolation(
+                code="economic_baseline_missing_after_genesis",
+                message=(
+                    f"country {country.id!r}: state.turn={state_turn} but "
+                    "politics.economic_baseline is None; every resolved turn writes one"
+                ),
+            )
+        )
+    elif baseline.source_turn != state_turn:
+        violations.append(
+            InvariantViolation(
+                code="economic_baseline_turn_mismatch",
+                message=(
+                    f"country {country.id!r}: politics.economic_baseline.source_turn="
+                    f"{baseline.source_turn} does not equal state.turn={state_turn}"
+                ),
+            )
+        )
+
+    if baseline is not None and not (_BPS_MIN <= baseline.unemployment_rate_bps <= _BPS_MAX):
+        violations.append(
+            InvariantViolation(
+                code="economic_baseline_unemployment_out_of_range",
+                message=(
+                    f"country {country.id!r}: economic_baseline.unemployment_rate_bps="
+                    f"{baseline.unemployment_rate_bps} outside [{_BPS_MIN}, {_BPS_MAX}]"
+                ),
+            )
+        )
+
+    return violations
+
+
 def check_invariants(state: GameState) -> list[InvariantViolation]:
     """Return every invariant violation found in `state`. Empty list means valid.
 
@@ -414,8 +560,26 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
                     ),
                 )
             )
+        if player.politics is None:
+            violations.append(
+                InvariantViolation(
+                    code="player_politics_required",
+                    message=(
+                        f"player country {player.id!r} has no PoliticalState; "
+                        "legitimacy/political-capital resolution (Phase 3A) cannot resolve "
+                        "without it — AI countries may omit politics, the player country may not"
+                    ),
+                )
+            )
 
     for country in state.world.countries.values():
         violations.extend(_check_country(country))
+        violations.extend(
+            _check_politics(
+                country,
+                state_turn=state.turn,
+                is_player=country.id == state.world.player_country_id,
+            )
+        )
 
     return violations
