@@ -599,7 +599,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.7.0"
+RULESET_VERSION = "0.8.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -609,10 +609,14 @@ changes (which phases do real work, what formulas they use) in a way that must n
 apply to already-resolved history — see `docs/adr/0002-snapshot-history-and-versioning.md`,
 `docs/adr/0003-government-accounting.md`, `docs/adr/0004-sector-production-fixed-prices.md`,
 `docs/adr/0005-production-derived-tax-bases.md`,
-`docs/adr/0006-labor-allocation-at-fixed-prices.md`, and
+`docs/adr/0006-labor-allocation-at-fixed-prices.md`,
 `docs/adr/0007-resource-endowments-and-extraction.md` (bumped `"0.5.0" -> "0.6.0"` for Phase 2C1:
 `EconomyState.resource_deposits` becomes a new required field with no data to backfill from an
-older save — the same kind of change that justified every prior ruleset bump).
+older save — the same kind of change that justified every prior ruleset bump), and
+`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md` (bumped `"0.7.0" ->
+"0.8.0"` for Phase 3A: `CountryState.politics` becomes a new required field for the player, with
+no constitution, authored order support, legitimacy or political capital to backfill from an
+older save).
 """
 
 

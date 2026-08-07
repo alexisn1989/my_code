@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.7.0"
+content_version: "0.8.0"
 seed: 42
 player_country_id: arken
 

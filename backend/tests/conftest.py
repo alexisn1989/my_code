@@ -278,7 +278,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.7.0",
+        content_version="0.8.0",
         seed=seed,
         turn=turn,
         state_version=state_version,
