@@ -1447,7 +1447,10 @@ class PoliticalReport(BaseModel):
 
     @model_validator(mode="after")
     def _output_change_matches_formula(self) -> PoliticalReport:
-        if self.opening_economic_baseline is None or self.opening_economic_baseline.total_gross_output == 0:
+        if (
+            self.opening_economic_baseline is None
+            or self.opening_economic_baseline.total_gross_output == 0
+        ):
             expected = 0
         else:
             expected = trunc_div_toward_zero(

@@ -164,3 +164,27 @@ def test_report_resolved_turn_matches_the_turn_that_was_played() -> None:
     resolution = resolve_turn(state, _empty_decisions_for(state))
     assert resolution.report.resolved_turn == 3
     assert resolution.state.turn == 4
+
+
+def test_political_reconciliation_failure_is_atomic(monkeypatch: pytest.MonkeyPatch) -> None:
+    """(T-D4, Phase 3A) A forced reconciliation mismatch raises `TurnResolutionError`, leaves the
+    caller's input `state` byte-identical, and produces no `TurnResolution` -- exactly like an
+    invariant violation. `reconcile_political_report` is monkeypatched to force a mismatch,
+    since the real resolver's own output never disagrees with itself (see
+    `test_reconciliation.py::test_a_clean_resolution_reconciles_with_no_problems`)."""
+    import app.simulation.resolver as resolver_module
+
+    state = make_game_state(turn=0, state_version=0)
+    before = canonical_dumps(state.model_dump(mode="json"))
+
+    monkeypatch.setattr(
+        resolver_module,
+        "reconcile_political_report",
+        lambda **_kwargs: ["forced mismatch for T-D4"],
+    )
+
+    with pytest.raises(TurnResolutionError, match="does not reconcile"):
+        resolve_turn(state, _empty_decisions_for(state))
+
+    after = canonical_dumps(state.model_dump(mode="json"))
+    assert after == before, "input state must be byte-identical after a discarded resolution"
