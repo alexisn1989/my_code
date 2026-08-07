@@ -169,6 +169,32 @@ def _render_tax_bases_derived(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_legitimacy_resolved(params: dict[str, str | int]) -> str:
+    opening = _bps_to_percent_str(params["opening_legitimacy_bps"])
+    order_support = _bps_to_percent_str(params["order_support_contribution_bps"])
+    performance = _bps_to_percent_str(params["performance_contribution_bps"])
+    total_change = _bps_to_percent_str(params["total_legitimacy_change_bps"])
+    closing = _bps_to_percent_str(params["closing_legitimacy_bps"])
+    support = _bps_to_percent_str(params["constitutional_order_support_bps"])
+    return (
+        f"Legitimacy resolved: opening={opening} order_support_drift={order_support} "
+        f"(toward authored support {support}) performance={performance} "
+        f"total_change={total_change} closing={closing}."
+    )
+
+
+def _render_political_capital_resolved(params: dict[str, str | int]) -> str:
+    opening = int(params["opening"])
+    regeneration = int(params["regeneration"])
+    spent = int(params["spent"])
+    capacity = int(params["capacity"])
+    closing = int(params["closing"])
+    return (
+        f"Political capital resolved: opening={opening:,} regeneration=+{regeneration:,} "
+        f"spent={spent:,} -> closing={closing:,} / {capacity:,}."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -180,6 +206,8 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "resource_extraction_resolved": _render_resource_extraction_resolved,
     "production_summary": _render_production_summary,
     "tax_bases_derived": _render_tax_bases_derived,
+    "legitimacy_resolved": _render_legitimacy_resolved,
+    "political_capital_resolved": _render_political_capital_resolved,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id

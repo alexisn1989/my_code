@@ -373,11 +373,19 @@ def test_different_resource_endowments_affect_extraction_sector_production_and_d
 
 
 def test_resolved_turn_only_mutates_resource_deposits_within_economy_state() -> None:
-    """R2: phase 3's mutation is scoped to `economy.resource_deposits` alone. Proven by
-    resolving two turns that differ ONLY in their initial `resource_deposits`, then asserting
-    every other part of the returned state — `finance`, `treasury`, `population`, `sectors`,
-    `effective_labor_force_share_bps` — is byte-identical between the two, while
-    `resource_deposits` itself genuinely differs.
+    """R2: phase 3's mutation is scoped to `economy.resource_deposits` alone WITHIN THE ECONOMY.
+    Proven by resolving two turns that differ ONLY in their initial `resource_deposits`, then
+    asserting every other part of `economy` — `sectors`, `effective_labor_force_share_bps`,
+    `resource_output_coefficients` — plus `finance`/`treasury`/`population` are byte-identical
+    between the two, while `resource_deposits` itself genuinely differs.
+
+    (Phase 3A) `politics.economic_baseline.total_gross_output` is EXPECTED to differ too —
+    that is precisely Phase 3A's one-way economic-to-political link doing its job: richer
+    deposits produce more output, and the political phase's closing baseline is a direct
+    observation of that turn's actual `ProductionReport.total_gross_output` (§6.3). Everything
+    else under `politics` — `constitution`, `constitutional_order_support_bps`, `legitimacy_bps`,
+    `political_capital` — stays identical, since this economic difference is too small to move
+    a first-turn (baseline-`None`) legitimacy calculation, which is asserted explicitly below.
     """
     poor = _resolve_with_resource_deposits(make_resource_deposits())
     rich = _resolve_with_resource_deposits(_rich_resource_deposits())
@@ -386,14 +394,27 @@ def test_resolved_turn_only_mutates_resource_deposits_within_economy_state() -> 
     rich_country = rich.state.world.countries[rich.state.world.player_country_id]
     assert poor_country.economy is not None
     assert rich_country.economy is not None
+    assert poor_country.politics is not None
+    assert rich_country.politics is not None
 
     poor_dump = poor_country.model_dump(mode="json")
     rich_dump = rich_country.model_dump(mode="json")
     poor_deposits = poor_dump["economy"].pop("resource_deposits")
     rich_deposits = rich_dump["economy"].pop("resource_deposits")
+    poor_baseline = poor_dump["politics"].pop("economic_baseline")
+    rich_baseline = rich_dump["politics"].pop("economic_baseline")
 
-    assert poor_dump == rich_dump, "every non-resource part of state must be untouched"
+    assert poor_dump == rich_dump, (
+        "every non-resource, non-economic-baseline part of state must be untouched"
+    )
     assert poor_deposits != rich_deposits, "resource_deposits itself must genuinely differ"
+    assert poor_baseline["total_gross_output"] != rich_baseline["total_gross_output"], (
+        "the political phase's closing baseline must observe the genuinely different output"
+    )
+    assert poor_country.politics.legitimacy_bps == rich_country.politics.legitimacy_bps == 7_000
+    assert poor_country.politics.political_capital == rich_country.politics.political_capital, (
+        "first-turn (baseline-None) legitimacy is unaffected, so political capital regenerates identically"
+    )
 
 
 def test_resource_deposits_present_in_returned_state_matches_report_closing_stocks() -> None:

@@ -5,14 +5,25 @@ from pathlib import Path
 import pytest
 
 from app.core.money import Money
+from app.simulation.constitution import (
+    AmendmentDifficulty,
+    DecreeAuthority,
+    ExecutiveSelection,
+    ExecutiveSystem,
+    JudicialReview,
+    Legislature,
+    TerritorialOrganization,
+)
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
     RULESET_VERSION,
+    ConstitutionState,
     CountryState,
     EconomyState,
     GameState,
     GovernmentFinanceState,
     InstitutionState,
+    PoliticalState,
     PopulationGroupState,
     ResourceCategory,
     ResourceDepositState,
@@ -224,6 +235,45 @@ def make_economy(
     )
 
 
+def make_politics(
+    *,
+    executive_system: ExecutiveSystem = ExecutiveSystem.PRESIDENTIAL,
+    executive_selection: ExecutiveSelection = ExecutiveSelection.DIRECT_ELECTION,
+    legislature: Legislature = Legislature.UNICAMERAL,
+    territorial_organization: TerritorialOrganization = TerritorialOrganization.UNITARY,
+    judicial_review: JudicialReview = JudicialReview.WEAK,
+    amendment_difficulty: AmendmentDifficulty = AmendmentDifficulty.SUPERMAJORITY,
+    decree_authority: DecreeAuthority = DecreeAuthority.EMERGENCY_ONLY,
+    executive_term_limit_terms: int | None = None,
+    national_election_interval_turns: int | None = None,
+    constitutional_order_support_bps: int = 7_000,
+    legitimacy_bps: int = 7_000,
+    political_capital: int = 500,
+    political_capital_capacity: int = 1_000,
+) -> PoliticalState:
+    """Build a valid `PoliticalState` (Phase 3A) with reasonable round-number defaults: a
+    coherent presidential republic, moderate authored support, and legitimacy already at that
+    same 7,000 level so a fresh test country starts at drift-equilibrium (no economic-performance
+    signal yet either, since `economic_baseline` defaults to `None`)."""
+    return PoliticalState(
+        constitution=ConstitutionState(
+            executive_system=executive_system,
+            executive_selection=executive_selection,
+            legislature=legislature,
+            territorial_organization=territorial_organization,
+            judicial_review=judicial_review,
+            amendment_difficulty=amendment_difficulty,
+            decree_authority=decree_authority,
+            executive_term_limit_terms=executive_term_limit_terms,
+            national_election_interval_turns=national_election_interval_turns,
+        ),
+        constitutional_order_support_bps=constitutional_order_support_bps,
+        legitimacy_bps=legitimacy_bps,
+        political_capital=political_capital,
+        political_capital_capacity=political_capital_capacity,
+    )
+
+
 def make_country(
     country_id: str = "testland",
     *,
@@ -233,14 +283,17 @@ def make_country(
     finance: GovernmentFinanceState | None = None,
     with_economy: bool = True,
     economy: EconomyState | None = None,
+    with_politics: bool = True,
+    politics: PoliticalState | None = None,
 ) -> CountryState:
     """Build a minimal, valid `CountryState` for unit tests that don't need YAML.
 
-    Has finance and economy by default (`with_finance=True`, `with_economy=True`) because
-    every existing caller uses this to build what ends up being the player country, and the
-    player is required to have both `GovernmentFinanceState` and `EconomyState` (see
-    `simulation.invariants`). Pass `with_finance=False`/`with_economy=False` to build an
-    AI-style country with neither, or `finance=...`/`economy=...` to supply a specific one
+    Has finance, economy, and politics by default (`with_finance=True`, `with_economy=True`,
+    `with_politics=True`) because every existing caller uses this to build what ends up being
+    the player country, and the player is required to have `GovernmentFinanceState`,
+    `EconomyState`, and (Phase 3A) `PoliticalState` (see `simulation.invariants`). Pass
+    `with_finance=False`/`with_economy=False`/`with_politics=False` to build an AI-style country
+    with none of them, or `finance=...`/`economy=...`/`politics=...` to supply a specific one
     (implies the corresponding `with_*` flag is ignored).
     """
     groups = [
@@ -253,6 +306,9 @@ def make_country(
     resolved_economy = (
         economy if economy is not None else (make_economy() if with_economy else None)
     )
+    resolved_politics = (
+        politics if politics is not None else (make_politics() if with_politics else None)
+    )
     return CountryState(
         id=country_id,
         name=country_id.title(),
@@ -262,6 +318,7 @@ def make_country(
         treasury=TreasuryState(cash_on_hand=1_000_00, debt=100_00),
         finance=resolved_finance,
         economy=resolved_economy,
+        politics=resolved_politics,
     )
 
 

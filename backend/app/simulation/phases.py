@@ -43,6 +43,7 @@ from app.simulation.accounting import (
     compute_total_program_spending,
     resolve_cash_and_debt,
 )
+from app.simulation.constitution import ConstitutionState, constitution_digest
 from app.simulation.decisions import DecisionSet
 from app.simulation.labor_allocation import (
     aggregate_labor_market,
@@ -50,14 +51,24 @@ from app.simulation.labor_allocation import (
     compute_effective_labor_force,
     compute_required_workers,
 )
+from app.simulation.legitimacy import (
+    PerformanceSignals,
+    assess_economic_performance,
+    order_support_contribution_bps,
+    resolve_legitimacy,
+    resolve_political_capital,
+)
 from app.simulation.production_accounting import compute_sector_output
 from app.simulation.report import (
     TAX_RATE_CHANGE_FIELDS,
     BudgetChangeEntry,
     ChangeDirection,
+    ConstitutionSummary,
+    EconomicBaselineReport,
     FinanceReport,
     LaborMarketReport,
     PhaseStatus,
+    PoliticalReport,
     ProductionReport,
     ResourceDepositReport,
     ResourceExtractionReport,
@@ -87,6 +98,7 @@ from app.simulation.resource_output import (
     compute_resource_output_contributions,
 )
 from app.simulation.state import (
+    EconomicBaselineState,
     GameState,
     SectorCategory,
     SpendingPlanState,
@@ -130,6 +142,26 @@ class OpeningFinanceSnapshot:
     annual_debt_interest_rate_bps: int
     previous_tax_policy: TaxPolicyState
     previous_spending_plan: SpendingPlanState
+
+
+@dataclass(frozen=True, slots=True)
+class OpeningPoliticalSnapshot:
+    """The player's complete political position *before* this turn's legitimacy/political-capital
+    resolution (Phase 3A, §8). Frozen and holding only by-value copies, captured at the *start* of
+    `_update_legitimacy_and_political_capital` — before any mutation — mirroring
+    `OpeningFinanceSnapshot` exactly: later phases (and a mutated working `PoliticalState`) can
+    never retroactively change what this turn's report calls "opening."
+
+    Every field is either a plain `int` or an independently `.model_copy()`ed Pydantic model, so
+    `PoliticalReport` can be built from scalars and frozen copies only — it never holds, and
+    cannot reach, a `GameState` (R2)."""
+
+    constitution: ConstitutionState
+    constitutional_order_support_bps: int
+    legitimacy_bps: int
+    political_capital: int
+    political_capital_capacity: int
+    economic_baseline: EconomicBaselineState | None
 
 
 @dataclass
@@ -196,6 +228,11 @@ class PhaseContext:
     `production_report` — see that function's docstring. `resolver.py` copies this onto the
     final `TurnReport`, where it is cross-validated against both `production_report` and
     `finance_report` (Phase 2B2 R1)."""
+    political_report: PoliticalReport | None = None
+    """Set by `_update_legitimacy_and_political_capital` (slot 10), from
+    `OpeningPoliticalSnapshot` plus `production_report`/`labor_market_report`; `resolver.py`
+    copies this onto the final `TurnReport`, where it is cross-validated against both of those
+    reports and, after resolution, against the resulting state (`simulation.reconciliation`)."""
     _current_phase_id: str | None = field(default=None, repr=False)
 
     def rng(self, stream: str) -> random.Random:
@@ -802,6 +839,180 @@ def _resolve_production_and_trade(ctx: PhaseContext) -> None:
     ctx.mark_implemented()
 
 
+def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
+    """Phase 3A, slot 10 (`update_group_welfare_approval_trust_radicalization`): resolves this
+    turn's legitimacy and political-capital change from the two economic signals the engine
+    genuinely models against the persisted baseline, plus drift toward the scenario-authored
+    `constitutional_order_support_bps`. See `simulation.legitimacy` and
+    `docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`.
+
+    Runs after `_resolve_production_and_trade` (phase 3) so `ctx.production_report` and
+    `ctx.labor_market_report` are both already self-validated. Reads only those two reports and
+    `player.politics`; writes only `player.politics` — never `economy`/`finance`/`treasury`
+    (Phase 3A's economy-to-politics linkage is strictly one-way).
+
+    No `PHASE_ORDER` change: this implements the existing slot 10, exactly as four consecutive
+    prior phases (2B2, 2B3, 2C1, 2C2) added real logic to an existing slot rather than adding a
+    16th one.
+    """
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    politics = player.politics
+    if politics is None:
+        # Unreachable in practice: simulation.invariants requires player politics before
+        # resolve_turn ever copies state, let alone runs phases. Guarded explicitly rather than
+        # silently assumed.
+        raise RuntimeError(
+            "update_legitimacy_and_political_capital: player country has no PoliticalState "
+            "(this should have been caught by check_invariants)"
+        )
+    assert ctx.production_report is not None, "resolve_production_and_trade always runs first"
+    assert ctx.labor_market_report is not None, "labor allocation always runs before production"
+
+    # By-value snapshot, mirroring OpeningFinanceSnapshot exactly (R2): every field is a plain
+    # int or an independently `.model_copy()`ed Pydantic model, captured BEFORE any mutation
+    # below, so a later mutation of `politics` cannot retroactively change what the report calls
+    # "opening."
+    opening = OpeningPoliticalSnapshot(
+        constitution=politics.constitution.model_copy(),
+        constitutional_order_support_bps=politics.constitutional_order_support_bps,
+        legitimacy_bps=politics.legitimacy_bps,
+        political_capital=politics.political_capital,
+        political_capital_capacity=politics.political_capital_capacity,
+        economic_baseline=(
+            politics.economic_baseline.model_copy()
+            if politics.economic_baseline is not None
+            else None
+        ),
+    )
+
+    current_total_gross_output = ctx.production_report.total_gross_output
+    current_unemployment_rate_bps = ctx.labor_market_report.unemployment_rate_bps
+
+    signals = (
+        None
+        if opening.economic_baseline is None
+        else PerformanceSignals(
+            baseline_total_gross_output=opening.economic_baseline.total_gross_output,
+            current_total_gross_output=current_total_gross_output,
+            baseline_unemployment_rate_bps=opening.economic_baseline.unemployment_rate_bps,
+            current_unemployment_rate_bps=current_unemployment_rate_bps,
+        )
+    )
+    assessment = assess_economic_performance(signals)
+
+    drift = order_support_contribution_bps(
+        support_bps=opening.constitutional_order_support_bps,
+        opening_legitimacy_bps=opening.legitimacy_bps,
+    )
+    total_change, closing_legitimacy = resolve_legitimacy(
+        opening_bps=opening.legitimacy_bps,
+        order_support_contribution=drift,
+        performance_contribution=assessment.performance_contribution_bps,
+    )
+    regeneration, closing_capital = resolve_political_capital(
+        opening=opening.political_capital,
+        capacity=opening.political_capital_capacity,
+        legitimacy_bps=closing_legitimacy,
+        spent=0,
+    )
+
+    closing_baseline_state = EconomicBaselineState(
+        source_turn=ctx.state.turn,
+        total_gross_output=current_total_gross_output,
+        unemployment_rate_bps=current_unemployment_rate_bps,
+    )
+
+    # Whole-model replace via model_copy(update=...), matching every other phase's convention for
+    # committing a mutated sub-model back into working state (see
+    # `_update_prices_inflation_employment_debt_reserves`) — never an in-place field assignment.
+    player.politics = politics.model_copy(
+        update={
+            "legitimacy_bps": closing_legitimacy,
+            "political_capital": closing_capital,
+            "economic_baseline": closing_baseline_state,
+        }
+    )
+
+    opening_baseline_report = (
+        None
+        if opening.economic_baseline is None
+        else EconomicBaselineReport(
+            source_turn=opening.economic_baseline.source_turn,
+            total_gross_output=opening.economic_baseline.total_gross_output,
+            unemployment_rate_bps=opening.economic_baseline.unemployment_rate_bps,
+        )
+    )
+    closing_baseline_report = EconomicBaselineReport(
+        source_turn=closing_baseline_state.source_turn,
+        total_gross_output=closing_baseline_state.total_gross_output,
+        unemployment_rate_bps=closing_baseline_state.unemployment_rate_bps,
+    )
+
+    ctx.political_report = PoliticalReport(
+        constitution=ConstitutionSummary(
+            executive_system=opening.constitution.executive_system,
+            executive_selection=opening.constitution.executive_selection,
+            legislature=opening.constitution.legislature,
+            territorial_organization=opening.constitution.territorial_organization,
+            judicial_review=opening.constitution.judicial_review,
+            amendment_difficulty=opening.constitution.amendment_difficulty,
+            decree_authority=opening.constitution.decree_authority,
+            executive_term_limit_terms=opening.constitution.executive_term_limit_terms,
+            national_election_interval_turns=opening.constitution.national_election_interval_turns,
+            constitution_digest=constitution_digest(opening.constitution),
+        ),
+        constitutional_order_support_bps=opening.constitutional_order_support_bps,
+        opening_legitimacy_bps=opening.legitimacy_bps,
+        opening_economic_baseline=opening_baseline_report,
+        current_total_gross_output=current_total_gross_output,
+        current_unemployment_rate_bps=current_unemployment_rate_bps,
+        output_change_bps=assessment.output_change_bps,
+        output_contribution_bps=assessment.output_contribution_bps,
+        unemployment_change_bps=assessment.unemployment_change_bps,
+        unemployment_contribution_bps=assessment.unemployment_contribution_bps,
+        performance_contribution_bps=assessment.performance_contribution_bps,
+        order_support_contribution_bps=drift,
+        total_legitimacy_change_bps=total_change,
+        closing_legitimacy_bps=closing_legitimacy,
+        closing_economic_baseline=closing_baseline_report,
+        opening_political_capital=opening.political_capital,
+        political_capital_regeneration=regeneration,
+        political_capital_spent=0,
+        political_capital_capacity=opening.political_capital_capacity,
+        closing_political_capital=closing_capital,
+    )
+
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="politics",
+            reason_id="legitimacy_resolved",
+            params={
+                "opening_legitimacy_bps": opening.legitimacy_bps,
+                "order_support_contribution_bps": drift,
+                "performance_contribution_bps": assessment.performance_contribution_bps,
+                "total_legitimacy_change_bps": total_change,
+                "closing_legitimacy_bps": closing_legitimacy,
+                "constitutional_order_support_bps": opening.constitutional_order_support_bps,
+            },
+        )
+    )
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="politics",
+            reason_id="political_capital_resolved",
+            params={
+                "opening": opening.political_capital,
+                "regeneration": regeneration,
+                "spent": 0,
+                "capacity": opening.political_capital_capacity,
+                "closing": closing_capital,
+            },
+        )
+    )
+
+    ctx.mark_implemented()
+
+
 def _generate_turn_report(ctx: PhaseContext) -> None:
     ctx.report_entries.append(
         TurnReportEntry(
@@ -860,7 +1071,10 @@ PHASE_ORDER: tuple[tuple[str, PhaseHandler], ...] = (
     ("resolve_diplomacy_and_sanctions", _noop),
     ("resolve_military_movement_and_combat", _noop),
     ("apply_casualties_occupation_disruption_war_costs", _noop),
-    ("update_group_welfare_approval_trust_radicalization", _noop),
+    (
+        "update_group_welfare_approval_trust_radicalization",
+        _update_legitimacy_and_political_capital,
+    ),
     ("update_institutional_loyalty_competence_corruption_power", _noop),
     ("evaluate_protests_strikes_insurgency_coups_revolutions", _noop),
     ("evaluate_elections_and_constitutional_events", _noop),

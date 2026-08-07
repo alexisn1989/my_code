@@ -341,9 +341,9 @@ class TestR1CrossReportValidation:
     def test_all_five_absent_is_valid(self) -> None:
         """`_valid_turn_report_dict()` now comes from the real resolver, so `labor_market` and
         `resources` are also present by default (Phase 2B3 extended the completeness rule to
-        four reports; Phase 2C1 extended it again to five) — both must be nulled out here too,
-        or this becomes a partial (rejected) combination rather than the "all absent" case this
-        test means to exercise.
+        four reports; Phase 2C1 extended it again to five; Phase 3A extended it again to six) —
+        all must be nulled out here too, or this becomes a partial (rejected) combination rather
+        than the "all absent" case this test means to exercise.
         """
         data, _ = _valid_turn_report_dict()
         data["labor_market"] = None
@@ -351,12 +351,14 @@ class TestR1CrossReportValidation:
         data["production"] = None
         data["tax_base_derivation"] = None
         data["finance"] = None
+        data["political"] = None
         report = TurnReport.model_validate(data)
         assert report.labor_market is None
         assert report.resources is None
         assert report.production is None
         assert report.tax_base_derivation is None
         assert report.finance is None
+        assert report.political is None
 
     def test_all_five_present_and_consistent_is_valid(self) -> None:
         data, report = _valid_turn_report_dict()
@@ -395,21 +397,36 @@ class TestPhase2C2ExtractionCrossReportValidation:
     def test_extraction_actual_output_mismatch_with_resources_total_is_rejected(self) -> None:
         """Bump the row's `actual_output`/`labor_limited_output` together (keeping the row's own
         self-consistency check satisfied), `total_gross_output` (keeping `ProductionReport`'s
-        own sum check satisfied), and `tax_base_derivation`'s mirrored `actual_output` (keeping
-        the pre-existing production<->derivation R1 check satisfied — the default fixture's
+        own sum check satisfied), `tax_base_derivation`'s mirrored `actual_output` (keeping the
+        pre-existing production<->derivation R1 check satisfied — the default fixture's
         extraction row starts at 0, so bumping to 1 leaves `modeled_value_added`'s floor-division
-        formula still at 0, self-consistent with no further changes needed) — isolating the new
-        cross-report check against `resources.extraction_sector_real_output` specifically.
+        formula still at 0, self-consistent with no further changes needed), and (Phase 3A)
+        `political.current_total_gross_output` (keeping the political<->production cross-check
+        satisfied too) — isolating the new cross-report check against
+        `resources.extraction_sector_real_output` specifically.
         """
         data, _ = _valid_turn_report_dict()
         assert data["resources"] is not None
         assert data["production"] is not None
         assert data["tax_base_derivation"] is not None
+        assert data["political"] is not None
         extraction = next(s for s in data["production"]["sectors"] if s["category"] == "extraction")
         assert extraction["actual_output"] == 0  # default fixture: extraction inactive
         extraction["actual_output"] = 1
         extraction["labor_limited_output"] = 1
         data["production"]["total_gross_output"] = int(data["production"]["total_gross_output"]) + 1
+        # (Phase 3A) keep the political block's own self-validation and its cross-check against
+        # production satisfied too: `current_total_gross_output` and the closing baseline (which
+        # mirrors it) both need the same +1. `output_change_bps` stays correct un-touched because
+        # this fixture's `opening_economic_baseline` is None (first turn) -- the formula returns
+        # 0 regardless of `current_total_gross_output`'s value in that case.
+        assert data["political"]["opening_economic_baseline"] is None, (
+            "fixture assumption: first-turn political block has no opening baseline"
+        )
+        data["political"]["current_total_gross_output"] = data["production"]["total_gross_output"]
+        data["political"]["closing_economic_baseline"]["total_gross_output"] = data["production"][
+            "total_gross_output"
+        ]
         tbd_extraction = next(
             s for s in data["tax_base_derivation"]["sectors"] if s["category"] == "extraction"
         )

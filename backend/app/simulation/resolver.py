@@ -96,5 +96,6 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
         finance=ctx.finance_report,
         production=ctx.production_report,
         tax_base_derivation=ctx.tax_base_derivation_report,
+        political=ctx.political_report,
     )
     return TurnResolution(state=working, report=report)
