@@ -118,6 +118,16 @@ resources, province/field-level deposits, ownership/nationalization/corruption a
 lever, and environmental effects — is explicitly deferred beyond the vertical slice, not implied
 by the base-game foundation existing.
 
+§9's constitutional system and §10's political capital begin with only their **foundation**: a
+nine-axis constitutional structure with validity rules (never a legitimacy judgment), authored
+public acceptance of that structure, a legitimacy score responding to it and to this economy's own
+performance, and political capital regenerating from legitimacy (Phase 3A — see
+`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`). Political-capital
+expenditure, legislative/faction bargaining (§12), and government survival — elections, coups,
+removal from power (§19, §20, §21) — are explicitly deferred to Phase 3B/3C, not implied by the
+foundation existing; §3.1's "removal from office" claim is not yet mechanically possible in any
+form.
+
 ## 42. Final product standard
 
 MANDATE succeeds if players can understand their country's condition, make politically meaningful
