@@ -109,6 +109,54 @@ capacity to act could never regenerate and would be permanently unable to govern
 removal condition — and removal is Phase 3C, not this phase."""
 
 
+# --- Phase 3B1: legislative composition -------------------------------------
+
+StrictRelationshipBps: TypeAlias = Annotated[
+    int, Field(strict=True, ge=-BPS_DENOMINATOR, le=BPS_DENOMINATOR)
+]
+"""How a legislative bloc regards the current government: -10,000 (implacably hostile) through
++10,000 (fully loyal).
+
+A *relationship*, not a legitimacy and not an approval: it says nothing about whether the
+government deserves support, only whether this particular caucus currently gives it. Signed and
+symmetric, because hostility and loyalty are the same axis measured in opposite directions.
+"""
+
+StrictPreferenceBps: TypeAlias = Annotated[
+    int, Field(strict=True, ge=-BPS_DENOMINATOR, le=BPS_DENOMINATOR)
+]
+"""A bloc's directional policy preference on one axis: negative prefers a decrease, positive
+prefers an increase, zero is indifferent.
+
+Separate from `StrictRelationshipBps` because preference and loyalty are independent: a bloc can
+be devoted to the government and still hate its tax policy, and modelling both with one number
+would make that combination unrepresentable.
+"""
+
+StrictSeatCount: TypeAlias = Annotated[int, Field(strict=True, ge=0)]
+"""A count of legislative seats. Zero is meaningful: a bloc may hold no seats in a given chamber
+(or none at all, after a future phase's defections) while still existing as a caucus."""
+
+StrictPositiveSeatCount: TypeAlias = Annotated[int, Field(strict=True, gt=0)]
+"""A count of seats that cannot be zero — a chamber's size, or the majority required to carry it.
+
+Distinct from `StrictSeatCount` because the two genuinely differ at zero: a chamber with no seats
+is not a chamber, and a required majority of zero would mean a proposal passes with no support at
+all. Both are `total_seats // 2 + 1`-adjacent quantities where zero indicates a construction bug,
+not a representable state.
+"""
+
+StrictSeatNumerator: TypeAlias = Annotated[int, Field(strict=True, ge=0)]
+"""`seats * effective_support_bps` for one bloc — the exact, undivided product that
+`simulation.apportionment` sums before its single division.
+
+Typed separately from `StrictSeatCount` because it is not a seat count: it is a seat count scaled
+by 10,000, and confusing the two is exactly the error that produces a hundredfold seat total. Kept
+in the report so a validator can replay the apportionment without recomputing support from
+scratch.
+"""
+
+
 def trunc_div_toward_zero(numerator: int, denominator: int) -> int:
     """Exact integer division truncated **toward zero** — the single rounding step used by every
     signed political formula in `simulation.legitimacy`.
