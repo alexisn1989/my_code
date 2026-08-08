@@ -16,7 +16,8 @@ resolution").
 from __future__ import annotations
 
 from app.core.errors import InvariantViolation
-from app.simulation.constitution import first_constitutional_violation
+from app.simulation.constitution import DecreeAuthority, Legislature, first_constitutional_violation
+from app.simulation.legislature import LegislativeChamber
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
     CountryState,
@@ -24,6 +25,10 @@ from app.simulation.state import (
     ResourceCategory,
     SectorCategory,
 )
+
+_RELATIONSHIP_MIN = -10_000
+_RELATIONSHIP_MAX = 10_000
+_CANONICAL_CHAMBER_ORDER = tuple(LegislativeChamber)
 
 GROUP_SHARE_TOLERANCE = 1e-6
 """Documented rounding tolerance (product spec §8) for population-group share reconciliation."""
@@ -464,12 +469,18 @@ def _check_politics(
     problem = first_constitutional_violation(politics.constitution)
     if problem is not None:
         rule_code, rule_message = problem
-        violations.append(
-            InvariantViolation(
-                code="invalid_constitutional_combination",
-                message=f"country {country.id!r}: {rule_code}: {rule_message}",
+        # (Phase 3B1) C10 is deliberately NOT reported here as "invalid_constitutional_combination"
+        # -- `_check_legislature` below reports it under its own dedicated
+        # `legislature_absent_requires_unlimited_decree` code, so a country with no legislature
+        # and no unlimited decree gets exactly one violation for that one defect, not two. Every
+        # other rule (C1-C9) is unaffected and still reported here exactly as before.
+        if rule_code != "legislature_absent_requires_unlimited_decree":
+            violations.append(
+                InvariantViolation(
+                    code="invalid_constitutional_combination",
+                    message=f"country {country.id!r}: {rule_code}: {rule_message}",
+                )
             )
-        )
 
     baseline = politics.economic_baseline
     if state_turn == 0:
@@ -514,6 +525,341 @@ def _check_politics(
                 ),
             )
         )
+
+    return violations
+
+
+def _check_legislature(country: CountryState, *, is_player: bool) -> list[InvariantViolation]:
+    """Phase 3B1 structural backstops for `PoliticalState.legislature` (§10), mirroring
+    `_check_politics`'s role: every rule here is already enforced at every legitimate
+    construction/assignment path by `LegislatureState`/`PartyState`/`LegislativeBlocState`/
+    `PoliticalState`'s own Pydantic validators, but those are all mutable, so a nested assignment
+    after construction can desynchronize an already-valid instance without re-running them. This
+    is the every-turn, bypassed-construction backstop — every rule below is recomputed directly
+    from `country`'s fields, never by re-invoking a Pydantic validator.
+
+    Ordering deliberately avoids cascaded noise: a check that cannot be meaningfully evaluated
+    once an earlier structural defect has been found is skipped rather than reported a second time
+    under a different code (duplicate chambers/parties/blocs suppress their own order checks;
+    an unknown-chamber seat reference is excluded from that chamber's seat-total accumulation
+    rather than crashing or silently corrupting a real chamber's total).
+
+    `legislature_absent_requires_unlimited_decree` (C10) is deliberately **not** also reported by
+    `_check_politics` as `invalid_constitutional_combination` — see that function's comment. Every
+    other code here is independent of, and additional to, `_check_politics`'s checks.
+    """
+    violations: list[InvariantViolation] = []
+    politics = country.politics
+    if politics is None:
+        return violations  # nothing to check; player_politics_required already covers this
+
+    legislature = politics.legislature
+
+    if not is_player:
+        if legislature is not None:
+            violations.append(
+                InvariantViolation(
+                    code="non_player_legislature_not_supported",
+                    message=(
+                        f"country {country.id!r} is not the player but has a legislature; "
+                        "Phase 3A already forbids non-player politics entirely, and Phase 3B1 "
+                        "does not extend legislative resolution to AI countries"
+                    ),
+                )
+            )
+        # Non-player politics is unsupported at all (see `_check_politics`'s
+        # `non_player_politics_not_supported`); running the structural checks below against
+        # content that should not exist at all would only add noise, not signal.
+        return violations
+
+    constitution = politics.constitution
+    declared = constitution.legislature
+
+    if declared is not Legislature.NONE and legislature is None:
+        violations.append(
+            InvariantViolation(
+                code="legislature_required_by_constitution",
+                message=(
+                    f"country {country.id!r}: constitution.legislature is {declared.value!r} "
+                    "but politics.legislature is None"
+                ),
+            )
+        )
+    if declared is Legislature.NONE and legislature is not None:
+        violations.append(
+            InvariantViolation(
+                code="legislature_forbidden_by_constitution",
+                message=(
+                    f"country {country.id!r}: constitution.legislature is 'none' but a "
+                    "legislature is present"
+                ),
+            )
+        )
+
+    if (
+        declared is Legislature.NONE
+        and constitution.decree_authority is not DecreeAuthority.UNLIMITED
+    ):
+        violations.append(
+            InvariantViolation(
+                code="legislature_absent_requires_unlimited_decree",
+                message=(
+                    f"country {country.id!r}: legislature is 'none' but decree_authority is "
+                    f"{constitution.decree_authority.value!r}, so no organ can make law"
+                ),
+            )
+        )
+
+    if legislature is None:
+        return violations  # nothing further to check without a legislature to inspect
+
+    chambers = legislature.chambers
+    parties = legislature.parties
+
+    seen_chambers: set[LegislativeChamber] = set()
+    duplicate_chamber_found = False
+    for chamber_state in chambers:
+        if chamber_state.chamber in seen_chambers:
+            violations.append(
+                InvariantViolation(
+                    code="duplicate_chamber",
+                    message=(
+                        f"country {country.id!r}: duplicate chamber {chamber_state.chamber.value!r}"
+                    ),
+                )
+            )
+            duplicate_chamber_found = True
+        seen_chambers.add(chamber_state.chamber)
+
+    if not duplicate_chamber_found:
+        chamber_sequence = [c.chamber for c in chambers]
+        canonical_sequence = sorted(chamber_sequence, key=_CANONICAL_CHAMBER_ORDER.index)
+        if chamber_sequence != canonical_sequence:
+            violations.append(
+                InvariantViolation(
+                    code="noncanonical_chamber_order",
+                    message=(
+                        f"country {country.id!r}: chambers must be in canonical order "
+                        f"{[c.value for c in _CANONICAL_CHAMBER_ORDER]!r}, got "
+                        f"{[c.value for c in chamber_sequence]!r}"
+                    ),
+                )
+            )
+
+    if declared in (Legislature.UNICAMERAL, Legislature.BICAMERAL):
+        expected_chamber_count = 1 if declared is Legislature.UNICAMERAL else 2
+        if len(chambers) != expected_chamber_count:
+            violations.append(
+                InvariantViolation(
+                    code="chamber_count_mismatch_with_constitution",
+                    message=(
+                        f"country {country.id!r}: constitution.legislature is {declared.value!r} "
+                        f"but the legislature has {len(chambers)} chamber(s), expected "
+                        f"{expected_chamber_count}"
+                    ),
+                )
+            )
+        elif (
+            declared is Legislature.UNICAMERAL
+            and chambers[0].chamber is not LegislativeChamber.LOWER
+        ):
+            violations.append(
+                InvariantViolation(
+                    code="unicameral_chamber_must_be_lower",
+                    message=(
+                        f"country {country.id!r}: a unicameral legislature's single chamber must "
+                        f"be 'lower', got {chambers[0].chamber.value!r}"
+                    ),
+                )
+            )
+
+    for chamber_state in chambers:
+        if chamber_state.total_seats <= 0:
+            violations.append(
+                InvariantViolation(
+                    code="chamber_total_seats_not_positive",
+                    message=(
+                        f"country {country.id!r}: chamber {chamber_state.chamber.value!r} "
+                        f"total_seats={chamber_state.total_seats} is not positive"
+                    ),
+                )
+            )
+
+    seen_party_ids: set[str] = set()
+    duplicate_party_found = False
+    for party in parties:
+        if party.id in seen_party_ids:
+            violations.append(
+                InvariantViolation(
+                    code="duplicate_party_id",
+                    message=f"country {country.id!r}: duplicate party id {party.id!r}",
+                )
+            )
+            duplicate_party_found = True
+        seen_party_ids.add(party.id)
+
+    if not duplicate_party_found:
+        party_ids = [party.id for party in parties]
+        if party_ids != sorted(party_ids):
+            violations.append(
+                InvariantViolation(
+                    code="noncanonical_party_order",
+                    message=(
+                        f"country {country.id!r}: parties must be sorted by id, got {party_ids!r}"
+                    ),
+                )
+            )
+
+    known_chambers = {chamber_state.chamber for chamber_state in chambers}
+    seat_totals_by_chamber: dict[LegislativeChamber, int] = dict.fromkeys(known_chambers, 0)
+
+    for party in parties:
+        if not party.blocs:
+            violations.append(
+                InvariantViolation(
+                    code="party_has_no_blocs",
+                    message=f"country {country.id!r}: party {party.id!r} has no blocs",
+                )
+            )
+            continue  # nothing further to check for a party with no blocs to inspect
+
+        seen_bloc_ids: set[str] = set()
+        duplicate_bloc_found = False
+        for bloc in party.blocs:
+            if bloc.id in seen_bloc_ids:
+                violations.append(
+                    InvariantViolation(
+                        code="duplicate_bloc_id",
+                        message=(
+                            f"country {country.id!r}: party {party.id!r} has duplicate bloc id "
+                            f"{bloc.id!r}"
+                        ),
+                    )
+                )
+                duplicate_bloc_found = True
+            seen_bloc_ids.add(bloc.id)
+
+        if not duplicate_bloc_found:
+            bloc_ids = [bloc.id for bloc in party.blocs]
+            if bloc_ids != sorted(bloc_ids):
+                violations.append(
+                    InvariantViolation(
+                        code="noncanonical_bloc_order",
+                        message=(
+                            f"country {country.id!r}: blocs of party {party.id!r} must be sorted "
+                            f"by id, got {bloc_ids!r}"
+                        ),
+                    )
+                )
+
+        for bloc in party.blocs:
+            seen_bloc_chambers: set[LegislativeChamber] = set()
+            duplicate_bloc_seats_found = False
+            for entry in bloc.seats:
+                if entry.chamber in seen_bloc_chambers:
+                    violations.append(
+                        InvariantViolation(
+                            code="duplicate_bloc_chamber_seats",
+                            message=(
+                                f"country {country.id!r}: bloc {party.id!r}/{bloc.id!r} has "
+                                f"duplicate seats for chamber {entry.chamber.value!r}"
+                            ),
+                        )
+                    )
+                    duplicate_bloc_seats_found = True
+                seen_bloc_chambers.add(entry.chamber)
+
+            if not duplicate_bloc_seats_found:
+                entry_chambers = [entry.chamber for entry in bloc.seats]
+                canonical_entry_chambers = sorted(
+                    entry_chambers, key=_CANONICAL_CHAMBER_ORDER.index
+                )
+                if entry_chambers != canonical_entry_chambers:
+                    violations.append(
+                        InvariantViolation(
+                            code="noncanonical_bloc_seats_order",
+                            message=(
+                                f"country {country.id!r}: bloc {party.id!r}/{bloc.id!r} seats "
+                                f"must be in canonical chamber order, got "
+                                f"{[c.value for c in entry_chambers]!r}"
+                            ),
+                        )
+                    )
+
+            for entry in bloc.seats:
+                if entry.chamber not in known_chambers:
+                    violations.append(
+                        InvariantViolation(
+                            code="bloc_seats_reference_unknown_chamber",
+                            message=(
+                                f"country {country.id!r}: bloc {party.id!r}/{bloc.id!r} holds "
+                                f"seats in {entry.chamber.value!r}, which this legislature does "
+                                "not have"
+                            ),
+                        )
+                    )
+                    continue  # no bucket exists for an unknown chamber; do not accumulate into it
+                seat_totals_by_chamber[entry.chamber] += entry.seats
+
+            if not (_RELATIONSHIP_MIN <= bloc.government_relationship_bps <= _RELATIONSHIP_MAX):
+                violations.append(
+                    InvariantViolation(
+                        code="bloc_relationship_out_of_range",
+                        message=(
+                            f"country {country.id!r}: bloc {party.id!r}/{bloc.id!r} "
+                            f"government_relationship_bps={bloc.government_relationship_bps} "
+                            f"outside [{_RELATIONSHIP_MIN}, {_RELATIONSHIP_MAX}]"
+                        ),
+                    )
+                )
+            if not (_BPS_MIN <= bloc.discipline_bps <= _BPS_MAX):
+                violations.append(
+                    InvariantViolation(
+                        code="bloc_discipline_out_of_range",
+                        message=(
+                            f"country {country.id!r}: bloc {party.id!r}/{bloc.id!r} "
+                            f"discipline_bps={bloc.discipline_bps} outside "
+                            f"[{_BPS_MIN}, {_BPS_MAX}]"
+                        ),
+                    )
+                )
+            if not (_RELATIONSHIP_MIN <= bloc.tax_preference_bps <= _RELATIONSHIP_MAX):
+                violations.append(
+                    InvariantViolation(
+                        code="bloc_preference_out_of_range",
+                        message=(
+                            f"country {country.id!r}: bloc {party.id!r}/{bloc.id!r} "
+                            f"tax_preference_bps={bloc.tax_preference_bps} outside "
+                            f"[{_RELATIONSHIP_MIN}, {_RELATIONSHIP_MAX}]"
+                        ),
+                    )
+                )
+            if not (_RELATIONSHIP_MIN <= bloc.spending_preference_bps <= _RELATIONSHIP_MAX):
+                violations.append(
+                    InvariantViolation(
+                        code="bloc_preference_out_of_range",
+                        message=(
+                            f"country {country.id!r}: bloc {party.id!r}/{bloc.id!r} "
+                            f"spending_preference_bps={bloc.spending_preference_bps} outside "
+                            f"[{_RELATIONSHIP_MIN}, {_RELATIONSHIP_MAX}]"
+                        ),
+                    )
+                )
+
+    for chamber_state in chambers:
+        recomputed_total = seat_totals_by_chamber.get(chamber_state.chamber, 0)
+        if recomputed_total != chamber_state.total_seats:
+            violations.append(
+                InvariantViolation(
+                    code="chamber_seat_total_mismatch",
+                    message=(
+                        f"country {country.id!r}: blocs hold {recomputed_total} seats in the "
+                        f"{chamber_state.chamber.value!r} chamber, which has "
+                        f"{chamber_state.total_seats}; every seat must be held by exactly one "
+                        "bloc"
+                    ),
+                )
+            )
 
     return violations
 
@@ -573,13 +919,9 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
             )
 
     for country in state.world.countries.values():
+        is_player = country.id == state.world.player_country_id
         violations.extend(_check_country(country))
-        violations.extend(
-            _check_politics(
-                country,
-                state_turn=state.turn,
-                is_player=country.id == state.world.player_country_id,
-            )
-        )
+        violations.extend(_check_politics(country, state_turn=state.turn, is_player=is_player))
+        violations.extend(_check_legislature(country, is_player=is_player))
 
     return violations
