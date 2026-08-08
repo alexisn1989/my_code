@@ -132,7 +132,7 @@ class ConstitutionState(BaseModel):
     electorate never votes for the executive directly in that arrangement, so a name built around
     "executive election" would misdescribe it. The new name states what is actually scheduled.
 
-    The validator below applies C1-C9 so an incoherent constitution can never be constructed on any
+    The validator below applies C1-C10 so an incoherent constitution can never be constructed on any
     path — fresh build, scenario load, or `model_validate_json` history replay.
     `simulation.invariants` re-checks the same rules independently against state, to catch a
     bypassed construction (`model_construct`).
@@ -162,7 +162,7 @@ class ConstitutionState(BaseModel):
 def first_constitutional_violation(
     constitution: ConstitutionState,
 ) -> tuple[str, str] | None:
-    """Return `(code, message)` for the first violated rule C1-C9, or `None` if coherent.
+    """Return `(code, message)` for the first violated rule C1-C10, or `None` if coherent.
 
     Shared by `ConstitutionState`'s own validator and by `simulation.invariants`'s bypassed-
     construction backstop, so the two can never disagree about what "valid" means. Both callers
@@ -277,6 +277,19 @@ def first_constitutional_violation(
             "national_election_requires_something_elected",
             "national_election_interval_turns is set but there is no legislature and "
             f"executive_selection is {selection.value!r}, not 'direct_election'",
+        )
+
+    # C10 (Phase 3B1): an order in which no organ can make law is not a constrained government;
+    # it is the absence of one. With no legislature, the executive must be able to legislate --
+    # otherwise the constitution describes a state that cannot change its own laws by any route,
+    # which is not a hard government to play, it is an unplayable one.
+    if legislature is Legislature.NONE and (
+        constitution.decree_authority is not DecreeAuthority.UNLIMITED
+    ):
+        return (
+            "legislature_absent_requires_unlimited_decree",
+            f"legislature is 'none' but decree_authority is {constitution.decree_authority.value!r}, "
+            "so no organ can make law",
         )
 
     return None
