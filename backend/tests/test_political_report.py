@@ -159,7 +159,14 @@ def test_a_report_spending_more_than_the_opening_stock_is_rejected() -> None:
 
 def test_a_report_spending_exactly_the_opening_stock_is_accepted() -> None:
     """The boundary stays inclusive at the report layer too — otherwise a government that
-    committed everything it held could resolve a turn it could not then record."""
+    committed everything it held could resolve a turn it could not then record.
+
+    Validated against `PoliticalReport` directly (not the full `TurnReport`): as of Phase 3B1,
+    `political_capital_spent` must also agree with `LegislativeReport.political_capital_committed`
+    (see `test_legislative_report.py`), so an arbitrary hand-patched spend value can no longer be
+    round-tripped through `TurnReport` in isolation — but `PoliticalReport`'s own boundary
+    validator is exactly what this test means to exercise.
+    """
     data = _first_turn_report_dict()
     political = data["political"]
     spent = political["opening_political_capital"]
@@ -170,7 +177,7 @@ def test_a_report_spending_exactly_the_opening_stock_is_accepted() -> None:
         + political["political_capital_regeneration"]
         - spent,
     )
-    TurnReport.model_validate(data)
+    PoliticalReport.model_validate(political)
 
 
 def test_baseline_lifecycle_none_opening_with_nonzero_change_is_rejected() -> None:

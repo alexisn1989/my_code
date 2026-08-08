@@ -43,6 +43,11 @@ from app.core.politics import (
     StrictLegitimacyBps,
     StrictPoliticalCapital,
     StrictPoliticalCapitalCapacity,
+    StrictPositiveSeatCount,
+    StrictPreferenceBps,
+    StrictRelationshipBps,
+    StrictSeatCount,
+    StrictSeatNumerator,
     StrictSignedBps,
     StrictSignedLegitimacyBps,
     clamp_bps,
@@ -66,6 +71,24 @@ from app.simulation.constitution import (
     JudicialReview,
     Legislature,
     TerritorialOrganization,
+)
+from app.simulation.legislative_voting import (
+    DECREE_POLITICAL_CAPITAL_COST,
+    INFLUENCE_BPS_PER_CAPITAL,
+    MAX_INFLUENCE_BPS,
+    RELATIONSHIP_WEIGHT_BPS,
+    ROLE_ANCHOR_BPS,
+    SPENDING_FULL_INTENSITY_BPS,
+    TAX_FULL_INTENSITY_BPS,
+    TAX_WEIGHT_BPS,
+)
+from app.simulation.legislative_voting import SPENDING_WEIGHT_BPS as SPENDING_WEIGHT_BPS
+from app.simulation.legislature import ChangeDirection as LegislativeChangeDirection
+from app.simulation.legislature import (
+    GovernmentRole,
+    LegislativeChamber,
+    LegislativeOutcome,
+    ProposalRoute,
 )
 from app.simulation.legitimacy import (
     DRIFT_RATE_BPS,
@@ -1642,6 +1665,517 @@ class PoliticalReport(BaseModel):
         return self
 
 
+def _legislative_axis_component_bps(
+    *,
+    preference_bps: int,
+    direction: LegislativeChangeDirection,
+    intensity_bps: int,
+    weight_bps: int,
+) -> int:
+    """One policy axis's contribution to `policy_compatibility_bps`, reimplemented locally from the
+    report's own stored fields — never by calling `legislative_voting._axis_component_bps` (R1: two
+    independent code paths for the same formula, exactly like every other report validator in this
+    module)."""
+    if direction is LegislativeChangeDirection.UNCHANGED:
+        return 0
+    magnitude = trunc_div_toward_zero(preference_bps * intensity_bps, BPS_DENOMINATOR)
+    weighted = trunc_div_toward_zero(magnitude * weight_bps, BPS_DENOMINATOR)
+    return -weighted if direction is LegislativeChangeDirection.DECREASE else weighted
+
+
+class BlocVoteReport(BaseModel):
+    """One row per `(party_id, bloc_id, chamber)`: how one caucus voted in one chamber, carrying
+    every field its validators (and `LegislativeReport`'s cross-row validators) need to replay the
+    whole support chain independently, from role anchor to whipped final position (Phase 3B1, §7).
+
+    A bloc seated in two chambers of a bicameral legislature produces **two** rows here — one per
+    chamber, since seats, apportionment and vote outcome are per-chamber — but political-capital
+    influence targets `(party_id, bloc_id)` alone, never a chamber. So `political_capital_allocated`
+    and `influence_bps` are required to be identical across a repeated bloc identity's rows
+    (`LegislativeReport._bicameral_allocation_is_consistent_per_bloc_identity`), while `seats`,
+    `numerator`, `base_seats`, `remainder`, `bonus_seat` and `supporting_seats` are genuinely
+    per-chamber and may differ.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    party_id: str
+    bloc_id: str
+    chamber: LegislativeChamber
+    seats: StrictSeatCount
+    government_role: GovernmentRole
+    government_relationship_bps: StrictRelationshipBps
+    discipline_bps: StrictBps
+    tax_preference_bps: StrictPreferenceBps
+    spending_preference_bps: StrictPreferenceBps
+    baseline_support_bps: StrictBps
+    policy_compatibility_bps: StrictSignedBps
+    raw_support_bps: StrictBps
+    political_capital_allocated: StrictPoliticalCapital
+    influence_bps: StrictBps
+    final_support_bps: StrictBps
+    effective_support_bps: StrictBps
+    numerator: StrictSeatNumerator
+    base_seats: StrictSeatCount
+    remainder: StrictBps
+    bonus_seat: bool
+    supporting_seats: StrictSeatCount
+
+    @model_validator(mode="after")
+    def _baseline_support_matches_role_and_relationship(self) -> BlocVoteReport:
+        expected = clamp_bps(
+            ROLE_ANCHOR_BPS[self.government_role]
+            + trunc_div_toward_zero(
+                self.government_relationship_bps * RELATIONSHIP_WEIGHT_BPS, BPS_DENOMINATOR
+            )
+        )
+        if self.baseline_support_bps != expected:
+            raise ValueError(
+                f"baseline_support_bps={self.baseline_support_bps} does not match "
+                f"clamp(ROLE_ANCHOR_BPS[{self.government_role.value!r}] + relationship "
+                f"contribution) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _raw_support_is_clamped_sum(self) -> BlocVoteReport:
+        expected = clamp_bps(self.baseline_support_bps + self.policy_compatibility_bps)
+        if self.raw_support_bps != expected:
+            raise ValueError(
+                f"raw_support_bps={self.raw_support_bps} does not match "
+                f"clamp(baseline_support_bps + policy_compatibility_bps) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _influence_matches_allocation(self) -> BlocVoteReport:
+        expected = min(
+            MAX_INFLUENCE_BPS, self.political_capital_allocated * INFLUENCE_BPS_PER_CAPITAL
+        )
+        if self.influence_bps != expected:
+            raise ValueError(
+                f"influence_bps={self.influence_bps} does not match "
+                f"min(MAX_INFLUENCE_BPS, political_capital_allocated * "
+                f"INFLUENCE_BPS_PER_CAPITAL) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _final_support_is_clamped_sum(self) -> BlocVoteReport:
+        expected = clamp_bps(self.raw_support_bps + self.influence_bps)
+        if self.final_support_bps != expected:
+            raise ValueError(
+                f"final_support_bps={self.final_support_bps} does not match "
+                f"clamp(raw_support_bps + influence_bps) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _effective_support_matches_discipline_amplification(self) -> BlocVoteReport:
+        midpoint = BPS_DENOMINATOR // 2
+        expected = clamp_bps(
+            self.final_support_bps
+            + trunc_div_toward_zero(
+                (self.final_support_bps - midpoint) * self.discipline_bps, BPS_DENOMINATOR
+            )
+        )
+        if self.effective_support_bps != expected:
+            raise ValueError(
+                f"effective_support_bps={self.effective_support_bps} does not match "
+                f"clamp(final_support_bps + discipline amplification) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _numerator_base_remainder_and_supporting_seats_are_consistent(self) -> BlocVoteReport:
+        """(R4) Everything a single row can verify about its own apportionment inputs — the
+        cross-row largest-remainder award itself is `LegislativeReport
+        ._chamber_apportionment_is_correct`'s job, since it is comparative across every row in the
+        same chamber and cannot be decided from one row alone."""
+        expected_numerator = self.seats * self.effective_support_bps
+        if self.numerator != expected_numerator:
+            raise ValueError(
+                f"numerator={self.numerator} does not match seats * effective_support_bps "
+                f"({expected_numerator})"
+            )
+        expected_base = self.numerator // BPS_DENOMINATOR
+        if self.base_seats != expected_base:
+            raise ValueError(
+                f"base_seats={self.base_seats} does not match numerator // 10_000 ({expected_base})"
+            )
+        expected_remainder = self.numerator % BPS_DENOMINATOR
+        if self.remainder != expected_remainder:
+            raise ValueError(
+                f"remainder={self.remainder} does not match numerator % 10_000 "
+                f"({expected_remainder})"
+            )
+        expected_supporting = self.base_seats + (1 if self.bonus_seat else 0)
+        if self.supporting_seats != expected_supporting:
+            raise ValueError(
+                f"supporting_seats={self.supporting_seats} does not match base_seats + "
+                f"int(bonus_seat) ({expected_supporting})"
+            )
+        if self.supporting_seats > self.seats:
+            raise ValueError(
+                f"supporting_seats={self.supporting_seats} exceeds seats={self.seats} (P2)"
+            )
+        return self
+
+
+class ChamberVoteReport(BaseModel):
+    """One chamber's vote: its size, how many seats support the proposal, the strict majority it
+    needed, and the (R4) chamber-level largest-remainder apportionment totals."""
+
+    model_config = _STRICT_CONFIG
+
+    chamber: LegislativeChamber
+    total_seats: StrictPositiveSeatCount
+    supporting_seats: StrictSeatCount
+    required_yes_seats: StrictPositiveSeatCount
+    shortfall_seats: StrictSeatCount
+    target_total: StrictSeatCount
+    extras_awarded: StrictSeatCount
+    passed: bool
+
+    @model_validator(mode="after")
+    def _required_yes_seats_is_strict_majority(self) -> ChamberVoteReport:
+        expected = self.total_seats // 2 + 1
+        if self.required_yes_seats != expected:
+            raise ValueError(
+                f"required_yes_seats={self.required_yes_seats} does not match "
+                f"total_seats // 2 + 1 ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _passed_and_shortfall_match_strict_majority(self) -> ChamberVoteReport:
+        if self.supporting_seats > self.total_seats:
+            raise ValueError(
+                f"supporting_seats={self.supporting_seats} exceeds total_seats={self.total_seats}"
+            )
+        expected_passed = self.supporting_seats >= self.required_yes_seats
+        if self.passed != expected_passed:
+            raise ValueError(
+                f"passed={self.passed} does not match supporting_seats >= required_yes_seats "
+                f"({expected_passed})"
+            )
+        expected_shortfall = max(0, self.required_yes_seats - self.supporting_seats)
+        if self.shortfall_seats != expected_shortfall:
+            raise ValueError(
+                f"shortfall_seats={self.shortfall_seats} does not match "
+                f"max(0, required_yes_seats - supporting_seats) ({expected_shortfall})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _supporting_seats_equals_target_total(self) -> ChamberVoteReport:
+        """(R4, P1) `target_total` is the chamber's true support mass; `supporting_seats` must
+        equal it exactly, not merely bound it."""
+        if self.supporting_seats != self.target_total:
+            raise ValueError(
+                f"supporting_seats={self.supporting_seats} does not match target_total="
+                f"{self.target_total} (P1: sum(supporting_seats) == target_total)"
+            )
+        if self.extras_awarded < 0:
+            raise ValueError(f"extras_awarded cannot be negative, got {self.extras_awarded}")
+        return self
+
+
+class LegislativeReport(BaseModel):
+    """Structured, machine-readable Phase 3B1 legislative outcome for the player country's one
+    budget proposal this turn: which route it took, how (if at all) each chamber voted, and how
+    much political capital was committed.
+
+    Self-validating like `PoliticalReport`: every validator below independently re-derives one
+    equation from the report's own stored fields, using the same low-level helpers
+    (`trunc_div_toward_zero`, `clamp_bps`) and calibration constants `simulation.legislative_voting`
+    and `simulation.apportionment` use — but **never by calling either module's functions**, so a
+    bug in one code path is likely to be caught by the other.
+
+    `route is None` *is* the "no proposal was submitted" signal for `NO_PROPOSAL` — there is no
+    redundant boolean alongside it. `legislature_present` is a recorded fact about the country's
+    state, not derived from `route`/`outcome`: it is required `True` whenever the outcome is a
+    legislative one (there is nothing to vote in otherwise), but for `NO_PROPOSAL`/
+    `ENACTED_BY_DECREE` it simply records whether the state actually has a legislature.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    outcome: LegislativeOutcome
+    route: ProposalRoute | None
+    legislature_present: bool
+    tax_delta_bps: StrictSignedBps
+    tax_direction: LegislativeChangeDirection
+    tax_intensity_bps: StrictBps
+    opening_total_program_spending: StrictMoney
+    proposed_total_program_spending: StrictMoney
+    spending_direction: LegislativeChangeDirection
+    spending_intensity_bps: StrictBps
+    chambers: tuple[ChamberVoteReport, ...] = Field(default_factory=tuple)
+    blocs: tuple[BlocVoteReport, ...] = Field(default_factory=tuple)
+    opening_political_capital: StrictPoliticalCapital
+    political_capital_committed: StrictPoliticalCapital
+
+    @model_validator(mode="after")
+    def _tax_change_representation_is_internally_consistent(self) -> LegislativeReport:
+        if self.tax_delta_bps > 0:
+            expected_direction = LegislativeChangeDirection.INCREASE
+        elif self.tax_delta_bps < 0:
+            expected_direction = LegislativeChangeDirection.DECREASE
+        else:
+            expected_direction = LegislativeChangeDirection.UNCHANGED
+        if self.tax_direction != expected_direction:
+            raise ValueError(
+                f"tax_direction={self.tax_direction.value!r} does not match the sign of "
+                f"tax_delta_bps={self.tax_delta_bps} (expected {expected_direction.value!r})"
+            )
+        expected_intensity = min(
+            BPS_DENOMINATOR,
+            trunc_div_toward_zero(
+                abs(self.tax_delta_bps) * BPS_DENOMINATOR, TAX_FULL_INTENSITY_BPS
+            ),
+        )
+        if self.tax_intensity_bps != expected_intensity:
+            raise ValueError(
+                f"tax_intensity_bps={self.tax_intensity_bps} does not match "
+                f"min(10_000, trunc_div_toward_zero(abs(tax_delta_bps) * 10_000, "
+                f"TAX_FULL_INTENSITY_BPS)) ({expected_intensity})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _spending_change_representation_matches_totals(self) -> LegislativeReport:
+        """(R7) The four exhaustive branches, reimplemented locally: the two `opening == 0`
+        branches are decided before any division, exactly like `legislative_voting
+        .spending_policy_change` and `legitimacy.py`'s own zero-baseline branch."""
+        opening = self.opening_total_program_spending
+        proposed = self.proposed_total_program_spending
+        if opening == 0:
+            if proposed == 0:
+                expected_direction = LegislativeChangeDirection.UNCHANGED
+                expected_intensity = 0
+            else:
+                expected_direction = LegislativeChangeDirection.INCREASE
+                expected_intensity = BPS_DENOMINATOR
+        elif proposed == 0:
+            expected_direction = LegislativeChangeDirection.DECREASE
+            expected_intensity = BPS_DENOMINATOR
+        else:
+            relative_change_bps = trunc_div_toward_zero(
+                (proposed - opening) * BPS_DENOMINATOR, opening
+            )
+            expected_intensity = min(
+                BPS_DENOMINATOR,
+                trunc_div_toward_zero(
+                    abs(relative_change_bps) * BPS_DENOMINATOR, SPENDING_FULL_INTENSITY_BPS
+                ),
+            )
+            if proposed > opening:
+                expected_direction = LegislativeChangeDirection.INCREASE
+            elif proposed < opening:
+                expected_direction = LegislativeChangeDirection.DECREASE
+            else:
+                expected_direction = LegislativeChangeDirection.UNCHANGED
+        if self.spending_direction != expected_direction:
+            raise ValueError(
+                f"spending_direction={self.spending_direction.value!r} does not match the "
+                f"formula over opening/proposed_total_program_spending (expected "
+                f"{expected_direction.value!r})"
+            )
+        if self.spending_intensity_bps != expected_intensity:
+            raise ValueError(
+                f"spending_intensity_bps={self.spending_intensity_bps} does not match the "
+                f"formula over opening/proposed_total_program_spending ({expected_intensity})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _policy_compatibility_matches_preferences_direction_and_intensity(
+        self,
+    ) -> LegislativeReport:
+        for bloc in self.blocs:
+            tax_component = _legislative_axis_component_bps(
+                preference_bps=bloc.tax_preference_bps,
+                direction=self.tax_direction,
+                intensity_bps=self.tax_intensity_bps,
+                weight_bps=TAX_WEIGHT_BPS,
+            )
+            spending_component = _legislative_axis_component_bps(
+                preference_bps=bloc.spending_preference_bps,
+                direction=self.spending_direction,
+                intensity_bps=self.spending_intensity_bps,
+                weight_bps=SPENDING_WEIGHT_BPS,
+            )
+            expected = tax_component + spending_component
+            if bloc.policy_compatibility_bps != expected:
+                raise ValueError(
+                    f"bloc ({bloc.party_id!r}, {bloc.bloc_id!r}) chamber "
+                    f"{bloc.chamber.value!r}: policy_compatibility_bps="
+                    f"{bloc.policy_compatibility_bps} does not match tax + spending axis "
+                    f"components ({expected})"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _bicameral_allocation_is_consistent_per_bloc_identity(self) -> LegislativeReport:
+        """Influence targets `(party_id, bloc_id)`, never a chamber (report corrections §3): a
+        bloc seated in two chambers must show the identical allocated capital and influence on
+        both rows, so the commitment validator below can safely count each identity once."""
+        seen: dict[tuple[str, str], BlocVoteReport] = {}
+        for bloc in self.blocs:
+            key = (bloc.party_id, bloc.bloc_id)
+            prior = seen.get(key)
+            if prior is None:
+                seen[key] = bloc
+                continue
+            if prior.political_capital_allocated != bloc.political_capital_allocated:
+                raise ValueError(
+                    f"bloc {key!r} has inconsistent political_capital_allocated across chamber "
+                    f"rows: {prior.political_capital_allocated} vs "
+                    f"{bloc.political_capital_allocated}"
+                )
+            if prior.influence_bps != bloc.influence_bps:
+                raise ValueError(
+                    f"bloc {key!r} has inconsistent influence_bps across chamber rows: "
+                    f"{prior.influence_bps} vs {bloc.influence_bps}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _chamber_apportionment_is_correct(self) -> LegislativeReport:
+        """(R4) The chamber-level largest-remainder cross-row check: `target_total`,
+        `extras_awarded`, and exactly which rows receive `bonus_seat`, replayed independently from
+        every bloc row seated in that chamber. This is the one check a single `BlocVoteReport`
+        cannot perform on itself — it is comparative across every row in the same chamber — and is
+        the check that catches a bonus moved from a larger remainder to a smaller one even though
+        every individual row stays internally consistent."""
+        for chamber_report in self.chambers:
+            rows = [bloc for bloc in self.blocs if bloc.chamber == chamber_report.chamber]
+            target_total = sum(row.numerator for row in rows) // BPS_DENOMINATOR
+            if chamber_report.target_total != target_total:
+                raise ValueError(
+                    f"chamber {chamber_report.chamber.value!r}: target_total="
+                    f"{chamber_report.target_total} does not match "
+                    f"sum(numerator) // 10_000 ({target_total})"
+                )
+            extras = target_total - sum(row.base_seats for row in rows)
+            if chamber_report.extras_awarded != extras:
+                raise ValueError(
+                    f"chamber {chamber_report.chamber.value!r}: extras_awarded="
+                    f"{chamber_report.extras_awarded} does not match target_total - "
+                    f"sum(base_seats) ({extras})"
+                )
+            order = sorted(rows, key=lambda row: (-row.remainder, row.party_id, row.bloc_id))
+            expected_bonus = {(row.party_id, row.bloc_id) for row in order[:extras]}
+            actual_bonus = {(row.party_id, row.bloc_id) for row in rows if row.bonus_seat}
+            if actual_bonus != expected_bonus:
+                raise ValueError(
+                    f"chamber {chamber_report.chamber.value!r}: bonus_seat is awarded to "
+                    f"{sorted(actual_bonus)!r}, but the largest-remainder ordering (ties broken "
+                    f"by (party_id, bloc_id)) awards it to {sorted(expected_bonus)!r}"
+                )
+            summed_supporting = sum(row.supporting_seats for row in rows)
+            if summed_supporting != chamber_report.supporting_seats:
+                raise ValueError(
+                    f"chamber {chamber_report.chamber.value!r}: sum(bloc supporting_seats)="
+                    f"{summed_supporting} does not match chamber supporting_seats="
+                    f"{chamber_report.supporting_seats}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _outcome_route_and_chamber_matrix_is_valid(self) -> LegislativeReport:
+        """(Report corrections §1-2) The complete outcome/route/chamber matrix, with an explicit
+        emptiness guard on every legislative branch — never `all([])` on a possibly-empty
+        `chambers` tuple."""
+        if self.outcome is LegislativeOutcome.NO_PROPOSAL:
+            if self.route is not None:
+                raise ValueError(f"NO_PROPOSAL must carry route=None, got {self.route!r}")
+            if self.chambers or self.blocs:
+                raise ValueError("NO_PROPOSAL must carry no chamber or bloc rows")
+            if self.political_capital_committed != 0:
+                raise ValueError(
+                    "NO_PROPOSAL must commit zero political capital, got "
+                    f"{self.political_capital_committed}"
+                )
+            if (
+                self.tax_delta_bps != 0
+                or self.tax_direction != LegislativeChangeDirection.UNCHANGED
+            ):
+                raise ValueError("NO_PROPOSAL must carry zero tax-change direction and intensity")
+            if (
+                self.spending_direction != LegislativeChangeDirection.UNCHANGED
+                or self.spending_intensity_bps != 0
+            ):
+                raise ValueError(
+                    "NO_PROPOSAL must carry zero spending-change direction and intensity"
+                )
+            if self.proposed_total_program_spending != self.opening_total_program_spending:
+                raise ValueError(
+                    "NO_PROPOSAL must leave proposed_total_program_spending equal to "
+                    "opening_total_program_spending"
+                )
+            return self
+
+        if self.route is None:
+            raise ValueError(f"outcome {self.outcome.value!r} must carry a route, not None")
+
+        if self.outcome is LegislativeOutcome.ENACTED_BY_DECREE:
+            if self.route is not ProposalRoute.DECREE:
+                raise ValueError("ENACTED_BY_DECREE must carry route=DECREE")
+            if self.chambers or self.blocs:
+                raise ValueError("ENACTED_BY_DECREE must carry no chamber or bloc rows")
+            return self
+
+        # PASSED_LEGISLATIVE / FAILED_LEGISLATIVE
+        if self.route is not ProposalRoute.LEGISLATIVE:
+            raise ValueError(f"outcome {self.outcome.value!r} must carry route=LEGISLATIVE")
+        if not self.legislature_present:
+            raise ValueError(f"outcome {self.outcome.value!r} requires legislature_present=True")
+        if not self.chambers:
+            raise ValueError(
+                f"outcome {self.outcome.value!r} must carry at least one chamber row — a "
+                "legislative outcome with zero chambers is never valid"
+            )
+        every_chamber_passed = all(chamber.passed for chamber in self.chambers)
+        if self.outcome is LegislativeOutcome.PASSED_LEGISLATIVE and not every_chamber_passed:
+            raise ValueError("PASSED_LEGISLATIVE requires every chamber row to have passed")
+        if self.outcome is LegislativeOutcome.FAILED_LEGISLATIVE and every_chamber_passed:
+            raise ValueError("FAILED_LEGISLATIVE requires at least one chamber row to have failed")
+        return self
+
+    @model_validator(mode="after")
+    def _political_capital_committed_matches_route(self) -> LegislativeReport:
+        """(Report corrections §2-3) Commitment is the sum of one allocation per unique
+        `(party_id, bloc_id)` — never a sum over every chamber row, which would double-count a
+        bicameral bloc."""
+        if self.outcome is LegislativeOutcome.NO_PROPOSAL:
+            expected = 0
+        elif self.route is ProposalRoute.DECREE:
+            expected = DECREE_POLITICAL_CAPITAL_COST
+        else:
+            unique_allocations: dict[tuple[str, str], int] = {}
+            for bloc in self.blocs:
+                unique_allocations[(bloc.party_id, bloc.bloc_id)] = bloc.political_capital_allocated
+            expected = sum(unique_allocations.values())
+        if self.political_capital_committed != expected:
+            raise ValueError(
+                f"political_capital_committed={self.political_capital_committed} does not match "
+                f"the expected commitment for outcome={self.outcome.value!r}/"
+                f"route={self.route!r} ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _committed_within_opening_capital(self) -> LegislativeReport:
+        if self.political_capital_committed > self.opening_political_capital:
+            raise ValueError(
+                f"political_capital_committed={self.political_capital_committed} exceeds "
+                f"opening_political_capital={self.opening_political_capital}"
+            )
+        return self
+
+
 class TurnReport(BaseModel):
     """The full report produced by one `resolve_turn` call."""
 
@@ -1675,15 +2209,21 @@ class TurnReport(BaseModel):
     """`None` only when the political phase did not run (never for a successful Phase 3A+ turn
     on a valid player state — `simulation.invariants` requires player politics before resolution
     can even begin). Runs in slot 10, after every economic phase; see `phases.py`."""
+    legislative: LegislativeReport | None = None
+    """`None` only when the legislative phase did not run (never for a successful Phase 3B1+ turn
+    on a valid player state — `simulation.invariants` requires player politics, and therefore a
+    legislature-or-none decision, before resolution can even begin). Built for every resolved
+    turn, including `NO_PROPOSAL` ones; the vote itself runs in slot 1, assembly in slot 15; see
+    `phases.py`."""
 
     @model_validator(mode="after")
-    def _labor_resources_production_derivation_finance_and_political_are_all_present_or_all_absent(
+    def _labor_resources_production_derivation_finance_political_and_legislative_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
-        """R1 (extended, Phase 2B3; extended again, Phase 2C1 and Phase 3A): a partial combination
-        of the six player-economy/politics reports would represent a broken audit chain (e.g.
-        production ran but derivation silently didn't) — reject it outright rather than accepting
-        whatever subset happens to be present.
+        """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A and Phase 3B1): a partial
+        combination of the seven player-economy/politics reports would represent a broken audit
+        chain (e.g. production ran but derivation silently didn't) — reject it outright rather
+        than accepting whatever subset happens to be present.
         """
         present = (
             self.labor_market is not None,
@@ -1692,12 +2232,51 @@ class TurnReport(BaseModel):
             self.tax_base_derivation is not None,
             self.finance is not None,
             self.political is not None,
+            self.legislative is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
-                "labor_market, resources, production, tax_base_derivation, finance, and political "
-                f"must be all present or all absent on a TurnReport — got present={present} "
-                "(labor_market, resources, production, tax_base_derivation, finance, political)"
+                "labor_market, resources, production, tax_base_derivation, finance, political, "
+                "and legislative must be all present or all absent on a TurnReport — got "
+                f"present={present} (labor_market, resources, production, tax_base_derivation, "
+                "finance, political, legislative)"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _legislative_commitment_matches_political_report(self) -> TurnReport:
+        if self.legislative is None or self.political is None:
+            return self
+        if self.legislative.political_capital_committed != self.political.political_capital_spent:
+            raise ValueError(
+                "legislative.political_capital_committed="
+                f"{self.legislative.political_capital_committed} does not match "
+                f"political.political_capital_spent ({self.political.political_capital_spent})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _legislative_opening_capital_matches_political_report(self) -> TurnReport:
+        if self.legislative is None or self.political is None:
+            return self
+        if self.legislative.opening_political_capital != self.political.opening_political_capital:
+            raise ValueError(
+                "legislative.opening_political_capital="
+                f"{self.legislative.opening_political_capital} does not match "
+                f"political.opening_political_capital ({self.political.opening_political_capital})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _legislative_opening_spending_matches_finance(self) -> TurnReport:
+        if self.legislative is None or self.finance is None:
+            return self
+        expected = self.finance.previous_spending_plan.total()
+        if self.legislative.opening_total_program_spending != expected:
+            raise ValueError(
+                "legislative.opening_total_program_spending="
+                f"{self.legislative.opening_total_program_spending} does not match "
+                f"finance.previous_spending_plan.total() ({expected})"
             )
         return self
 

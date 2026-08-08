@@ -82,7 +82,15 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
     working.state_version = state.state_version + 1
 
     ctx = PhaseContext(state=working, decisions=decisions, resolving_turn=resolving_turn)
-    run_phases(ctx)
+    try:
+        run_phases(ctx)
+    except DecisionSetError as exc:
+        # (Phase 3B1, R5) An invalid decision discovered mid-resolution — e.g. a legislative
+        # route with no legislature, a decree the constitution does not authorize, or an
+        # influence allocation naming an unknown/unseated bloc — aborts the whole turn exactly
+        # like a stale `DecisionSet` does: `working` is simply discarded here, unreturned, so the
+        # caller's original `state` is untouched.
+        raise TurnResolutionError(f"decision set rejected during resolution: {exc}") from exc
 
     output_violations = check_invariants(working)
     if output_violations:
@@ -102,6 +110,7 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
         production=ctx.production_report,
         tax_base_derivation=ctx.tax_base_derivation_report,
         political=ctx.political_report,
+        legislative=ctx.legislative_report,
     )
 
     reconciliation_problems = reconcile_political_report(

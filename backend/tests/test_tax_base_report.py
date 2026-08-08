@@ -263,7 +263,7 @@ class TestR1CrossReportValidation:
         "present_fields",
         [
             sorted(combo)
-            for r in range(1, 6)
+            for r in range(1, 7)
             for combo in itertools.combinations(
                 (
                     "labor_market",
@@ -272,18 +272,20 @@ class TestR1CrossReportValidation:
                     "tax_base_derivation",
                     "finance",
                     "political",
+                    "legislative",
                 ),
                 r,
             )
         ],
     )
-    def test_all_partial_combinations_of_six_reports_are_rejected(
+    def test_all_partial_combinations_of_seven_reports_are_rejected(
         self, present_fields: list[str]
     ) -> None:
         """Phase 2B3 extended the completeness rule from three reports to four; Phase 2C1 extends
-        it again to five; Phase 3A extends it again to six — every proper nonempty subset of
-        {labor_market, resources, production, tax_base_derivation, finance, political} (62 of
-        them, up from 30) must be rejected.
+        it again to five; Phase 3A extends it again to six; Phase 3B1 extends it again to seven —
+        every proper nonempty subset of {labor_market, resources, production,
+        tax_base_derivation, finance, political, legislative} (126 of them, up from 62) must be
+        rejected.
         """
         data, _ = _valid_turn_report_dict()
         for field in (
@@ -293,6 +295,7 @@ class TestR1CrossReportValidation:
             "tax_base_derivation",
             "finance",
             "political",
+            "legislative",
         ):
             if field not in present_fields:
                 data[field] = None
@@ -350,9 +353,10 @@ class TestR1CrossReportValidation:
     def test_all_five_absent_is_valid(self) -> None:
         """`_valid_turn_report_dict()` now comes from the real resolver, so `labor_market` and
         `resources` are also present by default (Phase 2B3 extended the completeness rule to
-        four reports; Phase 2C1 extended it again to five; Phase 3A extended it again to six) —
-        all must be nulled out here too, or this becomes a partial (rejected) combination rather
-        than the "all absent" case this test means to exercise.
+        four reports; Phase 2C1 extended it again to five; Phase 3A extended it again to six;
+        Phase 3B1 extended it again to seven) — all must be nulled out here too, or this becomes
+        a partial (rejected) combination rather than the "all absent" case this test means to
+        exercise.
         """
         data, _ = _valid_turn_report_dict()
         data["labor_market"] = None
@@ -361,6 +365,7 @@ class TestR1CrossReportValidation:
         data["tax_base_derivation"] = None
         data["finance"] = None
         data["political"] = None
+        data["legislative"] = None
         report = TurnReport.model_validate(data)
         assert report.labor_market is None
         assert report.resources is None
@@ -368,6 +373,7 @@ class TestR1CrossReportValidation:
         assert report.tax_base_derivation is None
         assert report.finance is None
         assert report.political is None
+        assert report.legislative is None
 
     def test_all_five_present_and_consistent_is_valid(self) -> None:
         data, report = _valid_turn_report_dict()
