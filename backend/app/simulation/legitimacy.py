@@ -223,10 +223,16 @@ def resolve_political_capital(
     """Returns `(regeneration, closing)` for this turn's political capital.
 
     `closing = min(capacity, opening + regeneration - spent)`. The `min` is the only clamp.
-    `spent` is always `0` in Phase 3A — nothing consumes political capital yet, because passing
-    laws needs a legislature with members, negotiating factions needs factions, and reforms need a
-    reform system, all of which are Phase 3B/3C. The parameter exists so the identity shipped now
-    is already the final one and 3B changes a value rather than reopening the equation.
+
+    **`spent` may not exceed `opening` (Phase 3B1).** A government commits capital at the start of
+    a turn, before that turn's regeneration has been computed — regeneration is derived from
+    *closing* legitimacy, which is not known yet. So the looser `spent <= opening + regeneration`
+    would have permitted spending against income that does not exist at the moment of the
+    decision, which is not a rule anyone could play by. Tightening it here makes that structurally
+    impossible rather than merely discouraged.
+
+    The closing *value* is unaffected by the change: the identity is untouched, and the band this
+    now rejects was unreachable while `spent` was hardcoded to 0.
 
     A scenario authoring `opening > capacity` is **rejected** by `simulation.invariants` before
     resolution rather than silently clamped here — repairing invalid authored content is exactly
@@ -234,11 +240,10 @@ def resolve_political_capital(
     """
     if spent < 0:
         raise ValueError(f"political capital spent must be nonnegative, got {spent}")
-    regeneration = political_capital_regeneration(legitimacy_bps=legitimacy_bps)
-    available = opening + regeneration - spent
-    if available < 0:
+    if spent > opening:
         raise ValueError(
-            f"political capital spent={spent} exceeds opening={opening} plus "
-            f"regeneration={regeneration}"
+            f"political capital spent={spent} exceeds opening={opening}; capital is committed "
+            "before this turn's regeneration is known and cannot be spent against it"
         )
-    return regeneration, min(capacity, available)
+    regeneration = political_capital_regeneration(legitimacy_bps=legitimacy_bps)
+    return regeneration, min(capacity, opening + regeneration - spent)

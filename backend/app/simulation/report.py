@@ -1579,12 +1579,16 @@ class PoliticalReport(BaseModel):
                 f"closing_legitimacy_bps * LEGITIMACY_REGENERATION_COEFFICIENT, 10_000) "
                 f"({expected_regeneration})"
             )
-        available = self.opening_political_capital + self.political_capital_regeneration
-        if self.political_capital_spent > available:
+        # (Phase 3B1) Against opening alone, not opening + regeneration: capital is committed at
+        # the start of a turn, before regeneration is known, so a report claiming a government
+        # spent more than it held would describe a turn that could not have happened. Mirrors the
+        # identical guard in `legitimacy.resolve_political_capital`.
+        if self.political_capital_spent > self.opening_political_capital:
             raise ValueError(
                 f"political_capital_spent={self.political_capital_spent} exceeds "
-                f"opening_political_capital + political_capital_regeneration ({available})"
+                f"opening_political_capital={self.opening_political_capital}"
             )
+        available = self.opening_political_capital + self.political_capital_regeneration
         expected_closing = min(
             self.political_capital_capacity, available - self.political_capital_spent
         )

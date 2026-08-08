@@ -110,9 +110,9 @@ def test_identity_holds_for_arbitrary_spending_too(
     opening: int, capacity: int, legitimacy_bps: int, spent: int
 ) -> None:
     """Phase 3A never spends, but the identity is already the final one, so it is property-tested
-    across the whole spending range Phase 3B will use."""
+    across the whole spending range Phase 3B uses."""
     regeneration = political_capital_regeneration(legitimacy_bps=legitimacy_bps)
-    if spent > opening + regeneration:
+    if spent > opening:
         with pytest.raises(ValueError, match="exceeds opening"):
             resolve_political_capital(
                 opening=opening, capacity=capacity, legitimacy_bps=legitimacy_bps, spent=spent
@@ -134,6 +134,43 @@ def test_spending_more_than_available_is_rejected_not_silently_floored() -> None
 def test_negative_spending_is_rejected() -> None:
     with pytest.raises(ValueError, match="nonnegative"):
         resolve_political_capital(opening=10, capacity=1_000, legitimacy_bps=0, spent=-1)
+
+
+# --- T-S1b (Phase 3B1): capital is spent against opening, never against income ---
+
+
+def test_spending_against_this_turns_regeneration_is_rejected() -> None:
+    """The band the tightened guard closes. A government holding 100 with 200 of regeneration
+    coming could once have committed 300; it can no longer commit 101.
+
+    Regeneration is derived from *closing* legitimacy, which does not exist when a government
+    decides what to attempt. Allowing a commitment against it would be a rule no player could
+    follow, because the amount would be unknowable at the moment of the choice.
+    """
+    regeneration = political_capital_regeneration(legitimacy_bps=0)
+    assert regeneration > 0  # sanity: there really is income to spend against
+
+    with pytest.raises(ValueError, match="exceeds opening"):
+        resolve_political_capital(opening=100, capacity=10_000, legitimacy_bps=0, spent=101)
+
+
+def test_spending_exactly_the_opening_stock_is_allowed() -> None:
+    """The boundary is inclusive: a government may commit everything it holds, and ends the turn
+    on that turn's regeneration alone."""
+    regeneration, closing = resolve_political_capital(
+        opening=250, capacity=10_000, legitimacy_bps=6_000, spent=250
+    )
+    assert closing == regeneration
+
+
+def test_tightening_the_guard_did_not_move_any_closing_value() -> None:
+    """Only admissibility changed, never arithmetic. Every commitment that was legal before is
+    legal now and produces the identical closing stock."""
+    for spent in (0, 1, 125, 249, 250):
+        _, closing = resolve_political_capital(
+            opening=250, capacity=1_000, legitimacy_bps=6_000, spent=spent
+        )
+        assert closing == min(1_000, 250 + 380 - spent)
 
 
 # --- T-P4: regeneration rises monotonically with legitimacy ------------------
