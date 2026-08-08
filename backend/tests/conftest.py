@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Final
 
 import pytest
 
@@ -14,9 +15,12 @@ from app.simulation.constitution import (
     Legislature,
     TerritorialOrganization,
 )
+from app.simulation.legislature import GovernmentRole, LegislativeChamber
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
     RULESET_VERSION,
+    BlocSeats,
+    ChamberState,
     ConstitutionState,
     CountryState,
     EconomicBaselineState,
@@ -24,6 +28,9 @@ from app.simulation.state import (
     GameState,
     GovernmentFinanceState,
     InstitutionState,
+    LegislativeBlocState,
+    LegislatureState,
+    PartyState,
     PoliticalState,
     PopulationGroupState,
     ResourceCategory,
@@ -236,6 +243,68 @@ def make_economy(
     )
 
 
+_UNSET: Final[object] = object()
+"""Distinguishes 'caller didn't pass `legislature_state`' from 'caller explicitly passed `None`'
+in `make_politics` — `None` is itself a legal, meaningful value (no legislature at all), so a
+default of `None` could not tell the two cases apart."""
+
+
+def make_legislature(*, shape: Legislature = Legislature.UNICAMERAL) -> LegislatureState:
+    """Build a minimal, valid `LegislatureState` (Phase 3B1): one coalition bloc holding every
+    seat in every chamber `shape` implies, plus a single, small opposition bloc so the legislature
+    is not a rubber stamp with nobody to bargain against.
+
+    Every seat in every chamber is accounted for (`LegislatureState`'s own validator requires
+    it) — 90 seats to the coalition, 10 to the opposition, in each chamber `shape` calls for.
+    Round numbers, chosen for readability in tests that don't care about the legislature's
+    internals, not for any particular vote outcome; tests that do care build their own.
+    """
+    if shape not in (Legislature.UNICAMERAL, Legislature.BICAMERAL):
+        raise ValueError(f"make_legislature has no chamber shape for {shape!r}")
+    chambers = (
+        (LegislativeChamber.LOWER,)
+        if shape is Legislature.UNICAMERAL
+        else tuple(LegislativeChamber)
+    )
+    return LegislatureState(
+        chambers=tuple(ChamberState(chamber=c, total_seats=100) for c in chambers),
+        parties=(
+            PartyState(
+                id="governing_party",
+                name="Governing Party",
+                government_role=GovernmentRole.COALITION,
+                blocs=(
+                    LegislativeBlocState(
+                        id="core",
+                        name="Governing Party Core",
+                        seats=tuple(BlocSeats(chamber=c, seats=90) for c in chambers),
+                        discipline_bps=5_000,
+                        government_relationship_bps=6_000,
+                        tax_preference_bps=2_000,
+                        spending_preference_bps=2_000,
+                    ),
+                ),
+            ),
+            PartyState(
+                id="opposition_party",
+                name="Opposition Party",
+                government_role=GovernmentRole.OPPOSITION,
+                blocs=(
+                    LegislativeBlocState(
+                        id="main",
+                        name="Opposition Party Main",
+                        seats=tuple(BlocSeats(chamber=c, seats=10) for c in chambers),
+                        discipline_bps=5_000,
+                        government_relationship_bps=-6_000,
+                        tax_preference_bps=-2_000,
+                        spending_preference_bps=-2_000,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
 def make_politics(
     *,
     executive_system: ExecutiveSystem = ExecutiveSystem.PRESIDENTIAL,
@@ -252,12 +321,25 @@ def make_politics(
     political_capital: int = 500,
     political_capital_capacity: int = 1_000,
     economic_baseline: EconomicBaselineState | None = None,
+    legislature_state: LegislatureState | None | object = _UNSET,
 ) -> PoliticalState:
-    """Build a valid `PoliticalState` (Phase 3A) with reasonable round-number defaults: a
-    coherent presidential republic, moderate authored support, and legitimacy already at that
-    same 7,000 level so a fresh test country starts at drift-equilibrium. `economic_baseline`
-    defaults to `None` (legal only at `state.turn == 0`) — pass one explicitly for a country
-    built at a later turn; see `make_game_state`, which does this automatically."""
+    """Build a valid `PoliticalState` (Phase 3A, extended Phase 3B1) with reasonable round-number
+    defaults: a coherent presidential republic, moderate authored support, and legitimacy already
+    at that same 7,000 level so a fresh test country starts at drift-equilibrium.
+    `economic_baseline` defaults to `None` (legal only at `state.turn == 0`) — pass one explicitly
+    for a country built at a later turn; see `make_game_state`, which does this automatically.
+
+    `legislature_state` defaults to `make_legislature(shape=legislature)` whenever `legislature`
+    is not `Legislature.NONE`, and to `None` when it is — matching `PoliticalState`'s own
+    both-directions rule automatically, so most callers never think about it. Pass an explicit
+    `LegislatureState` to control the legislature's content, or `None` to (with a legislature
+    shape other than `NONE`) deliberately construct an invalid state for a validator test.
+    """
+    resolved_legislature = (
+        (make_legislature(shape=legislature) if legislature is not Legislature.NONE else None)
+        if legislature_state is _UNSET
+        else legislature_state
+    )
     return PoliticalState(
         constitution=ConstitutionState(
             executive_system=executive_system,
@@ -275,6 +357,7 @@ def make_politics(
         political_capital=political_capital,
         political_capital_capacity=political_capital_capacity,
         economic_baseline=economic_baseline,
+        legislature=resolved_legislature,  # type: ignore[arg-type]
     )
 
 
@@ -356,7 +439,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id, politics=politics)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.8.0",
+        content_version="0.9.0",
         seed=seed,
         turn=turn,
         state_version=state_version,

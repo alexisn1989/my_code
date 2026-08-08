@@ -25,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.8.0"
+content_version: "0.9.0"
 seed: 99
 player_country_id: strapped
 
@@ -271,3 +271,75 @@ countries:
       legitimacy_bps: 6000                      # 60.00% current legitimacy
       political_capital: 300
       political_capital_capacity: 800
+      # Phase 3B1: a unicameral chamber in which the government is four seats short (see
+      # docs/adr/0010 and docs/economy_methodology.md, "Legislative calibration"). This is the
+      # scenario that makes the phase mean something: against the walkthrough proposal (+5 pp
+      # personal income tax, spending unchanged) the government tallies 47/100 against a required
+      # 51 and the budget FAILS unaided. It can be carried, but only by spending capital on blocs
+      # that are not its own.
+      #
+      # `decree_authority: emergency_only` above means this government cannot decree either --
+      # Phase 3B1 has no emergency system to read, so a bargain is its only route. Every figure
+      # here is derived from this file by tests/test_scenario_legislature_calibration.py.
+      legislature:
+        chambers:
+          - chamber: lower
+            total_seats: 100
+        parties:
+          - id: citizens_bloc
+            name: "Citizens' Bloc"
+            government_role: opposition
+            blocs:
+              - id: hardliners
+                name: "Citizens' Bloc Hardliners"
+                seats:
+                  - chamber: lower
+                    seats: 30
+                discipline_bps: 8000
+                government_relationship_bps: -8000
+                tax_preference_bps: -6000
+                spending_preference_bps: -5000
+              - id: moderates
+                name: "Citizens' Bloc Moderates"
+                seats:
+                  - chamber: lower
+                    seats: 20
+                discipline_bps: 2000
+                government_relationship_bps: -2000
+                tax_preference_bps: -2000
+                spending_preference_bps: 0
+          - id: governing_party
+            name: "Governing Party"
+            government_role: coalition
+            blocs:
+              - id: core
+                name: "Governing Party Core"
+                seats:
+                  - chamber: lower
+                    seats: 34
+                discipline_bps: 6000
+                government_relationship_bps: 5000
+                tax_preference_bps: 3000
+                spending_preference_bps: 3000
+              - id: left
+                name: "Governing Party Left"
+                seats:
+                  - chamber: lower
+                    seats: 6
+                discipline_bps: 2000
+                government_relationship_bps: 1000
+                tax_preference_bps: 5000
+                spending_preference_bps: 5000
+          - id: independents
+            name: "Independent Regionalists"
+            government_role: confidence_and_supply
+            blocs:
+              - id: regional
+                name: "Independent Regionalists"
+                seats:
+                  - chamber: lower
+                    seats: 10
+                discipline_bps: 1000
+                government_relationship_bps: 1000
+                tax_preference_bps: -2000
+                spending_preference_bps: 2000

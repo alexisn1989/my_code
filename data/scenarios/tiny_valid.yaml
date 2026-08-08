@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.8.0"
+content_version: "0.9.0"
 seed: 42
 player_country_id: arken
 
@@ -302,6 +302,92 @@ countries:
       legitimacy_bps: 7000                      # 70.00% current legitimacy
       political_capital: 500
       political_capital_capacity: 1000
+      # Phase 3B1: a bicameral parliament with a comfortable governing majority (see docs/adr/0010
+      # and docs/economy_methodology.md, "Legislative calibration"). Every seat in each chamber is
+      # held by exactly one bloc -- unheld seats would behave as permanent abstentions no player
+      # could bargain with, so the model rejects them.
+      #
+      # Against the walkthrough proposal (+5 pp personal income tax, spending unchanged) this
+      # legislature carries the budget unaided in BOTH chambers: lower 58/100 against a required
+      # 51, upper 33/60 against a required 31. Derived from the scenario file, not hardcoded, by
+      # tests/test_scenario_legislature_calibration.py.
+      legislature:
+        chambers:
+          - chamber: lower
+            total_seats: 100
+          - chamber: upper
+            total_seats: 60
+        parties:
+          # Sorted by id, and blocs within each party sorted by id -- noncanonical order is
+          # rejected rather than silently reordered (the resource_deposits rule, not the sectors
+          # one).
+          - id: civic_union
+            name: "Civic Union"
+            government_role: coalition
+            blocs:
+              - id: mainstream
+                name: "Civic Union Mainstream"
+                seats:
+                  - chamber: lower
+                    seats: 40
+                  - chamber: upper
+                    seats: 24
+                discipline_bps: 5000
+                government_relationship_bps: 6000
+                tax_preference_bps: 2000
+                spending_preference_bps: 2000
+              - id: reform
+                name: "Civic Union Reform Caucus"
+                seats:
+                  - chamber: lower
+                    seats: 12
+                  - chamber: upper
+                    seats: 6
+                discipline_bps: 2000
+                government_relationship_bps: 3000
+                tax_preference_bps: 4000
+                spending_preference_bps: 4000
+          - id: national_front
+            name: "National Front"
+            government_role: opposition
+            blocs:
+              - id: conservatives
+                name: "National Front Conservatives"
+                seats:
+                  - chamber: lower
+                    seats: 30
+                  - chamber: upper
+                    seats: 20
+                discipline_bps: 7000
+                government_relationship_bps: -7000
+                tax_preference_bps: -6000
+                spending_preference_bps: -4000
+              - id: populists
+                name: "National Front Populists"
+                seats:
+                  - chamber: lower
+                    seats: 8
+                  - chamber: upper
+                    seats: 4
+                discipline_bps: 3000
+                government_relationship_bps: -3000
+                tax_preference_bps: -3000
+                spending_preference_bps: 2000
+          - id: rural_alliance
+            name: "Rural Alliance"
+            government_role: confidence_and_supply
+            blocs:
+              - id: farmers
+                name: "Rural Alliance Farmers"
+                seats:
+                  - chamber: lower
+                    seats: 10
+                  - chamber: upper
+                    seats: 6
+                discipline_bps: 4000
+                government_relationship_bps: 2000
+                tax_preference_bps: -1000
+                spending_preference_bps: 3000
 
   - id: neighbor
     name: "Neighboring State"
