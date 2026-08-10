@@ -46,7 +46,7 @@ from app.simulation.accounting import (
 )
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
 from app.simulation.constitution import ConstitutionState, DecreeAuthority, constitution_digest
-from app.simulation.decisions import BudgetDecision, DecisionSet
+from app.simulation.decisions import BudgetDecision, DecisionSet, budget_decision_digest
 from app.simulation.labor_allocation import (
     aggregate_labor_market,
     allocate_workers,
@@ -225,6 +225,9 @@ class LegislativeScratch:
     chambers: tuple[ChamberVoteReport, ...]
     blocs: tuple[BlocVoteReport, ...]
     political_capital_committed: int
+    budget_decision_digest: str | None
+    """(R8) `budget_decision_digest(decision)` over the actually-submitted `BudgetDecision`, or
+    `None` for `NO_PROPOSAL` — see `LegislativeReport.budget_decision_digest`'s docstring."""
 
 
 @dataclass
@@ -397,6 +400,7 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
             chambers=(),
             blocs=(),
             political_capital_committed=0,
+            budget_decision_digest=None,
         )
         ctx.mark_implemented()
         return
@@ -598,6 +602,7 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
         chambers=chamber_reports,
         blocs=bloc_reports,
         political_capital_committed=commitment,
+        budget_decision_digest=budget_decision_digest(budget_decision),
     )
     ctx.mark_implemented()
 
@@ -1439,6 +1444,7 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
         blocs=legislative_scratch.blocs,
         opening_political_capital=legislative_scratch.opening.political_capital,
         political_capital_committed=legislative_scratch.political_capital_committed,
+        budget_decision_digest=legislative_scratch.budget_decision_digest,
     )
 
     ctx.mark_implemented()

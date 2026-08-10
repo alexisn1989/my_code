@@ -951,9 +951,10 @@ def test_no_report_formula_codes_leaked_into_invariants_source() -> None:
     """T-V2 (§10): the four families of check deliberately NOT given a `check_invariants` code —
     because they need a `TurnReport` (report-formula re-derivation, owned by `PoliticalReport`'s
     own validators in §9.1) or two `GameState`s (report-vs-state reconciliation, owned by
-    `reconcile_political_report` in §9.3) — must never appear in `invariants.py`. `check_invariants`
-    takes a single `GameState` and nothing else, so it structurally cannot decide any of these;
-    this is a static guard that the boundary stays honored even as the module grows.
+    `reconcile_political_and_legislative_report` in §9.3) — must never appear in `invariants.py`.
+    `check_invariants` takes a single `GameState` and nothing else, so it structurally cannot
+    decide any of these; this is a static guard that the boundary stays honored even as the
+    module grows.
     """
     import inspect
 
@@ -975,5 +976,5 @@ def test_no_report_formula_codes_leaked_into_invariants_source() -> None:
         assert fragment not in source, (
             f"{fragment!r} is a report-formula or report-vs-state check and must not be "
             "decidable from state alone -- it belongs to PoliticalReport's validators (§9.1) "
-            "or reconcile_political_report (§9.3), never to check_invariants"
+            "or reconcile_political_and_legislative_report (§9.3), never to check_invariants"
         )

@@ -169,19 +169,24 @@ def test_report_resolved_turn_matches_the_turn_that_was_played() -> None:
 
 
 def test_political_reconciliation_failure_is_atomic(monkeypatch: pytest.MonkeyPatch) -> None:
-    """(T-D4, Phase 3A) A forced reconciliation mismatch raises `TurnResolutionError`, leaves the
-    caller's input `state` byte-identical, and produces no `TurnResolution` -- exactly like an
-    invariant violation. `reconcile_political_report` is monkeypatched to force a mismatch,
-    since the real resolver's own output never disagrees with itself (see
-    `test_reconciliation.py::test_a_clean_resolution_reconciles_with_no_problems`)."""
+    """(T-D4, Phase 3A; extended Phase 3B1, R8) A forced reconciliation mismatch raises
+    `TurnResolutionError`, leaves the caller's input `state` byte-identical -- whole-state, and
+    field-by-field for `politics`/`finance` specifically -- and produces no `TurnResolution`,
+    exactly like an invariant violation. `reconcile_political_and_legislative_report` is
+    monkeypatched to force a mismatch, since the real resolver's own output never disagrees with
+    itself (see `test_reconciliation.py::test_a_clean_resolution_reconciles_with_no_problems`)."""
     import app.simulation.resolver as resolver_module
 
     state = make_game_state(turn=0, state_version=0)
     before = canonical_dumps(state.model_dump(mode="json"))
+    original_player = state.world.countries[state.world.player_country_id]
+    assert original_player.politics is not None and original_player.finance is not None
+    before_politics = original_player.politics.model_copy(deep=True)
+    before_finance = original_player.finance.model_copy(deep=True)
 
     monkeypatch.setattr(
         resolver_module,
-        "reconcile_political_report",
+        "reconcile_political_and_legislative_report",
         lambda **_kwargs: ["forced mismatch for T-D4"],
     )
 
@@ -190,6 +195,39 @@ def test_political_reconciliation_failure_is_atomic(monkeypatch: pytest.MonkeyPa
 
     after = canonical_dumps(state.model_dump(mode="json"))
     assert after == before, "input state must be byte-identical after a discarded resolution"
+
+    player = state.world.countries[state.world.player_country_id]
+    assert player.politics == before_politics, "politics must be untouched by a discarded turn"
+    assert player.finance == before_finance, "finance must be untouched by a discarded turn"
+
+
+def test_political_reconciliation_failure_appends_no_history_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """(Phase 3B1, R8) The same forced mismatch, driven through `advance_game`: no new
+    `HistoryEntry` is appended, and `entry_count`/`head_entry_hash` are unmoved."""
+    import app.simulation.resolver as resolver_module
+    from app.simulation.history import advance_game, new_game
+    from app.simulation.save_format import SAVE_FORMAT_VERSION
+
+    state = make_game_state(turn=0, state_version=0)
+    save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+    before_entry_count = save.entry_count
+    before_head_hash = save.head_entry_hash
+    before_entries = len(save.entries)
+
+    monkeypatch.setattr(
+        resolver_module,
+        "reconcile_political_and_legislative_report",
+        lambda **_kwargs: ["forced mismatch for T-D4"],
+    )
+
+    with pytest.raises(TurnResolutionError, match="does not reconcile"):
+        advance_game(save, _empty_decisions_for(state))
+
+    assert save.entry_count == before_entry_count
+    assert save.head_entry_hash == before_head_hash
+    assert len(save.entries) == before_entries
 
 
 def test_stale_decision_set_leaves_politics_and_its_baseline_untouched() -> None:

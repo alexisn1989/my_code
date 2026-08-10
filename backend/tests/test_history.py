@@ -8,10 +8,17 @@ import pytest
 
 from app.core.canonical_json import canonical_dumps
 from app.core.errors import HistoryValidationError, SnapshotNotFoundError, TurnResolutionError
-from app.simulation.decisions import BudgetDecision, DecisionSet
+from app.simulation.decisions import (
+    BudgetDecision,
+    DecisionSet,
+    InfluenceAllocation,
+    SpendingUpdate,
+)
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
+from app.simulation.legislature import ProposalRoute
 from app.simulation.report import TurnReportEntry
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json
+from app.simulation.state import SpendingCategory
 from tests.conftest import make_game_state
 
 _SFV = SAVE_FORMAT_VERSION
@@ -863,3 +870,315 @@ def test_traditional_stale_hash_tamper_of_report_closing_legitimacy_bps_is_detec
 
     problems = validate_history(tampered)
     assert any("entry_hash does not match" in p for p in problems)
+
+
+# --- Phase 3B1, R8: consistently re-hashed DECISION and REPORT tampering ------------------------
+#
+# The complement of the state-only T-R7 tests above: a knowledgeable tamperer who edits the
+# SUBMITTED DECISION (`decisions_json`) or the REPORT'S OWN provenance field (`report_json`),
+# recomputes `entry_hash` to match, and produces a save whose hash chain verifies perfectly.
+# Before R8, `_validate_entry_payload` parsed `decisions_json` only for its hash contribution and
+# never validated it as a `DecisionSet` or handed it to reconciliation -- these tampers would have
+# passed silently. Now group 16 (gating against the real decision) and group 18 (route/digest/
+# influence provenance) catch them.
+
+
+def _retamper_entry_with_consistent_hash(
+    save: GameSave,
+    *,
+    index: int,
+    state_json: str | None = None,
+    decisions_json: str | None = None,
+    report_json: str | None = None,
+) -> GameSave:
+    """The general form of `_retamper_state_with_consistent_hash` above (Phase 3B1, R8):
+    replaces whichever of `state_json`/`decisions_json`/`report_json` is given on one entry (the
+    rest keep their original stored value) and recomputes `entry_hash` to match -- simulating a
+    tamperer who edits the SUBMITTED DECISION or the REPORT ITSELF, not just the resulting state,
+    and does the hash arithmetic themselves. Only ever used on the LAST entry in this file's
+    tests, so `head_entry_hash` is updated too and no downstream re-chaining is needed (mirroring
+    `_retamper_state_with_consistent_hash`'s own restriction).
+    """
+    import json
+
+    from app.core.canonical_json import canonical_digest
+    from app.simulation.history import _entry_hash_payload
+
+    original = save.entries[index]
+    new_state_json = state_json if state_json is not None else original.state_json
+    new_decisions_json = decisions_json if decisions_json is not None else original.decisions_json
+    new_report_json = report_json if report_json is not None else original.report_json
+
+    new_hash = canonical_digest(
+        _entry_hash_payload(
+            turn=original.turn,
+            previous_entry_hash=original.previous_entry_hash,
+            state=json.loads(new_state_json),
+            decisions=(json.loads(new_decisions_json) if new_decisions_json is not None else None),
+            report=json.loads(new_report_json) if new_report_json is not None else None,
+            ruleset_version=original.ruleset_version,
+            content_version=original.content_version,
+        )
+    )
+    tampered_entry = dataclasses.replace(
+        original,
+        state_json=new_state_json,
+        decisions_json=new_decisions_json,
+        report_json=new_report_json,
+        entry_hash=new_hash,
+    )
+    entries = (*save.entries[:index], tampered_entry, *save.entries[index + 1 :])
+    new_head = entries[-1].entry_hash if index == len(save.entries) - 1 else save.head_entry_hash
+    return dataclasses.replace(save, entries=entries, head_entry_hash=new_head)
+
+
+def _quiet_decision() -> BudgetDecision:
+    """A minimal, uncontested proposal: one tax-rate target, no influence -- deliberately no
+    influence so a route tamper to `DECREE` still parses as a legal `BudgetDecision` (a decree
+    takes no influence allocations, per `_decree_route_takes_no_influence`)."""
+    return BudgetDecision(personal_income_rate_bps=2_500)
+
+
+def _rich_decision() -> BudgetDecision:
+    """A proposal touching every field group 16/18 must check independently: two tax-rate
+    targets, two spending targets, and one influence allocation against the default legislature's
+    real party/bloc ids (`tests.conftest.make_legislature`: `governing_party`/`core` holds 90 of
+    100 seats, so this proposal passes regardless of the influence allocation's presence)."""
+    return BudgetDecision(
+        personal_income_rate_bps=2_500,
+        corporate_rate_bps=3_000,
+        spending_updates=(
+            SpendingUpdate(category=SpendingCategory.HEALTH, amount=31_000_00),
+            SpendingUpdate(category=SpendingCategory.EDUCATION, amount=23_000_00),
+        ),
+        influence=(
+            InfluenceAllocation(party_id="governing_party", bloc_id="core", political_capital=10),
+        ),
+    )
+
+
+def _save_with_decision(decision: BudgetDecision) -> tuple[GameSave, int]:
+    """Advance two quiet (no-decision) turns, then one turn submitting `decision`. Returns the
+    save and the index of the entry `decision` produced -- always the last entry."""
+    save = _advance_n(_fresh_save(), 2)
+    state = save.current_state()
+    decisions = DecisionSet(
+        expected_turn=state.turn, expected_state_version=state.state_version, decisions=[decision]
+    )
+    save = advance_game(save, decisions)
+    return save, len(save.entries) - 1
+
+
+def test_consistently_rehashed_decision_route_tamper_still_fails_reconciliation() -> None:
+    """Editing a stored decision's `route` from LEGISLATIVE to DECREE (still a legal
+    `BudgetDecision` shape, since `_quiet_decision` carries no influence) and recomputing the hash
+    leaves the chain intact; only group 18's route comparison against the real report catches it."""
+    save, index = _save_with_decision(_quiet_decision())
+    original = save.entries[index]
+    decision_set = original.decisions()
+    assert decision_set is not None and decision_set.decisions
+    tampered_budget = decision_set.decisions[0].model_copy(update={"route": ProposalRoute.DECREE})
+    tampered_set = decision_set.model_copy(update={"decisions": (tampered_budget,)})
+    tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
+    assert tampered_json != original.decisions_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems), (
+        "the hash was recomputed consistently and must NOT trip the hash check"
+    )
+    assert any("does not match the submitted decision's route" in p for p in problems)
+
+
+def test_consistently_rehashed_decision_tax_target_value_tamper_still_fails_reconciliation() -> (
+    None
+):
+    """A single rate target changed to a different value the closing policy cannot possibly
+    match (the closing policy reflects what was ACTUALLY submitted)."""
+    save, index = _save_with_decision(_rich_decision())
+    original = save.entries[index]
+    decision_set = original.decisions()
+    assert decision_set is not None and decision_set.decisions
+    tampered_budget = decision_set.decisions[0].model_copy(
+        update={"personal_income_rate_bps": 2_600}
+    )
+    tampered_set = decision_set.model_copy(update={"decisions": (tampered_budget,)})
+    tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("finance.tax_policy.personal_income_rate_bps" in p for p in problems)
+
+
+def test_consistently_rehashed_decision_spending_target_value_tamper_still_fails_reconciliation() -> (
+    None
+):
+    save, index = _save_with_decision(_rich_decision())
+    original = save.entries[index]
+    decision_set = original.decisions()
+    assert decision_set is not None and decision_set.decisions
+    original_budget = decision_set.decisions[0]
+    tampered_updates = tuple(
+        update.model_copy(update={"amount": 32_000_00})
+        if update.category is SpendingCategory.HEALTH
+        else update
+        for update in original_budget.spending_updates
+    )
+    tampered_budget = original_budget.model_copy(update={"spending_updates": tampered_updates})
+    tampered_set = decision_set.model_copy(update={"decisions": (tampered_budget,)})
+    tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("finance.spending_plan.health" in p for p in problems)
+
+
+def test_consistently_rehashed_tax_category_swap_preserving_aggregate_still_fails_reconciliation() -> (
+    None
+):
+    """Swapping the personal-income and corporate targets leaves their SUM unchanged (5,500 bps
+    either way) -- an aggregate-only check would see nothing wrong. Group 16 compares each tax
+    field independently, so the swap is caught anyway."""
+    save, index = _save_with_decision(_rich_decision())
+    original = save.entries[index]
+    decision_set = original.decisions()
+    assert decision_set is not None and decision_set.decisions
+    original_budget = decision_set.decisions[0]
+    assert original_budget.personal_income_rate_bps == 2_500
+    assert original_budget.corporate_rate_bps == 3_000
+    tampered_budget = original_budget.model_copy(
+        update={"personal_income_rate_bps": 3_000, "corporate_rate_bps": 2_500}
+    )
+    tampered_set = decision_set.model_copy(update={"decisions": (tampered_budget,)})
+    tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("finance.tax_policy.personal_income_rate_bps" in p for p in problems)
+    assert any("finance.tax_policy.corporate_rate_bps" in p for p in problems)
+
+
+def test_consistently_rehashed_spending_category_swap_preserving_total_still_fails_reconciliation() -> (
+    None
+):
+    """Swapping the health and education amounts leaves their SUM unchanged (54,000.00 either
+    way) -- an aggregate-only check would see nothing wrong. Group 16 compares each spending
+    category independently, so the swap is caught anyway."""
+    save, index = _save_with_decision(_rich_decision())
+    original = save.entries[index]
+    decision_set = original.decisions()
+    assert decision_set is not None and decision_set.decisions
+    original_budget = decision_set.decisions[0]
+    amounts = {update.category: update.amount for update in original_budget.spending_updates}
+    assert amounts[SpendingCategory.HEALTH] == 31_000_00
+    assert amounts[SpendingCategory.EDUCATION] == 23_000_00
+    swapped = {
+        SpendingCategory.HEALTH: 23_000_00,
+        SpendingCategory.EDUCATION: 31_000_00,
+    }
+    tampered_updates = tuple(
+        update.model_copy(update={"amount": swapped[update.category]})
+        for update in original_budget.spending_updates
+    )
+    tampered_budget = original_budget.model_copy(update={"spending_updates": tampered_updates})
+    tampered_set = decision_set.model_copy(update={"decisions": (tampered_budget,)})
+    tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("finance.spending_plan.health" in p for p in problems)
+    assert any("finance.spending_plan.education" in p for p in problems)
+
+
+def test_consistently_rehashed_influence_allocation_tamper_still_fails_reconciliation() -> None:
+    """The allocated amount is edited upward; the report's stored `political_capital_allocated`
+    row (fixed at resolution time) cannot possibly agree, so group 18's bidirectional allocation
+    check catches it -- independent of whether the vote would still have passed."""
+    save, index = _save_with_decision(_rich_decision())
+    original = save.entries[index]
+    decision_set = original.decisions()
+    assert decision_set is not None and decision_set.decisions
+    original_budget = decision_set.decisions[0]
+    assert len(original_budget.influence) == 1
+    assert original_budget.influence[0].political_capital == 10
+    tampered_budget = original_budget.model_copy(
+        update={
+            "influence": (
+                original_budget.influence[0].model_copy(update={"political_capital": 20}),
+            )
+        }
+    )
+    tampered_set = decision_set.model_copy(update={"decisions": (tampered_budget,)})
+    tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("does not show that allocation" in p for p in problems)
+
+
+def test_consistently_rehashed_expected_turn_tamper_still_fails_reconciliation() -> None:
+    save, index = _save_with_decision(_quiet_decision())
+    original = save.entries[index]
+    decision_set = original.decisions()
+    assert decision_set is not None
+    tampered_set = decision_set.model_copy(update={"expected_turn": decision_set.expected_turn + 1})
+    tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
+    assert tampered_json != original.decisions_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("decisions.expected_turn" in p for p in problems)
+
+
+def test_consistently_rehashed_report_decision_digest_tamper_still_fails_reconciliation() -> None:
+    """The REPORT's own `budget_decision_digest` is edited (the decision itself is untouched) --
+    still a syntactically valid 64-character hex digest, so `LegislativeReport`'s syntax-only
+    validator does not reject it on replay; only group 18 recomputing the real digest from the
+    real submitted decision catches the mismatch."""
+    save, index = _save_with_decision(_quiet_decision())
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.legislative is not None
+    real_digest = report.legislative.budget_decision_digest
+    assert real_digest is not None
+    fake_digest = ("0" if real_digest[0] != "0" else "1") + real_digest[1:]
+    tampered_legislative = report.legislative.model_copy(
+        update={"budget_decision_digest": fake_digest}
+    )
+    tampered_report = report.model_copy(update={"legislative": tampered_legislative})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("budget_decision_digest" in p for p in problems)
+
+
+def test_malformed_decisions_json_with_consistent_hash_is_a_schema_problem_not_a_crash() -> None:
+    """(Phase 3B1, R8) Canonically-formatted, JSON-valid text carrying an invalid `DecisionSet`
+    *shape* -- `expected_turn` holding a string -- clears the JSON-decode check AND the
+    canonical-form check (both pre-existing) and must be caught by the genuinely new semantic
+    parse (`DecisionSet.model_validate`) instead. Garbage bytes or non-canonical spacing would be
+    caught by one of the two pre-existing checks and would prove nothing about this one; this
+    payload is deliberately well-formed everywhere except the one place the new check exists to
+    catch, and must not crash `validate_history`."""
+    save, index = _save_with_decision(_quiet_decision())
+    malformed_json = canonical_dumps(
+        {"decisions": [], "expected_state_version": 0, "expected_turn": "not-an-int"}
+    )
+    tampered = _retamper_entry_with_consistent_hash(
+        save, index=index, decisions_json=malformed_json
+    )
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert not any("not valid JSON" in p for p in problems)
+    assert not any("not canonical JSON" in p for p in problems)
+    assert any("stored decisions fail schema validation" in p for p in problems)

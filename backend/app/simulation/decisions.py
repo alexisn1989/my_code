@@ -20,6 +20,7 @@ from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.core.canonical_json import canonical_digest
 from app.core.money import StrictBps, StrictMoney
 from app.simulation.legislature import ProposalRoute
 from app.simulation.state import SpendingCategory
@@ -174,3 +175,21 @@ class DecisionSet(BaseModel):
                 f"at most one budget decision may appear in a DecisionSet, got {len(self.decisions)}"
             )
         return self
+
+
+def budget_decision_digest(decision: BudgetDecision) -> str:
+    """A deterministic content fingerprint of a submitted `BudgetDecision` (Phase 3B1, R8).
+
+    Mirrors `constitution.constitution_digest` exactly: the same `canonical_digest` mechanism,
+    over the model's own `model_dump(mode="json")`, so every field is covered by construction —
+    `kind`, every tax target, every spending target, `route`, and the influence allocations in
+    their (already construction-time-enforced, reject-not-normalize) canonical `(party_id,
+    bloc_id)` order — with no manual field selection or duplicated serialization logic to drift
+    out of sync as the model grows.
+
+    `LegislativeReport.budget_decision_digest` stores the *result* of this function, never the
+    decision itself; `simulation.reconciliation` is the only place that recomputes it and compares
+    — see that module's group 18 — so a report can be checked for provenance without ever growing
+    a `GameState`- or `DecisionSet`-shaped field of its own.
+    """
+    return canonical_digest(decision.model_dump(mode="json"))

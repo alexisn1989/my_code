@@ -33,6 +33,7 @@ succeeded when the numbers don't actually add up.
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -111,6 +112,14 @@ from app.simulation.state import (
 )
 
 _STRICT_CONFIG = ConfigDict(extra="forbid")
+
+_HEX_DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+"""What `budget_decision_digest(...)` (`simulation.decisions`) always produces: a lowercase,
+64-character BLAKE2b-256 hex digest, the same shape `HistoryEntry.entry_hash`/
+`constitution_digest` already use. `LegislativeReport` checks only this *syntax* — that a stored
+digest is even shaped like one — never recomputes or compares it against a real decision; that
+semantic check is `simulation.reconciliation`'s alone (group 18), so a report can be syntax-valid
+in isolation without ever holding a `DecisionSet`."""
 
 
 class PhaseStatus(StrEnum):
@@ -1897,6 +1906,15 @@ class LegislativeReport(BaseModel):
     state, not derived from `route`/`outcome`: it is required `True` whenever the outcome is a
     legislative one (there is nothing to vote in otherwise), but for `NO_PROPOSAL`/
     `ENACTED_BY_DECREE` it simply records whether the state actually has a legislature.
+
+    `budget_decision_digest` (Phase 3B1, R8) is `simulation.decisions.budget_decision_digest`'s
+    output over the actually-submitted `BudgetDecision`, or `None` for `NO_PROPOSAL` — never the
+    decision itself, so this report cannot grow into a second store of decision content that could
+    drift from the real one. Only its *syntax* is checked here (a properly-shaped hex digest is
+    present exactly when a proposal was submitted); whether it is the digest of the RIGHT decision
+    is `simulation.reconciliation`'s job (group 18), which is the only place that ever recomputes
+    it — mirroring exactly how `constitution.constitution_digest` is verified against a real
+    `ConstitutionState` outside this class.
     """
 
     model_config = _STRICT_CONFIG
@@ -1915,6 +1933,31 @@ class LegislativeReport(BaseModel):
     blocs: tuple[BlocVoteReport, ...] = Field(default_factory=tuple)
     opening_political_capital: StrictPoliticalCapital
     political_capital_committed: StrictPoliticalCapital
+    budget_decision_digest: str | None
+
+    @model_validator(mode="after")
+    def _budget_decision_digest_matches_proposal_presence(self) -> LegislativeReport:
+        """(R8) Syntax only: `NO_PROPOSAL` carries no decision to digest, so it must be `None`;
+        every other outcome describes a real submitted `BudgetDecision`, so it must carry a
+        properly-shaped digest. Whether that digest is the RIGHT one is never checked here — see
+        the class docstring."""
+        if self.outcome is LegislativeOutcome.NO_PROPOSAL:
+            if self.budget_decision_digest is not None:
+                raise ValueError(
+                    "NO_PROPOSAL must carry budget_decision_digest=None, got "
+                    f"{self.budget_decision_digest!r}"
+                )
+            return self
+        if self.budget_decision_digest is None:
+            raise ValueError(
+                f"outcome {self.outcome.value!r} must carry a budget_decision_digest, not None"
+            )
+        if not _HEX_DIGEST_PATTERN.fullmatch(self.budget_decision_digest):
+            raise ValueError(
+                f"budget_decision_digest={self.budget_decision_digest!r} is not a lowercase "
+                "64-character hexadecimal digest"
+            )
+        return self
 
     @model_validator(mode="after")
     def _tax_change_representation_is_internally_consistent(self) -> LegislativeReport:

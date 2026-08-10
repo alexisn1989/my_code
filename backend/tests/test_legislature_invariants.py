@@ -726,7 +726,7 @@ def test_no_report_formula_or_voting_concepts_leaked_into_legislature_invariants
     """`_check_legislature` receives `GameState` only. It must never reference
     `LegislativeReport`, `DecisionSet`, voting outcomes, influence, political-capital commitments,
     or formula-derived supporting seats -- those belong to `LegislativeReport`'s own validators or
-    a future `reconcile_political_report`-style state/report comparison, not to a single-state
+    `reconcile_political_and_legislative_report`'s state/report comparison, not to a single-state
     structural check."""
     from app.simulation import invariants as invariants_module
 

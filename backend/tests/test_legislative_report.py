@@ -170,10 +170,17 @@ def _minimal_legislative_report(
     tax_delta_bps: int = 0,
     tax_direction: ChangeDirection = ChangeDirection.UNCHANGED,
     tax_intensity_bps: int = 0,
+    budget_decision_digest: str | None = None,
 ) -> LegislativeReport:
     """A minimal, single-chamber, single-(saturating)-bloc `PASSED_LEGISLATIVE` report by default;
     every keyword lets a test steer exactly one axis (route/outcome/capital/spending/tax) while
-    the rest stays trivially self-consistent."""
+    the rest stays trivially self-consistent.
+
+    `budget_decision_digest` defaults to a properly-shaped placeholder digest for every outcome
+    except `NO_PROPOSAL` (which requires `None`) — these tests exercise report-level syntax, never
+    `simulation.reconciliation`'s semantic check against a real `DecisionSet`, so the digest's
+    exact value never matters here, only its shape.
+    """
     if blocs is None:
         blocs = (_bloc_row(seats=100, allocated=allocated),)
     if chambers is None:
@@ -181,6 +188,8 @@ def _minimal_legislative_report(
         chambers = (_chamber_row(total_seats=total, supporting_seats=total),)
     if political_capital_committed is None:
         political_capital_committed = allocated
+    if budget_decision_digest is None and outcome is not LegislativeOutcome.NO_PROPOSAL:
+        budget_decision_digest = "a" * 64
     return LegislativeReport(
         outcome=outcome,
         route=route,
@@ -196,6 +205,7 @@ def _minimal_legislative_report(
         blocs=blocs,
         opening_political_capital=opening_political_capital,
         political_capital_committed=political_capital_committed,
+        budget_decision_digest=budget_decision_digest,
     )
 
 
