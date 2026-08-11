@@ -55,9 +55,13 @@ from app.core.money import format_money
 from app.saves import read_save_file, write_save_atomic
 from app.simulation.decisions import DecisionSet
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
+from app.simulation.legislative_voting import required_yes_seats
+from app.simulation.legislature import GovernmentRole, LegislativeChamber, LegislativeOutcome
 from app.simulation.report import (
+    BlocVoteReport,
     FinanceReport,
     LaborMarketReport,
+    LegislativeReport,
     PoliticalReport,
     ProductionReport,
     ResourceExtractionReport,
@@ -66,7 +70,7 @@ from app.simulation.report import (
     TurnReportEntry,
 )
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json, load_save_json
-from app.simulation.state import RESOURCE_UNITS
+from app.simulation.state import RESOURCE_UNITS, PoliticalState
 
 # --- reason_id -> English rendering (presentation layer only; never stored) --
 
@@ -75,6 +79,12 @@ _TAX_FIELD_LABELS = {
     "corporate_rate_bps": "Corporate tax",
     "consumption_rate_bps": "Consumption tax",
 }
+
+
+def _format_bps_delta(bps: int) -> str:
+    """A signed percentage-point delta, e.g. `+5.00pp` / `-2.50pp` / `+0.00pp`. Always carries an
+    explicit sign so an increase is never mistaken for a decrease at a glance."""
+    return f"{bps / 100:+.2f}pp"
 
 
 def _bps_to_percent_str(bps: object) -> str:
@@ -196,6 +206,50 @@ def _render_political_capital_resolved(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_legislative_vote_resolved(params: dict[str, str | int]) -> str:
+    route = str(params["route"])
+    outcome = str(params["outcome"])
+    chambers_passed = int(params["chambers_passed"])
+    chambers_total = int(params["chambers_total"])
+    supporting = int(params["supporting_seats"])
+    required = int(params["required_yes_seats"])
+    committed = int(params["political_capital_committed"])
+
+    if chambers_total == 0:
+        # A decree: no chamber voted, so there is no tally to report. Saying "0 of 0 chambers
+        # passed" would read as a defeat rather than as "no vote was held".
+        return (
+            f"Budget resolved by {route}: {outcome} — enacted through executive decree "
+            f"authority, no chamber vote held. Political capital committed: {committed:,}."
+        )
+
+    # (§14) For a bicameral legislature these are SUMS across chambers that were each decided
+    # separately — said explicitly, because passage is per-chamber and a pooled total never
+    # determines it. The per-chamber breakdown is in the `legislative:` block.
+    scope = (
+        "across 1 chamber"
+        if chambers_total == 1
+        else f"totalled across {chambers_total} separately decided chambers"
+    )
+    return (
+        f"Budget resolved by {route}: {outcome} — {chambers_passed} of {chambers_total} "
+        f"chamber(s) passed; {supporting:,} supporting seats against {required:,} required "
+        f"({scope}; each chamber must reach its own majority independently). "
+        f"Political capital committed: {committed:,}."
+    )
+
+
+def _render_budget_blocked_by_legislature(params: dict[str, str | int]) -> str:
+    chamber = str(params["chamber"])
+    supporting = int(params["supporting_seats"])
+    required = int(params["required_yes_seats"])
+    shortfall = int(params["shortfall_seats"])
+    return (
+        f"Budget blocked by the {chamber} chamber: {supporting:,} supporting seats against "
+        f"{required:,} required, short {shortfall:,}."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -209,6 +263,8 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "tax_bases_derived": _render_tax_bases_derived,
     "legitimacy_resolved": _render_legitimacy_resolved,
     "political_capital_resolved": _render_political_capital_resolved,
+    "legislative_vote_resolved": _render_legislative_vote_resolved,
+    "budget_blocked_by_legislature": _render_budget_blocked_by_legislature,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -272,6 +328,77 @@ def _cmd_new(args: argparse.Namespace) -> int:
         f"-> wrote {out_path}"
     )
     return 0
+
+
+_ROLE_LABELS: dict[GovernmentRole, str] = {
+    GovernmentRole.COALITION: "coalition",
+    GovernmentRole.CONFIDENCE_AND_SUPPLY: "confidence-and-supply",
+    GovernmentRole.OPPOSITION: "opposition",
+}
+
+
+def _print_legislature_composition(politics: PoliticalState) -> None:
+    """(Phase 3B1, §14) `inspect --legislature`: the AUTHORED INSTITUTIONAL COMPOSITION held in
+    state, and nothing else.
+
+    Deliberately shows **no support tally**. A figure like "58/100" is not a property of a
+    legislature — it is the result of *a specific proposal* being voted on, and it changes with
+    every proposal and every capital allocation. It exists only inside a resolved turn's
+    `LegislativeReport` and is printed there (`_print_legislative_report`). Printing one here
+    would invent a proposal the player never made and imply a standing majority that does not
+    exist.
+
+    The seat totals below are summed directly from each bloc's authored `seats` entries, which
+    `LegislatureState`'s own validator already requires to reconcile exactly against each
+    chamber's `total_seats` — so these are the real authored seats, not a derived estimate.
+    """
+    decree = politics.constitution.decree_authority.value
+    legislature = politics.legislature
+    if legislature is None:
+        # An explicit line, never an empty table: "no legislature" is a real, C10-constrained
+        # constitutional arrangement (and one that REQUIRES unlimited decree authority), not a
+        # missing-data case.
+        print("  legislature:         none — this constitution has no legislature")
+        print(f"  decree authority:    {decree}")
+        return
+
+    print(f"  legislature:         {politics.constitution.legislature.value}")
+    print(f"  decree authority:    {decree}")
+
+    role_by_party = {party.id: party.government_role for party in legislature.parties}
+
+    for chamber in legislature.chambers:
+        majority = required_yes_seats(total_seats=chamber.total_seats)
+        print(
+            f"    {chamber.chamber.value} chamber: {chamber.total_seats} seats "
+            f"(strict majority {majority})"
+        )
+        seats_by_role: dict[GovernmentRole, int] = {role: 0 for role in GovernmentRole}
+        for party in legislature.parties:
+            for bloc in party.blocs:
+                for entry in bloc.seats:
+                    if entry.chamber is chamber.chamber:
+                        seats_by_role[role_by_party[party.id]] += entry.seats
+        composition = "  ".join(
+            f"{_ROLE_LABELS[role]} {seats_by_role[role]}" for role in GovernmentRole
+        )
+        print(f"      authored seats: {composition}")
+
+    print(f"    parties: {len(legislature.parties)}")
+    for party in legislature.parties:
+        print(
+            f"      {party.id} ({party.name}) — {_ROLE_LABELS[party.government_role]}, "
+            f"{len(party.blocs)} bloc(s)"
+        )
+        for bloc in party.blocs:
+            seats = "  ".join(f"{entry.chamber.value} {entry.seats}" for entry in bloc.seats)
+            print(f"        {bloc.id} ({bloc.name}): {seats or 'no seats'}")
+            print(
+                f"          discipline={_bps_to_percent_str(bloc.discipline_bps)} "
+                f"relationship={_bps_to_percent_str(bloc.government_relationship_bps)} "
+                f"tax_pref={_bps_to_percent_str(bloc.tax_preference_bps)} "
+                f"spending_pref={_bps_to_percent_str(bloc.spending_preference_bps)}"
+            )
 
 
 def _cmd_inspect(args: argparse.Namespace) -> int:
@@ -378,6 +505,8 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                     f"output={baseline.total_gross_output:,}  "
                     f"unemployment={_bps_to_percent_str(baseline.unemployment_rate_bps)}"
                 )
+        if args.legislature:
+            _print_legislature_composition(politics)
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -562,6 +691,95 @@ def _print_political_report(political: PoliticalReport) -> None:
     )
 
 
+def _print_legislative_report(legislative: LegislativeReport) -> None:
+    """(Phase 3B1, §14) The ONE legislative renderer. Both live `resolve` output and historical
+    `history --turn N` output call this — deliberately, because Phase 3A shipped a bug where
+    `_cmd_history` had its own inline printing path and silently omitted a whole report section
+    that `resolve` displayed. Two copies of this formatting would drift the same way.
+
+    Every value printed below is read straight off the stored, already-self-validated
+    `LegislativeReport`. Nothing here recomputes a vote, a support figure, a seat apportionment,
+    whether the budget applied, or any capital arithmetic — those are the report's own 13
+    validators' job, re-run on every construction and every history replay. This function is
+    presentation only.
+    """
+    print("    legislative:")
+
+    if legislative.outcome is LegislativeOutcome.NO_PROPOSAL:
+        # No route, no chambers, no blocs — printing an empty table or a fabricated route would
+        # imply a vote that never happened.
+        print("      no budget proposal submitted")
+        print(f"      political capital committed: {legislative.political_capital_committed:,}")
+        return
+
+    assert legislative.route is not None, "every non-NO_PROPOSAL outcome carries a route"
+    print(
+        f"      proposal: budget  route={legislative.route.value}  "
+        f"outcome={legislative.outcome.value}"
+    )
+    print(
+        f"      tax change:      {_format_bps_delta(legislative.tax_delta_bps)} "
+        f"({legislative.tax_direction.value}, intensity "
+        f"{_bps_to_percent_str(legislative.tax_intensity_bps)})"
+    )
+    print(
+        f"      spending change: {format_money(legislative.opening_total_program_spending)} -> "
+        f"{format_money(legislative.proposed_total_program_spending)} "
+        f"({legislative.spending_direction.value}, intensity "
+        f"{_bps_to_percent_str(legislative.spending_intensity_bps)})"
+    )
+    print(
+        f"      political capital: committed {legislative.political_capital_committed:,} "
+        f"of {legislative.opening_political_capital:,} opening"
+    )
+
+    if legislative.outcome is LegislativeOutcome.ENACTED_BY_DECREE:
+        # No chamber table and no bloc table: a decree is not voted on, so there is nothing to
+        # tabulate. Anything printed here would be invented.
+        print("      enacted through executive decree authority — no chamber vote")
+        return
+
+    blocs_by_chamber: dict[LegislativeChamber, list[BlocVoteReport]] = {}
+    for bloc in legislative.blocs:
+        blocs_by_chamber.setdefault(bloc.chamber, []).append(bloc)
+
+    for chamber in legislative.chambers:
+        status = "PASSED" if chamber.passed else "FAILED"
+        # Margin when passed, shortfall when failed — never both, and never a pooled figure:
+        # each chamber is decided entirely against its own size and its own majority.
+        detail = (
+            f"margin +{chamber.supporting_seats - chamber.required_yes_seats}"
+            if chamber.passed
+            else f"short {chamber.shortfall_seats}"
+        )
+        print(
+            f"      {chamber.chamber.value} chamber: {chamber.supporting_seats}/"
+            f"{chamber.total_seats} supporting, majority {chamber.required_yes_seats} "
+            f"-> {status} ({detail})"
+        )
+        print(
+            f"        apportionment: target {chamber.target_total}, "
+            f"{chamber.extras_awarded} extra seat(s) awarded on remainders"
+        )
+        rows = blocs_by_chamber.get(chamber.chamber, [])
+        # Pad the whole `party/bloc` identity, not `bloc_id` alone: party ids vary in length, so
+        # padding only the second half leaves the columns ragged and hard to compare down.
+        identity_width = max((len(f"{r.party_id}/{r.bloc_id}") for r in rows), default=0)
+        for bloc in rows:
+            identity = f"{bloc.party_id}/{bloc.bloc_id}"
+            bonus = "+1" if bloc.bonus_seat else " 0"
+            print(
+                f"        {identity:<{identity_width}}  "
+                f"{bloc.government_role.value:<21} {bloc.seats:>4} seats  "
+                f"effective={_bps_to_percent_str(bloc.effective_support_bps):>7}  "
+                f"base {bloc.base_seats:>3} rem {bloc.remainder:>6} bonus {bonus} "
+                f"-> {bloc.supporting_seats:>3}"
+            )
+
+    if legislative.outcome is LegislativeOutcome.FAILED_LEGISLATIVE:
+        print("      budget NOT applied — existing tax policy and spending plan remain in force")
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
@@ -578,6 +796,8 @@ def _print_report(report: TurnReport) -> None:
         _print_finance_report(report.finance)
     if report.political is not None:
         _print_political_report(report.political)
+    if report.legislative is not None:
+        _print_legislative_report(report.legislative)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -682,6 +902,10 @@ def _cmd_history(args: argparse.Namespace) -> int:
             _print_finance_report(report.finance)
         if report.political is not None:
             _print_political_report(report.political)
+        if report.legislative is not None:
+            # The SAME helper `_print_report` uses, never a second inline copy — see
+            # `_print_legislative_report`'s docstring for the Phase 3A omission this prevents.
+            _print_legislative_report(report.legislative)
     return 0
 
 
@@ -708,6 +932,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also show the full constitutional axis table and the persisted economic "
         "baseline, read directly from state",
+    )
+    p_inspect.add_argument(
+        "--legislature",
+        action="store_true",
+        help="also show the authored legislature composition (chambers, seats, strict-majority "
+        "thresholds, parties, blocs, roles and preferences) read directly from state. Shows no "
+        "support tally: a tally depends on a specific proposal and appears only in a resolved "
+        "turn's legislative report",
     )
     p_inspect.set_defaults(func=_cmd_inspect)
 

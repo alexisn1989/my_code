@@ -1390,14 +1390,6 @@ def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
 
 
 def _generate_turn_report(ctx: PhaseContext) -> None:
-    ctx.report_entries.append(
-        TurnReportEntry(
-            category="administration",
-            reason_id="turn_resolved",
-            params={"turn": ctx.resolving_turn},
-        )
-    )
-
     scratch = ctx.finance
     if scratch is not None:
         assert scratch.applied_tax_bases is not None
@@ -1446,8 +1438,78 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
         political_capital_committed=legislative_scratch.political_capital_committed,
         budget_decision_digest=legislative_scratch.budget_decision_digest,
     )
+    _append_legislative_report_entries(ctx, ctx.legislative_report)
+
+    # (Phase 3B1) Appended LAST, after every other phase and after this slot's own legislative
+    # entries, so `turn_resolved` stays the final line of every report exactly as it was before
+    # Phase 3B1 -- it closes the turn, so nothing may follow it.
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="administration",
+            reason_id="turn_resolved",
+            params={"turn": ctx.resolving_turn},
+        )
+    )
 
     ctx.mark_implemented()
+
+
+def _append_legislative_report_entries(ctx: PhaseContext, report: LegislativeReport) -> None:
+    """(Phase 3B1, §14) The two approved legislative reason IDs, derived from the
+    already-constructed, already-self-validated `LegislativeReport` rather than from the scratch —
+    so a reason payload can never describe a vote the report itself does not.
+
+    `NO_PROPOSAL` emits nothing: no proposal was made, so there is no vote to report and no
+    chamber to have blocked one. (An invalid or constitutionally unavailable route never reaches
+    here at all — slot 1 raises `DecisionSetError` and the whole turn aborts before any report
+    exists, so it likewise has no reason ID.)
+
+    Payloads carry only stable ids, enum *values* and integers — never prose. Rendering them into
+    English is `app.cli.REASON_RENDERERS`' job alone (report.py's module docstring: report text
+    lives inside hash-protected history and could never be re-rendered otherwise).
+    """
+    if report.outcome is LegislativeOutcome.NO_PROPOSAL:
+        return
+
+    assert report.route is not None, "every non-NO_PROPOSAL outcome carries a route"
+    # For a decree these are all zero by construction: `chambers` is empty, because no chamber
+    # voted. The renderer says so explicitly rather than printing a bare "0 of 0 chambers".
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="politics",
+            reason_id="legislative_vote_resolved",
+            params={
+                "route": report.route.value,
+                "outcome": report.outcome.value,
+                "chambers_passed": sum(1 for chamber in report.chambers if chamber.passed),
+                "chambers_total": len(report.chambers),
+                "supporting_seats": sum(chamber.supporting_seats for chamber in report.chambers),
+                "required_yes_seats": sum(
+                    chamber.required_yes_seats for chamber in report.chambers
+                ),
+                "political_capital_committed": report.political_capital_committed,
+            },
+        )
+    )
+
+    # One entry per chamber that actually blocked the budget — never one summary entry for "the
+    # legislature", because in a bicameral legislature each chamber blocks (or does not) on its
+    # own, and a single pooled entry could not say which one did.
+    for chamber in report.chambers:
+        if chamber.passed:
+            continue
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="politics",
+                reason_id="budget_blocked_by_legislature",
+                params={
+                    "chamber": chamber.chamber.value,
+                    "supporting_seats": chamber.supporting_seats,
+                    "required_yes_seats": chamber.required_yes_seats,
+                    "shortfall_seats": chamber.shortfall_seats,
+                },
+            )
+        )
 
 
 # The fifteen-step resolution order from product spec §7. Order matters and is tested.
