@@ -2,7 +2,6 @@
 name = "mandate-backend"
 version = "0.1.0"
 description = "MANDATE political strategy game — simulation engine and API"
-readme = "../README.md"
 requires-python = ">=3.11,<3.13"
 license = { text = "Proprietary" }
 dependencies = [
