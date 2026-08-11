@@ -26,6 +26,10 @@ from app.core.politics import (
     StrictLegitimacyBps,
     StrictPoliticalCapital,
     StrictPoliticalCapitalCapacity,
+    StrictPositiveSeatCount,
+    StrictPreferenceBps,
+    StrictRelationshipBps,
+    StrictSeatCount,
 )
 from app.core.quantity import (
     StrictRealOutput,
@@ -34,7 +38,8 @@ from app.core.quantity import (
     StrictResourceQuantity,
     StrictResourceQuantityPerWorker,
 )
-from app.simulation.constitution import ConstitutionState
+from app.simulation.constitution import ConstitutionState, Legislature
+from app.simulation.legislature import GovernmentRole, LegislativeChamber
 
 _STRICT_CONFIG = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -537,6 +542,201 @@ class EconomicBaselineState(BaseModel):
     unemployment_rate_bps: StrictBps
 
 
+class BlocSeats(BaseModel):
+    """How many seats one bloc holds in one chamber.
+
+    Zero is legal and meaningful: a caucus may be absent from the upper house and still be a
+    caucus. A bloc simply omits the chambers it holds nothing in, so an explicit zero and an
+    omission mean the same thing — both are permitted rather than one being canonicalised, because
+    an author writing `seats: 0` is saying something true.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    chamber: LegislativeChamber
+    seats: StrictSeatCount
+
+
+class LegislativeBlocState(BaseModel):
+    """An internal caucus of a party — the unit that actually votes.
+
+    **Blocs, not parties, carry `government_relationship_bps`.** A rebel caucus inside a governing
+    party is the interesting case in every real legislature, and party-level-only loyalty would
+    make it unrepresentable. The party keeps its *formal* role; the bloc keeps how it actually
+    feels.
+
+    `discipline_bps` is how tightly the caucus votes together, and amplifies whichever way it
+    already leans (`simulation.legislative_voting`). The two preference fields are directional:
+    negative prefers a decrease, positive an increase, zero indifferent — deliberately separate
+    from the relationship, because a bloc can be devoted to a government and still hate its
+    budget.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    id: str
+    name: str
+    seats: tuple[BlocSeats, ...] = Field(default_factory=tuple)
+    discipline_bps: StrictBps
+    government_relationship_bps: StrictRelationshipBps
+    tax_preference_bps: StrictPreferenceBps
+    spending_preference_bps: StrictPreferenceBps
+
+    @model_validator(mode="after")
+    def _seats_are_unique_and_in_canonical_chamber_order(self) -> LegislativeBlocState:
+        """Follows `resource_deposits`' reject-not-normalize rule (R3), not `sectors`'
+        normalize-on-reorder one: noncanonical order **raises**. Completeness is not required —
+        a bloc absent from a chamber simply omits it.
+        """
+        seen: set[LegislativeChamber] = set()
+        for entry in self.seats:
+            if entry.chamber in seen:
+                raise ValueError(f"duplicate chamber in bloc seats: {entry.chamber.value!r}")
+            seen.add(entry.chamber)
+        canonical = tuple(
+            sorted(self.seats, key=lambda e: tuple(LegislativeChamber).index(e.chamber))
+        )
+        if canonical != self.seats:
+            raise ValueError(
+                "bloc seats must be in canonical chamber order "
+                f"{[c.value for c in LegislativeChamber]!r}, got "
+                f"{[e.chamber.value for e in self.seats]!r}"
+            )
+        return self
+
+
+class PartyState(BaseModel):
+    """A party: a formal role in relation to the government, and one or more internal blocs.
+
+    The role is the party's *declared* position — in the coalition, supporting it on confidence
+    and supply, or in opposition. It sets where the party's caucuses start; what moves them from
+    there is each bloc's own relationship and preferences.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    id: str
+    name: str
+    government_role: GovernmentRole
+    blocs: tuple[LegislativeBlocState, ...]
+
+    @model_validator(mode="after")
+    def _blocs_are_non_empty_unique_and_sorted_by_id(self) -> PartyState:
+        if not self.blocs:
+            raise ValueError(f"party {self.id!r} has no blocs; a party is at least one caucus")
+        ids = [bloc.id for bloc in self.blocs]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"duplicate bloc id within party {self.id!r}: {ids!r}")
+        if ids != sorted(ids):
+            raise ValueError(f"blocs of party {self.id!r} must be sorted by id, got {ids!r}")
+        return self
+
+
+class ChamberState(BaseModel):
+    """One chamber, and how many seats it has in total.
+
+    **No passage threshold.** Passage is a strict majority derived from `total_seats` alone
+    (`legislative_voting.required_yes_seats`). A per-chamber threshold would be a second, silently
+    authorable source of truth for the same rule; per-proposal-type supermajorities arrive in 3B2
+    alongside a proposal type that actually needs one.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    chamber: LegislativeChamber
+    total_seats: StrictPositiveSeatCount
+
+
+class LegislatureState(BaseModel):
+    """The chambers and parties of one country's legislature.
+
+    Static in Phase 3B1: nothing mutates seats, roles, relationships or preferences, and
+    `simulation.reconciliation` asserts as much. That is not the same as inert — the legislature is
+    read every turn and decides whether the budget applies at all.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    chambers: tuple[ChamberState, ...]
+    parties: tuple[PartyState, ...]
+
+    @model_validator(mode="after")
+    def _chambers_are_unique_non_empty_and_in_canonical_order(self) -> LegislatureState:
+        if not self.chambers:
+            raise ValueError("a legislature must have at least one chamber")
+        seen: set[LegislativeChamber] = set()
+        for chamber in self.chambers:
+            if chamber.chamber in seen:
+                raise ValueError(f"duplicate chamber: {chamber.chamber.value!r}")
+            seen.add(chamber.chamber)
+        canonical = tuple(
+            sorted(self.chambers, key=lambda c: tuple(LegislativeChamber).index(c.chamber))
+        )
+        if canonical != self.chambers:
+            raise ValueError(
+                "chambers must be in canonical order "
+                f"{[c.value for c in LegislativeChamber]!r}, got "
+                f"{[c.chamber.value for c in self.chambers]!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _parties_are_non_empty_unique_and_sorted_by_id(self) -> LegislatureState:
+        if not self.parties:
+            raise ValueError("a legislature must have at least one party")
+        ids = [party.id for party in self.parties]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"duplicate party id: {ids!r}")
+        if ids != sorted(ids):
+            raise ValueError(f"parties must be sorted by id, got {ids!r}")
+        return self
+
+    @model_validator(mode="after")
+    def _blocs_are_only_seated_in_chambers_that_exist(self) -> LegislatureState:
+        """A bloc holding seats in an upper house of a unicameral legislature is not a small
+        inconsistency to tolerate — it is seats that exist nowhere, which would be counted by
+        apportionment against a chamber with no size to compare them to."""
+        existing = {chamber.chamber for chamber in self.chambers}
+        for party in self.parties:
+            for bloc in party.blocs:
+                for entry in bloc.seats:
+                    if entry.chamber not in existing:
+                        raise ValueError(
+                            f"bloc {party.id!r}/{bloc.id!r} holds seats in "
+                            f"{entry.chamber.value!r}, which this legislature does not have"
+                        )
+        return self
+
+    @model_validator(mode="after")
+    def _blocs_account_for_every_seat_in_every_chamber(self) -> LegislatureState:
+        """Every seat in every chamber is held by exactly one bloc — an **equality**, not a bound.
+
+        Rejecting only the excess would leave unheld seats representable, and unheld seats are not
+        a harmless rounding of the truth: passage is measured against `total_seats`, so a chamber
+        whose blocs account for 80 of 100 seats would need 51 supporters out of a body that can
+        only ever produce 80. The missing 20 would behave as permanent, invisible abstentions that
+        no bloc owns, that no player can bargain with, and that no report can explain.
+
+        A genuinely unaligned crossbench is a real thing to model, but it must be modelled as a
+        bloc — with a relationship, preferences and a discipline anyone can read — rather than as
+        an authoring gap.
+        """
+        for chamber in self.chambers:
+            held = sum(
+                entry.seats
+                for party in self.parties
+                for bloc in party.blocs
+                for entry in bloc.seats
+                if entry.chamber is chamber.chamber
+            )
+            if held != chamber.total_seats:
+                raise ValueError(
+                    f"blocs hold {held} seats in the {chamber.chamber.value} chamber, which has "
+                    f"{chamber.total_seats}; every seat must be held by exactly one bloc"
+                )
+        return self
+
+
 class PoliticalState(BaseModel):
     """A country's constitutional order, its current legitimacy, and its political capital
     (Phase 3A, §4.3).
@@ -563,6 +763,57 @@ class PoliticalState(BaseModel):
     political_capital: StrictPoliticalCapital
     political_capital_capacity: StrictPoliticalCapitalCapacity
     economic_baseline: EconomicBaselineState | None = None
+    legislature: LegislatureState | None = None
+    """`None` if and only if `constitution.legislature is Legislature.NONE` (Phase 3B1).
+
+    Both directions are enforced below, because each failure is a different kind of lie: a
+    constitution declaring a legislature with no chambers to show for it, or chambers sitting under
+    a constitution that says no legislature exists.
+    """
+
+    @model_validator(mode="after")
+    def _legislature_presence_matches_the_constitution(self) -> PoliticalState:
+        declared = self.constitution.legislature
+        if declared is Legislature.NONE and self.legislature is not None:
+            raise ValueError(
+                "constitution.legislature is 'none' but a legislature is present; chambers cannot "
+                "sit under a constitution that does not establish them"
+            )
+        if declared is not Legislature.NONE and self.legislature is None:
+            raise ValueError(
+                f"constitution.legislature is {declared.value!r} but no legislature is present"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _chamber_count_matches_the_constitutional_shape(self) -> PoliticalState:
+        """`unicameral` means one chamber and `bicameral` means two — the constitution names the
+        shape, and the legislature must be that shape rather than merely some shape."""
+        if self.legislature is None:
+            return self
+        expected = 1 if self.constitution.legislature is Legislature.UNICAMERAL else 2
+        actual = len(self.legislature.chambers)
+        if actual != expected:
+            raise ValueError(
+                f"constitution.legislature is {self.constitution.legislature.value!r} but the "
+                f"legislature has {actual} chamber(s), expected {expected}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _a_unicameral_legislature_seats_its_lower_chamber(self) -> PoliticalState:
+        """A single-chamber legislature is a `LOWER` chamber, not an `UPPER` one. Without this a
+        unicameral state could be authored as an upper house alone, which no constitution here
+        describes and which would silently change nothing except the label a player reads."""
+        if self.legislature is None or self.constitution.legislature is not Legislature.UNICAMERAL:
+            return self
+        only = self.legislature.chambers[0].chamber
+        if only is not LegislativeChamber.LOWER:
+            raise ValueError(
+                f"a unicameral legislature's single chamber must be "
+                f"{LegislativeChamber.LOWER.value!r}, got {only.value!r}"
+            )
+        return self
 
 
 class CountryState(BaseModel):
@@ -599,7 +850,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.8.0"
+RULESET_VERSION = "0.9.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -616,7 +867,13 @@ older save — the same kind of change that justified every prior ruleset bump),
 `docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md` (bumped `"0.7.0" ->
 "0.8.0"` for Phase 3A: `CountryState.politics` becomes a new required field for the player, with
 no constitution, authored order support, legitimacy or political capital to backfill from an
-older save).
+older save), and
+`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md` (bumped `"0.8.0" ->
+"0.9.0"` for Phase 3B1: `PoliticalState.legislature` becomes required whenever the constitution
+declares a legislature, and a 0.8.0 save has no chambers, parties, blocs, seats, relationships or
+preferences to backfill from — inventing them would be inventing a legislature, not migrating
+one; and turn resolution now routes the budget through a vote that can fail, so the same decisions
+no longer produce the same turn).
 """
 
 

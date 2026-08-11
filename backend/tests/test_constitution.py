@@ -1,8 +1,8 @@
-"""Tests for `simulation.constitution` (Phase 3A, T-C1..T-C10).
+"""Tests for `simulation.constitution` (Phase 3A, T-C1..T-C10; Phase 3B1 adds C10 itself).
 
 Two things this file exists to pin:
 
-1. **Validity rules C1-C9 are total and exact** — every one of the 10,368 reachable configurations
+1. **Validity rules C1-C10 are total and exact** — every one of the 10,368 reachable configurations
    is accepted or rejected exactly as the rules predict, so "valid" is a closed, enumerable set
    rather than whatever the validator happens to do.
 2. **Validity is not legitimacy** — the arrangements a reader might expect to be penalised
@@ -48,7 +48,7 @@ def _constitution(**overrides: object) -> ConstitutionState:
     return ConstitutionState(**base)  # type: ignore[arg-type]
 
 
-# --- T-C1: every rule C1-C9 rejects, with its own code -----------------------
+# --- T-C1: every rule C1-C10 rejects, with its own code ----------------------
 
 
 def test_c1_parliamentary_requires_legislature() -> None:
@@ -173,6 +173,103 @@ def test_c9_national_election_requires_something_elected() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "decree_authority",
+    [
+        pytest.param(DecreeAuthority.NONE, id="no-decree-power"),
+        pytest.param(DecreeAuthority.EMERGENCY_ONLY, id="emergency-decree-only"),
+    ],
+)
+def test_c10_legislature_absent_requires_unlimited_decree(
+    decree_authority: DecreeAuthority,
+) -> None:
+    """(Phase 3B1) An order in which no organ can make law is not a constrained government; it is
+    the absence of one.
+
+    `EMERGENCY_ONLY` fails alongside `NONE` because Phase 3B1 has no emergency state, trigger,
+    threshold or duration to read — so an emergency-only executive with no legislature has no
+    route to legislate at all, whatever the label suggests.
+    """
+    with pytest.raises(ValidationError, match="legislature_absent_requires_unlimited_decree"):
+        _constitution(
+            executive_selection=ExecutiveSelection.APPOINTED,
+            legislature=Legislature.NONE,
+            decree_authority=decree_authority,
+        )
+
+
+def test_c10_is_independently_reachable_as_the_first_violation() -> None:
+    """C10 is placed last, so it only fires where no earlier rule does — which means it could in
+    principle be unreachable, masked entirely by C1-C9. It is not. The smallest witness:
+
+    C1/C2 need a parliamentary executive; C3 needs legislative selection; C4 needs
+    semi-presidential; C5 needs legislative selection; C6/C7 concern hereditary and monarchical;
+    C8 needs a term limit; C9 needs an election interval. None applies here, and C10 fires.
+    """
+    bypassed = ConstitutionState.model_construct(
+        executive_system=ExecutiveSystem.PRESIDENTIAL,
+        executive_selection=ExecutiveSelection.DIRECT_ELECTION,
+        legislature=Legislature.NONE,
+        territorial_organization=TerritorialOrganization.UNITARY,
+        judicial_review=JudicialReview.NONE,
+        amendment_difficulty=AmendmentDifficulty.SUPERMAJORITY,
+        decree_authority=DecreeAuthority.NONE,
+        executive_term_limit_terms=None,
+        national_election_interval_turns=None,
+    )
+    code, _ = first_constitutional_violation(bypassed)  # type: ignore[misc]
+    assert code == "legislature_absent_requires_unlimited_decree"
+
+
+def test_c10_counts_exactly_the_configurations_it_should() -> None:
+    """C10 is the first violation on exactly 324 of the 10,368 configurations — enough to matter,
+    and far from the whole space. A rule that rejected nothing, or nearly everything, would be
+    evidence it had been written wrong."""
+    fires = sum(
+        1
+        for combo in itertools.product(
+            ExecutiveSystem,
+            ExecutiveSelection,
+            Legislature,
+            TerritorialOrganization,
+            JudicialReview,
+            AmendmentDifficulty,
+            DecreeAuthority,
+            (None, 2),
+            (None, 16),
+        )
+        if _expected_violation_code(
+            combo[0], combo[1], combo[2], combo[7] is not None, combo[8] is not None, combo[6]
+        )
+        == "legislature_absent_requires_unlimited_decree"
+    )
+    assert fires == 324
+
+
+def test_c10_leaves_the_absolute_executive_routes_open() -> None:
+    """C10 must not close the dictatorship and absolute-monarchy archetypes Phase 3A deliberately
+    left reachable — it only requires that such an order can actually legislate."""
+    assert _constitution(
+        executive_selection=ExecutiveSelection.APPOINTED,
+        legislature=Legislature.NONE,
+        decree_authority=DecreeAuthority.UNLIMITED,
+    )
+    assert _constitution(
+        executive_system=ExecutiveSystem.MONARCHICAL,
+        executive_selection=ExecutiveSelection.HEREDITARY,
+        legislature=Legislature.NONE,
+        decree_authority=DecreeAuthority.UNLIMITED,
+    )
+
+
+def test_c10_does_not_constrain_a_government_that_has_a_legislature() -> None:
+    """With a chamber to pass laws, every decree setting stays legal — including none at all,
+    which is the ordinary democratic case."""
+    for legislature in (Legislature.UNICAMERAL, Legislature.BICAMERAL):
+        for decree_authority in DecreeAuthority:
+            assert _constitution(legislature=legislature, decree_authority=decree_authority)
+
+
 # --- T-C2: every required archetype is constructible -------------------------
 
 
@@ -230,13 +327,16 @@ def test_all_required_archetypes_construct_cleanly() -> None:
             amendment_difficulty=AmendmentDifficulty.ENTRENCHED,
             decree_authority=DecreeAuthority.UNLIMITED,
         ),
+        # (Phase 3B1) UNLIMITED, not EMERGENCY_ONLY: C10 rejects an order with no legislature
+        # and no unlimited decree, because no organ in it could make law at all. The archetype
+        # this test guards is "elective monarchy", which survives the change intact.
         "elective monarchy": dict(
             executive_system=ExecutiveSystem.MONARCHICAL,
             executive_selection=ExecutiveSelection.APPOINTED,
             legislature=Legislature.NONE,
             judicial_review=JudicialReview.WEAK,
             amendment_difficulty=AmendmentDifficulty.ENTRENCHED,
-            decree_authority=DecreeAuthority.EMERGENCY_ONLY,
+            decree_authority=DecreeAuthority.UNLIMITED,
         ),
         "constitutional monarchy": dict(
             executive_system=ExecutiveSystem.MONARCHICAL,
@@ -273,6 +373,7 @@ def test_strong_judicial_review_without_a_legislature_is_legal() -> None:
         executive_selection=ExecutiveSelection.APPOINTED,
         legislature=Legislature.NONE,
         judicial_review=JudicialReview.STRONG,
+        decree_authority=DecreeAuthority.UNLIMITED,  # C10: something must be able to make law
     )
 
 
@@ -291,6 +392,7 @@ def test_entrenched_amendment_difficulty_is_legal_with_any_other_axis() -> None:
             legislature=legislature,
             executive_selection=ExecutiveSelection.DIRECT_ELECTION,
             amendment_difficulty=AmendmentDifficulty.ENTRENCHED,
+            decree_authority=DecreeAuthority.UNLIMITED,  # C10: legal for every legislature value
         )
 
 
@@ -300,6 +402,7 @@ def test_federal_organization_without_a_legislature_is_legal() -> None:
         executive_selection=ExecutiveSelection.APPOINTED,
         legislature=Legislature.NONE,
         territorial_organization=TerritorialOrganization.FEDERAL,
+        decree_authority=DecreeAuthority.UNLIMITED,  # C10: something must be able to make law
     )
 
 
@@ -324,9 +427,14 @@ def _expected_violation_code(
     legislature: Legislature,
     has_term_limit: bool,
     has_election_interval: bool,
+    decree_authority: DecreeAuthority,
 ) -> str | None:
-    """An independent re-statement of C1-C9, written from the rule table rather than from the
-    implementation, so the two must agree for all 10,368 configurations."""
+    """An independent re-statement of C1-C10, written from the rule table rather than from the
+    implementation, so the two must agree for all 10,368 configurations.
+
+    `decree_authority` became a parameter in Phase 3B1: C10 makes it validity-affecting for the
+    first time, so it can no longer be treated as one of the purely descriptive axes.
+    """
     if system is ExecutiveSystem.PARLIAMENTARY:
         if legislature is Legislature.NONE:
             return "parliamentary_requires_legislature"
@@ -358,6 +466,8 @@ def _expected_violation_code(
         and selection is not (ExecutiveSelection.DIRECT_ELECTION)
     ):
         return "national_election_requires_something_elected"
+    if legislature is Legislature.NONE and decree_authority is not DecreeAuthority.UNLIMITED:
+        return "legislature_absent_requires_unlimited_decree"
     return None
 
 
@@ -388,7 +498,7 @@ def test_every_reachable_configuration_matches_the_rule_table() -> None:
     ):
         checked += 1
         expected = _expected_violation_code(
-            system, selection, legislature, term_limit is not None, interval is not None
+            system, selection, legislature, term_limit is not None, interval is not None, decree
         )
         bypassed = ConstitutionState.model_construct(
             executive_system=system,
@@ -404,7 +514,7 @@ def test_every_reachable_configuration_matches_the_rule_table() -> None:
         actual = first_constitutional_violation(bypassed)
         actual_code = None if actual is None else actual[0]
         assert actual_code == expected, (
-            f"{system.value}/{selection.value}/{legislature.value} "
+            f"{system.value}/{selection.value}/{legislature.value}/{decree.value} "
             f"term_limit={term_limit} interval={interval}: "
             f"expected {expected!r}, got {actual_code!r}"
         )
@@ -414,19 +524,33 @@ def test_every_reachable_configuration_matches_the_rule_table() -> None:
 def test_the_valid_configuration_count_is_stable() -> None:
     """A regression pin: if a future change alters how many configurations are coherent, that is a
     ruleset-affecting decision that must be made deliberately, not noticed later."""
-    valid = sum(
-        1
-        for system, selection, legislature, term_limit, interval in itertools.product(
-            ExecutiveSystem, ExecutiveSelection, Legislature, (None, 2), (None, 16)
-        )
-        if _expected_violation_code(
-            system, selection, legislature, term_limit is not None, interval is not None
-        )
-        is None
-    )
-    # The four purely-descriptive axes (territorial, judicial, amendment, decree) never affect
-    # validity, so total valid configurations = valid (system, selection, legislature, limit,
-    # interval) tuples x 2 x 3 x 3 x 3.
+    # Three purely-descriptive axes remain: territorial (2) x judicial (3) x amendment (3) = 18
+    # multiplications that cannot affect validity. `decree_authority` is NO LONGER among them --
+    # C10 (Phase 3B1) makes it validity-affecting, so the old single `x 54` factorization is wrong
+    # and is replaced by a split one. A 5-tuple with a legislature admits all three decree values
+    # (18 x 3 = 54); one without a legislature admits only UNLIMITED (18 x 1 = 18).
+    with_legislature = 0
+    without_legislature = 0
+    for system, selection, legislature, term_limit, interval in itertools.product(
+        ExecutiveSystem, ExecutiveSelection, Legislature, (None, 2), (None, 16)
+    ):
+        if (
+            _expected_violation_code(
+                system,
+                selection,
+                legislature,
+                term_limit is not None,
+                interval is not None,
+                DecreeAuthority.UNLIMITED,
+            )
+            is not None
+        ):
+            continue
+        if legislature is Legislature.NONE:
+            without_legislature += 1
+        else:
+            with_legislature += 1
+
     total_valid = sum(
         1
         for combo in itertools.product(
@@ -441,12 +565,13 @@ def test_the_valid_configuration_count_is_stable() -> None:
             (None, 16),
         )
         if _expected_violation_code(
-            combo[0], combo[1], combo[2], combo[7] is not None, combo[8] is not None
+            combo[0], combo[1], combo[2], combo[7] is not None, combo[8] is not None, combo[6]
         )
         is None
     )
-    assert valid * 2 * 3 * 3 * 3 == total_valid
-    assert total_valid == 2_862
+    assert (with_legislature, without_legislature) == (44, 9)
+    assert with_legislature * 54 + without_legislature * 18 == total_valid
+    assert total_valid == 2_538
 
 
 # --- T-C9: R8 — the incoherent pairing is gone --------------------------------
@@ -481,11 +606,13 @@ def test_c9_both_hereditary_and_elective_monarchy_construct() -> None:
         executive_system=ExecutiveSystem.MONARCHICAL,
         executive_selection=ExecutiveSelection.HEREDITARY,
         legislature=Legislature.NONE,
+        decree_authority=DecreeAuthority.UNLIMITED,  # C10: an absolute monarch legislates
     )
     assert _constitution(
         executive_system=ExecutiveSystem.MONARCHICAL,
         executive_selection=ExecutiveSelection.APPOINTED,
         legislature=Legislature.NONE,
+        decree_authority=DecreeAuthority.UNLIMITED,
     )
 
 

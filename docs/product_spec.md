@@ -122,11 +122,21 @@ by the base-game foundation existing.
 nine-axis constitutional structure with validity rules (never a legitimacy judgment), authored
 public acceptance of that structure, a legitimacy score responding to it and to this economy's own
 performance, and political capital regenerating from legitimacy (Phase 3A — see
-`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`). Political-capital
-expenditure, legislative/faction bargaining (§12), and government survival — elections, coups,
-removal from power (§19, §20, §21) — are explicitly deferred to Phase 3B/3C, not implied by the
-foundation existing; §3.1's "removal from office" claim is not yet mechanically possible in any
-form.
+`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`).
+
+**Phase 3B1 adds the first half of §12 and makes §10's political capital genuinely spendable** (see
+`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`): chambers, parties and
+internal blocs that own seats; a deterministic vote that decides whether the submitted **budget**
+takes effect; political capital committed to move specific blocs, consumed whether the vote carries
+or not; and a fixed-cost decree route where the constitution grants unlimited decree authority. A
+new constitutional rule (C10) makes an order in which no organ can make law unrepresentable.
+
+Still deferred, and **not** implied by that foundation existing: legislature composition is
+**static** — no relationship evolution, realignment, defections, confidence votes or coalition
+collapse; the budget is the **only** proposal kind, so there are no general laws yet; there are no
+competing uses for political capital within a turn; and government survival — elections, coups,
+removal from power (§19, §20, §21) — remains Phase 3C. §3.1's "removal from office" claim is still
+not mechanically possible in any form.
 
 ## 42. Final product standard
 

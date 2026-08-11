@@ -35,6 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from app.core.errors import DecisionSetError
 from app.core.money import BPS_DENOMINATOR, Money
 from app.core.rng import derive_rng
 from app.simulation.accounting import (
@@ -43,14 +44,25 @@ from app.simulation.accounting import (
     compute_total_program_spending,
     resolve_cash_and_debt,
 )
-from app.simulation.constitution import ConstitutionState, constitution_digest
-from app.simulation.decisions import DecisionSet
+from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
+from app.simulation.constitution import ConstitutionState, DecreeAuthority, constitution_digest
+from app.simulation.decisions import BudgetDecision, DecisionSet, budget_decision_digest
 from app.simulation.labor_allocation import (
     aggregate_labor_market,
     allocate_workers,
     compute_effective_labor_force,
     compute_required_workers,
 )
+from app.simulation.legislative_voting import (
+    DECREE_POLITICAL_CAPITAL_COST,
+    chamber_carries,
+    required_yes_seats,
+    resolve_bloc_support,
+    spending_policy_change,
+    tax_policy_change,
+)
+from app.simulation.legislature import ChangeDirection as LegislativeChangeDirection
+from app.simulation.legislature import LegislativeOutcome, ProposalRoute
 from app.simulation.legitimacy import (
     PerformanceSignals,
     assess_economic_performance,
@@ -61,12 +73,15 @@ from app.simulation.legitimacy import (
 from app.simulation.production_accounting import compute_sector_output
 from app.simulation.report import (
     TAX_RATE_CHANGE_FIELDS,
+    BlocVoteReport,
     BudgetChangeEntry,
+    ChamberVoteReport,
     ChangeDirection,
     ConstitutionSummary,
     EconomicBaselineReport,
     FinanceReport,
     LaborMarketReport,
+    LegislativeReport,
     PhaseStatus,
     PoliticalReport,
     ProductionReport,
@@ -100,6 +115,7 @@ from app.simulation.resource_output import (
 from app.simulation.state import (
     EconomicBaselineState,
     GameState,
+    LegislatureState,
     SectorCategory,
     SpendingPlanState,
     TaxBaseState,
@@ -164,6 +180,56 @@ class OpeningPoliticalSnapshot:
     economic_baseline: EconomicBaselineState | None
 
 
+@dataclass(frozen=True, slots=True)
+class OpeningLegislativeSnapshot:
+    """The player's complete legislative/political-capital position *before* this turn's budget
+    proposal is resolved (Phase 3B1, §9). Captured by value at the very start of slot 1
+    (`_validate_and_reserve_actions`) — before anything is mutated, and before slot 10 even knows
+    what regeneration will be — mirroring `OpeningFinanceSnapshot`/`OpeningPoliticalSnapshot`
+    exactly: later phases (and a mutated working `PoliticalState`/`GovernmentFinanceState`) can
+    never retroactively change what this turn's report calls "opening."
+    """
+
+    legislature: LegislatureState | None
+    political_capital: int
+    tax_policy: TaxPolicyState
+    spending_plan: SpendingPlanState
+
+
+@dataclass
+class LegislativeScratch:
+    """Mutable, turn-local legislative workspace threaded through the Phase 3B1 phases via
+    `PhaseContext.legislative_scratch`. Populated entirely by slot 1
+    (`_validate_and_reserve_actions`) and never mutated afterward — mirroring `FinanceScratch`
+    exactly: a way to pass intermediate values from one phase handler to the next without global
+    state.
+
+    `proposed_tax_policy`/`proposed_spending_plan` are what the budget WOULD become if the
+    proposal takes effect — computed once here so slot 2 never recomputes them, and equal to
+    `opening.tax_policy`/`opening.spending_plan` verbatim whenever there is no proposal (or when
+    it names no target on that axis at all). Whether they are actually committed to state is
+    slot 2's decision alone, gated on `outcome`.
+    """
+
+    opening: OpeningLegislativeSnapshot
+    outcome: LegislativeOutcome
+    route: ProposalRoute | None
+    legislature_present: bool
+    proposed_tax_policy: TaxPolicyState
+    proposed_spending_plan: SpendingPlanState
+    tax_delta_bps: int
+    tax_direction: LegislativeChangeDirection
+    tax_intensity_bps: int
+    spending_direction: LegislativeChangeDirection
+    spending_intensity_bps: int
+    chambers: tuple[ChamberVoteReport, ...]
+    blocs: tuple[BlocVoteReport, ...]
+    political_capital_committed: int
+    budget_decision_digest: str | None
+    """(R8) `budget_decision_digest(decision)` over the actually-submitted `BudgetDecision`, or
+    `None` for `NO_PROPOSAL` — see `LegislativeReport.budget_decision_digest`'s docstring."""
+
+
 @dataclass
 class FinanceScratch:
     """Mutable, turn-local accounting workspace threaded through the Phase 2A/2B2 phases
@@ -200,6 +266,13 @@ class PhaseContext:
     """The turn number being resolved (i.e. `state.turn` as it was *before* this resolution)."""
     report_entries: list[TurnReportEntry] = field(default_factory=list)
     phase_statuses: dict[str, PhaseStatus] = field(default_factory=dict)
+    legislative_scratch: LegislativeScratch | None = None
+    """Set by `_validate_and_reserve_actions` (slot 1); read by slot 2 (gating), slot 10
+    (political-capital commitment) and slot 15 (report assembly). Slot 1 itself never mutates
+    `ctx.state` — see that function's docstring."""
+    legislative_report: LegislativeReport | None = None
+    """Set by `generate_turn_report` (slot 15) from `legislative_scratch`; `resolver.py` copies
+    this onto the final `TurnReport`."""
     finance: FinanceScratch | None = None
     """Set by `apply_legal_and_administrative_changes`; read by the two phases after it."""
     finance_report: FinanceReport | None = None
@@ -253,7 +326,294 @@ def _noop(_ctx: PhaseContext) -> None:
     """Placeholder for a resolution step not yet implemented (tracked in dev metadata)."""
 
 
+def _compute_proposed_tax_policy(
+    *, opening: TaxPolicyState, decision: BudgetDecision
+) -> TaxPolicyState:
+    rate_updates = {
+        field_name: target_value
+        for field_name, target_value in (
+            ("personal_income_rate_bps", decision.personal_income_rate_bps),
+            ("corporate_rate_bps", decision.corporate_rate_bps),
+            ("consumption_rate_bps", decision.consumption_rate_bps),
+        )
+        if target_value is not None
+    }
+    return opening.model_copy(update=rate_updates) if rate_updates else opening
+
+
+def _compute_proposed_spending_plan(
+    *, opening: SpendingPlanState, decision: BudgetDecision
+) -> SpendingPlanState:
+    proposed = opening
+    for spending_update in decision.spending_updates:
+        proposed = proposed.with_update(spending_update.category, spending_update.amount)
+    return proposed
+
+
+def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
+    """Phase 3B1, slot 1: resolve this turn's budget proposal against the legislature (or decree
+    authority) BEFORE anything is mutated (§9 of the plan). Computes the vote (or decree, or
+    NO_PROPOSAL) entirely from a by-value `OpeningLegislativeSnapshot` and writes only
+    `ctx.legislative_scratch` — this function never mutates `ctx.state`, matching its name:
+    "validate and reserve", not "apply".
+
+    An invalid decision — a legislative route with no legislature, a decree the constitution does
+    not authorize, an influence allocation naming an unknown party/bloc or a zero-seat bloc, or a
+    commitment exceeding opening political capital — raises `DecisionSetError` here, which
+    `resolve_turn` (`resolver.py`) catches and re-raises as `TurnResolutionError`, discarding the
+    entire working copy exactly like an invariant violation. A **failed** legislative vote is not
+    one of these: it is a normal, valid outcome that still advances the turn (§7.8, §8.1).
+    """
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    politics = player.politics
+    finance = player.finance
+    if politics is None or finance is None:
+        # Unreachable in practice: simulation.invariants requires player politics and finance
+        # before resolve_turn ever copies state, let alone runs phases.
+        raise RuntimeError(
+            "validate_and_reserve_actions: player country is missing PoliticalState or "
+            "GovernmentFinanceState (this should have been caught by check_invariants)"
+        )
+
+    opening = OpeningLegislativeSnapshot(
+        legislature=politics.legislature.model_copy() if politics.legislature is not None else None,
+        political_capital=politics.political_capital,
+        tax_policy=finance.tax_policy.model_copy(),
+        spending_plan=finance.spending_plan.model_copy(),
+    )
+
+    budget_decision = ctx.decisions.decisions[0] if ctx.decisions.decisions else None
+
+    if budget_decision is None:
+        ctx.legislative_scratch = LegislativeScratch(
+            opening=opening,
+            outcome=LegislativeOutcome.NO_PROPOSAL,
+            route=None,
+            legislature_present=opening.legislature is not None,
+            proposed_tax_policy=opening.tax_policy,
+            proposed_spending_plan=opening.spending_plan,
+            tax_delta_bps=0,
+            tax_direction=LegislativeChangeDirection.UNCHANGED,
+            tax_intensity_bps=0,
+            spending_direction=LegislativeChangeDirection.UNCHANGED,
+            spending_intensity_bps=0,
+            chambers=(),
+            blocs=(),
+            political_capital_committed=0,
+            budget_decision_digest=None,
+        )
+        ctx.mark_implemented()
+        return
+
+    route = budget_decision.route
+
+    if route is ProposalRoute.LEGISLATIVE and opening.legislature is None:
+        raise DecisionSetError(
+            "budget decision requests route=legislative but the country has no legislature"
+        )
+    if route is ProposalRoute.DECREE and politics.constitution.decree_authority is not (
+        DecreeAuthority.UNLIMITED
+    ):
+        raise DecisionSetError(
+            "budget decision requests route=decree but decree_authority is "
+            f"{politics.constitution.decree_authority.value!r} (requires 'unlimited')"
+        )
+
+    proposed_tax_policy = _compute_proposed_tax_policy(
+        opening=opening.tax_policy, decision=budget_decision
+    )
+    proposed_spending_plan = _compute_proposed_spending_plan(
+        opening=opening.spending_plan, decision=budget_decision
+    )
+
+    rate_changes = tuple(
+        (getattr(opening.tax_policy, field_name), target_value)
+        for field_name, target_value in (
+            ("personal_income_rate_bps", budget_decision.personal_income_rate_bps),
+            ("corporate_rate_bps", budget_decision.corporate_rate_bps),
+            ("consumption_rate_bps", budget_decision.consumption_rate_bps),
+        )
+        if target_value is not None
+    )
+    tax_delta_bps = sum(target - current for current, target in rate_changes)
+    tax_change = tax_policy_change(rate_changes=rate_changes)
+    spending_change = spending_policy_change(
+        opening_total=opening.spending_plan.total(), proposed_total=proposed_spending_plan.total()
+    )
+
+    if route is ProposalRoute.DECREE:
+        commitment = DECREE_POLITICAL_CAPITAL_COST
+        if commitment > opening.political_capital:
+            raise DecisionSetError(
+                f"decree commitment {commitment} exceeds opening political capital "
+                f"{opening.political_capital}"
+            )
+        outcome = LegislativeOutcome.ENACTED_BY_DECREE
+        chamber_reports: tuple[ChamberVoteReport, ...] = ()
+        bloc_reports: tuple[BlocVoteReport, ...] = ()
+    else:
+        legislature = opening.legislature
+        assert legislature is not None, "route=legislative was already rejected above otherwise"
+
+        party_ids = {party.id for party in legislature.parties}
+        blocs_by_key = {
+            (party.id, bloc.id): bloc for party in legislature.parties for bloc in party.blocs
+        }
+        allocation_by_key: dict[tuple[str, str], int] = {}
+        for allocation in budget_decision.influence:
+            if allocation.party_id not in party_ids:
+                raise DecisionSetError(f"influence targets unknown party {allocation.party_id!r}")
+            bloc = blocs_by_key.get((allocation.party_id, allocation.bloc_id))
+            if bloc is None:
+                raise DecisionSetError(
+                    "influence targets unknown bloc "
+                    f"({allocation.party_id!r}, {allocation.bloc_id!r})"
+                )
+            if sum(entry.seats for entry in bloc.seats) == 0:
+                raise DecisionSetError(
+                    "influence targets bloc "
+                    f"({allocation.party_id!r}, {allocation.bloc_id!r}) which holds zero seats "
+                    "across every chamber"
+                )
+            allocation_by_key[(allocation.party_id, allocation.bloc_id)] = (
+                allocation.political_capital
+            )
+
+        commitment = sum(allocation_by_key.values())
+        if commitment > opening.political_capital:
+            raise DecisionSetError(
+                f"legislative influence commitment {commitment} exceeds opening political "
+                f"capital {opening.political_capital}"
+            )
+
+        bloc_report_rows: list[BlocVoteReport] = []
+        chamber_report_rows: list[ChamberVoteReport] = []
+        chamber_passed: list[bool] = []
+        for chamber_state in legislature.chambers:
+            seat_supports: list[SeatSupport] = []
+            chamber_bloc_data = []
+            for party in legislature.parties:
+                for bloc in party.blocs:
+                    seats_in_chamber = next(
+                        (
+                            entry.seats
+                            for entry in bloc.seats
+                            if entry.chamber == chamber_state.chamber
+                        ),
+                        0,
+                    )
+                    if seats_in_chamber == 0:
+                        continue
+                    allocated = allocation_by_key.get((party.id, bloc.id), 0)
+                    support = resolve_bloc_support(
+                        role=party.government_role,
+                        relationship_bps=bloc.government_relationship_bps,
+                        tax_change=tax_change,
+                        tax_preference_bps=bloc.tax_preference_bps,
+                        spending_change=spending_change,
+                        spending_preference_bps=bloc.spending_preference_bps,
+                        allocated_political_capital=allocated,
+                        discipline_bps=bloc.discipline_bps,
+                    )
+                    seat_supports.append(
+                        SeatSupport(
+                            party_id=party.id,
+                            bloc_id=bloc.id,
+                            seats=seats_in_chamber,
+                            effective_support_bps=support.effective_support_bps,
+                        )
+                    )
+                    chamber_bloc_data.append((party, bloc, seats_in_chamber, allocated, support))
+
+            apportionment = apportion_supporting_seats(rows=tuple(seat_supports))
+            apportioned_by_key = {(row.party_id, row.bloc_id): row for row in apportionment.rows}
+            for party, bloc, seats_in_chamber, allocated, support in chamber_bloc_data:
+                apportioned = apportioned_by_key[(party.id, bloc.id)]
+                bloc_report_rows.append(
+                    BlocVoteReport(
+                        party_id=party.id,
+                        bloc_id=bloc.id,
+                        chamber=chamber_state.chamber,
+                        seats=seats_in_chamber,
+                        government_role=party.government_role,
+                        government_relationship_bps=bloc.government_relationship_bps,
+                        discipline_bps=bloc.discipline_bps,
+                        tax_preference_bps=bloc.tax_preference_bps,
+                        spending_preference_bps=bloc.spending_preference_bps,
+                        baseline_support_bps=support.baseline_support_bps,
+                        policy_compatibility_bps=support.policy_compatibility_bps,
+                        raw_support_bps=support.raw_support_bps,
+                        political_capital_allocated=allocated,
+                        influence_bps=support.influence_bps,
+                        final_support_bps=support.final_support_bps,
+                        effective_support_bps=support.effective_support_bps,
+                        numerator=apportioned.numerator,
+                        base_seats=apportioned.base,
+                        remainder=apportioned.remainder,
+                        bonus_seat=bool(apportioned.bonus),
+                        supporting_seats=apportioned.supporting_seats,
+                    )
+                )
+
+            required = required_yes_seats(total_seats=chamber_state.total_seats)
+            passed = chamber_carries(
+                supporting_seats=apportionment.supporting_seats,
+                total_seats=chamber_state.total_seats,
+            )
+            chamber_passed.append(passed)
+            extras_awarded = apportionment.supporting_seats - sum(
+                row.base for row in apportionment.rows
+            )
+            chamber_report_rows.append(
+                ChamberVoteReport(
+                    chamber=chamber_state.chamber,
+                    total_seats=chamber_state.total_seats,
+                    supporting_seats=apportionment.supporting_seats,
+                    required_yes_seats=required,
+                    shortfall_seats=max(0, required - apportionment.supporting_seats),
+                    target_total=apportionment.supporting_seats,
+                    extras_awarded=extras_awarded,
+                    passed=passed,
+                )
+            )
+
+        # (R1) Never `all([])`: `legislature.chambers` is required non-empty by `LegislatureState`
+        # itself, so `chamber_passed` always has at least one entry here.
+        outcome = (
+            LegislativeOutcome.PASSED_LEGISLATIVE
+            if all(chamber_passed)
+            else LegislativeOutcome.FAILED_LEGISLATIVE
+        )
+        chamber_reports = tuple(chamber_report_rows)
+        bloc_reports = tuple(bloc_report_rows)
+
+    ctx.legislative_scratch = LegislativeScratch(
+        opening=opening,
+        outcome=outcome,
+        route=route,
+        legislature_present=opening.legislature is not None,
+        proposed_tax_policy=proposed_tax_policy,
+        proposed_spending_plan=proposed_spending_plan,
+        tax_delta_bps=tax_delta_bps,
+        tax_direction=tax_change.direction,
+        tax_intensity_bps=tax_change.intensity_bps,
+        spending_direction=spending_change.direction,
+        spending_intensity_bps=spending_change.intensity_bps,
+        chambers=chamber_reports,
+        blocs=bloc_reports,
+        political_capital_committed=commitment,
+        budget_decision_digest=budget_decision_digest(budget_decision),
+    )
+    ctx.mark_implemented()
+
+
 def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
+    """Phase 2A slot 2; Phase 3B1 (D6) gates it on slot 1's vote: the proposed policy is only
+    ever committed to state when `outcome` is `PASSED_LEGISLATIVE` or `ENACTED_BY_DECREE`. For
+    `FAILED_LEGISLATIVE` or `NO_PROPOSAL`, the opening tax policy and spending plan are preserved
+    byte-for-byte — a failed vote still advances the turn and still consumes the capital slot 1
+    already committed, but the budget itself genuinely does not change.
+    """
     player = ctx.state.world.countries[ctx.state.world.player_country_id]
     finance = player.finance
     if finance is None:
@@ -264,6 +624,8 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
             "apply_legal_and_administrative_changes: player country has no "
             "GovernmentFinanceState (this should have been caught by check_invariants)"
         )
+    scratch = ctx.legislative_scratch
+    assert scratch is not None, "validate_and_reserve_actions always runs first (slot 1)"
 
     # .model_copy() (not a bare reference) for every Pydantic-model-typed field:
     # TaxPolicyState/SpendingPlanState both have `validate_assignment=True`, which permits
@@ -284,11 +646,21 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
     )
 
     budget_decision = ctx.decisions.decisions[0] if ctx.decisions.decisions else None
+    applies = scratch.outcome in (
+        LegislativeOutcome.PASSED_LEGISLATIVE,
+        LegislativeOutcome.ENACTED_BY_DECREE,
+    )
+    # Default to the live (pre-mutation) objects, never `opening.previous_tax_policy`/
+    # `opening.previous_spending_plan` directly — those are `OpeningFinanceSnapshot`'s own
+    # independent `.model_copy()`s, and aliasing them here would mean a later in-place mutation
+    # of the *committed* state (both models have `validate_assignment=True`) silently corrupts
+    # what this turn's report calls "opening" too. `finance.tax_policy`/`finance.spending_plan`
+    # are distinct objects from their `opening` counterparts by construction, above.
     active_tax_policy = finance.tax_policy
     active_spending_plan = finance.spending_plan
     budget_changes: list[BudgetChangeEntry] = []
 
-    if budget_decision is not None:
+    if applies and budget_decision is not None:
         rate_updates: dict[str, int] = {}
         for field_name, target_value in (
             ("personal_income_rate_bps", budget_decision.personal_income_rate_bps),
@@ -900,6 +1272,10 @@ def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
     )
     assessment = assess_economic_performance(signals)
 
+    legislative_scratch = ctx.legislative_scratch
+    assert legislative_scratch is not None, "validate_and_reserve_actions always runs first"
+    political_capital_committed = legislative_scratch.political_capital_committed
+
     drift = order_support_contribution_bps(
         support_bps=opening.constitutional_order_support_bps,
         opening_legitimacy_bps=opening.legitimacy_bps,
@@ -913,7 +1289,7 @@ def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
         opening=opening.political_capital,
         capacity=opening.political_capital_capacity,
         legitimacy_bps=closing_legitimacy,
-        spent=0,
+        spent=political_capital_committed,
     )
 
     closing_baseline_state = EconomicBaselineState(
@@ -977,7 +1353,7 @@ def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
         closing_economic_baseline=closing_baseline_report,
         opening_political_capital=opening.political_capital,
         political_capital_regeneration=regeneration,
-        political_capital_spent=0,
+        political_capital_spent=political_capital_committed,
         political_capital_capacity=opening.political_capital_capacity,
         closing_political_capital=closing_capital,
     )
@@ -1003,7 +1379,7 @@ def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
             params={
                 "opening": opening.political_capital,
                 "regeneration": regeneration,
-                "spent": 0,
+                "spent": political_capital_committed,
                 "capacity": opening.political_capital_capacity,
                 "closing": closing_capital,
             },
@@ -1014,14 +1390,6 @@ def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
 
 
 def _generate_turn_report(ctx: PhaseContext) -> None:
-    ctx.report_entries.append(
-        TurnReportEntry(
-            category="administration",
-            reason_id="turn_resolved",
-            params={"turn": ctx.resolving_turn},
-        )
-    )
-
     scratch = ctx.finance
     if scratch is not None:
         assert scratch.applied_tax_bases is not None
@@ -1051,12 +1419,102 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
             budget_changes=scratch.budget_changes,
         )
 
+    legislative_scratch = ctx.legislative_scratch
+    assert legislative_scratch is not None, "validate_and_reserve_actions always runs first"
+    ctx.legislative_report = LegislativeReport(
+        outcome=legislative_scratch.outcome,
+        route=legislative_scratch.route,
+        legislature_present=legislative_scratch.legislature_present,
+        tax_delta_bps=legislative_scratch.tax_delta_bps,
+        tax_direction=legislative_scratch.tax_direction,
+        tax_intensity_bps=legislative_scratch.tax_intensity_bps,
+        opening_total_program_spending=legislative_scratch.opening.spending_plan.total(),
+        proposed_total_program_spending=legislative_scratch.proposed_spending_plan.total(),
+        spending_direction=legislative_scratch.spending_direction,
+        spending_intensity_bps=legislative_scratch.spending_intensity_bps,
+        chambers=legislative_scratch.chambers,
+        blocs=legislative_scratch.blocs,
+        opening_political_capital=legislative_scratch.opening.political_capital,
+        political_capital_committed=legislative_scratch.political_capital_committed,
+        budget_decision_digest=legislative_scratch.budget_decision_digest,
+    )
+    _append_legislative_report_entries(ctx, ctx.legislative_report)
+
+    # (Phase 3B1) Appended LAST, after every other phase and after this slot's own legislative
+    # entries, so `turn_resolved` stays the final line of every report exactly as it was before
+    # Phase 3B1 -- it closes the turn, so nothing may follow it.
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="administration",
+            reason_id="turn_resolved",
+            params={"turn": ctx.resolving_turn},
+        )
+    )
+
     ctx.mark_implemented()
+
+
+def _append_legislative_report_entries(ctx: PhaseContext, report: LegislativeReport) -> None:
+    """(Phase 3B1, §14) The two approved legislative reason IDs, derived from the
+    already-constructed, already-self-validated `LegislativeReport` rather than from the scratch —
+    so a reason payload can never describe a vote the report itself does not.
+
+    `NO_PROPOSAL` emits nothing: no proposal was made, so there is no vote to report and no
+    chamber to have blocked one. (An invalid or constitutionally unavailable route never reaches
+    here at all — slot 1 raises `DecisionSetError` and the whole turn aborts before any report
+    exists, so it likewise has no reason ID.)
+
+    Payloads carry only stable ids, enum *values* and integers — never prose. Rendering them into
+    English is `app.cli.REASON_RENDERERS`' job alone (report.py's module docstring: report text
+    lives inside hash-protected history and could never be re-rendered otherwise).
+    """
+    if report.outcome is LegislativeOutcome.NO_PROPOSAL:
+        return
+
+    assert report.route is not None, "every non-NO_PROPOSAL outcome carries a route"
+    # For a decree these are all zero by construction: `chambers` is empty, because no chamber
+    # voted. The renderer says so explicitly rather than printing a bare "0 of 0 chambers".
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="politics",
+            reason_id="legislative_vote_resolved",
+            params={
+                "route": report.route.value,
+                "outcome": report.outcome.value,
+                "chambers_passed": sum(1 for chamber in report.chambers if chamber.passed),
+                "chambers_total": len(report.chambers),
+                "supporting_seats": sum(chamber.supporting_seats for chamber in report.chambers),
+                "required_yes_seats": sum(
+                    chamber.required_yes_seats for chamber in report.chambers
+                ),
+                "political_capital_committed": report.political_capital_committed,
+            },
+        )
+    )
+
+    # One entry per chamber that actually blocked the budget — never one summary entry for "the
+    # legislature", because in a bicameral legislature each chamber blocks (or does not) on its
+    # own, and a single pooled entry could not say which one did.
+    for chamber in report.chambers:
+        if chamber.passed:
+            continue
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="politics",
+                reason_id="budget_blocked_by_legislature",
+                params={
+                    "chamber": chamber.chamber.value,
+                    "supporting_seats": chamber.supporting_seats,
+                    "required_yes_seats": chamber.required_yes_seats,
+                    "shortfall_seats": chamber.shortfall_seats,
+                },
+            )
+        )
 
 
 # The fifteen-step resolution order from product spec §7. Order matters and is tested.
 PHASE_ORDER: tuple[tuple[str, PhaseHandler], ...] = (
-    ("validate_and_reserve_actions", _noop),
+    ("validate_and_reserve_actions", _validate_and_reserve_actions),
     ("apply_legal_and_administrative_changes", _apply_legal_and_administrative_changes),
     ("resolve_production_and_trade", _resolve_production_and_trade),
     (

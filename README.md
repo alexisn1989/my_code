@@ -25,8 +25,10 @@ every decision.
 gameplay), Phase 2B1 (sector production at fixed prices), Phase 2B2 (production-derived tax
 bases), Phase 2B3 (labor allocation and unemployment at fixed prices), Phase 2C1 (resource
 endowments and extraction), Phase 2C2 (physical extraction drives extraction-sector output), and
-Phase 3A (constitutional foundation, legitimacy and political capital) are complete and
-verified.** The player can change tax rates and spending; eleven aggregate economic sectors
+Phase 3A (constitutional foundation, legitimacy and political capital), and Phase 3B1
+(legislature, parties, blocs and political-capital bargaining) are complete and
+verified.** The player can propose tax rates and spending — and, as of Phase 3B1, must get that
+budget **through a legislature** to make it stick; eleven aggregate economic sectors
 resolve deterministic quarterly output at fixed base-year prices, staffed every turn by a
 deterministic labor allocation **derived** from population (replacing the fixed,
 scenario-authored `employed_workers` Phase 2B1 started with), which in turn **derives** the tax
@@ -43,16 +45,21 @@ revenue, closing the gap Phase 2C1 deliberately left open. As of Phase 3A, the p
 constitutional structure and a legitimacy score: legitimacy drifts toward a scenario-authored
 acceptance level and responds to this same economy's output and unemployment — **never** to the
 form of government, a compile-time-checked guarantee — and political capital regenerates from
-legitimacy. The relationship is one-directional throughout: population/labor supply affects
+legitimacy. As of Phase 3B1 that political capital is genuinely **spendable**: the budget is routed
+through a deterministic legislative vote across chambers, parties and internal blocs, and the
+player can commit capital to move specific blocs. A failed vote means the tax rates genuinely do
+not change — so politics now affects the economy, closing the one-way gap Phase 3A left open. The
+relationship is otherwise still one-directional: population/labor supply affects
 allocation and production; resource endowments affect extraction, which affects the extraction
 sector's production, which (like every sector) affects tax bases and revenue; economic performance
-affects legitimacy; tax rates, spending, and politics still do not affect allocation, production,
-or extraction, and politics cannot yet affect the economy at all. Revenue, spending, interest, and
+affects legitimacy; and tax rates, spending, and politics still do not affect allocation,
+production, or extraction. Revenue, spending, interest, and
 debt resolve deterministically and reconcile exactly every turn, with a self-validating report
 chain proving labor allocation, resource extraction, production, tax-base derivation, finance, and
 politics agree with each other, not just internally. All of it is wrapped in the same hash-chained,
-immutable history from Phase 1. There is no API and no database yet, no parties, legislature,
-elections, or coups, and no prices, inflation, wages, hiring friction, resource trade, or
+immutable history from Phase 1. There is no API and no database yet; no elections, coups or removal
+from power; no evolving party relationships, confidence votes or non-budget laws; and no prices,
+inflation, wages, hiring friction, resource trade, or
 resource-to-industry linkage for the other ten sectors — see `docs/roadmap.md` for what's
 implemented per phase and `docs/economy_methodology.md` for exactly what's simulated and what
 isn't.
@@ -101,7 +108,11 @@ uv run python -m app.cli resolve --state save.json --turns 1 \
 - `inspect` loads a save and reports its version envelope, current turn, entry count, and
   integrity status — even an invalid save can be inspected; that's the point of "integrity status."
   It also shows the player's legitimacy and political capital by default; `--politics` adds the
-  full constitutional axis table and the persisted economic-baseline record.
+  full constitutional axis table and the persisted economic-baseline record; `--legislature` adds
+  the authored legislature composition (chambers, seats, strict-majority thresholds, parties,
+  blocs, roles and preferences) and the available decree authority. `--legislature` deliberately
+  shows **no** support tally — a figure like 58/100 is the result of a specific proposal, not a
+  property of a legislature, and appears only in a resolved turn's report.
 - `resolve` appends N turns to history and writes the result atomically; it refuses to overwrite
   its input, and on any failure nothing is written and the input is untouched. `--decisions-file`
   applies a JSON `DecisionSet` (requires `--turns 1`) instead of the default "no decision, continue
@@ -232,6 +243,51 @@ closing state across eleven groups, and history replay re-runs it on every entry
 tamperer who edits a value *and* recomputes the hash to match is still caught. Full formulas:
 [`docs/economy_methodology.md`](docs/economy_methodology.md) and
 [`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`](docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md).
+
+### Legislature, parties, blocs and political-capital bargaining (Phase 3B1)
+
+Political capital is now genuinely spendable, and the budget is what it buys. Each country may
+hold a `LegislatureState`: one or two chambers, parties with a government role
+(coalition / confidence-and-supply / opposition), and internal blocs that own the seats and carry
+their own discipline, relationship to the government, and tax/spending preferences. Blocs, not
+parties, carry the relationship — a rebel caucus inside a governing party is the interesting case.
+Every seat in every chamber is owned by exactly one bloc: seat totals must reconcile **exactly**,
+because unheld seats would behave as permanent abstentions nobody can bargain with.
+
+The submitted `BudgetDecision` is routed through a deterministic vote. Each bloc's support is built
+from its role anchor, its relationship, how much it likes the proposed tax and spending movement,
+any political capital committed to it (linear, then hard-capped at +30 points), and finally its
+discipline, which amplifies its lean away from the midpoint. Support becomes seats by
+**chamber-level largest-remainder apportionment** — replacing a per-bloc truncation that gave 100
+one-seat blocs at 60% support **zero** seats where a single 100-seat bloc got 60. A chamber carries
+on a strict majority (`total_seats // 2 + 1`, so a 50/50 tie **fails** and no tie-breaker is
+consulted), and a bicameral legislature needs **every** chamber independently — pooled totals never
+decide passage. A failed vote leaves the tax policy and spending plan byte-identical, still records
+every chamber and bloc row, and **still consumes the capital committed** (refunding would let a
+player binary-search the passage threshold for free).
+
+A constitution granting `decree_authority: unlimited` can bypass the vote entirely for a fixed 250
+political capital. Requesting a decree where the constitution does not permit one is an **invalid
+decision, not an outcome**: the turn aborts atomically with no history entry and no output file.
+A new constitutional rule (C10) makes an order with no legislature *and* no unlimited decree
+authority unrepresentable — such a government could not change its own laws by any route.
+
+Three scenarios now span the meaningful cases, every figure derived from the scenario files by
+tests rather than hardcoded: `tiny_valid` passes the walkthrough budget unaided (lower **58/100**
+against a required 51, upper **33/60** against 31); `deficit_demo` **fails** it 47/100, four seats
+short, and needs a **162**-point bargain to carry it; and `decree_state` — monarchical, hereditary,
+unicameral, unlimited decree — fails at **282** (50/100) and passes at **283** (51/100), while a
+decree costs **250**. That ordering (`0 < 162 < 250 < 283`) is established by an exhaustive
+dynamic program, not by sampling.
+
+Reports gained a seventh member, `LegislativeReport`, with thirteen self-validators, and
+reconciliation gained groups 12–18: the legislature is checked against real state by identity
+(never tuple position), the budget gate is checked **per field** against the actually-submitted
+decision, and a canonical BLAKE2b digest of that decision proves the report describes the command
+that was really submitted. History replay now runs the identical check, so a tamperer who edits a
+stored decision *and* recomputes the hash chain is caught by semantics where hashing alone could
+not. Full rationale, calibration and the retracted opportunity-cost claim:
+[`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`](docs/adr/0010-legislature-parties-and-political-capital-bargaining.md).
 
 ## Frontend
 

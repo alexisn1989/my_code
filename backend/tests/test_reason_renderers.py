@@ -63,6 +63,21 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "capacity": 1000,
         "closing": 913,
     },
+    "legislative_vote_resolved": {
+        "route": "legislative",
+        "outcome": "passed_legislative",
+        "chambers_passed": 2,
+        "chambers_total": 2,
+        "supporting_seats": 91,
+        "required_yes_seats": 82,
+        "political_capital_committed": 0,
+    },
+    "budget_blocked_by_legislature": {
+        "chamber": "lower",
+        "supporting_seats": 47,
+        "required_yes_seats": 51,
+        "shortfall_seats": 4,
+    },
 }
 
 
@@ -184,3 +199,162 @@ def test_real_resolver_output_never_hits_the_fallback_tax_bases_derived() -> Non
     for entry in entries:
         assert entry.reason_id in REASON_RENDERERS
         assert "unrendered" not in render_entry(entry)
+
+
+# --- Phase 3B1 (§14): the two approved legislative reason IDs --------------------------------
+
+
+def test_legislative_vote_resolved_renders_a_bicameral_total_as_an_explicit_total() -> None:
+    """(§14) `supporting_seats`/`required_yes_seats` MAY be sums for a bicameral report, but the
+    renderer must say so — passage is decided per chamber, and a reader who took 91-against-82 as
+    "the vote" would have the mechanism exactly wrong."""
+    entry = TurnReportEntry(
+        category="politics",
+        reason_id="legislative_vote_resolved",
+        params=_SAMPLE_PARAMS["legislative_vote_resolved"],
+    )
+    rendered = render_entry(entry)
+    assert "2 of 2 chamber(s) passed" in rendered
+    assert "totalled across 2 separately decided chambers" in rendered
+    assert "each chamber must reach its own majority independently" in rendered
+    assert "Political capital committed: 0." in rendered
+
+
+def test_legislative_vote_resolved_renders_a_decree_without_implying_a_lost_vote() -> None:
+    """A decree carries zeros for every chamber field because no chamber voted. Rendering that
+    literally ("0 of 0 chambers passed") would read as a defeat; it must say no vote was held."""
+    entry = TurnReportEntry(
+        category="politics",
+        reason_id="legislative_vote_resolved",
+        params={
+            "route": "decree",
+            "outcome": "enacted_by_decree",
+            "chambers_passed": 0,
+            "chambers_total": 0,
+            "supporting_seats": 0,
+            "required_yes_seats": 0,
+            "political_capital_committed": 250,
+        },
+    )
+    rendered = render_entry(entry)
+    assert "enacted through executive decree authority" in rendered
+    assert "no chamber vote held" in rendered
+    assert "0 of 0" not in rendered
+    assert "Political capital committed: 250." in rendered
+
+
+def test_budget_blocked_by_legislature_names_the_chamber_and_its_shortfall() -> None:
+    entry = TurnReportEntry(
+        category="politics",
+        reason_id="budget_blocked_by_legislature",
+        params=_SAMPLE_PARAMS["budget_blocked_by_legislature"],
+    )
+    rendered = render_entry(entry)
+    assert "lower chamber" in rendered
+    assert "47 supporting seats against 51 required" in rendered
+    assert "short 4" in rendered
+
+
+def test_both_legislative_reason_ids_fall_back_safely_on_missing_params() -> None:
+    for reason_id in ("legislative_vote_resolved", "budget_blocked_by_legislature"):
+        rendered = render_entry(
+            TurnReportEntry(category="politics", reason_id=reason_id, params={})
+        )
+        assert f"error rendering reason_id={reason_id!r}" in rendered
+
+
+def _legislative_entries(scenario_name: str, decisions_tuple: tuple = ()) -> list[TurnReportEntry]:
+    return [
+        entry
+        for entry in _resolve_with(scenario_name, decisions_tuple)
+        if entry.reason_id in ("legislative_vote_resolved", "budget_blocked_by_legislature")
+    ]
+
+
+def test_no_proposal_emits_neither_legislative_reason_id() -> None:
+    """No proposal was made, so there is no vote to report and no chamber that blocked one."""
+    assert _legislative_entries("tiny_valid.yaml") == []
+
+
+def test_a_passed_vote_emits_only_the_vote_resolved_reason() -> None:
+    entries = _legislative_entries(
+        "tiny_valid.yaml", (BudgetDecision(personal_income_rate_bps=2500),)
+    )
+    assert [e.reason_id for e in entries] == ["legislative_vote_resolved"]
+    params = entries[0].params
+    assert params["route"] == "legislative"
+    assert params["outcome"] == "passed_legislative"
+    assert (params["chambers_passed"], params["chambers_total"]) == (2, 2)
+    assert params["political_capital_committed"] == 0
+    assert "unrendered" not in render_entry(entries[0])
+
+
+def test_each_failed_chamber_emits_its_own_blocked_reason() -> None:
+    """deficit_demo is unicameral and fails the walkthrough proposal 47/100 — exactly one blocked
+    chamber, so exactly one blocked entry, naming that chamber."""
+    entries = _legislative_entries(
+        "deficit_demo.yaml", (BudgetDecision(personal_income_rate_bps=2000),)
+    )
+    assert [e.reason_id for e in entries] == [
+        "legislative_vote_resolved",
+        "budget_blocked_by_legislature",
+    ]
+    blocked = entries[1].params
+    assert blocked["chamber"] == "lower"
+    assert (blocked["supporting_seats"], blocked["required_yes_seats"]) == (47, 51)
+    assert blocked["shortfall_seats"] == 4
+
+
+def test_a_decree_emits_only_the_vote_resolved_reason_with_zeroed_chamber_fields() -> None:
+    from app.simulation.legislature import ProposalRoute
+
+    entries = _legislative_entries(
+        "decree_state.yaml",
+        (BudgetDecision(personal_income_rate_bps=2500, route=ProposalRoute.DECREE),),
+    )
+    assert [e.reason_id for e in entries] == ["legislative_vote_resolved"]
+    params = entries[0].params
+    assert params["route"] == "decree"
+    assert params["outcome"] == "enacted_by_decree"
+    assert params["chambers_passed"] == 0
+    assert params["chambers_total"] == 0
+    assert params["supporting_seats"] == 0
+    assert params["required_yes_seats"] == 0
+    assert params["political_capital_committed"] == 250
+
+
+def test_every_reason_id_emitted_by_a_real_legislative_resolution_is_registered() -> None:
+    """The umbrella guarantee, across all three routes: whatever the resolver actually emits has
+    a registered renderer and a `_SAMPLE_PARAMS` entry."""
+    from app.simulation.decisions import InfluenceAllocation
+    from app.simulation.legislature import ProposalRoute
+
+    cases: tuple[tuple[str, tuple], ...] = (
+        ("tiny_valid.yaml", ()),
+        ("tiny_valid.yaml", (BudgetDecision(personal_income_rate_bps=2500),)),
+        ("deficit_demo.yaml", (BudgetDecision(personal_income_rate_bps=2000),)),
+        (
+            "decree_state.yaml",
+            (
+                BudgetDecision(
+                    personal_income_rate_bps=2500,
+                    influence=(
+                        InfluenceAllocation(
+                            party_id="opposition_party", bloc_id="main", political_capital=283
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        (
+            "decree_state.yaml",
+            (BudgetDecision(personal_income_rate_bps=2500, route=ProposalRoute.DECREE),),
+        ),
+    )
+    for scenario_name, decisions_tuple in cases:
+        for entry in _resolve_with(scenario_name, decisions_tuple):
+            assert entry.reason_id in REASON_RENDERERS, entry.reason_id
+            assert entry.reason_id in _SAMPLE_PARAMS, entry.reason_id
+            rendered = render_entry(entry)
+            assert "unrendered" not in rendered
+            assert "error rendering" not in rendered

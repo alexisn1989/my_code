@@ -1,30 +1,51 @@
-# A minimal, valid MANDATE scenario fixture.
+# A playable decree-versus-legislation scenario (Phase 3B1, plan §0.8).
 #
-# This is NOT "The Arken Crisis" (product spec §36) — it is a deliberately
-# tiny two-country world used to prove the simulation pipeline (scenario
-# loading -> invariant validation -> turn resolution -> report generation)
-# works end to end, now including Phase 2A government accounting. The
-# authored initial scenario is Phase 8 work.
+# `decree_state` gives a player the constitutional-choice half of Phase 3B1 that
+# `tiny_valid.yaml`/`deficit_demo.yaml` cannot: both of those author
+# `decree_authority: emergency_only`, so neither can ever decree. This scenario's monarch
+# holds UNLIMITED decree authority *and* a real unicameral legislature, so the player
+# genuinely chooses a route every turn rather than being funnelled into one.
 #
-# arken's finance is a deliberately SUSTAINABLE budget: quarterly revenue
-# comfortably exceeds spending + interest, so cash grows and debt never
-# does. Used by the 100-turn soak test and general-purpose tests where a
-# runaway deficit would be noise, not signal. For a scenario that
-# deliberately runs a deficit and must borrow, see deficit_demo.yaml.
+# Economy, population, institutions, resource deposits, resource-output coefficients,
+# finance and production calibration below are a VERBATIM COPY of tiny_valid.yaml -- only
+# scenario identity (this comment block, scenario_id/name/seed/player_country_id, the
+# country id/name) and the `politics:` block differ. `diff tiny_valid.yaml decree_state.yaml`
+# shows exactly those changes and nothing else.
 #
-# Note: ruleset_version is NOT declared here — it comes from the engine's
+# The legislature below is `test_decree_capital_calibration.py`'s committed, exhaustively
+# proven "Regime C": a 45/55 seated chamber where the governing bloc alone falls 6 seats
+# short of the 51-seat majority and the opposition bloc is unmovable by policy content alone
+# (relationship -8,000). Against the walkthrough proposal (+5 pp personal income tax,
+# spending unchanged, matching tiny_valid's authored opening rate of 20%):
+#   - unaided: 45/100, well short of the 51 required
+#   - cheapest passing legislative bargain: exactly 283 political capital (282 fails)
+#   - decree: enacts unconditionally for exactly 250 political capital
+#   - required relationship: 0 < 162 (deficit_demo's bargain) < 250 (decree) < 283 (here)
+# Every one of those figures is the DP's own proven minimum, transcribed field-for-field
+# from the bloc parameters below -- never re-derived or approximated. See
+# test_decree_state_scenario.py for the end-to-end proof through the real resolver.
+#
+# Political capital opens at 500 / capacity 1,000 -- Regime C's own synthetic figures --
+# affording either route (283 or 250) with capacity strictly above the opening balance.
+# `constitutional_order_support_bps`/`legitimacy_bps` are authored, form-neutral values,
+# unrelated to (and not derived from) the monarchy or the decree authority: the §7.0
+# neutrality guarantee (`test_legislative_neutrality.py`) is exactly why the same bloc
+# parameters used against a presidential synthetic state in the calibration test carry over
+# unchanged to a monarchical one here.
+#
+# Note: ruleset_version is NOT declared here -- it comes from the engine's
 # RULESET_VERSION constant (simulation.state), not from scenario content.
 
 schema_version: 1
-scenario_id: tiny_valid
-name: "Tiny Valid Fixture"
+scenario_id: decree_state
+name: "Decree State Fixture"
 content_version: "0.9.0"
-seed: 42
-player_country_id: arken
+seed: 77
+player_country_id: valdrun
 
 countries:
-  - id: arken
-    name: "Republic of Arken"
+  - id: valdrun
+    name: "Kingdom of Valdrun"
     population: 1000000
     treasury:
       cash_on_hand: 10000000000   # 100,000,000.00 denars, in minor units
@@ -282,112 +303,71 @@ countries:
         - category: critical_minerals
           real_output_per_unit: 5000
 
-    # Phase 3A: a well-accepted parliamentary order (see docs/adr/0009 and
-    # docs/economy_methodology.md, "Political calibration"). Economy is flat every turn (see
-    # above), so legitimacy moves only by order-support drift: 7,000 -> 7,100 -> 7,190 -> 7,271
-    # -> ... -> 7,991 at turn 100 (asymptotic, never overshooting 8,000). Political capital
-    # regenerates from 500 and clamps to its 1,000 capacity from turn 2 onward.
+    # Phase 3B1 (plan §0.8): a monarchy with UNLIMITED decree authority AND a real
+    # unicameral legislature -- the one combination that gives a player a genuine
+    # legislative-versus-decree CHOICE every turn, rather than a government funnelled into
+    # exactly one route. Valid under C1-C10: C6/C7 require HEREDITARY paired with
+    # MONARCHICAL (both hold); C8 is why executive_term_limit_terms is absent (a hereditary
+    # executive serves for life); C9 is why national_election_interval_turns is absent (no
+    # legislature-independent national election is scheduled); C10 only binds when
+    # legislature is 'none', which it is not here, so it does not constrain this
+    # combination at all -- C10 permits UNLIMITED decree authority WITH or WITHOUT a
+    # legislature.
     politics:
       constitution:
-        executive_system: parliamentary
-        executive_selection: legislative_selection
-        legislature: bicameral
+        executive_system: monarchical
+        executive_selection: hereditary
+        legislature: unicameral
         territorial_organization: unitary
-        judicial_review: strong
+        judicial_review: weak
         amendment_difficulty: supermajority
-        decree_authority: emergency_only
-        executive_term_limit_terms: 2
-        national_election_interval_turns: 16
-      constitutional_order_support_bps: 8000    # 80.00% authored acceptance of this order
-      legitimacy_bps: 7000                      # 70.00% current legitimacy
+        decree_authority: unlimited
+      constitutional_order_support_bps: 7000    # 70.00% authored acceptance -- form-neutral, not derived from decree authority
+      legitimacy_bps: 6000                      # 60.00% current legitimacy -- form-neutral
       political_capital: 500
       political_capital_capacity: 1000
-      # Phase 3B1: a bicameral parliament with a comfortable governing majority (see docs/adr/0010
-      # and docs/economy_methodology.md, "Legislative calibration"). Every seat in each chamber is
-      # held by exactly one bloc -- unheld seats would behave as permanent abstentions no player
-      # could bargain with, so the model rejects them.
-      #
-      # Against the walkthrough proposal (+5 pp personal income tax, spending unchanged) this
-      # legislature carries the budget unaided in BOTH chambers: lower 58/100 against a required
-      # 51, upper 33/60 against a required 31. Derived from the scenario file, not hardcoded, by
-      # tests/test_scenario_legislature_calibration.py.
+      # Committed Regime C exactly (test_decree_capital_calibration.py,
+      # test_regime_c_reachable_deep_shortfall_minimum_is_exactly_283): one chamber, 45
+      # governing seats against 55 opposition seats -- a reachable but genuine shortfall the
+      # governing bloc alone cannot cross, and an opposition bloc unmovable by policy content
+      # alone (relationship -8,000, discipline 8,000). Against the walkthrough proposal
+      # (+5 pp personal income tax on this scenario's authored 20% opening rate, spending
+      # unchanged): unaided 45/100 against a required 51; cheapest passing bargain exactly
+      # 283 PC on the opposition bloc (282 fails); a 250 PC decree enacts unconditionally.
+      # Derived from this file, not hardcoded, by test_decree_state_scenario.py.
       legislature:
         chambers:
           - chamber: lower
             total_seats: 100
-          - chamber: upper
-            total_seats: 60
         parties:
           # Sorted by id, and blocs within each party sorted by id -- noncanonical order is
-          # rejected rather than silently reordered (the resource_deposits rule, not the sectors
-          # one).
-          - id: civic_union
-            name: "Civic Union"
+          # rejected rather than silently reordered.
+          - id: governing_party
+            name: "Crown Party"
             government_role: coalition
             blocs:
-              - id: mainstream
-                name: "Civic Union Mainstream"
+              - id: core
+                name: "Crown Party Core"
                 seats:
                   - chamber: lower
-                    seats: 40
-                  - chamber: upper
-                    seats: 24
+                    seats: 45
                 discipline_bps: 5000
                 government_relationship_bps: 6000
                 tax_preference_bps: 2000
-                spending_preference_bps: 2000
-              - id: reform
-                name: "Civic Union Reform Caucus"
-                seats:
-                  - chamber: lower
-                    seats: 12
-                  - chamber: upper
-                    seats: 6
-                discipline_bps: 2000
-                government_relationship_bps: 3000
-                tax_preference_bps: 4000
-                spending_preference_bps: 4000
-          - id: national_front
-            name: "National Front"
+                spending_preference_bps: 0
+          - id: opposition_party
+            name: "Reform Opposition"
             government_role: opposition
             blocs:
-              - id: conservatives
-                name: "National Front Conservatives"
+              - id: main
+                name: "Reform Opposition Main"
                 seats:
                   - chamber: lower
-                    seats: 30
-                  - chamber: upper
-                    seats: 20
-                discipline_bps: 7000
-                government_relationship_bps: -7000
+                    seats: 55
+                discipline_bps: 8000
+                government_relationship_bps: -8000
                 tax_preference_bps: -6000
-                spending_preference_bps: -4000
-              - id: populists
-                name: "National Front Populists"
-                seats:
-                  - chamber: lower
-                    seats: 8
-                  - chamber: upper
-                    seats: 4
-                discipline_bps: 3000
-                government_relationship_bps: -3000
-                tax_preference_bps: -3000
-                spending_preference_bps: 2000
-          - id: rural_alliance
-            name: "Rural Alliance"
-            government_role: confidence_and_supply
-            blocs:
-              - id: farmers
-                name: "Rural Alliance Farmers"
-                seats:
-                  - chamber: lower
-                    seats: 10
-                  - chamber: upper
-                    seats: 6
-                discipline_bps: 4000
-                government_relationship_bps: 2000
-                tax_preference_bps: -1000
-                spending_preference_bps: 3000
+                spending_preference_bps: 0
 
   - id: neighbor
     name: "Neighboring State"

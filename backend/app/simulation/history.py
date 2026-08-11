@@ -63,7 +63,7 @@ from app.core.canonical_json import canonical_digest, canonical_dumps
 from app.core.errors import HistoryValidationError, SnapshotNotFoundError
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
-from app.simulation.reconciliation import reconcile_political_report
+from app.simulation.reconciliation import reconcile_political_and_legislative_report
 from app.simulation.report import TurnReport
 from app.simulation.resolver import resolve_turn
 from app.simulation.state import GameState
@@ -347,13 +347,16 @@ def validate_history(save: GameSave) -> list[str]:
                 f"the save envelope's {save.content_version!r}"
             )
 
-        entry_problems, state_model, report_model = _validate_entry_payload(entry)
+        entry_problems, state_model, decisions_model, report_model = _validate_entry_payload(entry)
         problems.extend(entry_problems)
 
-        # (Phase 3A, §9.4) Entry N-1's parsed state IS entry N's opening state -- the history
-        # chain supplies both sides of reconcile_political_report with no extra information and
+        # (Phase 3A, §9.4; Phase 3B1, R8) Entry N-1's parsed state IS entry N's opening state --
+        # the history chain supplies both sides of the reconciler with no extra information and
         # no additional state parse (the per-entry GameState parse above is not new work; only
-        # the TurnReport parse in _validate_entry_payload is genuinely new).
+        # the DecisionSet/TurnReport parses in _validate_entry_payload are genuinely new).
+        # `decisions_model` may legitimately be `None` here (a malformed `decisions_json` already
+        # recorded its own problem above) -- the reconciler skips only the two groups that need a
+        # real decision and still runs every other group against `None`.
         if (
             index > 0
             and previous_state_model is not None
@@ -362,10 +365,11 @@ def validate_history(save: GameSave) -> list[str]:
         ):
             problems.extend(
                 f"turn {entry.turn}: {problem}"
-                for problem in reconcile_political_report(
+                for problem in reconcile_political_and_legislative_report(
                     opening_state=previous_state_model,
                     closing_state=state_model,
                     report=report_model,
+                    decisions=decisions_model,
                 )
             )
         previous_state_model = state_model
@@ -387,20 +391,27 @@ def validate_history(save: GameSave) -> list[str]:
 
 def _validate_entry_payload(
     entry: HistoryEntry,
-) -> tuple[list[str], GameState | None, TurnReport | None]:
-    """Canonical-payload, hash-recompute, state-invariant, and (Phase 3A) report-schema checks
-    for one entry.
+) -> tuple[list[str], GameState | None, DecisionSet | None, TurnReport | None]:
+    """Canonical-payload, hash-recompute, state-invariant, and report-schema checks for one entry.
 
-    Returns `(problems, state_model, report_model)` — the parsed models (or `None` if parsing
-    failed) are handed back so `validate_history`'s loop can thread the state forward to the
-    NEXT entry's reconciliation check without a second parse of the same JSON (§9.4).
+    Returns `(problems, state_model, decisions_model, report_model)` — the parsed models (or
+    `None` if parsing failed, or if genuinely absent at genesis) are handed back so
+    `validate_history`'s loop can thread the state forward to the NEXT entry's reconciliation
+    check, and this entry's own decisions into its OWN reconciliation check, without a second
+    parse of the same JSON (§9.4; Phase 3B1, R8).
+
+    `decisions_model` is parsed via `DecisionSet.model_validate` -- not merely checked for
+    canonical JSON form -- so a `decisions_json` that is well-formed, canonical JSON but not a
+    valid `DecisionSet` *shape* (e.g. `expected_turn` holding a string) is caught here, by the
+    same semantic parse `resolve_turn` itself performs, rather than only by the weaker canonical-
+    form check above it. A malformed `decisions_json` is an actionable problem, never a crash.
     """
     problems: list[str] = []
 
     try:
         parsed_state = json.loads(entry.state_json)
     except json.JSONDecodeError as exc:
-        return [f"turn {entry.turn}: state payload is not valid JSON: {exc}"], None, None
+        return [f"turn {entry.turn}: state payload is not valid JSON: {exc}"], None, None, None
     if canonical_dumps(parsed_state) != entry.state_json:
         problems.append(f"turn {entry.turn}: stored state payload is not canonical JSON")
 
@@ -410,7 +421,7 @@ def _validate_entry_payload(
             parsed_decisions = json.loads(entry.decisions_json)
         except json.JSONDecodeError as exc:
             problems.append(f"turn {entry.turn}: decisions payload is not valid JSON: {exc}")
-            return problems, None, None
+            return problems, None, None, None
         if canonical_dumps(parsed_decisions) != entry.decisions_json:
             problems.append(f"turn {entry.turn}: stored decisions payload is not canonical JSON")
 
@@ -420,7 +431,7 @@ def _validate_entry_payload(
             parsed_report = json.loads(entry.report_json)
         except json.JSONDecodeError as exc:
             problems.append(f"turn {entry.turn}: report payload is not valid JSON: {exc}")
-            return problems, None, None
+            return problems, None, None, None
         if canonical_dumps(parsed_report) != entry.report_json:
             problems.append(f"turn {entry.turn}: stored report payload is not canonical JSON")
 
@@ -448,17 +459,26 @@ def _validate_entry_payload(
         for violation in check_invariants(state_model):
             problems.append(f"turn {entry.turn}: {violation.code}: {violation.message}")
 
+    decisions_model: DecisionSet | None = None
+    if entry.decisions_json is not None:
+        # (Phase 3B1, R8) The genuinely new parse: `HistoryEntry.decisions()` already existed but
+        # was unused on this path -- `decisions_json` was hash-covered and canonical-form-checked
+        # above, but never actually validated AS a `DecisionSet`, so a consistently-rehashed
+        # tamper to its shape passed every prior check silently.
+        try:
+            decisions_model = DecisionSet.model_validate(parsed_decisions)
+        except ValidationError as exc:
+            problems.append(f"turn {entry.turn}: stored decisions fail schema validation: {exc}")
+
     report_model: TurnReport | None = None
     if entry.report_json is not None:
         # (Phase 3A, §9.4) Parsing via model_validate re-runs EVERY report self-validator
-        # (PoliticalReport's ten, TurnReport's own cross-validators, every prior phase's report
-        # validators too) -- so a report tampered and then re-hashed consistently is still
-        # caught here, even though the hash chain itself would pass.
+        # (PoliticalReport's ten, LegislativeReport's thirteen, TurnReport's own cross-validators,
+        # every prior phase's report validators too) -- so a report tampered and then re-hashed
+        # consistently is still caught here, even though the hash chain itself would pass.
         try:
             report_model = TurnReport.model_validate(parsed_report)
         except ValidationError as exc:
             problems.append(f"turn {entry.turn}: stored report fails schema validation: {exc}")
 
-    return problems, state_model, report_model
-
-    return problems
+    return problems, state_model, decisions_model, report_model

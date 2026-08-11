@@ -12,10 +12,11 @@ resolution", for the full contract. In short:
 4. Re-validate invariants on the result. A violation discards the working
    copy entirely; the caller's original `state` is still exactly what they
    passed in.
-5. Build the `TurnReport`, then (Phase 3A) reconcile its political section against both the
-   input state and the resulting state (`simulation.reconciliation`) — a disagreement discards
-   the working copy exactly like an invariant violation, since `TurnReport` itself has no
-   `GameState` reference and so cannot perform this check on its own (§9.3).
+5. Build the `TurnReport`, then reconcile its political AND (Phase 3B1) legislative sections
+   against both the input state, the resulting state, and the actually-submitted `DecisionSet`
+   (`simulation.reconciliation`) — a disagreement discards the working copy exactly like an
+   invariant violation, since `TurnReport` itself has no `GameState`/`DecisionSet` reference and
+   so cannot perform this check on its own (§9.3, R8).
 6. Return the new state and an explainable `TurnReport`.
 """
 
@@ -27,7 +28,7 @@ from app.core.errors import DecisionSetError, StateValidationError, TurnResoluti
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
 from app.simulation.phases import PhaseContext, run_phases
-from app.simulation.reconciliation import reconcile_political_report
+from app.simulation.reconciliation import reconcile_political_and_legislative_report
 from app.simulation.report import TurnReport, TurnReportDevMeta
 from app.simulation.state import GameState
 
@@ -82,7 +83,15 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
     working.state_version = state.state_version + 1
 
     ctx = PhaseContext(state=working, decisions=decisions, resolving_turn=resolving_turn)
-    run_phases(ctx)
+    try:
+        run_phases(ctx)
+    except DecisionSetError as exc:
+        # (Phase 3B1, R5) An invalid decision discovered mid-resolution — e.g. a legislative
+        # route with no legislature, a decree the constitution does not authorize, or an
+        # influence allocation naming an unknown/unseated bloc — aborts the whole turn exactly
+        # like a stale `DecisionSet` does: `working` is simply discarded here, unreturned, so the
+        # caller's original `state` is untouched.
+        raise TurnResolutionError(f"decision set rejected during resolution: {exc}") from exc
 
     output_violations = check_invariants(working)
     if output_violations:
@@ -102,15 +111,16 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
         production=ctx.production_report,
         tax_base_derivation=ctx.tax_base_derivation_report,
         political=ctx.political_report,
+        legislative=ctx.legislative_report,
     )
 
-    reconciliation_problems = reconcile_political_report(
-        opening_state=state, closing_state=working, report=report
+    reconciliation_problems = reconcile_political_and_legislative_report(
+        opening_state=state, closing_state=working, report=report, decisions=decisions
     )
     if reconciliation_problems:
         summary = "; ".join(reconciliation_problems)
         raise TurnResolutionError(
-            f"political report does not reconcile against state, discarded: "
+            f"report does not reconcile against state, discarded: "
             f"{len(reconciliation_problems)} problem(s): {summary}"
         )
 

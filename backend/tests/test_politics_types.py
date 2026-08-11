@@ -1,5 +1,6 @@
 """Tests for `app.core.politics`' bounded political metric aliases and the signed-division
-helper every legitimacy formula rounds with (Phase 3A, T-M1..T-M6).
+helper every legitimacy formula rounds with (Phase 3A, T-M1..T-M6), plus the five
+legislative-composition aliases added in Phase 3B1 (T-M1).
 
 Mirrors `test_quantity.py`'s structure: a tiny holder model per alias, one shared table of
 invalid integer representations, then boundary and behavior tests.
@@ -18,6 +19,11 @@ from app.core.politics import (
     StrictLegitimacyBps,
     StrictPoliticalCapital,
     StrictPoliticalCapitalCapacity,
+    StrictPositiveSeatCount,
+    StrictPreferenceBps,
+    StrictRelationshipBps,
+    StrictSeatCount,
+    StrictSeatNumerator,
     StrictSignedBps,
     StrictSignedLegitimacyBps,
     clamp_bps,
@@ -43,6 +49,26 @@ class _PoliticalCapitalHolder(BaseModel):
 
 class _PoliticalCapitalCapacityHolder(BaseModel):
     value: StrictPoliticalCapitalCapacity
+
+
+class _RelationshipHolder(BaseModel):
+    value: StrictRelationshipBps
+
+
+class _PreferenceHolder(BaseModel):
+    value: StrictPreferenceBps
+
+
+class _SeatCountHolder(BaseModel):
+    value: StrictSeatCount
+
+
+class _PositiveSeatCountHolder(BaseModel):
+    value: StrictPositiveSeatCount
+
+
+class _SeatNumeratorHolder(BaseModel):
+    value: StrictSeatNumerator
 
 
 INVALID_INT_REPRESENTATIONS = [
@@ -271,3 +297,93 @@ def test_clamp_bps_supports_symmetric_per_turn_caps() -> None:
 def test_clamp_bps_rejects_an_inverted_range() -> None:
     with pytest.raises(ValueError, match="exceeds high"):
         clamp_bps(0, low=10, high=5)
+
+
+# --- Phase 3B1 T-M1: the five legislative-composition aliases -----------------
+
+LEGISLATIVE_HOLDERS = [
+    pytest.param(_RelationshipHolder, id="relationship-bps"),
+    pytest.param(_PreferenceHolder, id="preference-bps"),
+    pytest.param(_SeatCountHolder, id="seat-count"),
+    pytest.param(_PositiveSeatCountHolder, id="positive-seat-count"),
+    pytest.param(_SeatNumeratorHolder, id="seat-numerator"),
+]
+
+
+@pytest.mark.parametrize("holder", LEGISLATIVE_HOLDERS)
+@pytest.mark.parametrize("bad_value", INVALID_INT_REPRESENTATIONS)
+def test_legislative_aliases_reject_invalid_representations(
+    holder: type[BaseModel], bad_value: object
+) -> None:
+    """All five are `strict=True`, so a seat count of `3.0` or `"3"` is rejected rather than
+    coerced. Seats and support are hash-covered state; a silent float coercion would be a
+    difference the digest could not see."""
+    with pytest.raises(ValidationError):
+        holder(value=bad_value)
+
+
+@pytest.mark.parametrize(
+    "holder",
+    [
+        pytest.param(_RelationshipHolder, id="relationship"),
+        pytest.param(_PreferenceHolder, id="preference"),
+    ],
+)
+def test_signed_legislative_aliases_accept_the_symmetric_bounds(holder: type[BaseModel]) -> None:
+    """Hostility and loyalty are the same axis measured in opposite directions, so both ends of
+    the scale are representable and the midpoint is indifference."""
+    assert holder(value=-10_000).value == -10_000
+    assert holder(value=0).value == 0
+    assert holder(value=10_000).value == 10_000
+
+
+@pytest.mark.parametrize(
+    "holder",
+    [
+        pytest.param(_RelationshipHolder, id="relationship"),
+        pytest.param(_PreferenceHolder, id="preference"),
+    ],
+)
+@pytest.mark.parametrize("out_of_range", [-10_001, -20_000, 10_001, 20_000])
+def test_signed_legislative_aliases_reject_values_beyond_the_scale(
+    holder: type[BaseModel], out_of_range: int
+) -> None:
+    with pytest.raises(ValidationError):
+        holder(value=out_of_range)
+
+
+def test_seat_count_accepts_zero_and_rejects_negative() -> None:
+    """A bloc may hold no seats in a given chamber and still exist as a caucus — an upper-house
+    absence is ordinary, not a construction bug."""
+    assert _SeatCountHolder(value=0).value == 0
+    assert _SeatCountHolder(value=650).value == 650
+    with pytest.raises(ValidationError):
+        _SeatCountHolder(value=-1)
+
+
+def test_positive_seat_count_rejects_zero_and_negative() -> None:
+    """A chamber with no seats is not a chamber, and a required majority of zero would mean a
+    proposal passes with no support at all."""
+    with pytest.raises(ValidationError):
+        _PositiveSeatCountHolder(value=0)
+    with pytest.raises(ValidationError):
+        _PositiveSeatCountHolder(value=-1)
+    assert _PositiveSeatCountHolder(value=1).value == 1
+
+
+def test_zero_is_exactly_what_separates_the_two_seat_types() -> None:
+    """The whole reason both aliases exist. If this ever passes for both, one of them is
+    redundant and the distinction has been quietly lost."""
+    assert _SeatCountHolder(value=0).value == 0
+    with pytest.raises(ValidationError):
+        _PositiveSeatCountHolder(value=0)
+
+
+def test_seat_numerator_holds_the_undivided_product() -> None:
+    """`seats * effective_support_bps`, before the single division. The worked example: 45 seats at
+    full support is 450,000 — a hundredfold larger than any seat count, which is precisely why it
+    is not typed as one."""
+    assert _SeatNumeratorHolder(value=45 * 10_000).value == 450_000
+    assert _SeatNumeratorHolder(value=0).value == 0
+    with pytest.raises(ValidationError):
+        _SeatNumeratorHolder(value=-1)
