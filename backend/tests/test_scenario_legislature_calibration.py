@@ -348,17 +348,21 @@ def test_deficit_demo_governing_blocs_alone_are_the_bulk_of_the_forty_seven() ->
     assert friendly_total == 45
 
 
-# --- D4 (§7.10): the decree constant is not exercised by either committed scenario -----
+# --- D4 (§7.10): tiny_valid/deficit_demo stay legislate-only, by design --------------------
 
 
-def test_neither_committed_scenario_can_exercise_the_decree_route() -> None:
-    """Both committed scenarios author `decree_authority: emergency_only`, so `DECREE_POLITICAL_
-    CAPITAL_COST`'s placement relative to a real, nondegenerate cheapest-legislative-bargain band
-    cannot be validated against `tiny_valid`/`deficit_demo` — there is no decree to compare it
-    against here. That comparison needs a government that actually holds `unlimited` decree
-    authority, which neither of these two does. Recorded as a real, structural gap rather than
-    silently assumed closed: it is what the dedicated `decree_state.yaml` fixture (plan §13, a
-    later commit) exists to close.
+def test_tiny_valid_and_deficit_demo_remain_legislate_only_by_design() -> None:
+    """Both scenarios author `decree_authority: emergency_only` deliberately: they exist to
+    exercise the vote engine on every turn, and a decree escape hatch would undercut that
+    (see each file's own comments). `DECREE_POLITICAL_CAPITAL_COST`'s placement relative to a
+    real, nondegenerate cheapest-legislative-bargain band was never validatable against these
+    two — there is no decree here to compare it against — which is exactly why
+    `test_decree_capital_calibration.py` proved it exhaustively against synthetic Regime C/D
+    legislatures instead. `data/scenarios/decree_state.yaml` (plan §0.8) has since promoted
+    Regime C into real, loadable content that DOES hold `unlimited` decree authority, closing
+    the "no player can reach this" gap those regimes always had (own coverage in
+    `test_decree_state_scenario.py`) — but that is a new, third scenario, not a change to
+    either of these two, which remain legislate-only on purpose.
     """
     state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
     assert state.world.countries["arken"].politics.constitution.decree_authority.value == (

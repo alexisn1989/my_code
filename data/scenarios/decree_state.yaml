@@ -1,0 +1,393 @@
+# A playable decree-versus-legislation scenario (Phase 3B1, plan §0.8).
+#
+# `decree_state` gives a player the constitutional-choice half of Phase 3B1 that
+# `tiny_valid.yaml`/`deficit_demo.yaml` cannot: both of those author
+# `decree_authority: emergency_only`, so neither can ever decree. This scenario's monarch
+# holds UNLIMITED decree authority *and* a real unicameral legislature, so the player
+# genuinely chooses a route every turn rather than being funnelled into one.
+#
+# Economy, population, institutions, resource deposits, resource-output coefficients,
+# finance and production calibration below are a VERBATIM COPY of tiny_valid.yaml -- only
+# scenario identity (this comment block, scenario_id/name/seed/player_country_id, the
+# country id/name) and the `politics:` block differ. `diff tiny_valid.yaml decree_state.yaml`
+# shows exactly those changes and nothing else.
+#
+# The legislature below is `test_decree_capital_calibration.py`'s committed, exhaustively
+# proven "Regime C": a 45/55 seated chamber where the governing bloc alone falls 6 seats
+# short of the 51-seat majority and the opposition bloc is unmovable by policy content alone
+# (relationship -8,000). Against the walkthrough proposal (+5 pp personal income tax,
+# spending unchanged, matching tiny_valid's authored opening rate of 20%):
+#   - unaided: 45/100, well short of the 51 required
+#   - cheapest passing legislative bargain: exactly 283 political capital (282 fails)
+#   - decree: enacts unconditionally for exactly 250 political capital
+#   - required relationship: 0 < 162 (deficit_demo's bargain) < 250 (decree) < 283 (here)
+# Every one of those figures is the DP's own proven minimum, transcribed field-for-field
+# from the bloc parameters below -- never re-derived or approximated. See
+# test_decree_state_scenario.py for the end-to-end proof through the real resolver.
+#
+# Political capital opens at 500 / capacity 1,000 -- Regime C's own synthetic figures --
+# affording either route (283 or 250) with capacity strictly above the opening balance.
+# `constitutional_order_support_bps`/`legitimacy_bps` are authored, form-neutral values,
+# unrelated to (and not derived from) the monarchy or the decree authority: the §7.0
+# neutrality guarantee (`test_legislative_neutrality.py`) is exactly why the same bloc
+# parameters used against a presidential synthetic state in the calibration test carry over
+# unchanged to a monarchical one here.
+#
+# Note: ruleset_version is NOT declared here -- it comes from the engine's
+# RULESET_VERSION constant (simulation.state), not from scenario content.
+
+schema_version: 1
+scenario_id: decree_state
+name: "Decree State Fixture"
+content_version: "0.9.0"
+seed: 77
+player_country_id: valdrun
+
+countries:
+  - id: valdrun
+    name: "Kingdom of Valdrun"
+    population: 1000000
+    treasury:
+      cash_on_hand: 10000000000   # 100,000,000.00 denars, in minor units
+      debt: 5000000000            #  50,000,000.00 denars
+    population_groups:
+      - id: urban_workers
+        name: "Urban Workers"
+        population_share: 0.40
+        political_influence: 55
+        approval: 52
+        trust: 48
+        organization: 35
+        radicalization: 10
+      - id: rural_farmers
+        name: "Rural Farmers"
+        population_share: 0.35
+        political_influence: 45
+        approval: 50
+        trust: 50
+        organization: 25
+        radicalization: 5
+      - id: business_owners
+        name: "Business Owners"
+        population_share: 0.25
+        political_influence: 70
+        approval: 60
+        trust: 55
+        organization: 40
+        radicalization: 2
+    institutions:
+      - id: executive
+        name: "Executive Government"
+        loyalty: 80
+        power: 70
+        competence: 60
+        corruption: 15
+      - id: legislature
+        name: "Legislature"
+        loyalty: 60
+        power: 55
+        competence: 50
+        corruption: 20
+      - id: military
+        name: "Military"
+        loyalty: 75
+        power: 65
+        competence: 60
+        corruption: 10
+    finance:
+      # As of Phase 2B2, tax bases are NOT authored here — they are derived every turn from
+      # this country's economy (below) via simulation.tax_base_derivation. What IS authored
+      # is the country's fiscal reach: tax_base_coefficients.
+      tax_base_coefficients:
+        personal_taxable_share_bps: 8000              # 80% of sector labor income is personal tax base
+        corporate_taxable_share_bps: 4000              # 40% of sector operating surplus is corporate tax base
+        effective_consumption_base_share_bps: 3000      # 30% of sector modeled value added is consumption tax base
+        # (effective_consumption_base_share_bps is a deliberately reduced-form placeholder —
+        # see docs/economy_methodology.md and ADR 0005 for what it currently conflates.)
+      tax_policy:
+        personal_income_rate_bps: 2000   # 20%
+        corporate_rate_bps: 2500         # 25%
+        consumption_rate_bps: 1000       # 10%
+        compliance_rate_bps: 9000        # 90%
+      spending_plan:
+        health: 200000000            #   2,000,000.00 denars
+        education: 150000000         #   1,500,000.00 denars
+        welfare: 250000000           #   2,500,000.00 denars
+        infrastructure: 120000000    #   1,200,000.00 denars
+        defense: 180000000           #   1,800,000.00 denars
+        security: 90000000           #     900,000.00 denars
+        administration: 60000000     #     600,000.00 denars
+      annual_debt_interest_rate_bps: 600   # 6% annual
+    economy:
+      # Phase 2B3 calibration note: employment is no longer authored (SectorState no longer has
+      # an employed_workers field) — it is fully derived every turn by simulation.labor_allocation
+      # from effective_labor_force_share_bps (below) and each sector's
+      # quarterly_capacity_output/output_per_worker. Capacities are unchanged from Phase 2B2;
+      # output_per_worker is retuned per sector (never population or the labor-force share) so
+      # labor demand lands at a plausible ~10% unemployment level instead of the ~91% an
+      # initial derive-employment-as-is calibration produced. Every sector still uses uniform
+      # value_added_share_bps=5000 (50%) / labor_income_share_bps=5000 (50%); country-level
+      # tax_base_coefficients are declared above — none of that changes, since production
+      # (actual_output per sector) is preserved exactly.
+      #
+      # Required workers = ceil(quarterly_capacity_output / output_per_worker); allocation is
+      # abundant here (540,000 required <= 600,000 effective labor force), so allocated ==
+      # required for every sector and actual_output is exactly what Phase 2B2 already verified:
+      #   agriculture:        required=100,000  100,000 *    20,000 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced,     actual=2,000,000,000
+      #   extraction:         required= 20,000   20,000 *   100,000 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced,     actual=2,000,000,000
+      #   manufacturing:      required= 80,000   80,000 *    25,000 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced,     actual=2,000,000,000
+      #   construction:      capacity 0                                                                      -> inactive,            actual=0
+      #   energy:             required= 10,000   10,000 *   200,000 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced,     actual=2,000,000,000
+      #   transportation:     required= 50,000   50,000 *    40,000 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced,     actual=2,000,000,000
+      #   consumer_services:  required=160,000  160,000 *    12,500 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced,     actual=2,000,000,000
+      #   finance_and_professional_services: required=40,000 40,000 * 50,000 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced, actual=2,000,000,000
+      #   technology:         required= 40,000   40,000 *   100,002 = 4,000,080,000 > capacity 4,000,000,000 -> capacity_constrained, actual=4,000,000,000
+      #   defense_industry:   required= 40,000   40,000 *    50,000 = 2,000,000,000 = capacity 2,000,000,000 -> exactly_balanced,     actual=2,000,000,000
+      #   public_services:   capacity 0                                                                      -> inactive,            actual=0
+      # total_labor_demand = 540,000; effective_labor_force = floor(1,000,000 * 6000 / 10,000) = 600,000
+      # total_employment = 540,000; unemployed = 60,000; unemployment_rate = exactly 10.00% (1000 bps)
+      # total_gross_output = 20,000,000,000 (fixed base-year output minor units — NOT GDP, NOT money;
+      #   byte-identical to Phase 2B2's figure, since every actual_output above is unchanged)
+      #
+      # Tax-base derivation check (unchanged from Phase 2B2 — uniform va_share=5000,
+      # labor_share=5000 across all sectors; coefficients personal=8000, corporate=4000,
+      # effective_consumption=3000):
+      #   modeled_value_added(total) = 20,000,000,000 * 0.5 = 10,000,000,000
+      #   labor_income(total)        = 10,000,000,000 * 0.5 =  5,000,000,000
+      #   operating_surplus(total)   = 10,000,000,000 -  5,000,000,000 =  5,000,000,000
+      #   personal_income base       =  5,000,000,000 * 0.8 =  4,000,000,000  (matches Phase 2A/2B2 exactly)
+      #   corporate_profit base      =  5,000,000,000 * 0.4 =  2,000,000,000  (matches Phase 2A/2B2 exactly)
+      #   taxable_consumption base   = 10,000,000,000 * 0.3 =  3,000,000,000  (matches Phase 2A/2B2 exactly)
+      effective_labor_force_share_bps: 6000   # 60% of population is economically active (reduced form)
+      sectors:
+        - category: agriculture
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 20000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: extraction
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 100000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: manufacturing
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 25000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: construction
+          quarterly_capacity_output: 0
+          output_per_worker: 1
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: energy
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 200000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: transportation
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 40000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: consumer_services
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 12500
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: finance_and_professional_services
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 50000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: technology
+          quarterly_capacity_output: 4000000000
+          output_per_worker: 100002
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: defense_industry
+          quarterly_capacity_output: 2000000000
+          output_per_worker: 50000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: public_services
+          quarterly_capacity_output: 0
+          output_per_worker: 1
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+
+      # Phase 2C1: resource-rich, all eight categories active, labor abundant. The extraction
+      # sector's allocated_workers this turn is 20,000 (see the required=20,000 row above; abundant
+      # labor means allocated == required). total_required across all eight deposits below is
+      # 2,000*6 + 500 + 1,000 = 13,500 <= 20,000, so every deposit gets exactly its requirement and
+      # unassigned_resource_workers = 20,000 - 13,500 = 6,500.
+      #
+      # Timber (the only renewable): regenerated = min(80,000, 6,000,000 - 5,000,000) = 80,000;
+      # available = 5,080,000; extracted = min(5,080,000, 100,000, 2,000*50=100,000) = 100,000;
+      # closing = 4,980,000. Conservation: 5,000,000 + 80,000 = 100,000 + 4,980,000 = 5,080,000.
+      # Every nonrenewable below follows the identical pattern: extracted == capacity, closing ==
+      # opening - extracted, status CAPACITY_CONSTRAINED. Every deposit declines net of
+      # regeneration each turn under this calibration (timber by 20,000/turn) — none of them holds
+      # steady, and none of them reaches its own stock/capacity boundary within any horizon this
+      # repo's tests exercise (timber's own boundary is ~250 turns out); the three-regime
+      # capacity-bound / boundary / steady-state dynamic is exercised by deficit_demo.yaml instead.
+      resource_deposits:
+        - category: timber
+          remaining_stock: 5000000
+          extraction_capacity_per_turn: 100000
+          output_per_worker: 50
+          regeneration_per_turn: 80000
+          stock_ceiling: 6000000
+        - category: iron_ore
+          remaining_stock: 40000000
+          extraction_capacity_per_turn: 200000
+          output_per_worker: 100
+        - category: coal
+          remaining_stock: 60000000
+          extraction_capacity_per_turn: 300000
+          output_per_worker: 150
+        - category: crude_oil
+          remaining_stock: 90000000
+          extraction_capacity_per_turn: 500000
+          output_per_worker: 250
+        - category: natural_gas
+          remaining_stock: 70000000
+          extraction_capacity_per_turn: 400000
+          output_per_worker: 200
+        - category: uranium
+          remaining_stock: 100000
+          extraction_capacity_per_turn: 500
+          output_per_worker: 1
+        - category: copper
+          remaining_stock: 30000000
+          extraction_capacity_per_turn: 150000
+          output_per_worker: 75
+        - category: critical_minerals
+          remaining_stock: 2000000
+          extraction_capacity_per_turn: 20000
+          output_per_worker: 20
+
+      # Phase 2C2: physical-to-output bridge coefficients. REPLACES the extraction sector's old
+      # capacity/productivity output formula (2,000,000,000, see the sector block above) with the
+      # sum of each deposit's extracted quantity * its coefficient — chosen so this turn's total is
+      # exactly 2,000,000,000, preserving every Phase 2B/2C1 production/tax-base/revenue/treasury
+      # figure numerically (see docs/economy_methodology.md, "Calibration"):
+      #   timber:             100,000 x 1,000   =   100,000,000
+      #   iron_ore:            200,000 x 1,500   =   300,000,000
+      #   coal:                300,000 x 1,000   =   300,000,000
+      #   crude_oil:           500,000 x 1,200   =   600,000,000
+      #   natural_gas:         400,000 x 1,000   =   400,000,000
+      #   uranium:                 500 x 100,000 =    50,000,000
+      #   copper:              150,000 x 1,000   =   150,000,000
+      #   critical_minerals:    20,000 x 5,000   =   100,000,000
+      #   total                                  = 2,000,000,000  (matches the old formula exactly)
+      # Every deposit here is capacity-bound (extracted == potential_quantity every turn), so
+      # extraction_sector_potential_output also equals 2,000,000,000 — capacity_utilization_bps is
+      # 10,000 (100%) and constraint is physical_resource_constrained for the full 100-turn tested
+      # horizon (critical_minerals, the shortest-lived deposit, lasts exactly 100 turns).
+      resource_output_coefficients:
+        - category: timber
+          real_output_per_unit: 1000
+        - category: iron_ore
+          real_output_per_unit: 1500
+        - category: coal
+          real_output_per_unit: 1000
+        - category: crude_oil
+          real_output_per_unit: 1200
+        - category: natural_gas
+          real_output_per_unit: 1000
+        - category: uranium
+          real_output_per_unit: 100000
+        - category: copper
+          real_output_per_unit: 1000
+        - category: critical_minerals
+          real_output_per_unit: 5000
+
+    # Phase 3B1 (plan §0.8): a monarchy with UNLIMITED decree authority AND a real
+    # unicameral legislature -- the one combination that gives a player a genuine
+    # legislative-versus-decree CHOICE every turn, rather than a government funnelled into
+    # exactly one route. Valid under C1-C10: C6/C7 require HEREDITARY paired with
+    # MONARCHICAL (both hold); C8 is why executive_term_limit_terms is absent (a hereditary
+    # executive serves for life); C9 is why national_election_interval_turns is absent (no
+    # legislature-independent national election is scheduled); C10 only binds when
+    # legislature is 'none', which it is not here, so it does not constrain this
+    # combination at all -- C10 permits UNLIMITED decree authority WITH or WITHOUT a
+    # legislature.
+    politics:
+      constitution:
+        executive_system: monarchical
+        executive_selection: hereditary
+        legislature: unicameral
+        territorial_organization: unitary
+        judicial_review: weak
+        amendment_difficulty: supermajority
+        decree_authority: unlimited
+      constitutional_order_support_bps: 7000    # 70.00% authored acceptance -- form-neutral, not derived from decree authority
+      legitimacy_bps: 6000                      # 60.00% current legitimacy -- form-neutral
+      political_capital: 500
+      political_capital_capacity: 1000
+      # Committed Regime C exactly (test_decree_capital_calibration.py,
+      # test_regime_c_reachable_deep_shortfall_minimum_is_exactly_283): one chamber, 45
+      # governing seats against 55 opposition seats -- a reachable but genuine shortfall the
+      # governing bloc alone cannot cross, and an opposition bloc unmovable by policy content
+      # alone (relationship -8,000, discipline 8,000). Against the walkthrough proposal
+      # (+5 pp personal income tax on this scenario's authored 20% opening rate, spending
+      # unchanged): unaided 45/100 against a required 51; cheapest passing bargain exactly
+      # 283 PC on the opposition bloc (282 fails); a 250 PC decree enacts unconditionally.
+      # Derived from this file, not hardcoded, by test_decree_state_scenario.py.
+      legislature:
+        chambers:
+          - chamber: lower
+            total_seats: 100
+        parties:
+          # Sorted by id, and blocs within each party sorted by id -- noncanonical order is
+          # rejected rather than silently reordered.
+          - id: governing_party
+            name: "Crown Party"
+            government_role: coalition
+            blocs:
+              - id: core
+                name: "Crown Party Core"
+                seats:
+                  - chamber: lower
+                    seats: 45
+                discipline_bps: 5000
+                government_relationship_bps: 6000
+                tax_preference_bps: 2000
+                spending_preference_bps: 0
+          - id: opposition_party
+            name: "Reform Opposition"
+            government_role: opposition
+            blocs:
+              - id: main
+                name: "Reform Opposition Main"
+                seats:
+                  - chamber: lower
+                    seats: 55
+                discipline_bps: 8000
+                government_relationship_bps: -8000
+                tax_preference_bps: -6000
+                spending_preference_bps: 0
+
+  - id: neighbor
+    name: "Neighboring State"
+    population: 500000
+    treasury:
+      cash_on_hand: 3000000000    #  30,000,000.00 denars
+      debt: 1000000000            #  10,000,000.00 denars
+    population_groups:
+      - id: citizens
+        name: "Citizens"
+        population_share: 1.0
+        political_influence: 50
+        approval: 55
+        trust: 50
+        organization: 20
+        radicalization: 3
+    institutions:
+      - id: executive
+        name: "Executive Government"
+        loyalty: 70
+        power: 60
+        competence: 55
+        corruption: 20

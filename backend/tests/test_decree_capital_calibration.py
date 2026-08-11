@@ -25,14 +25,18 @@ the real formulas:
 unreachable while its 250 PC decree is affordable. `DECREE_POLITICAL_CAPITAL_COST` is therefore
 **retained at 250** — nothing here disconfirms it, so it is not changed.
 
-**What this file does NOT prove.** Regimes C and D are synthetic legislatures built directly from
-the state models, not new scenario content — real per the state models' own validators (exact
-seat reconciliation, `PoliticalState`'s both-directions rule, all of `constitution.py`'s C1-C10),
-but never loaded from a committed scenario a player could actually start a game with. Only
-`decree_state.yaml` (plan §16, still a later commit) proves the real decree-*only* route — a
-government with no legislature at all. Both committed, playable scenarios remain
-`emergency_only`, so **neither currently offers the player a legislative-versus-decree choice**;
-that limitation is real and is not closed by this file.
+**What this file does NOT prove — and what now closes that gap.** Regimes C and D are synthetic
+legislatures built directly from the state models, not new scenario content — real per the state
+models' own validators (exact seat reconciliation, `PoliticalState`'s both-directions rule, all of
+`constitution.py`'s C1-C10), but never loaded from a committed scenario a player could actually
+start a game with. `data/scenarios/decree_state.yaml` (plan §0.8) closes that: it promotes Regime
+C's exact bloc parameters (below) into a real, loadable monarchy with `decree_authority: unlimited`
+**and** a real unicameral legislature — a genuine legislative-versus-decree *choice*, not a
+decree-only dead end (a legislature-less government has no legislative route to choose between).
+`tiny_valid`/`deficit_demo` remain `emergency_only` by design (see
+`test_the_two_legislate_only_scenarios_still_cannot_decree` below); `decree_state.yaml` is the
+scenario that offers the player the choice, with its own integration coverage in
+`test_decree_state_scenario.py`.
 
 ## The exhaustive algorithm, and why it is exact
 
@@ -576,14 +580,19 @@ def test_the_required_crossover_relationship_holds() -> None:
     assert regime_a < regime_b < DECREE_POLITICAL_CAPITAL_COST < regime_c
 
 
-# --- The confirmed limitation, restated so it cannot be silently forgotten ---
+# --- The two legislate-only scenarios, restated so their scope stays honest -------------------
 
 
-def test_neither_committed_scenario_offers_a_legislative_versus_decree_choice() -> None:
-    """Both shipped, playable scenarios author `decree_authority: emergency_only`. Regimes C and D
-    above prove the engine's legislative-versus-decree balance is sound; they do not put that
-    choice in front of a player today. Only `decree_state.yaml` (plan §16, a later commit) does
-    that, by giving a real, committed scenario `decree_authority: unlimited`."""
+def test_the_two_legislate_only_scenarios_still_cannot_decree() -> None:
+    """`tiny_valid` and `deficit_demo` remain `decree_authority: emergency_only` BY DESIGN
+    (plan §13): they exist to exercise the vote engine on every turn, and giving either of them
+    a decree escape hatch would undercut that. Regimes C and D above prove the engine's
+    legislative-versus-decree balance is sound in the abstract; these two scenarios simply never
+    exercise the decree half of it, on purpose. The gap that leaves — no *player* could reach the
+    decree route at all — is now closed by `data/scenarios/decree_state.yaml` (plan §0.8), whose
+    integration coverage lives in `test_decree_state_scenario.py`, not here: this file keeps the
+    exhaustive DP proof; that one proves the promoted Regime C numbers hold through the real
+    resolver."""
     for scenario_file, country_id in (
         ("tiny_valid.yaml", "arken"),
         ("deficit_demo.yaml", "strapped"),
