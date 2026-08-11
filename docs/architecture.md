@@ -256,6 +256,45 @@ measured cost. See `docs/economy_methodology.md` for every formula and
 `docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md` for the R1-R8
 independent-review corrections applied before implementation.
 
+(As of Phase 3B1 that function is `reconcile_political_and_legislative_report`, and it additionally
+takes the turn's `DecisionSet` — see the next section.)
+
+### Phase 3B1 legislature and political-capital bargaining
+
+Again no new `PHASE_ORDER` slot. Three existing slots are used for their documented purposes:
+
+- **Slot 1, `validate_and_reserve_actions`** — previously a no-op, now the vote. It captures a
+  frozen `OpeningLegislativeSnapshot`, resolves the route against the constitution (this is the
+  **only** place in the phase where the constitution is read at all), resolves influence targets by
+  `(party_id, bloc_id)`, checks `committed <= opening political capital`, computes per-bloc support
+  and per-chamber apportionment, and writes a `LegislativeScratch` onto the context. **It writes no
+  state.** An unavailable decree, an unknown influence target, or an unaffordable commitment raises
+  `DecisionSetError` here, and `resolve_turn`'s existing copy-and-discard machinery makes the abort
+  atomic with no new mechanism.
+- **Slot 2, `apply_legal_and_administrative_changes`** — now *gated* on slot 1's outcome. The
+  proposed tax policy and spending plan are committed only when the outcome is
+  `PASSED_LEGISLATIVE` or `ENACTED_BY_DECREE`; otherwise the opening policy is preserved
+  byte-for-byte.
+- **Slot 10** commits the capital (so `politics.political_capital` still has exactly one writer),
+  and **slot 15** assembles `LegislativeReport` and emits the two legislative reason IDs from that
+  already-self-validated report.
+
+Ordering is what makes the capital rule enforceable rather than merely stated: at slot 1 the
+capital is still the opening value, and regeneration is derived from *closing* legitimacy at slot
+10, so spending against this turn's regeneration is structurally impossible rather than forbidden.
+
+The pure modules `simulation/apportionment.py` and `simulation/legislative_voting.py` extend 3A's
+neutrality guarantee to seats and votes: neither accepts a `ConstitutionState` or any constitutional
+enum in any public signature, enforced by `mypy` and additionally by a source scan so an import
+added later fails the suite.
+
+`reconcile_political_report` becomes `reconcile_political_and_legislative_report` and gains a
+**required** `decisions: DecisionSet | None` parameter (no default, so a caller cannot silently
+lose the new checks by forgetting it), adding groups 12–18. Group 15 deliberately compares only
+what state actually holds — `seats` and `total_seats` — and lets the report's own validators prove
+the derived apportionment transitively, so no voting formula is duplicated inside reconciliation.
+See `docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`.
+
 ### Government accounting phases (Phase 2A, extended in Phase 2B2)
 
 `apply_legal_and_administrative_changes` captures a frozen `OpeningFinanceSnapshot`
@@ -353,9 +392,12 @@ platforms without a directory file descriptor to sync, e.g. Windows).
 **Performance boundary.** `advance_game` runs `validate_history` (a full O(n) re-verification of
 every entry's hash and chain link) before every single turn, so N sequential turns cost O(n²)
 total. Phase 3A (§9.4 of its plan) extended this per-entry pass to also parse `report_json` into a
-`TurnReport` and re-run `reconcile_political_report` against the neighbouring entry's state — a
+`TurnReport` and re-run the political reconciler against the neighbouring entry's state — a
 genuinely new cost, not a free addition, deliberately measured before and after landing rather than
-assumed. Using isolated git worktrees at the commit immediately before and immediately after this
+assumed. Phase 3B1 extended the same pass once more: `decisions_json` is now parsed into a real
+`DecisionSet` (it was previously hash-covered but never semantically validated) and threaded into
+the same reconciler, so **replay runs the identical check live resolution does** rather than a
+weaker one. Using isolated git worktrees at the commit immediately before and immediately after this
 change (one discarded warm-up run plus three measured runs each, median taken), all three 100-turn
 soaks moved from a ~4.2-4.8s/100-turns (~42-48ms/turn) median to a ~6.3-7.1s/100-turns
 (~63-71ms/turn) median — a ~1.48-1.50x ratio, safely under the ~2x stop threshold the plan set in

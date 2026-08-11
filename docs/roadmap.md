@@ -441,8 +441,10 @@ Scope: §9 (constitutional system), §10 (political capital/action capacity), §
 legislature), §19 (coups/revolutions — risk surfacing), §20 (elections — scheduling/polling), §21
 (leaders/cabinet). Split into three sub-phases: **3A** lays the constitutional and metric
 foundation (this is the smallest slice that later sub-phases can build onto without reshaping the
-state model); **3B** spends political capital through legislative/faction bargaining; **3C** adds
-government survival (elections, coups, removal).
+state model); **3B** spends political capital through legislative/faction bargaining, itself split
+into **3B1** (legislature, parties, blocs and budget bargaining) and **3B2** (relationship
+evolution, competing capital uses, non-budget laws); **3C** adds government survival (elections,
+coups, removal).
 
 ### Phase 3A — Constitutional foundation, legitimacy and political capital — **complete**
 
@@ -515,23 +517,89 @@ Acceptance criteria:
       atomicity for stale decisions and invalid political state, the resource-depletion shock
       reproduced exactly, soak bounds and trajectories, and CLI display coverage.
 
-Explicitly deferred to 3B/3C or later: political-capital expenditure (nothing spends it yet — it
-regenerates and pins to capacity); parties, legislators, law passage; elections, coups, removal
-from power; characters, appointments, institutional loyalty/power/competence; courts deciding
-cases; repression, protests, uprisings, civil war; AI-country politics (rejected outright, not
-silently unmodeled); `PopulationGroupState`/`InstitutionState`'s float approval/trust/loyalty
-fields (unconverted, read by no formula); `FinanceReport`/`TreasuryState` reconciliation (a
-pre-existing, unrelated gap, tracked separately).
+Explicitly deferred to 3B/3C or later at the time 3A shipped: political-capital expenditure
+(nothing spent it yet — it regenerated and pinned to capacity); parties, legislators, law passage;
+elections, coups, removal from power; characters, appointments, institutional
+loyalty/power/competence; courts deciding cases; repression, protests, uprisings, civil war;
+AI-country politics (rejected outright, not silently unmodeled);
+`PopulationGroupState`/`InstitutionState`'s float approval/trust/loyalty fields (unconverted, read
+by no formula); `FinanceReport`/`TreasuryState` reconciliation (a pre-existing, unrelated gap,
+tracked separately). **Phase 3B1 below has since closed the first two of these.**
 
-### Phase 3B — Political-capital expenditure and legislative/faction bargaining
+### Phase 3B1 — Legislature, parties, blocs and political-capital bargaining — **complete**
 
-Scope: §10 (political capital spent on concrete actions), §12 (parties/legislature, faction
-support-score model). Builds on 3A's `PoliticalState.political_capital` and
-`constitutional_order_support_bps`, which first become genuinely dynamic here.
+Scope: §10 (political capital spent on a concrete action), §12 (parties/legislature, bloc support
+model). Builds on 3A's `PoliticalState.political_capital`, which first becomes genuinely spendable
+here. Full rationale and calibration:
+[`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`](adr/0010-legislature-parties-and-political-capital-bargaining.md).
 
-Acceptance criteria: at least one political-capital-spending action wired through the resolver;
-parties/factions with a legislative support-score model; `political_capital_spent` becomes nonzero
-on at least one tested path; AI-country politics extended once AI economies exist.
+- [x] `LegislatureState`: one or two chambers, parties with a government role
+      (coalition / confidence-and-supply / opposition), and internal blocs owning the seats and
+      carrying discipline, government relationship and tax/spending preferences. Canonical identity
+      ordering is **rejected, never silently normalised**, and per-chamber seat totals must
+      reconcile **exactly** — unheld seats would be permanent abstentions nobody can bargain with.
+- [x] Pure `apportionment.py` (chamber-level largest-remainder, five proved properties, fixing a
+      per-bloc truncation that gave 100 one-seat blocs at 60% support **zero** seats where one
+      100-seat bloc got 60) and pure `legislative_voting.py` (role anchor → relationship →
+      policy compatibility → influence → discipline). **Neither module accepts a
+      `ConstitutionState` or any constitutional enum** — the same `mypy`-checked neutrality
+      guarantee 3A established for legitimacy, now covering seats and votes.
+- [x] Strict majority `total_seats // 2 + 1`: a 50/50 tie **fails** and no tie-breaker exists.
+      Bicameral passage is **AND across independently decided chambers**; pooled totals never
+      decide passage.
+- [x] The budget is gated on the vote: slot 1 resolves it, slot 2 commits the proposed policy only
+      on `PASSED_LEGISLATIVE`/`ENACTED_BY_DECREE`, slot 10 commits the capital, slot 15 assembles
+      the report. No new phase-order slot. With **no** decision the path is byte-identical to
+      pre-3B1, preserving every committed Phase 2 figure.
+- [x] A failed vote **consumes the committed capital** (refunding would let a player
+      binary-search the passage threshold for free), and commitment is bounded by **opening**
+      capital, not opening + regeneration.
+- [x] Decree route at a fixed 250 political capital for `decree_authority: unlimited`, with no
+      chamber or bloc rows. An unavailable or invalid decree is an **invalid decision, not an
+      outcome**: the turn aborts atomically — no advancement, no capital, no history entry, input
+      byte-identical, no output or temp file.
+- [x] **C10** as a real constitutional rule: with no legislature the executive must hold unlimited
+      decree authority, or no organ can make law at all. Enforced on every path; makes
+      `decree_authority` validity-affecting for the first time (valid configurations
+      2,862 → 2,538, C10 first on exactly 324 of 10,368).
+- [x] Seventh report member `LegislativeReport` (13 self-validators), reconciliation groups 12–18
+      (legislature identity, per-field budget gating against the actually-submitted decision,
+      capital ordering, and a canonical BLAKE2b decision digest), and **history replay running the
+      identical check** — closing a gap where a consistently re-hashed decision tamper passed every
+      integrity check.
+- [x] `RULESET_VERSION` bumped `0.8.0 -> 0.9.0` with a genuine 0.8.0 fixture frozen beforehand and
+      rejected specifically by `UnsupportedRulesetVersionError`. **No migration is fabricated** —
+      composition is authored content an engine cannot guess.
+- [x] Three scenarios spanning the meaningful cases, every figure derived by tests from the files
+      themselves: `tiny_valid` passes unaided (**58/100** and **33/60**); `deficit_demo` **fails**
+      47/100 and needs a **162**-point bargain; new `decree_state.yaml` (monarchical / hereditary /
+      unicameral / **unlimited**) fails at **282** (50/100), passes at **283** (51/100), and can
+      decree for **250**. The ordering `0 < 162 < 250 < 283` is established by an exhaustive
+      dynamic program, not sampling.
+- [x] CLI: `inspect --legislature` (authored composition only — **never** a proposal support
+      tally), one shared legislative renderer used by **both** `resolve` and `history --turn N`,
+      and two reason IDs (`legislative_vote_resolved`, `budget_blocked_by_legislature`).
+- [x] 1,463 backend tests, including a 100-turn soak submitting a proposal **every** turn.
+
+Known limitations, all recorded in ADR 0010 rather than left implicit: `EMERGENCY_ONLY` confers no
+decree power (no emergency system exists to read); at capacity with unlimited decree authority a
+decree may weakly dominate legislating, so the claim that every route always carries a lasting
+opportunity cost is **explicitly retracted**; legislature composition is **static**; and the budget
+is the only proposal kind.
+
+### Phase 3B2 — Relationship evolution, competing capital uses and non-budget laws
+
+Scope: §12 (faction bargaining, dynamic), the rest of §10. Builds directly on 3B1's static
+legislature.
+
+Acceptance criteria: bloc relationships **evolve** in response to how the government treats them
+(bargained with, bypassed by decree, repeatedly ignored), with realignment and defections; a
+second proposal kind, which is also the point at which `DecisionSet` gains a genuine discriminated
+union; **competing political-capital expenditures within a single turn** (`POL-3` below), which is
+what makes the commitment opportunity cost strategically binding rather than notional; confidence
+votes and coalition collapse; conference committees or override procedures for bicameral
+disagreement; per-proposal supermajorities keyed to `amendment_difficulty`; AI-country politics
+once AI economies exist.
 
 ### Phase 3C — Government survival
 
@@ -541,7 +609,24 @@ not by omission, in 3A/3B.
 
 Acceptance criteria: institution loyalty/power/competence tracked; coup/unrest risk indicators
 visible with named contributing factors; election scheduling and polling with uncertainty; ~20–40
-cabinet-relevant characters for the first scenario.
+cabinet-relevant characters for the first scenario. Also the named unblockers for two Phase 3B1
+limitations: an **emergency system** (which is what would give `decree_authority: emergency_only`
+any meaning), and **courts / judicial review / constitutional-crisis mechanics** (which is what
+illegal or extra-constitutional decrees would need — `judicial_review` already exists as a
+constitutional axis read by nothing), plus a **non-stock cost for decree use**.
+
+### Named follow-up tickets
+
+Small, independently attributable items deliberately kept out of the phase they were noticed in,
+so each lands as its own reviewable change rather than riding along inside an unrelated one.
+
+| Ticket | Scope | Status |
+|---|---|---|
+| `POL-2` | Resolve the `InstitutionState` / `LegislatureState` overlap. Both shipped scenarios author an inert institution whose id is literally `legislature`, with float approval/trust/loyalty metrics no formula reads. **Re-scoped** from "convert the floats to strict bps" to "resolve the overlap" — converting eight floats would not address the duplication. Migrating the remaining inert float fields to strict bps rides along with it. | open |
+| `POL-3` | Competing political-capital expenditures within a turn, plus relationship consequences for how blocs are treated. The specific unblocker for ADR 0010's retracted opportunity-cost claim: today capital has exactly one sink, so per-turn bandwidth at capacity is effectively free. Lands in Phase 3B2. | open |
+| `FIN-1` | Reconcile `FinanceReport` closing balances against `TreasuryState`. Deliberately **not** absorbed into 3B1: it would not have caught a gating bug, since a failed vote produces perfectly self-consistent finance numbers for the *wrong* budget — reconciliation group 16 is what catches that. | open |
+| `FE-1` | Clear the dev-only transitive `nanoid` advisory by regenerating the frontend lockfile so `postcss` resolves `nanoid >= 3.3.17`. Dev-only, transitive, fix available, not a regression (the advisory database changed). Kept separate from every gameplay phase. | open |
+| `HIST-1` | An unreachable duplicate `return` in `history.py`. **Closed** — its removal was forced during Phase 3B1 when `_validate_entry_payload`'s return type changed from a 3-tuple to a 4-tuple. | closed |
 
 ## Phase 4 — Persistence and API
 

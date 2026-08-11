@@ -119,7 +119,14 @@ does not report the same error as a corrupted `quarterly_interest_expense`. See
 The player's complete financial position — opening cash, opening debt, the annual interest rate,
 tax bases, and the *previous* tax policy and spending plan — is captured into a frozen
 `OpeningFinanceSnapshot` (`app.simulation.phases`) before the turn's `BudgetDecision` (if any) is
-applied to anything. Every nested Pydantic sub-model is captured via `.model_copy()`, not a bare
+applied to anything.
+
+**(Phase 3B1) A `BudgetDecision` is now a *proposal*, not an instruction.** The snapshot is still
+captured exactly as described here, but whether the proposed tax policy and spending plan are ever
+committed to state depends on the legislative vote resolved one slot earlier — see "Legislative
+gating of the budget" at the end of this document. On a failed vote the opening policy is preserved
+byte-for-byte and every figure below is computed against it, so the whole economic chain that
+follows is the *unchanged* budget's chain, not the proposed one's. Every nested Pydantic sub-model is captured via `.model_copy()`, not a bare
 reference: `TaxPolicyState`/`SpendingPlanState` allow in-place field mutation
 (`obj.field = x`, since they use `validate_assignment=True`), so a bare reference would let a
 future phase handler that mutates the *working* policy in place — rather than replacing it
@@ -1325,3 +1332,110 @@ unmodeled, since only the player has an economy to derive performance from); `Po
 `InstitutionState`'s float approval/trust/loyalty fields (unconverted, read by no formula);
 `FinanceReport`/`TreasuryState` reconciliation (a real, pre-existing, unrelated gap, tracked
 separately); any new API route, database table, or gameplay frontend.
+
+**Phase 3B1 has since closed the first two of those** — see the next section.
+
+---
+
+# Phase 3B1: Legislative Gating of the Budget
+
+Phase 3B1 is not an economic phase, and it adds no economic formula. It is included here for one
+reason: **it decides whether the budget this document's entire chain is computed against is the one
+the player submitted.** Full mechanism, calibration and rationale live in
+`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`; only the economic
+consequence is described here.
+
+## Where the gate sits in the chain
+
+A `BudgetDecision` is a **proposal**. Before Phase 3B1 it was applied unconditionally at slot 2.
+Now slot 1 resolves it against the legislature (or the constitution's decree authority) first, and
+slot 2 commits the proposed `TaxPolicyState`/`SpendingPlanState` **only** when the outcome is
+`PASSED_LEGISLATIVE` or `ENACTED_BY_DECREE`:
+
+```
+proposal -> [slot 1: vote or decree] -> outcome
+                                          |
+              passed / enacted ---------->+--> proposed tax policy + spending plan committed
+              failed / no proposal ------>+--> OPENING policy preserved byte-for-byte
+                                          |
+                                          v
+   tax bases (derived from production, unchanged by this phase)
+        x committed tax rates  ->  revenue  ->  balance  ->  cash/debt
+```
+
+Everything downstream of "committed tax rates" is exactly as documented earlier in this file. The
+gate changes *which* rates enter that multiplication, never how the multiplication works. A failed
+vote is therefore not a no-op with a different label: revenue, the pre-financing balance, borrowing
+and closing cash/debt all follow the *unchanged* budget, and the two trajectories genuinely diverge
+from that turn onward.
+
+## The no-decision path is unchanged, by requirement
+
+With **no** `BudgetDecision` the outcome is `NO_PROPOSAL`, zero capital is committed, and slot 2
+behaves exactly as it did before Phase 3B1. This is what makes the phase additive rather than a
+recalibration: every committed Phase 2A–2C2 figure in this document — `tiny_valid`'s flat 100-turn
+trajectory, `deficit_demo`'s turn-26/turn-41 depletion boundaries, every soak bound — is produced
+on that path and is unaffected. It is a hard requirement with its own test, not an observation.
+
+## Political capital is spent, so slot 10's identity finally has a nonzero term
+
+Phase 3A's `political_capital_spent` was hardcoded to 0. It is now the capital the player committed
+at slot 1, and the identity is otherwise unchanged:
+
+```
+closing_political_capital = min(capacity, opening - committed + regeneration)
+```
+
+with `committed <= opening` enforced at slot 1 (never against this turn's regeneration, which is
+derived from *closing* legitimacy and is not knowable when the commitment is made). **A failed vote
+still consumes its committed capital** — the commitment is a bid, not an escrow.
+
+One consequence is documented rather than hidden: because regeneration is applied in the same
+identity, a government at or near capacity may have part or all of a commitment refunded within the
+same turn. The exact cost has three branches — full face value when `opening + regeneration <=
+capacity`, zero when `opening - committed + regeneration >= capacity`, and strictly between
+otherwise — all three pinned by tests. ADR 0010 states the consequence plainly and **retracts** the
+stronger claim that every route always carries a lasting opportunity cost.
+
+## Legislative calibration
+
+Every figure is derived from the scenario files themselves through the real voting and
+apportionment modules, never hardcoded. The walkthrough proposal is **+5 percentage points on the
+personal income rate, spending unchanged**, measured from each scenario's own authored opening rate.
+
+`tiny_valid.yaml` — bicameral, majority coalition. Lower **58/100** against a required 51; upper
+**33/60** against a required 31. **Passes unaided**, committing 0 capital, which is why every
+pre-3B1 `tiny_valid` figure in this document is reproduced exactly when the walkthrough budget is
+submitted.
+
+`deficit_demo.yaml` — unicameral minority government, opening rate 15%. **47/100** against a
+required 51: the budget **fails** unaided, four seats short, and the tax rise does not happen. The
+cheapest bargain that carries it is **162** political capital on `citizens_bloc/moderates` → 51/100
+— affordable against its opening 300, and cheaper than a decree would be, which is the point.
+
+`decree_state.yaml` (new) — monarchical/hereditary/unicameral with **unlimited** decree authority,
+opening rate 20%, political capital 500/1,000. **282** capital fails at 50/100; **283** passes at
+51/100; a decree enacts the identical budget for **250** and produces no chamber rows at all. Both
+routes reach byte-identical tax policy and spending plan from an identical opening state, differing
+only in route, report structure and capital committed.
+
+The ordering `0 < 162 < 250 < 283` is established by an exhaustive dynamic program over each bloc's
+full marginal support curve — exact, not sampled.
+
+## Version compatibility (Phase 3B1)
+
+`RULESET_VERSION` bumps `0.8.0 -> 0.9.0`, `content_version` alongside it. A genuine 0.8.0 save
+fixture (`backend/tests/fixtures/phase3a_save_ruleset_0.8.0.json`) was frozen with the unmodified
+0.8.0 engine **before** any model or constant change and is rejected by
+`UnsupportedRulesetVersionError` before any entry payload is parsed. `SAVE_FORMAT_VERSION` is
+unchanged. **No fabricated migration**: an older save has no chambers, parties, blocs or seats, and
+none may be invented — composition is authored content, not something an engine can guess.
+
+## Explicitly not yet simulated (Phase 3B1)
+
+Legislature composition is **static** — no relationship evolution, realignment, defections,
+confidence votes or coalition collapse. The **budget is the only proposal kind**, so there are no
+general laws. There are no competing political-capital uses within a turn, which is why the
+opportunity cost above is notional at capacity. `EMERGENCY_ONLY` decree authority confers no decree
+power (no emergency system exists to read). Elections, coups and removal from power remain Phase
+3C, as do courts, judicial review and any consequence for habitual decree use.
