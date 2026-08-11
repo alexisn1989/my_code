@@ -15,10 +15,14 @@ or not the accounting engine existed at all.
 from __future__ import annotations
 
 import time
+from collections import Counter
 
 from app.content.scenarios import load_scenario_file
-from app.simulation.decisions import DecisionSet
+from app.core.canonical_json import canonical_dumps
+from app.simulation.decisions import BudgetDecision, DecisionSet, InfluenceAllocation
 from app.simulation.history import advance_game, new_game, validate_history
+from app.simulation.legislative_voting import DECREE_POLITICAL_CAPITAL_COST
+from app.simulation.legislature import LegislativeOutcome, ProposalRoute
 from app.simulation.report import SectorProductionConstraint
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.save_format import SAVE_FORMAT_VERSION
@@ -255,4 +259,155 @@ def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() 
     print(
         f"\n{TURNS}-turn soak (deficit_demo, full three-regime timber trajectory): "
         f"{elapsed:.3f}s total, {elapsed / TURNS * 1000:.2f}ms/turn"
+    )
+
+
+# --- Phase 3B1: a proposal EVERY turn, for 100 turns -------------------------------------------
+#
+# The three soaks above submit no decisions at all, so 100 turns of them never touch the
+# legislative path once. This one submits a real `BudgetDecision` on every single turn against
+# `decree_state.yaml` -- the only shipped scenario where all three outcomes are reachable, since
+# it is the only one holding `decree_authority: unlimited` alongside a real legislature.
+
+
+def _proposal_for(*, turn: int, opening_rate_bps: int, opening_capital: int) -> BudgetDecision:
+    """A deterministic proposal chosen purely from this turn's own state -- no randomness, no
+    clock, no hidden counter.
+
+    The rate target ALTERNATES around the scenario's authored 20%: whatever the current rate is,
+    the proposal moves it the other way. Without that, a proposal that merely restates the rate
+    already in force would be a zero-magnitude change, every bloc would sit at its baseline, and
+    the soak would silently stop exercising policy compatibility after the first application.
+
+    The four-turn cycle covers no-influence / decree / cheapest-passing / one-short, and each
+    expensive branch is guarded by what the government can actually afford this turn -- so the
+    sequence can never trip slot 1's `committed <= opening` guard and abort the soak, while
+    remaining a pure function of state.
+    """
+    target = 2_000 if opening_rate_bps >= 2_500 else 2_500
+    slot = turn % 4
+    if slot == 1 and opening_capital >= DECREE_POLITICAL_CAPITAL_COST:
+        return BudgetDecision(personal_income_rate_bps=target, route=ProposalRoute.DECREE)
+    if slot == 2 and opening_capital >= 283:
+        return BudgetDecision(
+            personal_income_rate_bps=target,
+            influence=(
+                InfluenceAllocation(
+                    party_id="opposition_party", bloc_id="main", political_capital=283
+                ),
+            ),
+        )
+    if slot == 3 and opening_capital >= 282:
+        return BudgetDecision(
+            personal_income_rate_bps=target,
+            influence=(
+                InfluenceAllocation(
+                    party_id="opposition_party", bloc_id="main", political_capital=282
+                ),
+            ),
+        )
+    return BudgetDecision(personal_income_rate_bps=target)
+
+
+def test_100_turn_soak_with_a_proposal_every_turn_on_decree_state() -> None:
+    save = new_game(
+        load_scenario_file(SCENARIO_DIR / "decree_state.yaml"),
+        save_format_version=SAVE_FORMAT_VERSION,
+    )
+    authored_legislature = canonical_dumps(
+        save.current_state().world.countries["valdrun"].politics.legislature.model_dump(mode="json")  # type: ignore[union-attr]
+    )
+    outcomes: Counter[LegislativeOutcome] = Counter()
+
+    started = time.monotonic()
+    for turn in range(TURNS):
+        opening_state = save.current_state()
+        opening_player = opening_state.world.countries["valdrun"]
+        assert opening_player.finance is not None and opening_player.politics is not None
+        opening_tax_policy = opening_player.finance.tax_policy
+        opening_spending_plan = opening_player.finance.spending_plan
+        opening_capital = opening_player.politics.political_capital
+        capacity = opening_player.politics.political_capital_capacity
+
+        decision = _proposal_for(
+            turn=turn,
+            opening_rate_bps=opening_tax_policy.personal_income_rate_bps,
+            opening_capital=opening_capital,
+        )
+        save = advance_game(
+            save,
+            DecisionSet(
+                expected_turn=opening_state.turn,
+                expected_state_version=opening_state.state_version,
+                decisions=(decision,),
+            ),
+        )
+
+        # The turn advanced exactly once.
+        assert save.current_turn() == turn + 1
+        assert len(save.entries) == turn + 2
+
+        report = save.entries[-1].report()
+        assert report is not None and report.legislative is not None
+        legislative = report.legislative
+        outcomes[legislative.outcome] += 1
+
+        closing_player = save.current_state().world.countries["valdrun"]
+        assert closing_player.finance is not None and closing_player.politics is not None
+
+        # A proposal was submitted every turn, so NO_PROPOSAL must never appear.
+        assert legislative.outcome is not LegislativeOutcome.NO_PROPOSAL
+
+        # The commitment never exceeds THIS turn's opening capital (R2), and closing capital
+        # stays inside [0, capacity].
+        assert legislative.political_capital_committed <= opening_capital
+        assert legislative.opening_political_capital == opening_capital
+        assert 0 <= closing_player.politics.political_capital <= capacity
+
+        # D7: composition is static -- byte-identical to the authored legislature, every turn,
+        # through passes, failures and decrees alike.
+        assert (
+            canonical_dumps(
+                closing_player.politics.legislature.model_dump(mode="json")  # type: ignore[union-attr]
+            )
+            == authored_legislature
+        )
+
+        # Every chamber's supporting seats equal its own apportioned target (P1), and passage is
+        # decided per chamber against its own majority.
+        for chamber in legislative.chambers:
+            assert chamber.supporting_seats == chamber.target_total
+            assert chamber.passed == (chamber.supporting_seats >= chamber.required_yes_seats)
+
+        # The gate: applied iff passed or decreed, and applied EXACTLY as submitted.
+        applied = legislative.outcome in (
+            LegislativeOutcome.PASSED_LEGISLATIVE,
+            LegislativeOutcome.ENACTED_BY_DECREE,
+        )
+        if applied:
+            assert (
+                closing_player.finance.tax_policy.personal_income_rate_bps
+                == decision.personal_income_rate_bps
+            )
+        else:
+            assert closing_player.finance.tax_policy == opening_tax_policy
+        # No spending target was ever submitted, so the plan never moves on any path.
+        assert closing_player.finance.spending_plan == opening_spending_plan
+    elapsed = time.monotonic() - started
+
+    # Following this file's existing policy: the O(n^2) full-history revalidation already runs
+    # inside every `advance_game` call above, so the final check confirms the whole chain.
+    assert validate_history(save) == []
+    assert save.current_turn() == TURNS
+
+    # The sequence genuinely exercised every route, rather than silently degenerating into one.
+    assert outcomes[LegislativeOutcome.PASSED_LEGISLATIVE] > 0
+    assert outcomes[LegislativeOutcome.FAILED_LEGISLATIVE] > 0
+    assert outcomes[LegislativeOutcome.ENACTED_BY_DECREE] > 0
+    assert sum(outcomes.values()) == TURNS
+
+    print(
+        f"\n{TURNS}-turn soak (decree_state, a proposal every turn): {elapsed:.3f}s total, "
+        f"{elapsed / TURNS * 1000:.2f}ms/turn; outcomes="
+        + ", ".join(f"{outcome.value}={count}" for outcome, count in sorted(outcomes.items()))
     )

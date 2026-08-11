@@ -185,3 +185,97 @@ def test_regeneration_is_monotonic_in_legitimacy(legitimacy_a: int, legitimacy_b
     assert political_capital_regeneration(legitimacy_bps=low) <= political_capital_regeneration(
         legitimacy_bps=high
     )
+
+
+# --- Phase 3B1: political capital is per-turn governing bandwidth, not lasting depletion ------
+#
+# Phase 3B1 makes `spent` reachable for the first time, which makes ONE claim load-bearing that
+# Phase 3A never had to state: what a commitment actually COSTS a government. The honest answer
+# is "it depends where the government sits relative to its capacity", and ADR 0010 documents it
+# as such -- explicitly RETRACTING the stronger claim that every route always carries a lasting
+# opportunity cost. These tests pin all three branches of that rule so the documented behavior
+# cannot drift away from the code silently.
+#
+# The cost of committing `C` is measured against the no-action counterfactual -- what closing
+# capital WOULD have been had the government committed nothing that turn:
+#     counterfactual = min(capacity, opening + regeneration)
+#     actual         = min(capacity, opening - C + regeneration)
+#     stock_cost     = counterfactual - actual
+
+
+def _stock_cost(*, opening: int, capacity: int, legitimacy_bps: int, committed: int) -> int:
+    _regen, counterfactual = resolve_political_capital(
+        opening=opening, capacity=capacity, legitimacy_bps=legitimacy_bps, spent=0
+    )
+    _regen, actual = resolve_political_capital(
+        opening=opening, capacity=capacity, legitimacy_bps=legitimacy_bps, spent=committed
+    )
+    return counterfactual - actual
+
+
+def test_below_capacity_a_commitment_costs_exactly_its_face_value() -> None:
+    """Branch 1 -- `opening + regeneration <= capacity`. This is the government under pressure,
+    the case where the choice matters most: `deficit_demo` opens at 300/800 with regeneration 380
+    (300 + 380 = 680 <= 800), so committing 250 costs the full 250."""
+    regeneration = political_capital_regeneration(legitimacy_bps=6_000)
+    assert regeneration == 380
+    assert 300 + regeneration <= 800  # the branch precondition, stated not assumed
+
+    assert _stock_cost(opening=300, capacity=800, legitimacy_bps=6_000, committed=250) == 250
+
+    _regen, closing = resolve_political_capital(
+        opening=300, capacity=800, legitimacy_bps=6_000, spent=250
+    )
+    assert closing == 430  # 300 - 250 + 380
+
+
+def test_at_capacity_regeneration_can_refund_a_commitment_entirely() -> None:
+    """Branch 2 -- `opening - committed + regeneration >= capacity`. THE RETRACTED CLAIM, pinned:
+    a government sitting at capacity can commit 250 (a decree) and close the turn still at
+    capacity, having paid nothing from stock. The commitment is still real -- it is bounded by
+    opening capital, recorded in the report and reconciled -- but it leaves no mark on the stock.
+    This is why Phase 3B1 calls political capital per-turn governing BANDWIDTH rather than a
+    budget that draws down."""
+    regeneration = political_capital_regeneration(legitimacy_bps=6_100)
+    assert regeneration == 383
+    assert 1_000 - 250 + regeneration >= 1_000  # the branch precondition
+
+    assert _stock_cost(opening=1_000, capacity=1_000, legitimacy_bps=6_100, committed=250) == 0
+
+    _regen, closing = resolve_political_capital(
+        opening=1_000, capacity=1_000, legitimacy_bps=6_100, spent=250
+    )
+    assert closing == 1_000  # still exactly at capacity
+
+
+def test_straddling_the_cap_a_commitment_costs_strictly_between_zero_and_its_face_value() -> None:
+    """Branch 3 -- neither precondition holds, so the commitment is partially refunded. At
+    700/1,000 with regeneration 439 the no-action close would clamp at 1,000, but committing 250
+    lands at 889 -- a real cost of 111, strictly inside `(0, 250)`."""
+    regeneration = political_capital_regeneration(legitimacy_bps=7_991)
+    assert regeneration == 439
+    assert 700 + regeneration > 1_000  # not branch 1
+    assert 700 - 250 + regeneration < 1_000  # not branch 2
+
+    cost = _stock_cost(opening=700, capacity=1_000, legitimacy_bps=7_991, committed=250)
+    assert cost == 111
+    assert 0 < cost < 250
+
+
+@given(
+    opening=st.integers(min_value=0, max_value=100_000),
+    capacity=st.integers(min_value=1, max_value=100_000),
+    legitimacy_bps=st.integers(min_value=0, max_value=10_000),
+    committed=st.integers(min_value=0, max_value=100_000),
+)
+def test_the_stock_cost_of_a_commitment_is_always_between_zero_and_its_face_value(
+    opening: int, capacity: int, legitimacy_bps: int, committed: int
+) -> None:
+    """The general bound the three worked branches above are instances of: a commitment can never
+    cost a government MORE than it committed, and can never pay it back extra."""
+    if committed > opening:
+        return  # rejected outright by the R2 guard; covered by its own test above
+    cost = _stock_cost(
+        opening=opening, capacity=capacity, legitimacy_bps=legitimacy_bps, committed=committed
+    )
+    assert 0 <= cost <= committed
