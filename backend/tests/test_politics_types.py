@@ -16,12 +16,16 @@ from pydantic import BaseModel, ValidationError
 from app.core.politics import (
     LEGITIMACY_MAX_BPS,
     LEGITIMACY_MIN_BPS,
+    RELATIONSHIP_INVESTMENT_CAP,
     StrictLegitimacyBps,
     StrictPoliticalCapital,
     StrictPoliticalCapitalCapacity,
+    StrictPoliticalCapitalCommitment,
     StrictPositiveSeatCount,
     StrictPreferenceBps,
     StrictRelationshipBps,
+    StrictRelationshipGainBps,
+    StrictRelationshipInvestment,
     StrictSeatCount,
     StrictSeatNumerator,
     StrictSignedBps,
@@ -65,6 +69,18 @@ class _SeatCountHolder(BaseModel):
 
 class _PositiveSeatCountHolder(BaseModel):
     value: StrictPositiveSeatCount
+
+
+class _RelationshipInvestmentHolder(BaseModel):
+    value: StrictRelationshipInvestment
+
+
+class _CapitalCommitmentHolder(BaseModel):
+    value: StrictPoliticalCapitalCommitment
+
+
+class _RelationshipGainHolder(BaseModel):
+    value: StrictRelationshipGainBps
 
 
 class _SeatNumeratorHolder(BaseModel):
@@ -387,3 +403,65 @@ def test_seat_numerator_holds_the_undivided_product() -> None:
     assert _SeatNumeratorHolder(value=0).value == 0
     with pytest.raises(ValidationError):
         _SeatNumeratorHolder(value=-1)
+
+
+# --- Phase 3B2A T8b: the investment cap is a decision-level bound -------------
+
+PHASE_3B2A_HOLDERS = [
+    pytest.param(_RelationshipInvestmentHolder, id="relationship-investment"),
+    pytest.param(_CapitalCommitmentHolder, id="capital-commitment"),
+    pytest.param(_RelationshipGainHolder, id="relationship-gain"),
+]
+
+
+@pytest.mark.parametrize("holder", PHASE_3B2A_HOLDERS)
+@pytest.mark.parametrize("bad_value", INVALID_INT_REPRESENTATIONS)
+def test_phase_3b2a_aliases_reject_invalid_representations(
+    holder: type[BaseModel], bad_value: object
+) -> None:
+    with pytest.raises(ValidationError):
+        holder(value=bad_value)
+
+
+def test_relationship_investment_spans_exactly_one_through_the_cap() -> None:
+    """T8b's four boundaries. `0` and `201` are rejected *by the type*, so no resolution-time code
+    has to defend against either — and 201 is refused rather than truncated to 200, because
+    silently spending 201 to buy what 200 buys destroys a point of capital the player never agreed
+    to lose."""
+    assert _RelationshipInvestmentHolder(value=1).value == 1
+    assert _RelationshipInvestmentHolder(value=RELATIONSHIP_INVESTMENT_CAP).value == 200
+
+    with pytest.raises(ValidationError):
+        _RelationshipInvestmentHolder(value=0)
+    with pytest.raises(ValidationError):
+        _RelationshipInvestmentHolder(value=RELATIONSHIP_INVESTMENT_CAP + 1)
+
+
+def test_the_investment_cap_is_two_hundred() -> None:
+    """Pinned as a value, not just as a bound: `RELATIONSHIP_INVESTMENT_CAP` is part of the accepted
+    decision schema (a player can hit it), so changing it is a compatibility event and must not
+    happen by accident."""
+    assert RELATIONSHIP_INVESTMENT_CAP == 200
+
+
+def test_capital_commitment_rejects_zero_so_a_ledger_row_is_always_real() -> None:
+    """Every stored expenditure row is a positive commitment; a zero commitment produces no row.
+    This is the padding defence: an attacker cannot add zero-cost rows to change what the ledger
+    appears to describe while keeping `total_committed == sum(rows)` intact."""
+    assert _CapitalCommitmentHolder(value=1).value == 1
+    with pytest.raises(ValidationError):
+        _CapitalCommitmentHolder(value=0)
+    with pytest.raises(ValidationError):
+        _CapitalCommitmentHolder(value=-1)
+
+
+def test_relationship_gain_is_non_negative_and_spans_the_widest_gap() -> None:
+    """Non-negative because nothing decays in Phase 3B2A. The bound is the widest gap the scale
+    admits (-10,000 -> +10,000); it is unreachable in one turn, and is a range backstop rather
+    than a modelled maximum."""
+    assert _RelationshipGainHolder(value=0).value == 0
+    assert _RelationshipGainHolder(value=20_000).value == 20_000
+    with pytest.raises(ValidationError):
+        _RelationshipGainHolder(value=-1)
+    with pytest.raises(ValidationError):
+        _RelationshipGainHolder(value=20_001)

@@ -8,6 +8,7 @@ what "canonical order" means for every seat tuple. Both are pinned.
 from __future__ import annotations
 
 from app.simulation.legislature import (
+    CapitalExpenditureCategory,
     ChangeDirection,
     GovernmentRole,
     LegislativeChamber,
@@ -58,3 +59,37 @@ def test_there_is_no_route_unavailable_outcome() -> None:
 
 def test_every_outcome_describes_a_completed_turn() -> None:
     assert len(LegislativeOutcome) == 4
+
+
+# --- Phase 3B2A: the capital-expenditure ledger's category -------------------
+
+
+def test_capital_expenditure_category_values_and_declaration_order_are_stable() -> None:
+    """Serialised into `report_json` and therefore hash-covered: renaming a value or reordering the
+    members changes every entry hash in every save that carries a ledger."""
+    assert [category.value for category in CapitalExpenditureCategory] == [
+        "bloc_relationship_investment",
+        "decree",
+        "legislative_influence",
+    ]
+
+
+def test_capital_expenditure_category_values_are_alphabetical() -> None:
+    """Why this matters rather than being a tidiness preference: the ledger's canonical sort key is
+    `(category, party_id, bloc_id)`. Because the values are already alphabetical, "declaration
+    order" and "sorted by value" are the same order, so there is no second convention a reader (or
+    a future validator) can get wrong."""
+    values = [category.value for category in CapitalExpenditureCategory]
+    assert values == sorted(values)
+
+
+def test_only_one_category_is_untargeted() -> None:
+    """A decree is an act of the executive with no bloc on the other side of it; every other
+    category names the bloc whose support or relationship was bought. `report`'s target-shape
+    validator encodes exactly this split, and it is pinned here so the two cannot drift."""
+    assert CapitalExpenditureCategory.DECREE.value == "decree"
+    targeted = set(CapitalExpenditureCategory) - {CapitalExpenditureCategory.DECREE}
+    assert {category.value for category in targeted} == {
+        "bloc_relationship_investment",
+        "legislative_influence",
+    }
