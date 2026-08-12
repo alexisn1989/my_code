@@ -442,8 +442,9 @@ legislature), §19 (coups/revolutions — risk surfacing), §20 (elections — s
 (leaders/cabinet). Split into three sub-phases: **3A** lays the constitutional and metric
 foundation (this is the smallest slice that later sub-phases can build onto without reshaping the
 state model); **3B** spends political capital through legislative/faction bargaining, itself split
-into **3B1** (legislature, parties, blocs and budget bargaining) and **3B2** (relationship
-evolution, competing capital uses, non-budget laws); **3C** adds government survival (elections,
+into **3B1** (legislature, parties, blocs and budget bargaining), **3B2A** (competing
+political-capital uses and mutable-but-improve-only bloc relationships), and **3B2B** (relationship
+decay, automatic reactions, and non-budget laws); **3C** adds government survival (elections,
 coups, removal).
 
 ### Phase 3A — Constitutional foundation, legitimacy and political capital — **complete**
@@ -587,19 +588,68 @@ decree may weakly dominate legislating, so the claim that every route always car
 opportunity cost is **explicitly retracted**; legislature composition is **static**; and the budget
 is the only proposal kind.
 
-### Phase 3B2 — Relationship evolution, competing capital uses and non-budget laws
+### Phase 3B2A — Competing political-capital uses and bloc relationships — **complete**
 
-Scope: §12 (faction bargaining, dynamic), the rest of §10. Builds directly on 3B1's static
-legislature.
+Scope: the first half of §12/§10's "faction bargaining, dynamic" and "competing political-capital
+expenditures" — `POL-3`, first half. Builds directly on 3B1's static legislature. Full rationale
+and calibration:
+[`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`](adr/0011-competing-political-capital-uses-and-bloc-relationships.md).
 
-Acceptance criteria: bloc relationships **evolve** in response to how the government treats them
-(bargained with, bypassed by decree, repeatedly ignored), with realignment and defections; a
-second proposal kind, which is also the point at which `DecisionSet` gains a genuine discriminated
-union; **competing political-capital expenditures within a single turn** (`POL-3` below), which is
-what makes the commitment opportunity cost strategically binding rather than notional; confidence
-votes and coalition collapse; conference committees or override procedures for bicameral
-disagreement; per-proposal supermajorities keyed to `amendment_difficulty`; AI-country politics
-once AI economies exist.
+- [x] A discriminated `Decision` union (`BudgetDecision | BlocRelationshipInvestmentDecision`),
+      located everywhere by kind (`DecisionSet.budget_decision()` /
+      `.relationship_investment_decision()`), never by tuple position — a global sweep converted
+      four shipped sites that had assumed `decisions[0]` was the budget, each a genuine defect
+      under canonical kind order (`"bloc_relationship_investment"` sorts before `"budget"`).
+- [x] `simulation/relationships.py`: a pure, form-neutral formula buying a bounded fraction of a
+      bloc's remaining relationship gap per turn, capped at `RELATIONSHIP_INVESTMENT_CAP = 200`
+      enforced at the decision (never silently clamped in the formula). Monotonic non-decreasing,
+      strictly bounded below the gap, and diminishing as an envelope property — **explicitly not**
+      strictly monotonic per integer or discretely concave, both measured and disclaimed rather
+      than silently assumed.
+- [x] `PoliticalCapitalReport`, `TurnReport`'s eighth report: a homogeneous capital-expenditure
+      ledger plus a homogeneous relationship-change detail tuple, generalizing
+      `political_capital_spent`'s identity to any number of competing sinks while keeping the row
+      schema explicitly bloc-targeted only (`POL-4` tracks extending it).
+- [x] Slot 11 (`update_institutional_loyalty_competence_corruption_power`) implements relationship
+      application — its first and only writer — after the vote (slot 1) and capital resolution
+      (slot 10), making the one-turn delay structural rather than an enforced rule: the same
+      capital cannot buy a vote and improve the relationship that vote was scored against, because
+      the vote is already resolved before the investment is applied.
+- [x] Reconciliation group 12 rewritten with a direct state-to-state staticness check (beyond the
+      existing report-vs-state groups 13–15, which only run on turns whose report carries
+      chamber/bloc rows) — closing a coverage hole found while building this phase's own tests: a
+      `NO_PROPOSAL` or `ENACTED_BY_DECREE` turn carries zero such rows by construction, so
+      structural corruption on exactly those turns was invisible before this fix. Group 14 pinned
+      to the opening relationship only; groups 19–21 add ledger, relationship, and provenance
+      checks against real state.
+- [x] `RULESET_VERSION` bumped again (`0.9.0 -> 0.10.0`); each scenario's `content_version` is the
+      only line that changed, proved by a dedicated test.
+- [x] `inspect --capital` and a shared capital-ledger renderer on both `resolve` and
+      `history --turn N`, following the single-renderer discipline `_print_legislative_report`
+      established.
+- [x] Sequential, one-based, engine-driven calibration on all three scenarios: both `deficit_demo`
+      and `decree_state` strategies are behind their never-invest/always-decree baseline for seven
+      consecutive resolved turns and first cheaper after resolved turn 8; `tiny_valid` shows
+      relationship investment widening a passing majority's margin, never changing passage.
+- [x] A fifth 100-turn soak submitting both a budget proposal and a relationship investment every
+      turn; performance impact measured before/after the report/phase-wiring commit, all four
+      pre-existing soaks within ~1.02–1.07x, safely under the 2x stop threshold.
+
+**No relationship decay or automatic reaction exists yet — improve-only, by design, for this
+sub-phase.** A patient player eventually reaches a free budget everywhere; the counterweight is
+Phase 3B2B below. Legislature composition beyond `government_relationship_bps` remains static.
+
+### Phase 3B2B — Relationship decay, automatic reactions and non-budget laws
+
+Scope: `POL-3`'s second half, plus the rest of §12/§10. Builds on 3B2A's mutable-but-improve-only
+relationships.
+
+Acceptance criteria: bloc relationships **decay and react automatically** to how the government
+treats them (bypassed by decree, repeatedly ignored), closing the improve-only ratchet 3B2A leaves
+open; a second proposal kind (the union already exists to carry it); confidence votes and coalition
+collapse; conference committees or override procedures for bicameral disagreement; per-proposal
+supermajorities keyed to `amendment_difficulty`; seat realignment and defections; AI-country
+politics once AI economies exist.
 
 ### Phase 3C — Government survival
 
@@ -623,7 +673,8 @@ so each lands as its own reviewable change rather than riding along inside an un
 | Ticket | Scope | Status |
 |---|---|---|
 | `POL-2` | Resolve the `InstitutionState` / `LegislatureState` overlap. Both shipped scenarios author an inert institution whose id is literally `legislature`, with float approval/trust/loyalty metrics no formula reads. **Re-scoped** from "convert the floats to strict bps" to "resolve the overlap" — converting eight floats would not address the duplication. Migrating the remaining inert float fields to strict bps rides along with it. | open |
-| `POL-3` | Competing political-capital expenditures within a turn, plus relationship consequences for how blocs are treated. The specific unblocker for ADR 0010's retracted opportunity-cost claim: today capital has exactly one sink, so per-turn bandwidth at capacity is effectively free. Lands in Phase 3B2. | open |
+| `POL-3` | Competing political-capital expenditures within a turn, plus relationship consequences for how blocs are treated. The specific unblocker for ADR 0010's retracted opportunity-cost claim. **First half (competing expenditures + mutable, improve-only relationships) closed by Phase 3B2A.** Second half (decay, automatic reactions) lands in Phase 3B2B. | half-closed |
+| `POL-4` | A tagged expenditure-target model. `CapitalExpenditureReport` addresses a legislative bloc by `(party_id, bloc_id)` and nothing else; a future expenditure with a different target kind (character, population group, constitutional axis) needs a tagged `target` union. Deliberately not built in 3B2A, where it would be a union of one. | open |
 | `FIN-1` | Reconcile `FinanceReport` closing balances against `TreasuryState`. Deliberately **not** absorbed into 3B1: it would not have caught a gating bug, since a failed vote produces perfectly self-consistent finance numbers for the *wrong* budget — reconciliation group 16 is what catches that. | open |
 | `FE-1` | Clear the dev-only transitive `nanoid` advisory by regenerating the frontend lockfile so `postcss` resolves `nanoid >= 3.3.17`. Dev-only, transitive, fix available, not a regression (the advisory database changed). Kept separate from every gameplay phase. | open |
 | `HIST-1` | An unreachable duplicate `return` in `history.py`. **Closed** — its removal was forced during Phase 3B1 when `_validate_entry_payload`'s return type changed from a 3-tuple to a 4-tuple. | closed |

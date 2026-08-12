@@ -16,7 +16,9 @@ every decision.
   [`docs/adr/0006-labor-allocation-at-fixed-prices.md`](docs/adr/0006-labor-allocation-at-fixed-prices.md),
   [`docs/adr/0007-resource-endowments-and-extraction.md`](docs/adr/0007-resource-endowments-and-extraction.md),
   [`docs/adr/0008-physical-extraction-derived-sector-output.md`](docs/adr/0008-physical-extraction-derived-sector-output.md),
-  [`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`](docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md)
+  [`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`](docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md),
+  [`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`](docs/adr/0010-legislature-parties-and-political-capital-bargaining.md),
+  [`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`](docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md)
 - **Economy formulas:** [`docs/economy_methodology.md`](docs/economy_methodology.md)
 
 ## Current status
@@ -25,8 +27,9 @@ every decision.
 gameplay), Phase 2B1 (sector production at fixed prices), Phase 2B2 (production-derived tax
 bases), Phase 2B3 (labor allocation and unemployment at fixed prices), Phase 2C1 (resource
 endowments and extraction), Phase 2C2 (physical extraction drives extraction-sector output), and
-Phase 3A (constitutional foundation, legitimacy and political capital), and Phase 3B1
-(legislature, parties, blocs and political-capital bargaining) are complete and
+Phase 3A (constitutional foundation, legitimacy and political capital), Phase 3B1
+(legislature, parties, blocs and political-capital bargaining), and Phase 3B2A (competing
+political-capital uses and bloc relationships) are complete and
 verified.** The player can propose tax rates and spending — and, as of Phase 3B1, must get that
 budget **through a legislature** to make it stick; eleven aggregate economic sectors
 resolve deterministic quarterly output at fixed base-year prices, staffed every turn by a
@@ -48,8 +51,12 @@ form of government, a compile-time-checked guarantee — and political capital r
 legitimacy. As of Phase 3B1 that political capital is genuinely **spendable**: the budget is routed
 through a deterministic legislative vote across chambers, parties and internal blocs, and the
 player can commit capital to move specific blocs. A failed vote means the tax rates genuinely do
-not change — so politics now affects the economy, closing the one-way gap Phase 3A left open. The
-relationship is otherwise still one-directional: population/labor supply affects
+not change — so politics now affects the economy, closing the one-way gap Phase 3A left open. As of
+Phase 3B2A, political capital has a **second, competing use**: a bloc's relationship to the
+government is no longer fixed — the player can invest capital to improve it, at a diminishing,
+capped rate, with the improvement applying only from the **following** turn, so the same capital
+can never both buy a vote and improve the relationship that vote is scored against. The relationship
+is otherwise still one-directional: population/labor supply affects
 allocation and production; resource endowments affect extraction, which affects the extraction
 sector's production, which (like every sector) affects tax bases and revenue; economic performance
 affects legitimacy; and tax rates, spending, and politics still do not affect allocation,
@@ -58,7 +65,8 @@ debt resolve deterministically and reconcile exactly every turn, with a self-val
 chain proving labor allocation, resource extraction, production, tax-base derivation, finance, and
 politics agree with each other, not just internally. All of it is wrapped in the same hash-chained,
 immutable history from Phase 1. There is no API and no database yet; no elections, coups or removal
-from power; no evolving party relationships, confidence votes or non-budget laws; and no prices,
+from power; relationships can only **improve** — there is no decay or automatic reaction to how a
+bloc is treated yet, and non-budget laws still do not exist; and no prices,
 inflation, wages, hiring friction, resource trade, or
 resource-to-industry linkage for the other ten sectors — see `docs/roadmap.md` for what's
 implemented per phase and `docs/economy_methodology.md` for exactly what's simulated and what
@@ -288,6 +296,37 @@ that was really submitted. History replay now runs the identical check, so a tam
 stored decision *and* recomputes the hash chain is caught by semantics where hashing alone could
 not. Full rationale, calibration and the retracted opportunity-cost claim:
 [`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`](docs/adr/0010-legislature-parties-and-political-capital-bargaining.md).
+
+### Competing political-capital uses and bloc relationships (Phase 3B2A)
+
+Political capital now has a second sink that genuinely competes with the first. A
+`BlocRelationshipInvestmentDecision` — the decision schema's first discriminated union member
+alongside `BudgetDecision` — commits capital to one or more blocs, improving each targeted bloc's
+`government_relationship_bps` by a bounded fraction of its remaining gap to the relationship
+ceiling (`trunc(gap · capital / (500 + capital))`, capped at 200 capital per bloc per turn).
+**The improvement applies only from the following turn**: this turn's vote is decided against the
+*opening* relationship, and the investment lands on `politics.legislature` only after the vote is
+already resolved — the same capital cannot buy a vote and improve the relationship that vote was
+scored against, and the ordering makes that structural rather than merely enforced. A guaranteed
+zero-effect investment (a bloc already close enough to the ceiling that no affordable amount would
+move it) is refused atomically rather than charged.
+
+The total commitment — legislative or decree, plus every relationship investment — is bounded by
+this turn's *opening* political capital, generalizing the same identity Phase 3B1 established for
+the budget alone. `TurnReport` gained an eighth report, `PoliticalCapitalReport`, itemizing every
+commitment and every relationship change; reconciliation's group 12 gained a direct
+state-to-state staticness check, closing a real coverage hole found while building this phase's own
+tests — a turn with no legislative proposal at all carries zero chamber/bloc report rows by
+construction, so the report-vs-state checks alone could not see a structural corruption on exactly
+those turns.
+
+Calibrated against the real engine, not hand-computed: on both `deficit_demo` and `decree_state`, a
+strategy that invests every turn alongside the cheapest available route is **behind** a
+never-invest/always-decree baseline for seven consecutive resolved turns and first becomes cheaper
+after resolved turn 8 — relationship investment is a genuinely long-term play, not a quick win.
+**Relationships can only improve in this phase** — there is no decay or automatic reaction yet, an
+explicit, named interim limitation, not an oversight. Full rationale and calibration:
+[`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`](docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md).
 
 ## Frontend
 
