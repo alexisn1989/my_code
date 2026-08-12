@@ -539,7 +539,7 @@ def test_seats_mismatch_is_rejected() -> None:
         decisions=decisions,
     )
     assert any(
-        "seats=1 does not match state seats=" in p
+        "seats=1 does not match" in p and "_state seats=" in p
         for p in problems
         if "civic_union" in p and "mainstream" in p
     )
@@ -657,7 +657,10 @@ def test_bonus_seat_assignment_is_caught_by_report_validation_not_reconciliation
 
 
 def test_legislature_mutation_is_rejected() -> None:
-    """Group 12 (D7 staticness): closing state's legislature differs from opening's."""
+    """(Phase 3B2A, R12) Group 12/14's structural staticness proof, updated: `discipline_bps` is
+    a still-static field, so a closing-side mutation of it is caught by the field-by-field
+    structural comparison against the CLOSING state -- a more precise diagnosis than Phase 3B1's
+    whole-model "legislature was mutated", which never said which field moved."""
     state, resolution, decisions = _tiny_valid_passing_turn()
     player = resolution.state.world.countries[resolution.state.world.player_country_id]
     assert player.politics is not None and player.politics.legislature is not None
@@ -676,7 +679,11 @@ def test_legislature_mutation_is_rejected() -> None:
         report=resolution.report,
         decisions=decisions,
     )
-    assert any("legislature was mutated" in p for p in problems)
+    assert any(
+        "discipline_bps" in p and "closing_state" in p
+        for p in problems
+        if party.id in p and bloc.id in p
+    )
 
 
 def test_opening_capital_mismatch_is_rejected() -> None:

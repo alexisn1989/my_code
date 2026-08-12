@@ -133,12 +133,13 @@ def test_phases_run_in_the_documented_order() -> None:
 
 
 def test_only_the_accounting_and_report_phases_are_implemented_so_far() -> None:
-    # As of Phase 3B1: government accounting (3 phases) + sector production (1 phase) +
-    # legitimacy/political-capital resolution (1 phase, slot 10) + legislative vote resolution
-    # (1 phase, slot 1) + report generation are real; every other resolution-order step remains
-    # an honest no-op. This test's job is to track that boundary exactly as it moves phase by
-    # phase — update the IMPLEMENTED set here, not the underlying assertion, as more phases gain
-    # real logic.
+    # As of Phase 3B2A: government accounting (3 phases) + sector production (1 phase) +
+    # legitimacy/political-capital resolution (1 phase, slot 10) + legislative vote and
+    # capital-ledger resolution (1 phase, slot 1) + bloc-relationship application (1 phase,
+    # slot 11) + report generation are real; every other resolution-order step remains an honest
+    # no-op. This test's job is to track that boundary exactly as it moves phase by phase —
+    # update the IMPLEMENTED set here, not the underlying assertion, as more phases gain real
+    # logic.
     state = make_game_state(turn=0, state_version=0)
     resolution = resolve_turn(state, _empty_decisions_for(state))
     statuses = resolution.report.dev.phase_statuses
@@ -150,6 +151,7 @@ def test_only_the_accounting_and_report_phases_are_implemented_so_far() -> None:
         "resolve_government_revenue_and_expenditure",
         "update_prices_inflation_employment_debt_reserves",
         "update_group_welfare_approval_trust_radicalization",
+        "update_institutional_loyalty_competence_corruption_power",
         "generate_turn_report",
     }
     for phase_id, status in statuses.items():

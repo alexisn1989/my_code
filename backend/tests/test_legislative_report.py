@@ -882,9 +882,13 @@ def test_commitment_mismatch_rejected_when_legislative_side_changes(load) -> Non
 
 @_TURN_LOADERS
 def test_commitment_mismatch_rejected_when_political_side_changes(load) -> None:
+    """(Phase 3B2A) Caught by `_political_capital_ledger_reconciles_across_reports`'s FIRST check
+    — the ledger's own `total_committed` (unchanged) no longer matches the tampered
+    `political.political_capital_spent` — rather than the legislative-share check further down,
+    since that one is still internally consistent with the (untouched) ledger."""
     data = _turn_report_dict_with_mainstream_allocation(50)
     _bump_political_spent(data, new_spent=51)
-    with pytest.raises(ValidationError, match="political_capital_committed"):
+    with pytest.raises(ValidationError, match="total_committed"):
         load(data)
 
 

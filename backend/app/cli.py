@@ -250,6 +250,36 @@ def _render_budget_blocked_by_legislature(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_political_capital_ledger_resolved(params: dict[str, str | int]) -> str:
+    opening = int(params["opening"])
+    total_committed = int(params["total_committed"])
+    legislative_committed = int(params["legislative_committed"])
+    relationship_committed = int(params["relationship_committed"])
+    regeneration = int(params["regeneration"])
+    closing = int(params["closing"])
+    capacity = int(params["capacity"])
+    return (
+        f"Political capital ledger resolved: opening={opening:,} committed={total_committed:,} "
+        f"(legislative/decree={legislative_committed:,}, "
+        f"relationship investment={relationship_committed:,}) regeneration=+{regeneration:,} "
+        f"-> closing={closing:,} / {capacity:,}."
+    )
+
+
+def _render_bloc_relationship_investment_resolved(params: dict[str, str | int]) -> str:
+    party_id = str(params["party_id"])
+    bloc_id = str(params["bloc_id"])
+    political_capital = int(params["political_capital"])
+    opening_bps = int(params["opening_relationship_bps"])
+    applied_bps = int(params["applied_change_bps"])
+    closing_bps = int(params["closing_relationship_bps"])
+    return (
+        f"Relationship investment in {party_id}/{bloc_id}: {political_capital:,} political "
+        f"capital moved the relationship from {_bps_to_percent_str(opening_bps)} to "
+        f"{_bps_to_percent_str(closing_bps)} ({_format_bps_delta(applied_bps)})."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -265,6 +295,8 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "political_capital_resolved": _render_political_capital_resolved,
     "legislative_vote_resolved": _render_legislative_vote_resolved,
     "budget_blocked_by_legislature": _render_budget_blocked_by_legislature,
+    "political_capital_ledger_resolved": _render_political_capital_ledger_resolved,
+    "bloc_relationship_investment_resolved": _render_bloc_relationship_investment_resolved,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id

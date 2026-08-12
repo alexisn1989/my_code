@@ -191,6 +191,18 @@ class TestTaxBaseDerivationReportSelfValidation:
 # --- R1: cross-report validation on TurnReport ------------------------------
 
 
+_EIGHT_REPORT_FIELDS = (
+    "labor_market",
+    "resources",
+    "production",
+    "tax_base_derivation",
+    "finance",
+    "political",
+    "legislative",
+    "political_capital",
+)
+
+
 class TestR1CrossReportValidation:
     def test_production_output_mismatch_with_derivation_input_is_rejected(self) -> None:
         data, _ = _valid_turn_report_dict()
@@ -263,40 +275,21 @@ class TestR1CrossReportValidation:
         "present_fields",
         [
             sorted(combo)
-            for r in range(1, 7)
-            for combo in itertools.combinations(
-                (
-                    "labor_market",
-                    "resources",
-                    "production",
-                    "tax_base_derivation",
-                    "finance",
-                    "political",
-                    "legislative",
-                ),
-                r,
-            )
+            for r in range(1, 8)
+            for combo in itertools.combinations(_EIGHT_REPORT_FIELDS, r)
         ],
     )
-    def test_all_partial_combinations_of_seven_reports_are_rejected(
+    def test_all_partial_combinations_of_eight_reports_are_rejected(
         self, present_fields: list[str]
     ) -> None:
         """Phase 2B3 extended the completeness rule from three reports to four; Phase 2C1 extends
-        it again to five; Phase 3A extends it again to six; Phase 3B1 extends it again to seven —
-        every proper nonempty subset of {labor_market, resources, production,
-        tax_base_derivation, finance, political, legislative} (126 of them, up from 62) must be
-        rejected.
+        it again to five; Phase 3A extends it again to six; Phase 3B1 extends it again to seven;
+        Phase 3B2A extends it again to eight — every proper nonempty subset of {labor_market,
+        resources, production, tax_base_derivation, finance, political, legislative,
+        political_capital} (254 of them, up from 126) must be rejected.
         """
         data, _ = _valid_turn_report_dict()
-        for field in (
-            "labor_market",
-            "resources",
-            "production",
-            "tax_base_derivation",
-            "finance",
-            "political",
-            "legislative",
-        ):
+        for field in _EIGHT_REPORT_FIELDS:
             if field not in present_fields:
                 data[field] = None
         with pytest.raises(ValidationError, match="all present or all absent"):
@@ -366,6 +359,7 @@ class TestR1CrossReportValidation:
         data["finance"] = None
         data["political"] = None
         data["legislative"] = None
+        data["political_capital"] = None
         report = TurnReport.model_validate(data)
         assert report.labor_market is None
         assert report.resources is None
@@ -374,6 +368,7 @@ class TestR1CrossReportValidation:
         assert report.finance is None
         assert report.political is None
         assert report.legislative is None
+        assert report.political_capital is None
 
     def test_all_five_present_and_consistent_is_valid(self) -> None:
         data, report = _valid_turn_report_dict()
