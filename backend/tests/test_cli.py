@@ -44,7 +44,7 @@ def test_full_workflow_new_resolve_with_decisions_file_then_history(
             {
                 "expected_turn": 0,
                 "expected_state_version": 0,
-                "decisions": [{"personal_income_rate_bps": 2_500}],
+                "decisions": [{"kind": "budget", "personal_income_rate_bps": 2_500}],
             }
         ),
         encoding="utf-8",
@@ -88,7 +88,7 @@ def test_decisions_file_requires_turns_one(
             {
                 "expected_turn": 0,
                 "expected_state_version": 0,
-                "decisions": [{"personal_income_rate_bps": 2_500}],
+                "decisions": [{"kind": "budget", "personal_income_rate_bps": 2_500}],
             }
         ),
         encoding="utf-8",
@@ -161,7 +161,7 @@ def test_stale_decisions_file_expected_turn_is_rejected(tmp_path: Path) -> None:
             {
                 "expected_turn": 5,  # save is actually at turn 0
                 "expected_state_version": 0,
-                "decisions": [{"personal_income_rate_bps": 2_500}],
+                "decisions": [{"kind": "budget", "personal_income_rate_bps": 2_500}],
             }
         ),
         encoding="utf-8",
@@ -302,13 +302,21 @@ def _resolve_with(
     decision: dict | None,
     out_name: str = "save1.json",
 ) -> Path:
-    """Resolve exactly one turn, optionally with a `BudgetDecision`, and return the new save."""
+    """Resolve exactly one turn, optionally with a `BudgetDecision`, and return the new save.
+
+    `decision` is a bare budget payload (no `"kind"`) — added here rather than at every call site,
+    since a discriminated union needs the tag present in the input even though `kind` itself
+    defaults to `"budget"` for direct model construction.
+    """
     save1 = tmp_path / out_name
     argv = ["resolve", "--state", str(save0), "--turns", "1", "--out", str(save1)]
     if decision is not None:
+        tagged_decision = {"kind": "budget", **decision}
         decisions_file = tmp_path / f"decisions_{out_name}"
         decisions_file.write_text(
-            json.dumps({"expected_turn": 0, "expected_state_version": 0, "decisions": [decision]}),
+            json.dumps(
+                {"expected_turn": 0, "expected_state_version": 0, "decisions": [tagged_decision]}
+            ),
             encoding="utf-8",
         )
         argv += ["--decisions-file", str(decisions_file)]
@@ -575,7 +583,9 @@ def test_unavailable_decree_writes_no_output_or_temp_file(tmp_path: Path) -> Non
             {
                 "expected_turn": 0,
                 "expected_state_version": 0,
-                "decisions": [{"personal_income_rate_bps": 2_500, "route": "decree"}],
+                "decisions": [
+                    {"kind": "budget", "personal_income_rate_bps": 2_500, "route": "decree"}
+                ],
             }
         ),
         encoding="utf-8",

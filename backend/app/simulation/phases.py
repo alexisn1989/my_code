@@ -382,7 +382,10 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
         spending_plan=finance.spending_plan.model_copy(),
     )
 
-    budget_decision = ctx.decisions.decisions[0] if ctx.decisions.decisions else None
+    # (Phase 3B2A) `budget_decision()`, never `decisions[0]`. Canonical kind order sorts
+    # "bloc_relationship_investment" BEFORE "budget", so on a turn carrying both, index 0 is
+    # the investment -- and this vote would have been held on the wrong object, silently.
+    budget_decision = ctx.decisions.budget_decision()
 
     if budget_decision is None:
         ctx.legislative_scratch = LegislativeScratch(
@@ -645,7 +648,7 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
         previous_spending_plan=finance.spending_plan.model_copy(),
     )
 
-    budget_decision = ctx.decisions.decisions[0] if ctx.decisions.decisions else None
+    budget_decision = ctx.decisions.budget_decision()
     applies = scratch.outcome in (
         LegislativeOutcome.PASSED_LEGISLATIVE,
         LegislativeOutcome.ENACTED_BY_DECREE,

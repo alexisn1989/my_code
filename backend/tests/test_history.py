@@ -24,6 +24,18 @@ from tests.conftest import make_game_state
 _SFV = SAVE_FORMAT_VERSION
 
 
+def _budget_of(decision_set: DecisionSet) -> BudgetDecision:
+    """The submitted budget, located by kind rather than by tuple position (Phase 3B2A).
+
+    These tamper tests build budget-only decision sets, so index 0 would still work today — which
+    is exactly why it is not used. A positional read here is a template a future mixed-set test
+    would copy, and under canonical kind order a relationship investment sorts ahead of the budget.
+    """
+    budget = decision_set.budget_decision()
+    assert budget is not None
+    return budget
+
+
 def _fresh_save() -> GameSave:
     return new_game(make_game_state(turn=0, state_version=0), save_format_version=_SFV)
 
@@ -977,7 +989,7 @@ def test_consistently_rehashed_decision_route_tamper_still_fails_reconciliation(
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    tampered_budget = decision_set.decisions[0].model_copy(update={"route": ProposalRoute.DECREE})
+    tampered_budget = _budget_of(decision_set).model_copy(update={"route": ProposalRoute.DECREE})
     tampered_set = decision_set.model_copy(update={"decisions": (tampered_budget,)})
     tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
     assert tampered_json != original.decisions_json
@@ -999,7 +1011,7 @@ def test_consistently_rehashed_decision_tax_target_value_tamper_still_fails_reco
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    tampered_budget = decision_set.decisions[0].model_copy(
+    tampered_budget = _budget_of(decision_set).model_copy(
         update={"personal_income_rate_bps": 2_600}
     )
     tampered_set = decision_set.model_copy(update={"decisions": (tampered_budget,)})
@@ -1018,7 +1030,7 @@ def test_consistently_rehashed_decision_spending_target_value_tamper_still_fails
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    original_budget = decision_set.decisions[0]
+    original_budget = _budget_of(decision_set)
     tampered_updates = tuple(
         update.model_copy(update={"amount": 32_000_00})
         if update.category is SpendingCategory.HEALTH
@@ -1045,7 +1057,7 @@ def test_consistently_rehashed_tax_category_swap_preserving_aggregate_still_fail
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    original_budget = decision_set.decisions[0]
+    original_budget = _budget_of(decision_set)
     assert original_budget.personal_income_rate_bps == 2_500
     assert original_budget.corporate_rate_bps == 3_000
     tampered_budget = original_budget.model_copy(
@@ -1071,7 +1083,7 @@ def test_consistently_rehashed_spending_category_swap_preserving_total_still_fai
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    original_budget = decision_set.decisions[0]
+    original_budget = _budget_of(decision_set)
     amounts = {update.category: update.amount for update in original_budget.spending_updates}
     assert amounts[SpendingCategory.HEALTH] == 31_000_00
     assert amounts[SpendingCategory.EDUCATION] == 23_000_00
@@ -1102,7 +1114,7 @@ def test_consistently_rehashed_influence_allocation_tamper_still_fails_reconcili
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    original_budget = decision_set.decisions[0]
+    original_budget = _budget_of(decision_set)
     assert len(original_budget.influence) == 1
     assert original_budget.influence[0].political_capital == 10
     tampered_budget = original_budget.model_copy(

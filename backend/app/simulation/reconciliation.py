@@ -48,7 +48,7 @@ individual field within a group, is independently corruptible and independently 
 from __future__ import annotations
 
 from app.simulation.constitution import constitution_digest
-from app.simulation.decisions import DecisionSet, budget_decision_digest
+from app.simulation.decisions import BudgetDecision, DecisionSet, budget_decision_digest
 from app.simulation.legislature import LegislativeChamber, LegislativeOutcome
 from app.simulation.report import TurnReport
 from app.simulation.state import GameState, SpendingCategory
@@ -441,7 +441,10 @@ def reconcile_political_and_legislative_report(
     # Group 16: budget gating, against the ACTUAL submitted decision, never report prose.
     opening_finance = opening_player.finance
     closing_finance = closing_player.finance
-    decision = decisions.decisions[0] if decisions is not None and decisions.decisions else None
+    # (Phase 3B2A) Located by KIND, never by position: under the decision union a relationship
+    # investment sorts ahead of the budget, so `decisions[0]` would have compared the closing
+    # policy against a decision that never mentioned policy at all.
+    decision = decisions.budget_decision() if decisions is not None else None
     if decisions is not None:
         if opening_finance is None or closing_finance is None:
             problems.append(
@@ -533,9 +536,10 @@ def reconcile_political_and_legislative_report(
 
     # Group 18: decision provenance -- located from the REAL DecisionSet, never inferred.
     if decisions is not None:
-        if len(decisions.decisions) > 1:
+        budget_count = sum(1 for d in decisions.decisions if isinstance(d, BudgetDecision))
+        if budget_count > 1:
             problems.append(
-                f"the submitted DecisionSet carries {len(decisions.decisions)} BudgetDecisions; "
+                f"the submitted DecisionSet carries {budget_count} BudgetDecisions; "
                 "at most one is ever valid"
             )
         if decisions.expected_turn != opening_state.turn:

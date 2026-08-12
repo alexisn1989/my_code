@@ -105,11 +105,14 @@ class TestDecisionSetValidation:
             )
 
     def test_a_list_of_decisions_is_accepted_and_stored_as_a_tuple(self) -> None:
+        # (Phase 3B2A) `kind` must be explicit here even though the field itself defaults to
+        # "budget": a discriminated union needs the tag present in the input to know which member
+        # to validate against, before any field default is ever applied.
         decision_set = DecisionSet.model_validate(
             {
                 "expected_turn": 0,
                 "expected_state_version": 0,
-                "decisions": [{"personal_income_rate_bps": 2_000}],
+                "decisions": [{"kind": "budget", "personal_income_rate_bps": 2_000}],
             }
         )
         assert isinstance(decision_set.decisions, tuple)

@@ -849,7 +849,8 @@ def test_applied_policy_after_a_failed_vote_is_rejected() -> None:
     assert resolution.report.legislative.outcome is LegislativeOutcome.FAILED_LEGISLATIVE
     player = resolution.state.world.countries[resolution.state.world.player_country_id]
     assert player.finance is not None
-    decision = decisions.decisions[0]
+    decision = decisions.budget_decision()
+    assert decision is not None
     assert decision.personal_income_rate_bps is not None
     mutated_finance = player.finance.model_copy(
         update={
