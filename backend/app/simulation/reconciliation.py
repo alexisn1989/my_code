@@ -69,7 +69,12 @@ individual field within a group, is independently corruptible and independently 
 from __future__ import annotations
 
 from app.simulation.constitution import constitution_digest
-from app.simulation.decisions import BudgetDecision, DecisionSet, budget_decision_digest
+from app.simulation.decisions import (
+    BudgetDecision,
+    DecisionSet,
+    bloc_relationship_investment_digest,
+    budget_decision_digest,
+)
 from app.simulation.legislature import (
     CapitalExpenditureCategory,
     LegislativeChamber,
@@ -776,6 +781,27 @@ def reconcile_political_and_legislative_report(
                 "no relationship-investment decision was submitted but "
                 "political_capital.relationship_changes is non-empty"
             )
+
+        # Provenance digest: every BLOC_RELATIONSHIP_INVESTMENT row's `decision_digest` must equal
+        # `bloc_relationship_investment_digest` of the REAL submitted decision -- mirroring group
+        # 18's `budget_decision_digest` check exactly, so editing the stored decision and leaving
+        # a stale digest on the report row is caught the same way a stale budget digest is.
+        investment_expenditure_rows = [
+            expenditure_row
+            for expenditure_row in political_capital_report.expenditures
+            if expenditure_row.category is CapitalExpenditureCategory.BLOC_RELATIONSHIP_INVESTMENT
+        ]
+        if investment_decision is not None:
+            expected_investment_digest = bloc_relationship_investment_digest(investment_decision)
+            for expenditure_row in investment_expenditure_rows:
+                if expenditure_row.decision_digest != expected_investment_digest:
+                    problems.append(
+                        "political_capital.expenditures row "
+                        f"({expenditure_row.party_id!r}, {expenditure_row.bloc_id!r}): "
+                        f"decision_digest={expenditure_row.decision_digest!r} does not match "
+                        "bloc_relationship_investment_digest(the submitted decision)="
+                        f"{expected_investment_digest!r}"
+                    )
 
     # Group 18: decision provenance -- located from the REAL DecisionSet, never inferred.
     if decisions is not None:
