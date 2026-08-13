@@ -582,7 +582,17 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                 )
 
     if player.economy is not None and save.entries:
-        latest_report = save.entries[-1].report()
+        # The latest entry's report may fail schema/semantic validation on an invalid save (a
+        # consistently-rehashed tamper that `validate_history` above has already caught and
+        # recorded in `problems`) -- `inspect`'s whole point is to still report on an invalid
+        # save rather than crash, so this parse is guarded the same way `validate_history`
+        # itself guards every entry's parse. The failure is not re-reported here: `problems`
+        # already carries the identical "stored report fails schema validation" message, printed
+        # once below.
+        try:
+            latest_report = save.entries[-1].report()
+        except ValidationError:
+            latest_report = None
         if latest_report is not None and latest_report.production is not None:
             production = latest_report.production
             print(
