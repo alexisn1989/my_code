@@ -44,7 +44,7 @@ def test_full_workflow_new_resolve_with_decisions_file_then_history(
             {
                 "expected_turn": 0,
                 "expected_state_version": 0,
-                "decisions": [{"personal_income_rate_bps": 2_500}],
+                "decisions": [{"kind": "budget", "personal_income_rate_bps": 2_500}],
             }
         ),
         encoding="utf-8",
@@ -88,7 +88,7 @@ def test_decisions_file_requires_turns_one(
             {
                 "expected_turn": 0,
                 "expected_state_version": 0,
-                "decisions": [{"personal_income_rate_bps": 2_500}],
+                "decisions": [{"kind": "budget", "personal_income_rate_bps": 2_500}],
             }
         ),
         encoding="utf-8",
@@ -161,7 +161,7 @@ def test_stale_decisions_file_expected_turn_is_rejected(tmp_path: Path) -> None:
             {
                 "expected_turn": 5,  # save is actually at turn 0
                 "expected_state_version": 0,
-                "decisions": [{"personal_income_rate_bps": 2_500}],
+                "decisions": [{"kind": "budget", "personal_income_rate_bps": 2_500}],
             }
         ),
         encoding="utf-8",
@@ -302,13 +302,21 @@ def _resolve_with(
     decision: dict | None,
     out_name: str = "save1.json",
 ) -> Path:
-    """Resolve exactly one turn, optionally with a `BudgetDecision`, and return the new save."""
+    """Resolve exactly one turn, optionally with a `BudgetDecision`, and return the new save.
+
+    `decision` is a bare budget payload (no `"kind"`) — added here rather than at every call site,
+    since a discriminated union needs the tag present in the input even though `kind` itself
+    defaults to `"budget"` for direct model construction.
+    """
     save1 = tmp_path / out_name
     argv = ["resolve", "--state", str(save0), "--turns", "1", "--out", str(save1)]
     if decision is not None:
+        tagged_decision = {"kind": "budget", **decision}
         decisions_file = tmp_path / f"decisions_{out_name}"
         decisions_file.write_text(
-            json.dumps({"expected_turn": 0, "expected_state_version": 0, "decisions": [decision]}),
+            json.dumps(
+                {"expected_turn": 0, "expected_state_version": 0, "decisions": [tagged_decision]}
+            ),
             encoding="utf-8",
         )
         argv += ["--decisions-file", str(decisions_file)]
@@ -407,6 +415,110 @@ def test_inspect_legislature_is_opt_in(tmp_path: Path, capsys: pytest.CaptureFix
     out = capsys.readouterr().out
     assert "authored seats" not in out
     assert "strict majority" not in out
+
+
+# --- Phase 3B2A (§16): `inspect --capital` -----------------------------------------------------
+
+
+def test_inspect_capital_shows_bloc_relationships(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    capsys.readouterr()
+
+    assert main(["inspect", "--state", str(save0), "--capital"]) == 0
+    out = capsys.readouterr().out
+
+    assert "political capital:   500 / 1,000" in out
+    assert "bloc relationships:" in out
+    assert "rural_alliance/farmers" in out
+    # No fabricated ledger or vote tally -- inspection is turn-0 state, not a resolved turn.
+    assert "expenditures:" not in out
+    assert "committed" not in out
+
+
+def test_inspect_capital_is_opt_in(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    capsys.readouterr()
+    assert main(["inspect", "--state", str(save0)]) == 0
+    out = capsys.readouterr().out
+    assert "bloc relationships:" not in out
+
+
+def _resolve_with_decisions(
+    tmp_path: Path,
+    save0: Path,
+    decisions: list[dict],
+    out_name: str = "save1.json",
+) -> Path:
+    """Like `_resolve_with`, but accepts a full raw `decisions` list (any kind, already tagged)
+    rather than a single bare budget payload -- needed for a mixed budget + relationship
+    investment `DecisionSet`."""
+    save1 = tmp_path / out_name
+    decisions_file = tmp_path / f"decisions_{out_name}"
+    decisions_file.write_text(
+        json.dumps({"expected_turn": 0, "expected_state_version": 0, "decisions": decisions}),
+        encoding="utf-8",
+    )
+    argv = [
+        "resolve",
+        "--state",
+        str(save0),
+        "--turns",
+        "1",
+        "--decisions-file",
+        str(decisions_file),
+        "--out",
+        str(save1),
+    ]
+    assert main(argv) == 0
+    return save1
+
+
+def test_resolve_and_history_render_the_same_capital_ledger(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """(§16) The capital-ledger block follows the SAME shared-renderer discipline as the
+    legislative block: `resolve` and `history --turn N` must print identical figures. Submits a
+    mixed budget + relationship-investment `DecisionSet` on `tiny_valid`, whose `rural_alliance/
+    farmers` bloc opens at a +20.00% relationship (gap 8,000 bps, no truncation ties in this
+    range)."""
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    capsys.readouterr()
+    save1 = _resolve_with_decisions(
+        tmp_path,
+        save0,
+        [
+            # Canonical DecisionSet kind order: "bloc_relationship_investment" sorts before
+            # "budget" -- reject-not-normalize, so the file must already be in that order.
+            {
+                "kind": "bloc_relationship_investment",
+                "investments": [
+                    {
+                        "party_id": "rural_alliance",
+                        "bloc_id": "farmers",
+                        "political_capital": 100,
+                    }
+                ],
+            },
+            {"kind": "budget", "personal_income_rate_bps": 2_500},
+        ],
+    )
+    resolve_out = capsys.readouterr().out
+
+    assert main(["history", "--state", str(save1), "--turn", "1"]) == 0
+    history_out = capsys.readouterr().out
+
+    for fragment in (
+        "political capital:",
+        "opening 500  committed 100  regeneration",
+        "expenditures:",
+        "bloc_relationship_investment",
+        "rural_alliance/farmers",
+        "relationship changes:",
+    ):
+        assert fragment in resolve_out, fragment
+        assert fragment in history_out, fragment
 
 
 # --- 3/4/16. resolve and history render the same block through the shared helper --------------
@@ -575,7 +687,9 @@ def test_unavailable_decree_writes_no_output_or_temp_file(tmp_path: Path) -> Non
             {
                 "expected_turn": 0,
                 "expected_state_version": 0,
-                "decisions": [{"personal_income_rate_bps": 2_500, "route": "decree"}],
+                "decisions": [
+                    {"kind": "budget", "personal_income_rate_bps": 2_500, "route": "decree"}
+                ],
             }
         ),
         encoding="utf-8",

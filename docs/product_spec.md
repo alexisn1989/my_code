@@ -131,10 +131,21 @@ takes effect; political capital committed to move specific blocs, consumed wheth
 or not; and a fixed-cost decree route where the constitution grants unlimited decree authority. A
 new constitutional rule (C10) makes an order in which no organ can make law unrepresentable.
 
-Still deferred, and **not** implied by that foundation existing: legislature composition is
-**static** — no relationship evolution, realignment, defections, confidence votes or coalition
-collapse; the budget is the **only** proposal kind, so there are no general laws yet; there are no
-competing uses for political capital within a turn; and government survival — elections, coups,
+**Phase 3B2A gives political capital a second, competing sink and makes bloc relationships
+mutable** (see
+`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`): a relationship
+investment decision, resolved a full turn after the vote it cannot influence, that improves a
+targeted bloc's `government_relationship_bps` at a diminishing, bounded rate; a capital ledger that
+generalizes the spend identity to any number of sinks, still bounded by opening capital each turn;
+and calibration proving a decree's opportunity cost is now real and binding, even under full
+regeneration.
+
+Still deferred, and **not** implied by that foundation existing: relationships can only
+**improve** — there is no decay and no automatic reaction to how a bloc is treated (being bypassed
+by decree, repeatedly ignored), so the ratchet Phase 3B2A opens is left open by design, closed only
+in **Phase 3B2B**; seat composition beyond `government_relationship_bps` is still **static** — no
+realignment, defections, confidence votes or coalition collapse; the budget is the **only**
+proposal kind, so there are no general laws yet; and government survival — elections, coups,
 removal from power (§19, §20, §21) — remains Phase 3C. §3.1's "removal from office" claim is still
 not mechanically possible in any form.
 

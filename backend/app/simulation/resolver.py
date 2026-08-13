@@ -112,6 +112,7 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
         tax_base_derivation=ctx.tax_base_derivation_report,
         political=ctx.political_report,
         legislative=ctx.legislative_report,
+        political_capital=ctx.political_capital_report,
     )
 
     reconciliation_problems = reconcile_political_and_legislative_report(

@@ -4,6 +4,10 @@ The rule this file pins is the legislative twin of `test_legitimacy_neutrality.p
 *form* must never decide how a vote *goes*. A monarchy's legislature and a republic's legislature,
 holding identical seats and identical opinions, must count identically.
 
+Phase 3B2A adds `simulation.relationships` to the same guarantee: how readily a caucus forgives a
+government is a property of that caucus, not of the government's constitutional form. A monarchy
+and a republic buy the same relationship improvement for the same capital.
+
 Phase 3B1 reads the constitution in exactly **one** place — routing, which decides which chambers
 must approve a proposal and whether a decree is constitutionally available. That is structure
 deciding *procedure*. Neither `simulation.apportionment` nor `simulation.legislative_voting`
@@ -29,9 +33,11 @@ from types import ModuleType
 from app.simulation import apportionment as apportionment_module
 from app.simulation import constitution as constitution_module
 from app.simulation import legislative_voting as voting_module
+from app.simulation import relationships as relationships_module
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
 from app.simulation.legislative_voting import PolicyChange, resolve_bloc_support
 from app.simulation.legislature import ChangeDirection, GovernmentRole
+from app.simulation.relationships import relationship_gain_bps
 
 CONSTITUTIONAL_TYPE_NAMES = frozenset(
     {
@@ -46,7 +52,7 @@ CONSTITUTIONAL_TYPE_NAMES = frozenset(
     }
 )
 
-NEUTRAL_MODULES = (apportionment_module, voting_module)
+NEUTRAL_MODULES = (apportionment_module, voting_module, relationships_module)
 
 
 # --- T-N1a: no constitutional type reaches either module's signatures ---------
@@ -141,6 +147,7 @@ def test_the_neutral_modules_are_genuinely_the_ones_under_test() -> None:
     assert {module.__name__ for module in NEUTRAL_MODULES} == {
         "app.simulation.apportionment",
         "app.simulation.legislative_voting",
+        "app.simulation.relationships",
     }
 
 
@@ -194,3 +201,52 @@ def test_the_tally_does_change_when_the_chamber_does() -> None:
         _CHAMBER[1],
     )
     assert _tally(blocs=soured) != _tally(blocs=_CHAMBER)
+
+
+# --- Phase 3B2A: the relationship formula is neutral and float-free ----------
+
+
+def test_relationship_investment_is_identical_under_two_maximally_different_constitutions() -> None:
+    """T-N1d's Phase 3B2A twin, stated numerically rather than only structurally. `decree_state` is
+    a monarchy and `deficit_demo` a presidential republic; a bloc at the same relationship in
+    either buys exactly the same improvement for the same capital, because the constitution is not
+    an input to this calculation at all."""
+    for opening in (-8_000, -2_000, 0, 2_000, 6_000):
+        for capital in (1, 50, 100, 200):
+            gain = relationship_gain_bps(
+                opening_relationship_bps=opening, political_capital=capital
+            )
+            assert gain == relationship_gain_bps(
+                opening_relationship_bps=opening, political_capital=capital
+            )
+            assert isinstance(gain, int)
+
+
+def test_the_relationship_module_uses_no_floating_point_arithmetic() -> None:
+    """Determinism depends on it: `state_json` is BLAKE2b-covered, and a float would make the same
+    game hash differently on a different platform. Checked against the parsed source, so importing
+    a float helper later is caught even if it is never called."""
+    source = Path(inspect.getfile(relationships_module)).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    for node in ast.walk(tree):
+        assert not isinstance(node, ast.Constant) or not isinstance(node.value, float), (
+            f"float literal {node.value!r} in relationships.py"
+        )
+        if isinstance(node, ast.BinOp):
+            assert not isinstance(node.op, ast.Div), "true division (/) in relationships.py"
+        if isinstance(node, ast.Name):
+            assert node.id not in {"float", "random", "Decimal"}, node.id
+
+
+def test_the_relationship_module_imports_no_randomness_or_clock() -> None:
+    source = Path(inspect.getfile(relationships_module)).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported = {node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
+    imported |= {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    assert not (imported & {"random", "time", "datetime", "secrets"}), imported

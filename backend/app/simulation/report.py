@@ -44,9 +44,11 @@ from app.core.politics import (
     StrictLegitimacyBps,
     StrictPoliticalCapital,
     StrictPoliticalCapitalCapacity,
+    StrictPoliticalCapitalCommitment,
     StrictPositiveSeatCount,
     StrictPreferenceBps,
     StrictRelationshipBps,
+    StrictRelationshipGainBps,
     StrictSeatCount,
     StrictSeatNumerator,
     StrictSignedBps,
@@ -84,13 +86,14 @@ from app.simulation.legislative_voting import (
     TAX_WEIGHT_BPS,
 )
 from app.simulation.legislative_voting import SPENDING_WEIGHT_BPS as SPENDING_WEIGHT_BPS
-from app.simulation.legislature import ChangeDirection as LegislativeChangeDirection
 from app.simulation.legislature import (
+    CapitalExpenditureCategory,
     GovernmentRole,
     LegislativeChamber,
     LegislativeOutcome,
     ProposalRoute,
 )
+from app.simulation.legislature import ChangeDirection as LegislativeChangeDirection
 from app.simulation.legitimacy import (
     DRIFT_RATE_BPS,
     LEGITIMACY_REGENERATION_COEFFICIENT,
@@ -100,6 +103,7 @@ from app.simulation.legitimacy import (
     POLITICAL_CAPITAL_BASE_REGENERATION,
     UNEMPLOYMENT_SENSITIVITY_BPS,
 )
+from app.simulation.relationships import RELATIONSHIP_CEILING_BPS, RELATIONSHIP_HALF_GAP_CAPITAL
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
@@ -2219,6 +2223,257 @@ class LegislativeReport(BaseModel):
         return self
 
 
+class CapitalExpenditureReport(BaseModel):
+    """One row of this turn's political-capital ledger (Phase 3B2A): a single positive
+    commitment, what category it was spent on, and who (if anyone) it targeted.
+
+    Homogeneous by design, mirroring `BlocVoteReport`/`ChamberVoteReport`'s own row-level
+    validation: this row carries only what every category needs — a stable category, an optional
+    bloc target, the amount, and provenance. `BlocRelationshipChangeReport` carries the *detail* a
+    relationship-investment row's target implies; the two are linked by identity
+    (`PoliticalCapitalReport` validator 8) rather than merged into one wider shape, so a future
+    expenditure with no detail at all (an appointment, a campaign with no bloc target) fits this
+    row without inventing empty detail fields it would never use.
+
+    R8, stated precisely: the total-spending identity `PoliticalCapitalReport` enforces is
+    extensible to any future category. This *row* is not — it addresses a legislative bloc by
+    `(party_id, bloc_id)` and nothing else. A future expenditure with a different kind of target
+    (a character, a population group, a constitutional axis) needs a tagged target model or a
+    report-schema extension, tracked as POL-4, not claimed as free here.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    category: CapitalExpenditureCategory
+    party_id: str | None
+    bloc_id: str | None
+    political_capital: StrictPoliticalCapitalCommitment
+    decision_digest: str
+    """The digest of the decision that produced this row — `budget_decision_digest` for
+    `LEGISLATIVE_INFLUENCE`/`DECREE` rows, `bloc_relationship_investment_digest` for
+    `BLOC_RELATIONSHIP_INVESTMENT` rows. Only its *syntax* is checked here (the two-code-paths
+    rule, mirroring `LegislativeReport.budget_decision_digest`); semantic correctness against the
+    real submitted `DecisionSet` is `simulation.reconciliation`'s job (groups 19/21)."""
+
+    @model_validator(mode="after")
+    def _decision_digest_is_a_well_formed_hex_digest(self) -> CapitalExpenditureReport:
+        if not _HEX_DIGEST_PATTERN.fullmatch(self.decision_digest):
+            raise ValueError(
+                f"decision_digest={self.decision_digest!r} is not a lowercase 64-character "
+                "hexadecimal digest"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _target_identity_matches_category_shape(self) -> CapitalExpenditureReport:
+        """A decree is an act of the executive with no bloc on the other side of it; every other
+        category names the bloc whose support or relationship was bought. The cross-row half of
+        this rule — that at most one `DECREE` row exists at all — is
+        `PoliticalCapitalReport._at_most_one_decree_expenditure_row`'s job; a single row cannot
+        see its siblings."""
+        is_decree = self.category is CapitalExpenditureCategory.DECREE
+        has_target = self.party_id is not None or self.bloc_id is not None
+        if is_decree and has_target:
+            raise ValueError(
+                f"category=DECREE must carry no party_id/bloc_id target, got "
+                f"({self.party_id!r}, {self.bloc_id!r})"
+            )
+        if not is_decree and (self.party_id is None or self.bloc_id is None):
+            raise ValueError(
+                f"category={self.category.value!r} must carry both party_id and bloc_id, got "
+                f"({self.party_id!r}, {self.bloc_id!r})"
+            )
+        return self
+
+
+class BlocRelationshipChangeReport(BaseModel):
+    """One bloc's relationship change from a `BLOC_RELATIONSHIP_INVESTMENT` this turn (Phase
+    3B2A). Re-derives `simulation.relationships.relationship_gain_bps`'s formula from its OWN
+    stored fields — never by calling that module — mirroring exactly how `BlocVoteReport`
+    re-derives `legislative_voting`'s formulas: a bug in one code path is likely to be caught by
+    the other.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    party_id: str
+    bloc_id: str
+    political_capital: StrictPoliticalCapitalCommitment
+    opening_relationship_bps: StrictRelationshipBps
+    gap_bps: StrictRelationshipGainBps
+    applied_change_bps: StrictRelationshipGainBps
+    closing_relationship_bps: StrictRelationshipBps
+
+    @model_validator(mode="after")
+    def _relationship_change_matches_the_formula(self) -> BlocRelationshipChangeReport:
+        expected_gap = RELATIONSHIP_CEILING_BPS - self.opening_relationship_bps
+        if self.gap_bps != expected_gap:
+            raise ValueError(
+                f"gap_bps={self.gap_bps} does not match RELATIONSHIP_CEILING_BPS - "
+                f"opening_relationship_bps ({expected_gap})"
+            )
+        expected_gain = trunc_div_toward_zero(
+            self.gap_bps * self.political_capital,
+            RELATIONSHIP_HALF_GAP_CAPITAL + self.political_capital,
+        )
+        if self.applied_change_bps != expected_gain:
+            raise ValueError(
+                f"applied_change_bps={self.applied_change_bps} does not match the relationship "
+                f"formula over gap_bps and political_capital ({expected_gain})"
+            )
+        expected_closing = self.opening_relationship_bps + self.applied_change_bps
+        if self.closing_relationship_bps != expected_closing:
+            raise ValueError(
+                f"closing_relationship_bps={self.closing_relationship_bps} does not match "
+                f"opening_relationship_bps + applied_change_bps ({expected_closing})"
+            )
+        return self
+
+
+class PoliticalCapitalReport(BaseModel):
+    """Structured, machine-readable Phase 3B2A political-capital ledger: every commitment this
+    turn made, and every relationship it moved.
+
+    D7: one report carrying both a homogeneous ledger summary (`expenditures`) and a homogeneous
+    relationship-detail tuple (`relationship_changes`), rather than folding either into
+    `PoliticalReport` or `LegislativeReport`. `total_committed` generalizes what
+    `PoliticalReport.political_capital_spent` has always meant: before this phase it was the
+    legislative/decree commitment alone; now it is the sum of every sink, and the identity below
+    is unchanged — `closing = min(capacity, opening - total_committed + regeneration)`.
+
+    Eight validators live directly here; the ninth (the relationship formula) is enforced one
+    level down on `BlocRelationshipChangeReport` itself — never duplicated, exactly how
+    `LegislativeReport` delegates baseline/raw/final-support formulas to `BlocVoteReport`.
+
+    R11: `_expenditure_categories_are_route_consistent` (decree outcome implies exactly one
+    decree row and no influence rows, etc.) is deliberately **not** here — it needs
+    `LegislativeReport.outcome`/`.route`, which this model cannot see. It lives as `TurnReport`
+    cross-validator 3, the only model holding both reports.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    opening_political_capital: StrictPoliticalCapital
+    political_capital_regeneration: StrictPoliticalCapital
+    political_capital_capacity: StrictPoliticalCapitalCapacity
+    total_committed: StrictPoliticalCapital
+    closing_political_capital: StrictPoliticalCapital
+    expenditures: tuple[CapitalExpenditureReport, ...] = Field(default_factory=tuple)
+    relationship_changes: tuple[BlocRelationshipChangeReport, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def _total_committed_matches_expenditure_rows(self) -> PoliticalCapitalReport:
+        expected = sum(row.political_capital for row in self.expenditures)
+        if self.total_committed != expected:
+            raise ValueError(
+                f"total_committed={self.total_committed} does not match "
+                f"sum(expenditures.political_capital) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _committed_within_opening_capital(self) -> PoliticalCapitalReport:
+        if self.total_committed > self.opening_political_capital:
+            raise ValueError(
+                f"total_committed={self.total_committed} exceeds opening_political_capital="
+                f"{self.opening_political_capital}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _closing_capital_matches_clamped_identity(self) -> PoliticalCapitalReport:
+        expected = min(
+            self.political_capital_capacity,
+            self.opening_political_capital
+            - self.total_committed
+            + self.political_capital_regeneration,
+        )
+        if self.closing_political_capital != expected:
+            raise ValueError(
+                f"closing_political_capital={self.closing_political_capital} does not match "
+                f"min(capacity, opening - total_committed + regeneration) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _expenditure_rows_are_in_canonical_order(self) -> PoliticalCapitalReport:
+        """Ascending `(category, party_id, bloc_id)` — alphabetical category values (Phase 3B2A,
+        `CapitalExpenditureCategory`'s own docstring) make this the same order as declaration
+        order, with no second convention to remember. `None` sorts as `""`, which is always first
+        within a category and therefore never collides with a real identity."""
+        keys = [
+            (row.category.value, row.party_id or "", row.bloc_id or "") for row in self.expenditures
+        ]
+        if keys != sorted(keys):
+            raise ValueError(
+                "expenditures must be sorted ascending by (category, party_id, bloc_id), got "
+                f"{keys!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _at_most_one_decree_expenditure_row(self) -> PoliticalCapitalReport:
+        decree_rows = sum(
+            1 for row in self.expenditures if row.category is CapitalExpenditureCategory.DECREE
+        )
+        if decree_rows > 1:
+            raise ValueError(f"at most one DECREE expenditure row is valid, got {decree_rows}")
+        return self
+
+    @model_validator(mode="after")
+    def _relationship_rows_are_in_canonical_order(self) -> PoliticalCapitalReport:
+        keys = [(row.party_id, row.bloc_id) for row in self.relationship_changes]
+        if keys != sorted(keys):
+            raise ValueError(
+                f"relationship_changes must be sorted ascending by (party_id, bloc_id), got "
+                f"{keys!r}"
+            )
+        if len(keys) != len(set(keys)):
+            raise ValueError("relationship_changes contains a duplicate (party_id, bloc_id)")
+        return self
+
+    @model_validator(mode="after")
+    def _relationship_rows_correspond_to_investment_expenditure_rows(
+        self,
+    ) -> PoliticalCapitalReport:
+        """A relationship-only turn (`NO_PROPOSAL` with only investment rows) is valid and
+        produces a nonempty `relationship_changes` here — that is exactly the case this check
+        must accept, not reject; it asserts correspondence, not co-occurrence with a legislative
+        outcome."""
+        investment_keys = {
+            (row.party_id, row.bloc_id, row.political_capital)
+            for row in self.expenditures
+            if row.category is CapitalExpenditureCategory.BLOC_RELATIONSHIP_INVESTMENT
+        }
+        relationship_keys = {
+            (row.party_id, row.bloc_id, row.political_capital) for row in self.relationship_changes
+        }
+        if investment_keys != relationship_keys:
+            raise ValueError(
+                "relationship_changes does not correspond exactly to the "
+                f"BLOC_RELATIONSHIP_INVESTMENT expenditure rows: relationship_changes="
+                f"{sorted(relationship_keys)!r}, expenditures={sorted(investment_keys)!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _expenditure_rows_are_positive_commitments(self) -> PoliticalCapitalReport:
+        """(R6) Re-asserted despite `StrictPoliticalCapitalCommitment` already requiring `>= 1`:
+        that type constraint is bypassed by `model_construct`, and this is the backstop that
+        catches it — the same pattern `LegislativeBlocState`'s seat-order validators use against a
+        bypassed construction. A zero-cost row would let an attacker pad the ledger with entries
+        that change what it appears to describe while `total_committed` stays intact; this closes
+        that channel independently of the type system."""
+        for row in self.expenditures:
+            if row.political_capital < 1:
+                raise ValueError(
+                    f"expenditure row ({row.category.value!r}, {row.party_id!r}, "
+                    f"{row.bloc_id!r}) has non-positive political_capital="
+                    f"{row.political_capital}"
+                )
+        return self
+
+
 class TurnReport(BaseModel):
     """The full report produced by one `resolve_turn` call."""
 
@@ -2258,15 +2513,21 @@ class TurnReport(BaseModel):
     legislature-or-none decision, before resolution can even begin). Built for every resolved
     turn, including `NO_PROPOSAL` ones; the vote itself runs in slot 1, assembly in slot 15; see
     `phases.py`."""
+    political_capital: PoliticalCapitalReport | None = None
+    """`None` only when the capital-ledger phase did not run (never for a successful Phase 3B2A+
+    turn on a valid player state). Built for every resolved turn, including turns with no
+    expenditure at all — an empty ledger is still a valid, complete one. Assembled at slot 15 from
+    the scratch slot 1 (legislative/decree commitment, relationship targets) and slot 10
+    (regeneration, closing capital) produce; see `phases.py`."""
 
     @model_validator(mode="after")
-    def _labor_resources_production_derivation_finance_political_and_legislative_are_all_present_or_all_absent(
+    def _labor_resources_production_derivation_finance_political_legislative_and_capital_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
-        """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A and Phase 3B1): a partial
-        combination of the seven player-economy/politics reports would represent a broken audit
-        chain (e.g. production ran but derivation silently didn't) — reject it outright rather
-        than accepting whatever subset happens to be present.
+        """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1 and Phase
+        3B2A): a partial combination of these eight player-economy/politics reports would
+        represent a broken audit chain (e.g. production ran but derivation silently didn't) —
+        reject it outright rather than accepting whatever subset happens to be present.
         """
         present = (
             self.labor_market is not None,
@@ -2276,26 +2537,129 @@ class TurnReport(BaseModel):
             self.finance is not None,
             self.political is not None,
             self.legislative is not None,
+            self.political_capital is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
                 "labor_market, resources, production, tax_base_derivation, finance, political, "
-                "and legislative must be all present or all absent on a TurnReport — got "
-                f"present={present} (labor_market, resources, production, tax_base_derivation, "
-                "finance, political, legislative)"
+                "legislative, and political_capital must be all present or all absent on a "
+                f"TurnReport — got present={present} (labor_market, resources, production, "
+                "tax_base_derivation, finance, political, legislative, political_capital)"
             )
         return self
 
     @model_validator(mode="after")
-    def _legislative_commitment_matches_political_report(self) -> TurnReport:
-        if self.legislative is None or self.political is None:
+    def _political_capital_ledger_reconciles_across_reports(self) -> TurnReport:
+        """(Phase 3B2A, replaces `_legislative_commitment_matches_political_report`) Two
+        strictly stronger checks in place of the one Phase 3B1 equality they generalize: the
+        ledger's total is what `PoliticalReport` actually spent, and the *legislative* share of
+        that ledger is what `LegislativeReport` actually committed. On any turn with no
+        relationship investment these collapse to exactly the Phase 3B1 identity — nothing here
+        weakens what that phase already proved."""
+        if self.legislative is None or self.political is None or self.political_capital is None:
             return self
-        if self.legislative.political_capital_committed != self.political.political_capital_spent:
+        if self.political_capital.total_committed != self.political.political_capital_spent:
             raise ValueError(
-                "legislative.political_capital_committed="
-                f"{self.legislative.political_capital_committed} does not match "
+                "political_capital.total_committed="
+                f"{self.political_capital.total_committed} does not match "
                 f"political.political_capital_spent ({self.political.political_capital_spent})"
             )
+        legislative_share = sum(
+            row.political_capital
+            for row in self.political_capital.expenditures
+            if row.category
+            in (
+                CapitalExpenditureCategory.LEGISLATIVE_INFLUENCE,
+                CapitalExpenditureCategory.DECREE,
+            )
+        )
+        if self.legislative.political_capital_committed != legislative_share:
+            raise ValueError(
+                "legislative.political_capital_committed="
+                f"{self.legislative.political_capital_committed} does not match the "
+                f"LEGISLATIVE_INFLUENCE/DECREE share of the ledger ({legislative_share})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _capital_ledger_opening_and_capacity_match_political_report(self) -> TurnReport:
+        """The ledger cannot satisfy its own closing-capital identity (validator 3) against a
+        different opening/regeneration/capacity story than the one reconciliation checks against
+        real state — this ties the two reports' figures together so it can't."""
+        if self.political is None or self.political_capital is None:
+            return self
+        pairs = (
+            (
+                "opening_political_capital",
+                self.political_capital.opening_political_capital,
+                self.political.opening_political_capital,
+            ),
+            (
+                "political_capital_regeneration",
+                self.political_capital.political_capital_regeneration,
+                self.political.political_capital_regeneration,
+            ),
+            (
+                "political_capital_capacity",
+                self.political_capital.political_capital_capacity,
+                self.political.political_capital_capacity,
+            ),
+            (
+                "closing_political_capital",
+                self.political_capital.closing_political_capital,
+                self.political.closing_political_capital,
+            ),
+        )
+        for field_name, ledger_value, political_value in pairs:
+            if ledger_value != political_value:
+                raise ValueError(
+                    f"political_capital.{field_name}={ledger_value} does not match "
+                    f"political.{field_name} ({political_value})"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _expenditure_categories_are_route_consistent(self) -> TurnReport:
+        """(R11) Moved here from `PoliticalCapitalReport` because it needs
+        `LegislativeReport.outcome`/`.route`, which that model cannot see — this is the only model
+        holding both reports. Relationship-investment rows are permitted with EVERY route,
+        including `NO_PROPOSAL`: a relationship-only turn is exactly the simplest new thing this
+        phase adds, and must not be rejected here."""
+        if self.legislative is None or self.political_capital is None:
+            return self
+        decree_rows = sum(
+            1
+            for row in self.political_capital.expenditures
+            if row.category is CapitalExpenditureCategory.DECREE
+        )
+        influence_rows = sum(
+            1
+            for row in self.political_capital.expenditures
+            if row.category is CapitalExpenditureCategory.LEGISLATIVE_INFLUENCE
+        )
+        outcome = self.legislative.outcome
+        if outcome is LegislativeOutcome.ENACTED_BY_DECREE:
+            if decree_rows != 1 or influence_rows != 0:
+                raise ValueError(
+                    "outcome=ENACTED_BY_DECREE requires exactly one DECREE expenditure row and "
+                    f"zero LEGISLATIVE_INFLUENCE rows, got decree={decree_rows} "
+                    f"influence={influence_rows}"
+                )
+        elif outcome in (
+            LegislativeOutcome.PASSED_LEGISLATIVE,
+            LegislativeOutcome.FAILED_LEGISLATIVE,
+        ):
+            if decree_rows != 0:
+                raise ValueError(
+                    f"outcome={outcome.value!r} requires zero DECREE expenditure rows, got "
+                    f"{decree_rows}"
+                )
+        else:  # NO_PROPOSAL
+            if decree_rows != 0 or influence_rows != 0:
+                raise ValueError(
+                    "outcome=NO_PROPOSAL requires zero DECREE and zero LEGISLATIVE_INFLUENCE "
+                    f"expenditure rows, got decree={decree_rows} influence={influence_rows}"
+                )
         return self
 
     @model_validator(mode="after")

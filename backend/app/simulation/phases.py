@@ -46,7 +46,12 @@ from app.simulation.accounting import (
 )
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
 from app.simulation.constitution import ConstitutionState, DecreeAuthority, constitution_digest
-from app.simulation.decisions import BudgetDecision, DecisionSet, budget_decision_digest
+from app.simulation.decisions import (
+    BudgetDecision,
+    DecisionSet,
+    bloc_relationship_investment_digest,
+    budget_decision_digest,
+)
 from app.simulation.labor_allocation import (
     aggregate_labor_market,
     allocate_workers,
@@ -61,8 +66,8 @@ from app.simulation.legislative_voting import (
     spending_policy_change,
     tax_policy_change,
 )
+from app.simulation.legislature import CapitalExpenditureCategory, LegislativeOutcome, ProposalRoute
 from app.simulation.legislature import ChangeDirection as LegislativeChangeDirection
-from app.simulation.legislature import LegislativeOutcome, ProposalRoute
 from app.simulation.legitimacy import (
     PerformanceSignals,
     assess_economic_performance,
@@ -71,10 +76,13 @@ from app.simulation.legitimacy import (
     resolve_political_capital,
 )
 from app.simulation.production_accounting import compute_sector_output
+from app.simulation.relationships import RELATIONSHIP_CEILING_BPS, relationship_gain_bps
 from app.simulation.report import (
     TAX_RATE_CHANGE_FIELDS,
+    BlocRelationshipChangeReport,
     BlocVoteReport,
     BudgetChangeEntry,
+    CapitalExpenditureReport,
     ChamberVoteReport,
     ChangeDirection,
     ConstitutionSummary,
@@ -83,6 +91,7 @@ from app.simulation.report import (
     LaborMarketReport,
     LegislativeReport,
     PhaseStatus,
+    PoliticalCapitalReport,
     PoliticalReport,
     ProductionReport,
     ResourceDepositReport,
@@ -231,6 +240,25 @@ class LegislativeScratch:
 
 
 @dataclass
+class CapitalLedgerScratch:
+    """Mutable, turn-local political-capital ledger threaded through the Phase 3B2A phases via
+    `PhaseContext.capital_ledger`. Populated entirely by slot 1 (`_validate_and_reserve_actions`)
+    and never mutated afterward — mirroring `LegislativeScratch` exactly.
+
+    `total_committed` generalizes `LegislativeScratch.political_capital_committed`: where that
+    field is the legislative/decree commitment alone, this is the sum of every sink a turn used,
+    and it is what slot 10 spends against and what `PoliticalReport.political_capital_spent`
+    ultimately records. `expenditures` is already in the canonical `(category, party_id, bloc_id)`
+    order `PoliticalCapitalReport` requires; `relationship_changes` is already in canonical
+    `(party_id, bloc_id)` order. Both are computed once here so slot 15 never recomputes them.
+    """
+
+    expenditures: tuple[CapitalExpenditureReport, ...]
+    relationship_changes: tuple[BlocRelationshipChangeReport, ...]
+    total_committed: int
+
+
+@dataclass
 class FinanceScratch:
     """Mutable, turn-local accounting workspace threaded through the Phase 2A/2B2 phases
     via `PhaseContext.finance`. Not itself part of `GameState` or the report — purely
@@ -273,6 +301,12 @@ class PhaseContext:
     legislative_report: LegislativeReport | None = None
     """Set by `generate_turn_report` (slot 15) from `legislative_scratch`; `resolver.py` copies
     this onto the final `TurnReport`."""
+    capital_ledger: CapitalLedgerScratch | None = None
+    """Set by `_validate_and_reserve_actions` (slot 1); read by slot 10 (total commitment), slot
+    11 (relationship application) and slot 15 (report assembly). Phase 3B2A."""
+    political_capital_report: PoliticalCapitalReport | None = None
+    """Set by `generate_turn_report` (slot 15) from `capital_ledger`; `resolver.py` copies this
+    onto the final `TurnReport`. Phase 3B2A."""
     finance: FinanceScratch | None = None
     """Set by `apply_legal_and_administrative_changes`; read by the two phases after it."""
     finance_report: FinanceReport | None = None
@@ -382,7 +416,78 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
         spending_plan=finance.spending_plan.model_copy(),
     )
 
-    budget_decision = ctx.decisions.decisions[0] if ctx.decisions.decisions else None
+    # (Phase 3B2A) `budget_decision()`/`relationship_investment_decision()`, never `decisions[0]`.
+    # Canonical kind order sorts "bloc_relationship_investment" BEFORE "budget", so on a turn
+    # carrying both, index 0 is the investment -- and this vote would have been held on the wrong
+    # object, silently.
+    budget_decision = ctx.decisions.budget_decision()
+    investment_decision = ctx.decisions.relationship_investment_decision()
+
+    legislature = opening.legislature
+    party_ids = {party.id for party in legislature.parties} if legislature is not None else set()
+    blocs_by_key = (
+        {(party.id, bloc.id): bloc for party in legislature.parties for bloc in party.blocs}
+        if legislature is not None
+        else {}
+    )
+
+    # --- relationship investment: resolved independently of the budget route (§9) -------------
+    relationship_change_rows: list[BlocRelationshipChangeReport] = []
+    investment_expenditure_rows: list[CapitalExpenditureReport] = []
+    investment_total = 0
+    if investment_decision is not None:
+        investment_digest = bloc_relationship_investment_digest(investment_decision)
+        for investment in investment_decision.investments:
+            if investment.party_id not in party_ids:
+                raise DecisionSetError(
+                    f"relationship investment targets unknown party {investment.party_id!r}"
+                )
+            bloc = blocs_by_key.get((investment.party_id, investment.bloc_id))
+            if bloc is None:
+                raise DecisionSetError(
+                    "relationship investment targets unknown bloc "
+                    f"({investment.party_id!r}, {investment.bloc_id!r})"
+                )
+            opening_relationship_bps = bloc.government_relationship_bps
+            gain = relationship_gain_bps(
+                opening_relationship_bps=opening_relationship_bps,
+                political_capital=investment.political_capital,
+            )
+            if gain == 0:
+                # (R13) A guaranteed no-op, knowable before resolution -- not an attempted
+                # political outcome that could have succeeded, so it is refused rather than
+                # charged. Written against the COMPUTED gain, never against a bare `gap == 0`
+                # check: truncation alone can zero out a tiny gap at low capital, and a rule
+                # keyed only on the ceiling would miss that case.
+                raise DecisionSetError(
+                    "relationship investment in "
+                    f"({investment.party_id!r}, {investment.bloc_id!r}) would have no effect: "
+                    f"{investment.political_capital} capital against an opening relationship of "
+                    f"{opening_relationship_bps} buys a gain of 0"
+                )
+            gap_bps = RELATIONSHIP_CEILING_BPS - opening_relationship_bps
+            closing_relationship_bps = opening_relationship_bps + gain
+            relationship_change_rows.append(
+                BlocRelationshipChangeReport(
+                    party_id=investment.party_id,
+                    bloc_id=investment.bloc_id,
+                    political_capital=investment.political_capital,
+                    opening_relationship_bps=opening_relationship_bps,
+                    gap_bps=gap_bps,
+                    applied_change_bps=gain,
+                    closing_relationship_bps=closing_relationship_bps,
+                )
+            )
+            investment_expenditure_rows.append(
+                CapitalExpenditureReport(
+                    category=CapitalExpenditureCategory.BLOC_RELATIONSHIP_INVESTMENT,
+                    party_id=investment.party_id,
+                    bloc_id=investment.bloc_id,
+                    political_capital=investment.political_capital,
+                    decision_digest=investment_digest,
+                )
+            )
+            investment_total += investment.political_capital
 
     if budget_decision is None:
         ctx.legislative_scratch = LegislativeScratch(
@@ -402,7 +507,14 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
             political_capital_committed=0,
             budget_decision_digest=None,
         )
-        ctx.mark_implemented()
+        _finish_validate_and_reserve_actions(
+            ctx,
+            opening=opening,
+            legislative_expenditure_rows=(),
+            investment_expenditure_rows=tuple(investment_expenditure_rows),
+            relationship_change_rows=tuple(relationship_change_rows),
+            investment_total=investment_total,
+        )
         return
 
     route = budget_decision.route
@@ -441,6 +553,7 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
         opening_total=opening.spending_plan.total(), proposed_total=proposed_spending_plan.total()
     )
 
+    legislative_expenditure_rows: list[CapitalExpenditureReport] = []
     if route is ProposalRoute.DECREE:
         commitment = DECREE_POLITICAL_CAPITAL_COST
         if commitment > opening.political_capital:
@@ -451,14 +564,19 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
         outcome = LegislativeOutcome.ENACTED_BY_DECREE
         chamber_reports: tuple[ChamberVoteReport, ...] = ()
         bloc_reports: tuple[BlocVoteReport, ...] = ()
+        legislative_expenditure_rows.append(
+            CapitalExpenditureReport(
+                category=CapitalExpenditureCategory.DECREE,
+                party_id=None,
+                bloc_id=None,
+                political_capital=commitment,
+                decision_digest=budget_decision_digest(budget_decision),
+            )
+        )
     else:
         legislature = opening.legislature
         assert legislature is not None, "route=legislative was already rejected above otherwise"
 
-        party_ids = {party.id for party in legislature.parties}
-        blocs_by_key = {
-            (party.id, bloc.id): bloc for party in legislature.parties for bloc in party.blocs
-        }
         allocation_by_key: dict[tuple[str, str], int] = {}
         for allocation in budget_decision.influence:
             if allocation.party_id not in party_ids:
@@ -484,6 +602,17 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
             raise DecisionSetError(
                 f"legislative influence commitment {commitment} exceeds opening political "
                 f"capital {opening.political_capital}"
+            )
+        budget_digest = budget_decision_digest(budget_decision)
+        for (party_id, bloc_id), allocated in allocation_by_key.items():
+            legislative_expenditure_rows.append(
+                CapitalExpenditureReport(
+                    category=CapitalExpenditureCategory.LEGISLATIVE_INFLUENCE,
+                    party_id=party_id,
+                    bloc_id=bloc_id,
+                    political_capital=allocated,
+                    decision_digest=budget_digest,
+                )
             )
 
         bloc_report_rows: list[BlocVoteReport] = []
@@ -604,6 +733,54 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
         political_capital_committed=commitment,
         budget_decision_digest=budget_decision_digest(budget_decision),
     )
+    _finish_validate_and_reserve_actions(
+        ctx,
+        opening=opening,
+        legislative_expenditure_rows=tuple(legislative_expenditure_rows),
+        investment_expenditure_rows=tuple(investment_expenditure_rows),
+        relationship_change_rows=tuple(relationship_change_rows),
+        investment_total=investment_total,
+    )
+
+
+def _finish_validate_and_reserve_actions(
+    ctx: PhaseContext,
+    *,
+    opening: OpeningLegislativeSnapshot,
+    legislative_expenditure_rows: tuple[CapitalExpenditureReport, ...],
+    investment_expenditure_rows: tuple[CapitalExpenditureReport, ...],
+    relationship_change_rows: tuple[BlocRelationshipChangeReport, ...],
+    investment_total: int,
+) -> None:
+    """The shared tail of slot 1 (Phase 3B2A): combine the legislative/decree commitment
+    `ctx.legislative_scratch` already recorded with this turn's relationship investment into one
+    ledger, check the TOTAL against opening capital, and write `ctx.capital_ledger`.
+
+    Called from both the `NO_PROPOSAL` early path and the budget-decision path, so a
+    relationship-only turn and a budget-plus-investment turn go through exactly the same total-
+    commitment guard rather than two independently-maintained copies of it.
+    """
+    assert ctx.legislative_scratch is not None, "the caller always sets this first"
+    legislative_commitment = ctx.legislative_scratch.political_capital_committed
+    total_committed = legislative_commitment + investment_total
+    if total_committed > opening.political_capital:
+        raise DecisionSetError(
+            f"total political capital commitment {total_committed} (route commitment "
+            f"{legislative_commitment} + relationship investment {investment_total}) exceeds "
+            f"opening political capital {opening.political_capital}"
+        )
+
+    expenditures = tuple(
+        sorted(
+            (*legislative_expenditure_rows, *investment_expenditure_rows),
+            key=lambda row: (row.category.value, row.party_id or "", row.bloc_id or ""),
+        )
+    )
+    ctx.capital_ledger = CapitalLedgerScratch(
+        expenditures=expenditures,
+        relationship_changes=relationship_change_rows,
+        total_committed=total_committed,
+    )
     ctx.mark_implemented()
 
 
@@ -645,7 +822,7 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
         previous_spending_plan=finance.spending_plan.model_copy(),
     )
 
-    budget_decision = ctx.decisions.decisions[0] if ctx.decisions.decisions else None
+    budget_decision = ctx.decisions.budget_decision()
     applies = scratch.outcome in (
         LegislativeOutcome.PASSED_LEGISLATIVE,
         LegislativeOutcome.ENACTED_BY_DECREE,
@@ -1272,9 +1449,12 @@ def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
     )
     assessment = assess_economic_performance(signals)
 
-    legislative_scratch = ctx.legislative_scratch
-    assert legislative_scratch is not None, "validate_and_reserve_actions always runs first"
-    political_capital_committed = legislative_scratch.political_capital_committed
+    # (Phase 3B2A) The LEDGER total, not the legislative-only commitment: this turn may also have
+    # invested in a bloc relationship, and the affordability guard (and therefore what capital
+    # actually gets spent) is against the SUM of every sink, never one sink in isolation.
+    capital_ledger = ctx.capital_ledger
+    assert capital_ledger is not None, "validate_and_reserve_actions always runs first"
+    political_capital_committed = capital_ledger.total_committed
 
     drift = order_support_contribution_bps(
         support_bps=opening.constitutional_order_support_bps,
@@ -1389,6 +1569,67 @@ def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
     ctx.mark_implemented()
 
 
+def _apply_bloc_relationship_investments(ctx: PhaseContext) -> None:
+    """Phase 3B2A, slot 11 (`update_institutional_loyalty_competence_corruption_power`):
+    apply this turn's relationship changes to `politics.legislature`.
+
+    **The semantically correct home for this, not a scheduling convenience.** It runs after the
+    vote (slot 1, which already scored every bloc against the OPENING relationship) and after
+    capital resolution (slot 10, which already spent against the ledger total) — exactly the
+    ordering §9 requires, so investment can never retroactively affect the vote it was committed
+    alongside. `government_relationship_bps` is a caucus's loyalty to the government; this slot's
+    registered name is literally "institutional loyalty ... power". No 16th `PHASE_ORDER` slot.
+
+    `politics.legislature` gains its first and only writer here (D7's staticness held through
+    Phase 3B1 precisely because nothing wrote it; 3B2A ends that, deliberately, in exactly one
+    place). A turn with no relationship changes leaves `legislature` byte-identical — this
+    function still runs and still calls `mark_implemented()`, matching every other slot's
+    "implemented means the phase has real logic, not that this turn happened to use it" rule
+    (see slot 1's `NO_PROPOSAL` path).
+    """
+    capital_ledger = ctx.capital_ledger
+    assert capital_ledger is not None, "validate_and_reserve_actions always runs first"
+
+    if capital_ledger.relationship_changes:
+        player = ctx.state.world.countries[ctx.state.world.player_country_id]
+        politics = player.politics
+        assert politics is not None, "checked by check_invariants before resolve_turn runs"
+        legislature = politics.legislature
+        assert legislature is not None, (
+            "a relationship investment can only exist if slot 1 resolved it against a real "
+            "legislature"
+        )
+
+        closing_by_key = {
+            (row.party_id, row.bloc_id): row.closing_relationship_bps
+            for row in capital_ledger.relationship_changes
+        }
+        updated_parties = []
+        for party in legislature.parties:
+            updated_blocs = []
+            party_changed = False
+            for bloc in party.blocs:
+                new_relationship = closing_by_key.get((party.id, bloc.id))
+                if new_relationship is None:
+                    updated_blocs.append(bloc)
+                    continue
+                updated_blocs.append(
+                    bloc.model_copy(update={"government_relationship_bps": new_relationship})
+                )
+                party_changed = True
+            updated_parties.append(
+                party.model_copy(update={"blocs": tuple(updated_blocs)}) if party_changed else party
+            )
+
+        player.politics = politics.model_copy(
+            update={
+                "legislature": legislature.model_copy(update={"parties": tuple(updated_parties)})
+            }
+        )
+
+    ctx.mark_implemented()
+
+
 def _generate_turn_report(ctx: PhaseContext) -> None:
     scratch = ctx.finance
     if scratch is not None:
@@ -1439,6 +1680,21 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
         budget_decision_digest=legislative_scratch.budget_decision_digest,
     )
     _append_legislative_report_entries(ctx, ctx.legislative_report)
+
+    capital_ledger = ctx.capital_ledger
+    assert capital_ledger is not None, "validate_and_reserve_actions always runs first"
+    political_report = ctx.political_report
+    assert political_report is not None, "update_legitimacy_and_political_capital always runs first"
+    ctx.political_capital_report = PoliticalCapitalReport(
+        opening_political_capital=political_report.opening_political_capital,
+        political_capital_regeneration=political_report.political_capital_regeneration,
+        political_capital_capacity=political_report.political_capital_capacity,
+        total_committed=capital_ledger.total_committed,
+        closing_political_capital=political_report.closing_political_capital,
+        expenditures=capital_ledger.expenditures,
+        relationship_changes=capital_ledger.relationship_changes,
+    )
+    _append_capital_ledger_report_entries(ctx, ctx.political_capital_report)
 
     # (Phase 3B1) Appended LAST, after every other phase and after this slot's own legislative
     # entries, so `turn_resolved` stays the final line of every report exactly as it was before
@@ -1512,6 +1768,63 @@ def _append_legislative_report_entries(ctx: PhaseContext, report: LegislativeRep
         )
 
 
+def _append_capital_ledger_report_entries(
+    ctx: PhaseContext, report: PoliticalCapitalReport
+) -> None:
+    """(Phase 3B2A) The two approved capital-ledger reason IDs, derived from the
+    already-constructed, already-self-validated `PoliticalCapitalReport` — never from the scratch
+    — so a reason payload can never describe an expenditure the report itself does not, matching
+    `_append_legislative_report_entries`'s discipline exactly.
+
+    An empty ledger (no expenditures, no relationship changes) emits nothing: there is nothing to
+    report, and printing "0 of 0 spent" every single turn would drown out the turns that matter.
+    """
+    if report.expenditures:
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="politics",
+                reason_id="political_capital_ledger_resolved",
+                params={
+                    "opening": report.opening_political_capital,
+                    "total_committed": report.total_committed,
+                    "legislative_committed": sum(
+                        row.political_capital
+                        for row in report.expenditures
+                        if row.category
+                        in (
+                            CapitalExpenditureCategory.LEGISLATIVE_INFLUENCE,
+                            CapitalExpenditureCategory.DECREE,
+                        )
+                    ),
+                    "relationship_committed": sum(
+                        row.political_capital
+                        for row in report.expenditures
+                        if row.category is CapitalExpenditureCategory.BLOC_RELATIONSHIP_INVESTMENT
+                    ),
+                    "regeneration": report.political_capital_regeneration,
+                    "closing": report.closing_political_capital,
+                    "capacity": report.political_capital_capacity,
+                },
+            )
+        )
+
+    for change in report.relationship_changes:
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="politics",
+                reason_id="bloc_relationship_investment_resolved",
+                params={
+                    "party_id": change.party_id,
+                    "bloc_id": change.bloc_id,
+                    "political_capital": change.political_capital,
+                    "opening_relationship_bps": change.opening_relationship_bps,
+                    "applied_change_bps": change.applied_change_bps,
+                    "closing_relationship_bps": change.closing_relationship_bps,
+                },
+            )
+        )
+
+
 # The fifteen-step resolution order from product spec §7. Order matters and is tested.
 PHASE_ORDER: tuple[tuple[str, PhaseHandler], ...] = (
     ("validate_and_reserve_actions", _validate_and_reserve_actions),
@@ -1533,7 +1846,10 @@ PHASE_ORDER: tuple[tuple[str, PhaseHandler], ...] = (
         "update_group_welfare_approval_trust_radicalization",
         _update_legitimacy_and_political_capital,
     ),
-    ("update_institutional_loyalty_competence_corruption_power", _noop),
+    (
+        "update_institutional_loyalty_competence_corruption_power",
+        _apply_bloc_relationship_investments,
+    ),
     ("evaluate_protests_strikes_insurgency_coups_revolutions", _noop),
     ("evaluate_elections_and_constitutional_events", _noop),
     ("trigger_narrative_events", _noop),

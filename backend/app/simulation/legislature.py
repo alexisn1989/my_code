@@ -100,3 +100,32 @@ class LegislativeOutcome(StrEnum):
     PASSED_LEGISLATIVE = "passed_legislative"
     FAILED_LEGISLATIVE = "failed_legislative"
     ENACTED_BY_DECREE = "enacted_by_decree"
+
+
+class CapitalExpenditureCategory(StrEnum):
+    """What a committed unit of political capital was spent *on*, for the expenditure ledger
+    (Phase 3B2A).
+
+    **Declaration order is canonical order, and the values are alphabetical**, so the ledger's sort
+    key is simply `(category, party_id, bloc_id)` with no second convention to remember. Like every
+    other enum here, these values are serialised into `report_json` and are therefore covered by
+    the entry hash — renaming one is a save-format change, not a refactor.
+
+    Phase 3B1 had exactly one sink for political capital, which made "capital spent here is capital
+    unavailable elsewhere" a vacuous claim (ADR 0010 §7.11.2). These categories are what make it
+    true: every commitment in a turn lands in one ledger, and the ledger's total is what the
+    affordability guard is checked against.
+
+    **How far this scales, stated precisely.** Adding another *bloc-targeted* expenditure — whipping
+    a bloc on a non-budget proposal, say — costs exactly one new member here and nothing else. A
+    future expenditure with a *different kind of target* (appointing a character, an untargeted
+    national campaign, repression aimed at a population group, a constitutional-reform push aimed at
+    an axis) does **not** fit that way: `report.CapitalExpenditureReport` addresses a legislative
+    bloc by `(party_id, bloc_id)` and nothing else, so those need a tagged target model or a report
+    schema extension. That work is deliberately not done now — a union of one target kind is not a
+    union — and is tracked as POL-4.
+    """
+
+    BLOC_RELATIONSHIP_INVESTMENT = "bloc_relationship_investment"
+    DECREE = "decree"
+    LEGISLATIVE_INFLUENCE = "legislative_influence"

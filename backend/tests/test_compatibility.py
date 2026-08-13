@@ -14,7 +14,9 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
+from app.content.scenarios import load_scenario_file
 from app.core.errors import (
     UnsupportedContentVersionError,
     UnsupportedRulesetVersionError,
@@ -32,6 +34,9 @@ PHASE2B2_SAVE_PATH = FIXTURES_DIR / "phase2b2_save_ruleset_0.4.0.json"
 PHASE2B3_SAVE_PATH = FIXTURES_DIR / "phase2b3_save_ruleset_0.5.0.json"
 PHASE2C1_SAVE_PATH = FIXTURES_DIR / "phase2c1_save_ruleset_0.6.0.json"
 PHASE2C2_SAVE_PATH = FIXTURES_DIR / "phase2c2_save_ruleset_0.7.0.json"
+PHASE3B1_SAVE_PATH = FIXTURES_DIR / "phase3b1_save_ruleset_0.9.0.json"
+
+SCENARIOS_DIR = Path(__file__).resolve().parents[2] / "data" / "scenarios"
 
 
 def test_frozen_phase1_save_fixture_declares_the_old_ruleset_version() -> None:
@@ -323,3 +328,84 @@ def test_phase2c2_save_compatibility_is_checked_before_any_entry_payload_is_pars
 
     with pytest.raises(UnsupportedRulesetVersionError):
         load_save_json(json.dumps(raw), source="corrupted-and-incompatible-2c2")
+
+
+# --- Phase 3B1 -> Phase 3B2A ruleset bump (T18) -------------------------------
+#
+# `phase3b1_save_ruleset_0.9.0.json` (plan commit 1) was frozen with unmodified Phase-3B1 code
+# *before* RULESET_VERSION was bumped to 0.10.0 for Phase 3B2A -- mirroring every prior fixture
+# above. Unlike the earlier fixtures it carries a real `LegislativeReport` on two of its three
+# resolved turns (a passed legislative vote and a decree), so rejection is proven against a
+# payload that actually exercises the structure this phase changes, not a trivial one.
+
+
+def test_frozen_phase3b1_save_fixture_declares_the_old_ruleset_version() -> None:
+    raw = json.loads(PHASE3B1_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.9.0"
+    assert raw["ruleset_version"] != RULESET_VERSION
+
+
+def test_phase3b1_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
+    """T18: rejected specifically via the ruleset-version gate, not incidentally via a decision
+    union that can't parse a bare `{"kind": "budget", ...}` payload without the new report field,
+    or any other structural difference -- proving compatibility is checked before any entry
+    payload is parsed."""
+    raw_text = read_save_file(PHASE3B1_SAVE_PATH)
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(raw_text, source=str(PHASE3B1_SAVE_PATH))
+
+    message = str(exc_info.value)
+    assert "0.9.0" in message
+    assert RULESET_VERSION in message
+    assert "not loaded" in message
+
+
+def test_phase3b1_save_compatibility_is_checked_before_any_entry_payload_is_parsed() -> None:
+    """Even a corrupted entry payload does not change which error fires -- the version gate runs
+    first, regardless of what garbage the payload contains."""
+    raw = json.loads(read_save_file(PHASE3B1_SAVE_PATH))
+    raw["entries"][0]["state_json"] = "{not even valid json"
+
+    with pytest.raises(UnsupportedRulesetVersionError):
+        load_save_json(json.dumps(raw), source="corrupted-and-incompatible-3b1")
+
+
+def test_no_migration_is_fabricated_for_a_0_9_0_save() -> None:
+    """A 0.9.0 save has no expenditure ledger and no relationship-investment decisions to have
+    ever carried. Nothing here invents an empty `PoliticalCapitalReport` to let the save through
+    with a plausible-looking gap -- rejection is the only correct behaviour, because a fabricated
+    empty ledger would assert the government committed nothing on turns whose real commitments
+    (if any) are simply unrecorded, which is a lie about history in a format whose entire purpose
+    is that it cannot lie."""
+    with pytest.raises(UnsupportedRulesetVersionError):
+        load_save_json(read_save_file(PHASE3B1_SAVE_PATH), source=str(PHASE3B1_SAVE_PATH))
+
+
+# --- T25: the scenario content-version bump changed exactly one line ----------
+
+
+@pytest.mark.parametrize(
+    "scenario_name", ["tiny_valid.yaml", "deficit_demo.yaml", "decree_state.yaml"]
+)
+def test_scenario_content_version_bump_is_the_only_change(
+    scenario_name: str, tmp_path: Path
+) -> None:
+    """Proves "each scenario file is modified only for its content-version bump" as a test, not a
+    claim. Reverting only the `content_version` key in the current (0.10.0) file and reparsing
+    produces a `GameState` identical to the real file's, once `content_version` is set back to
+    match -- so no other field could have moved between the two versions of the file without this
+    test catching it."""
+    current_path = SCENARIOS_DIR / scenario_name
+    current_state = load_scenario_file(current_path)
+    assert current_state.content_version == "0.10.0"
+
+    raw = yaml.safe_load(current_path.read_text(encoding="utf-8"))
+    assert raw["content_version"] == "0.10.0"
+    raw["content_version"] = "0.9.0"
+
+    reverted_path = tmp_path / scenario_name
+    reverted_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
+    reverted_state = load_scenario_file(reverted_path)
+
+    assert reverted_state.content_version == "0.9.0"
+    assert reverted_state.model_copy(update={"content_version": "0.10.0"}) == current_state

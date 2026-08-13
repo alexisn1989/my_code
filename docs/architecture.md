@@ -295,6 +295,42 @@ what state actually holds — `seats` and `total_seats` — and lets the report'
 the derived apportionment transitively, so no voting formula is duplicated inside reconciliation.
 See `docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`.
 
+### Phase 3B2A competing political-capital uses and bloc relationships
+
+Still no new `PHASE_ORDER` slot: relationship investment is applied by the existing slot 11,
+`update_institutional_loyalty_competence_corruption_power`, previously a no-op. Sharing that slot's
+name is not a scheduling convenience the way slot 10's is (see above) — a bloc's
+`government_relationship_bps` genuinely **is** that caucus's loyalty, so this is the closer fit of
+the two, and it is also the only slot positioned after both the vote (slot 1) and capital
+resolution (slot 10), which the one-turn delay requires. `politics.legislature` gains its first
+writer here, and only here — the same AST source-scan discipline that protects
+`political_capital`'s single-writer property extends to guarantee this.
+
+`Decision` becomes `Annotated[BudgetDecision | BlocRelationshipInvestmentDecision,
+Field(discriminator="kind")]`. `DecisionSet.budget_decision()`/`.relationship_investment_decision()`
+locate a member by `isinstance`, never by tuple position — canonical kind order sorts
+`"bloc_relationship_investment"` before `"budget"`, so a positional `decisions[0]` read (as four
+shipped Phase 3B1 sites had assumed) silently picks the wrong decision on any mixed turn.
+
+Slot 1 is extended, not replaced: it now also resolves relationship-investment targets against the
+opening legislature, computing the real `relationship_gain_bps` and rejecting a guaranteed
+zero-effect investment atomically (R13) — written against the computed gain, never a bare
+`gap == 0` check, since truncation alone can zero out a small nonzero gap. The combined legislative
+and relationship commitment is checked as one ledger total against opening capital, written to a
+new `CapitalLedgerScratch` alongside the existing `LegislativeScratch`. Slot 10's capital
+resolution now spends against the ledger total, not the legislative commitment alone. Slot 15
+assembles the new `PoliticalCapitalReport` — `TurnReport`'s eighth report — from that scratch.
+
+`reconcile_political_and_legislative_report`'s group 12 gains a direct state-to-state staticness
+check on top of its Phase 3B1 form: groups 13–15 compare the *report's* chamber/bloc rows against
+state, so they have nothing to compare on a `NO_PROPOSAL`/`ENACTED_BY_DECREE` turn, whose report
+carries zero such rows by construction. Group 12 now also compares the two `LegislatureState`s
+directly — a fast-path `==` when no relationship changed, a field-by-field slow path (excluding
+`government_relationship_bps`, which is genuinely mutable now) when it did — closing the coverage
+hole that gap would otherwise leave open exactly on relationship-only turns. See
+`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md` for the full rationale,
+the calibration evidence, and what remains explicitly deferred to Phase 3B2B.
+
 ### Government accounting phases (Phase 2A, extended in Phase 2B2)
 
 `apply_legal_and_administrative_changes` captures a frozen `OpeningFinanceSnapshot`
@@ -408,6 +444,17 @@ later phase's soak testing shows this matters at realistic game lengths, the opt
 incremental tail-only validation (trust everything before the last known-good entry) or a trusted
 in-memory session wrapper that validates once on load; neither is implemented without a measured
 reason to.
+
+Phase 3B2A repeated the same measurement discipline against its own highest-risk commit — the one
+landing the eighth report (`PoliticalCapitalReport`) and the rewritten reconciliation group 12,
+since a no-investment turn's group 12 still takes the `==` fast path but every entry now also
+carries one more report to parse and re-validate on replay. Using isolated git worktrees at the
+commit immediately before and immediately after (one discarded warm-up plus three measured runs
+each, median taken), all four pre-existing 100-turn soaks moved by roughly **1.02-1.07x** — well
+inside noise, let alone the 2x stop threshold. A fifth soak, new in this phase, submits both a
+budget proposal and a relationship investment every turn (so group 12's slow path runs on every
+entry, not merely a fast-path `==`) and measured ~89ms/turn — comparable to, not materially slower
+than, the pre-existing decree_state soak's ~87-89ms/turn, confirming the slow path itself is cheap.
 
 ## Money and bounded values
 

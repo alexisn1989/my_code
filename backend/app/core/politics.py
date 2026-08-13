@@ -157,6 +157,59 @@ scratch.
 """
 
 
+# --- Phase 3B2A: competing capital uses and bloc relationships ---------------
+
+RELATIONSHIP_INVESTMENT_CAP = 200
+"""The most political capital one bloc's relationship can absorb in one turn.
+
+**Defined once, here, and consumed by exactly two places**: `simulation.decisions.BlocInvestment`,
+which *rejects* anything outside `[1, CAP]`, and `simulation.relationships.relationship_gain_bps`,
+which *asserts* the same band. That pairing is deliberate. An earlier draft capped the amount
+inside the formula while letting the decision accept any positive integer, which meant committing
+500 bought exactly what 200 buys — 300 capital silently destroyed, and a strictly dominated action
+the engine accepted without complaint. A bound that the player can hit must be a bound the player
+is told about, so it lives in the decision schema and the formula merely agrees with it.
+
+Also the single lever holding the diminishing-returns guarantee: one turn can close at most
+`CAP / (RELATIONSHIP_HALF_GAP_CAPITAL + CAP)` of the remaining gap, so no amount of capital buys a
+relationship outright.
+"""
+
+StrictRelationshipInvestment: TypeAlias = Annotated[
+    int, Field(strict=True, ge=1, le=RELATIONSHIP_INVESTMENT_CAP)
+]
+"""Political capital committed to improving one bloc's relationship, in one turn.
+
+`0` is not "no investment", it is a malformed one — an allocation naming a target and committing
+nothing. `201` is not "200 plus some waste", it is out of range. Both are rejected rather than
+normalised, the same reject-not-normalize rule every ordered collection in this codebase follows.
+"""
+
+StrictPoliticalCapitalCommitment: TypeAlias = Annotated[int, Field(strict=True, ge=1)]
+"""One row of the political-capital expenditure ledger.
+
+Every *stored* row represents a real, positive commitment; a zero commitment produces no row at
+all. This introduces no new policy — `simulation.decisions.InfluenceAllocation` has required
+`gt=0` since Phase 3B1, so no valid decision has ever carried a zero allocation. What it adds is
+that the *report* cannot carry one either, which closes a padding channel: an attacker cannot add
+arbitrary zero-cost rows to change what the ledger appears to describe while keeping
+`total_committed == sum(rows)` intact.
+"""
+
+StrictRelationshipGainBps: TypeAlias = Annotated[
+    int, Field(strict=True, ge=0, le=2 * BPS_DENOMINATOR)
+]
+"""An applied improvement to a bloc's relationship, in basis points.
+
+Non-negative **by construction in Phase 3B2A**: the gap to the ceiling is never negative and
+nothing decays yet. Relationship decay and adverse reactions are Phase 3B2B, and that is the
+phase that makes this quantity genuinely signed.
+
+The upper bound is the widest gap the scale admits (-10,000 to +10,000). It is never reached: the
+formula returns a strict fraction of the remaining gap, so a single turn cannot close it.
+"""
+
+
 def trunc_div_toward_zero(numerator: int, denominator: int) -> int:
     """Exact integer division truncated **toward zero** — the single rounding step used by every
     signed political formula in `simulation.legitimacy`.

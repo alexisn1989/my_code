@@ -850,7 +850,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.9.0"
+RULESET_VERSION = "0.10.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -873,7 +873,16 @@ older save), and
 declares a legislature, and a 0.8.0 save has no chambers, parties, blocs, seats, relationships or
 preferences to backfill from — inventing them would be inventing a legislature, not migrating
 one; and turn resolution now routes the budget through a vote that can fail, so the same decisions
-no longer produce the same turn).
+no longer produce the same turn), and
+`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md` (bumped `"0.9.0" ->
+"0.10.0"` for Phase 3B2A: `DecisionSet.decisions` becomes a tagged union rather than a homogeneous
+tuple, so a 0.9.0 decision payload lacking an explicit `kind` per element no longer round-trips
+through the same parse path; `TurnReport` gains an eighth report,
+`political_capital: PoliticalCapitalReport`, with no data in a 0.9.0 save to backfill it from — a
+0.9.0 turn spent capital on exactly one thing and has no expenditure ledger to reconstruct; and
+`PoliticalState.legislature`'s `government_relationship_bps` becomes mutable turn to turn, so
+replaying 0.9.0 history against 3B2A's reconciliation groups 12/14 would require inventing
+relationship provenance no 0.9.0 save ever recorded).
 """
 
 

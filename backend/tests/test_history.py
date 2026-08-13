@@ -3,25 +3,42 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 
 import pytest
 
 from app.core.canonical_json import canonical_dumps
 from app.core.errors import HistoryValidationError, SnapshotNotFoundError, TurnResolutionError
 from app.simulation.decisions import (
+    BlocInvestment,
+    BlocRelationshipInvestmentDecision,
     BudgetDecision,
     DecisionSet,
     InfluenceAllocation,
     SpendingUpdate,
+    bloc_relationship_investment_digest,
 )
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
 from app.simulation.legislature import ProposalRoute
-from app.simulation.report import TurnReportEntry
+from app.simulation.relationships import relationship_gain_bps
+from app.simulation.report import BlocRelationshipChangeReport, TurnReportEntry
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json
 from app.simulation.state import SpendingCategory
 from tests.conftest import make_game_state
 
 _SFV = SAVE_FORMAT_VERSION
+
+
+def _budget_of(decision_set: DecisionSet) -> BudgetDecision:
+    """The submitted budget, located by kind rather than by tuple position (Phase 3B2A).
+
+    These tamper tests build budget-only decision sets, so index 0 would still work today — which
+    is exactly why it is not used. A positional read here is a template a future mixed-set test
+    would copy, and under canonical kind order a relationship investment sorts ahead of the budget.
+    """
+    budget = decision_set.budget_decision()
+    assert budget is not None
+    return budget
 
 
 def _fresh_save() -> GameSave:
@@ -977,7 +994,7 @@ def test_consistently_rehashed_decision_route_tamper_still_fails_reconciliation(
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    tampered_budget = decision_set.decisions[0].model_copy(update={"route": ProposalRoute.DECREE})
+    tampered_budget = _budget_of(decision_set).model_copy(update={"route": ProposalRoute.DECREE})
     tampered_set = decision_set.model_copy(update={"decisions": (tampered_budget,)})
     tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
     assert tampered_json != original.decisions_json
@@ -999,7 +1016,7 @@ def test_consistently_rehashed_decision_tax_target_value_tamper_still_fails_reco
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    tampered_budget = decision_set.decisions[0].model_copy(
+    tampered_budget = _budget_of(decision_set).model_copy(
         update={"personal_income_rate_bps": 2_600}
     )
     tampered_set = decision_set.model_copy(update={"decisions": (tampered_budget,)})
@@ -1018,7 +1035,7 @@ def test_consistently_rehashed_decision_spending_target_value_tamper_still_fails
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    original_budget = decision_set.decisions[0]
+    original_budget = _budget_of(decision_set)
     tampered_updates = tuple(
         update.model_copy(update={"amount": 32_000_00})
         if update.category is SpendingCategory.HEALTH
@@ -1045,7 +1062,7 @@ def test_consistently_rehashed_tax_category_swap_preserving_aggregate_still_fail
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    original_budget = decision_set.decisions[0]
+    original_budget = _budget_of(decision_set)
     assert original_budget.personal_income_rate_bps == 2_500
     assert original_budget.corporate_rate_bps == 3_000
     tampered_budget = original_budget.model_copy(
@@ -1071,7 +1088,7 @@ def test_consistently_rehashed_spending_category_swap_preserving_total_still_fai
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    original_budget = decision_set.decisions[0]
+    original_budget = _budget_of(decision_set)
     amounts = {update.category: update.amount for update in original_budget.spending_updates}
     assert amounts[SpendingCategory.HEALTH] == 31_000_00
     assert amounts[SpendingCategory.EDUCATION] == 23_000_00
@@ -1102,7 +1119,7 @@ def test_consistently_rehashed_influence_allocation_tamper_still_fails_reconcili
     original = save.entries[index]
     decision_set = original.decisions()
     assert decision_set is not None and decision_set.decisions
-    original_budget = decision_set.decisions[0]
+    original_budget = _budget_of(decision_set)
     assert len(original_budget.influence) == 1
     assert original_budget.influence[0].political_capital == 10
     tampered_budget = original_budget.model_copy(
@@ -1182,3 +1199,377 @@ def test_malformed_decisions_json_with_consistent_hash_is_a_schema_problem_not_a
     assert not any("not valid JSON" in p for p in problems)
     assert not any("not canonical JSON" in p for p in problems)
     assert any("stored decisions fail schema validation" in p for p in problems)
+
+
+# --- Phase 3B2A, D9: consistently re-hashed RELATIONSHIP-INVESTMENT tampering -------------------
+#
+# The union-aware complement of the Phase 3B1 block above: the same "edit the stored payload,
+# recompute entry_hash consistently" attack, now against a `BlocRelationshipInvestmentDecision`
+# and its `PoliticalCapitalReport`. `DecisionSet.model_validate` already flows through the union
+# unchanged (H13/R8's finding: no `history.py` plumbing change was needed for the union itself),
+# so these tests exist to prove groups 20/21 (and the report's own formula validator) actually
+# catch a consistently-rehashed semantic tamper on THIS decision kind, not merely on `BudgetDecision`.
+
+_INVESTMENT_TARGET_PARTY = "governing_party"
+_INVESTMENT_TARGET_BLOC = "core"
+_INVESTMENT_OPENING_RELATIONSHIP_BPS = 6_000
+"""`tests.conftest.make_legislature`'s `governing_party/core` -- the default legislature every
+`_fresh_save()` carries."""
+
+
+def _investment_decision(political_capital: int = 100) -> BlocRelationshipInvestmentDecision:
+    return BlocRelationshipInvestmentDecision(
+        investments=(
+            BlocInvestment(
+                party_id=_INVESTMENT_TARGET_PARTY,
+                bloc_id=_INVESTMENT_TARGET_BLOC,
+                political_capital=political_capital,
+            ),
+        )
+    )
+
+
+def _save_with_investment(
+    decision: BlocRelationshipInvestmentDecision,
+) -> tuple[GameSave, int]:
+    """Mirrors `_save_with_decision`: two quiet turns, then one turn submitting `decision`.
+    Returns the save and the index of the entry `decision` produced -- always the last entry."""
+    save = _advance_n(_fresh_save(), 2)
+    state = save.current_state()
+    decisions = DecisionSet(
+        expected_turn=state.turn, expected_state_version=state.state_version, decisions=[decision]
+    )
+    save = advance_game(save, decisions)
+    return save, len(save.entries) - 1
+
+
+def _investment_of(decision_set: DecisionSet) -> BlocRelationshipInvestmentDecision:
+    investment_decision = decision_set.relationship_investment_decision()
+    assert investment_decision is not None
+    return investment_decision
+
+
+def _consistent_relationship_row(
+    *, party_id: str, bloc_id: str, political_capital: int, opening_relationship_bps: int
+) -> BlocRelationshipChangeReport:
+    """Build a `BlocRelationshipChangeReport` that is internally self-consistent under its own
+    formula validator for an arbitrary `opening_relationship_bps` -- i.e. a row that WILL construct
+    but describes a bloc relationship that never existed in the real state. Used to tamper a report
+    row without tripping `_relationship_change_matches_the_formula` itself, so the only thing left
+    to catch the lie is reconciliation comparing it against real state (group 20)."""
+    gap_bps = 10_000 - opening_relationship_bps
+    gain = relationship_gain_bps(
+        opening_relationship_bps=opening_relationship_bps, political_capital=political_capital
+    )
+    return BlocRelationshipChangeReport(
+        party_id=party_id,
+        bloc_id=bloc_id,
+        political_capital=political_capital,
+        opening_relationship_bps=opening_relationship_bps,
+        gap_bps=gap_bps,
+        applied_change_bps=gain,
+        closing_relationship_bps=opening_relationship_bps + gain,
+    )
+
+
+def test_consistently_rehashed_investment_target_party_tamper_still_fails_reconciliation() -> None:
+    """Editing the decision's target party to one that never invested -- group 21's bidirectional
+    check catches it in both directions at once (the real target is missing, the fake one is
+    invented)."""
+    save, index = _save_with_investment(_investment_decision())
+    original = save.entries[index]
+    decision_set = original.decisions()
+    assert decision_set is not None
+    original_investment = _investment_of(decision_set)
+    tampered_investment = original_investment.model_copy(
+        update={
+            "investments": (
+                original_investment.investments[0].model_copy(
+                    update={"party_id": "opposition_party"}
+                ),
+            )
+        }
+    )
+    tampered_set = decision_set.model_copy(update={"decisions": (tampered_investment,)})
+    tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
+    assert tampered_json != original.decisions_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any(
+        "but political_capital.expenditures does not show that investment" in p for p in problems
+    )
+    assert any("but the submitted decision does not commit that" in p for p in problems)
+
+
+def test_consistently_rehashed_investment_target_bloc_tamper_still_fails_reconciliation() -> None:
+    """As above, targeting a bloc id that does not exist under the real party at all."""
+    save, index = _save_with_investment(_investment_decision())
+    original = save.entries[index]
+    decision_set = original.decisions()
+    assert decision_set is not None
+    original_investment = _investment_of(decision_set)
+    tampered_investment = original_investment.model_copy(
+        update={
+            "investments": (
+                original_investment.investments[0].model_copy(
+                    update={"bloc_id": "not_a_real_bloc"}
+                ),
+            )
+        }
+    )
+    tampered_set = decision_set.model_copy(update={"decisions": (tampered_investment,)})
+    tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any(
+        "political_capital.expenditures does not show that investment" in p for p in problems
+    )
+
+
+def test_consistently_rehashed_investment_capital_tamper_still_fails_reconciliation() -> None:
+    """The decision's committed amount is edited upward; the report's stored row (fixed at
+    resolution time) cannot possibly agree, so group 21's amount check catches it."""
+    save, index = _save_with_investment(_investment_decision(political_capital=100))
+    original = save.entries[index]
+    decision_set = original.decisions()
+    assert decision_set is not None
+    original_investment = _investment_of(decision_set)
+    tampered_investment = original_investment.model_copy(
+        update={
+            "investments": (
+                original_investment.investments[0].model_copy(update={"political_capital": 150}),
+            )
+        }
+    )
+    tampered_set = decision_set.model_copy(update={"decisions": (tampered_investment,)})
+    tampered_json = canonical_dumps(tampered_set.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any(
+        "but political_capital.expenditures does not show that investment" in p for p in problems
+    )
+
+
+def test_consistently_rehashed_investment_ordering_tamper_is_a_schema_problem() -> None:
+    """Two investments stored out of canonical `(party_id, bloc_id)` order -- caught by
+    `_investments_are_in_canonical_identity_order` at the REPLAY parse itself, before
+    reconciliation ever runs, proving the union's ordering rule is re-enforced on every replay,
+    not merely at original submission time. Built in CANONICAL order first (the decision model
+    itself refuses to construct out of order -- that is validator #1's job at submission time);
+    the raw stored JSON is reversed afterward, bypassing that constructor check the same way a
+    knowledgeable tamperer editing a save file on disk would."""
+    save, index = _save_with_investment(
+        BlocRelationshipInvestmentDecision(
+            investments=(
+                BlocInvestment(party_id="governing_party", bloc_id="core", political_capital=50),
+                BlocInvestment(party_id="opposition_party", bloc_id="main", political_capital=50),
+            )
+        )
+    )
+    original = save.entries[index]
+    raw = json.loads(original.decisions_json)
+    investments = raw["decisions"][0]["investments"]
+    assert len(investments) == 2
+    raw["decisions"][0]["investments"] = list(reversed(investments))
+    tampered_json = canonical_dumps(raw)
+    assert tampered_json != original.decisions_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("stored decisions fail schema validation" in p for p in problems)
+
+
+def test_consistently_rehashed_duplicate_investment_target_is_a_schema_problem() -> None:
+    """A duplicated `(party_id, bloc_id)` target -- caught by `_no_duplicate_investment_targets`
+    at the replay parse, the same way a stored duplicate influence allocation would be."""
+    save, index = _save_with_investment(_investment_decision())
+    original = save.entries[index]
+    raw = json.loads(original.decisions_json)
+    row = raw["decisions"][0]["investments"][0]
+    raw["decisions"][0]["investments"] = [row, dict(row)]
+    tampered_json = canonical_dumps(raw)
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, decisions_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("stored decisions fail schema validation" in p for p in problems)
+
+
+def test_consistently_rehashed_investment_digest_tamper_still_fails_reconciliation() -> None:
+    """The REPORT's own `decision_digest` on the ledger row is edited (the decision itself is
+    untouched) -- still a syntactically valid 64-character hex digest, so
+    `CapitalExpenditureReport`'s syntax-only validator does not reject it on replay; only the
+    reconciliation check recomputing `bloc_relationship_investment_digest` from the real submitted
+    decision catches the mismatch (mirrors the pre-existing `budget_decision_digest` case)."""
+    save, index = _save_with_investment(_investment_decision())
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.political_capital is not None
+    expenditure_rows = report.political_capital.expenditures
+    assert len(expenditure_rows) == 1
+    real_digest = expenditure_rows[0].decision_digest
+    assert real_digest == bloc_relationship_investment_digest(_investment_of(original.decisions()))
+    fake_digest = ("0" if real_digest[0] != "0" else "1") + real_digest[1:]
+    tampered_row = expenditure_rows[0].model_copy(update={"decision_digest": fake_digest})
+    tampered_capital_report = report.political_capital.model_copy(
+        update={"expenditures": (tampered_row,)}
+    )
+    tampered_report = report.model_copy(update={"political_capital": tampered_capital_report})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("decision_digest" in p for p in problems)
+
+
+def test_consistently_rehashed_report_opening_relationship_tamper_still_fails_reconciliation() -> (
+    None
+):
+    """The report's `relationship_changes` row is replaced with an internally-consistent row (it
+    still satisfies `BlocRelationshipChangeReport`'s own formula validator) describing a DIFFERENT
+    opening relationship than the bloc actually had -- only group 20, comparing against the real
+    opening state, catches the lie."""
+    save, index = _save_with_investment(_investment_decision(political_capital=100))
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.political_capital is not None
+    real_row = report.political_capital.relationship_changes[0]
+    assert real_row.opening_relationship_bps == _INVESTMENT_OPENING_RELATIONSHIP_BPS
+    fake_row = _consistent_relationship_row(
+        party_id=real_row.party_id,
+        bloc_id=real_row.bloc_id,
+        political_capital=real_row.political_capital,
+        opening_relationship_bps=real_row.opening_relationship_bps - 1_000,
+    )
+    tampered_capital_report = report.political_capital.model_copy(
+        update={"relationship_changes": (fake_row,)}
+    )
+    tampered_report = report.model_copy(update={"political_capital": tampered_capital_report})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("opening_relationship_bps" in p for p in problems)
+
+
+def test_consistently_rehashed_relationship_row_capital_tamper_is_a_schema_problem() -> None:
+    """`closing_relationship_bps` is a pure function of `(opening_relationship_bps,
+    political_capital)` under `BlocRelationshipChangeReport`'s own formula validator, so it cannot
+    be tampered independently of one of those two without either breaking that row-level formula
+    check (an internally-inconsistent row) or breaking `PoliticalCapitalReport` validator 8 (a row
+    whose capital no longer matches its own ledger entry) -- there is no third way to make the
+    closing value lie. This proves the latter: a row claiming a DIFFERENT capital than its own
+    ledger row is caught at REPLAY PARSE, before reconciliation ever runs."""
+    save, index = _save_with_investment(_investment_decision(political_capital=100))
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.political_capital is not None
+    real_row = report.political_capital.relationship_changes[0]
+    fake_row = _consistent_relationship_row(
+        party_id=real_row.party_id,
+        bloc_id=real_row.bloc_id,
+        political_capital=50,
+        opening_relationship_bps=real_row.opening_relationship_bps,
+    )
+    assert fake_row.closing_relationship_bps != real_row.closing_relationship_bps
+    tampered_capital_report = report.political_capital.model_copy(
+        update={"relationship_changes": (fake_row,)}
+    )
+    tampered_report = report.model_copy(update={"political_capital": tampered_capital_report})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("stored report fails schema validation" in p for p in problems)
+    assert any(
+        "does not correspond exactly to the BLOC_RELATIONSHIP_INVESTMENT" in p for p in problems
+    )
+
+
+def test_consistently_rehashed_report_total_committed_tamper_still_fails_reconciliation() -> None:
+    """`PoliticalCapitalReport.total_committed` is edited without touching the expenditure rows
+    that are supposed to sum to it -- rejected by the report's OWN validator 1
+    (`_total_committed_matches_expenditure_rows`) on replay parse, before reconciliation even
+    runs, proving the ledger's internal arithmetic is re-checked on every replay."""
+    save, index = _save_with_investment(_investment_decision())
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.political_capital is not None
+    tampered_capital_report = report.political_capital.model_copy(
+        update={"total_committed": report.political_capital.total_committed + 1}
+    )
+    tampered_report = report.model_copy(update={"political_capital": tampered_capital_report})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any(
+        "stored report fails schema validation" in p or "total_committed" in p for p in problems
+    )
+
+
+def test_consistently_rehashed_untargeted_bloc_state_tamper_still_fails_reconciliation() -> None:
+    """The CLOSING state's relationship for a bloc NOT named by any `relationship_changes` row is
+    mutated -- the untargeted-immutability guarantee (group 20) exists specifically for this case,
+    which the rewritten group 12 alone would also catch (both are asserted, since T17 case 12 in
+    the plan calls this out as the proof D8's carve-out left no hole)."""
+    save, index = _save_with_investment(_investment_decision())
+    original = save.entries[index]
+    state = original.state()
+    assert state is not None
+    country = state.world.countries[state.world.player_country_id]
+    assert country.politics is not None and country.politics.legislature is not None
+    legislature = country.politics.legislature
+    opposition_party = next(p for p in legislature.parties if p.id == "opposition_party")
+    mutated_bloc = opposition_party.blocs[0].model_copy(
+        update={
+            "government_relationship_bps": opposition_party.blocs[0].government_relationship_bps
+            + 500
+        }
+    )
+    mutated_party = opposition_party.model_copy(update={"blocs": (mutated_bloc,)})
+    mutated_legislature = legislature.model_copy(
+        update={
+            "parties": tuple(
+                mutated_party if p.id == "opposition_party" else p for p in legislature.parties
+            )
+        }
+    )
+    mutated_politics = country.politics.model_copy(update={"legislature": mutated_legislature})
+    mutated_country = country.model_copy(update={"politics": mutated_politics})
+    mutated_state = state.model_copy(
+        update={
+            "world": state.world.model_copy(
+                update={
+                    "countries": {
+                        **state.world.countries,
+                        state.world.player_country_id: mutated_country,
+                    }
+                }
+            )
+        }
+    )
+    tampered_json = canonical_dumps(mutated_state.model_dump(mode="json"))
+    assert tampered_json != original.state_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, state_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any(
+        "government_relationship_bps changed" in p
+        and "not named by any relationship_changes row" in p
+        for p in problems
+    )

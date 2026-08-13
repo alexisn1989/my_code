@@ -19,10 +19,17 @@ from collections import Counter
 
 from app.content.scenarios import load_scenario_file
 from app.core.canonical_json import canonical_dumps
-from app.simulation.decisions import BudgetDecision, DecisionSet, InfluenceAllocation
+from app.simulation.decisions import (
+    BlocInvestment,
+    BlocRelationshipInvestmentDecision,
+    BudgetDecision,
+    DecisionSet,
+    InfluenceAllocation,
+)
 from app.simulation.history import advance_game, new_game, validate_history
 from app.simulation.legislative_voting import DECREE_POLITICAL_CAPITAL_COST
 from app.simulation.legislature import LegislativeOutcome, ProposalRoute
+from app.simulation.relationships import RELATIONSHIP_INVESTMENT_CAP, relationship_gain_bps
 from app.simulation.report import SectorProductionConstraint
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.save_format import SAVE_FORMAT_VERSION
@@ -409,5 +416,148 @@ def test_100_turn_soak_with_a_proposal_every_turn_on_decree_state() -> None:
     print(
         f"\n{TURNS}-turn soak (decree_state, a proposal every turn): {elapsed:.3f}s total, "
         f"{elapsed / TURNS * 1000:.2f}ms/turn; outcomes="
+        + ", ".join(f"{outcome.value}={count}" for outcome, count in sorted(outcomes.items()))
+    )
+
+
+# --- Phase 3B2A: mixed-expenditure soak ---------------------------------------------------------
+
+
+def _affordable_nonzero_investment(*, opening_relationship_bps: int, capital_ceiling: int) -> int:
+    """The largest amount in `[1, min(RELATIONSHIP_INVESTMENT_CAP, capital_ceiling)]` that buys a
+    NONZERO gain against `opening_relationship_bps`, or 0 if none does (the relationship is close
+    enough to the ceiling that every affordable amount would be a guaranteed no-op, which R13
+    rejects atomically). Tried from the top down since gain is monotonic non-decreasing in
+    capital (§8.3), so the first nonzero hit from the top is also the affordable maximum."""
+    for capital in range(min(RELATIONSHIP_INVESTMENT_CAP, capital_ceiling), 0, -1):
+        if (
+            relationship_gain_bps(
+                opening_relationship_bps=opening_relationship_bps, political_capital=capital
+            )
+            > 0
+        ):
+            return capital
+    return 0
+
+
+def test_100_turn_soak_with_mixed_expenditure_on_decree_state() -> None:
+    """(T22) Every turn submits BOTH a budget proposal (cycling decree / cheapest-passing /
+    one-short / no-influence, exactly as `_proposal_for` above) AND a relationship investment in
+    `opposition_party/main` -- the two competing political-capital sinks Phase 3B2A introduces,
+    exercised together on every turn for the whole soak, not merely in isolation."""
+    save = new_game(
+        load_scenario_file(SCENARIO_DIR / "decree_state.yaml"),
+        save_format_version=SAVE_FORMAT_VERSION,
+    )
+    outcomes: Counter[LegislativeOutcome] = Counter()
+    previous_relationship_bps: int | None = None
+
+    started = time.monotonic()
+    for turn in range(TURNS):
+        opening_state = save.current_state()
+        opening_player = opening_state.world.countries["valdrun"]
+        assert opening_player.finance is not None and opening_player.politics is not None
+        assert opening_player.politics.legislature is not None
+        opening_capital = opening_player.politics.political_capital
+        capacity = opening_player.politics.political_capital_capacity
+        opening_bloc = next(
+            bloc
+            for party in opening_player.politics.legislature.parties
+            for bloc in party.blocs
+            if party.id == "opposition_party" and bloc.id == "main"
+        )
+
+        budget = _proposal_for(
+            turn=turn,
+            opening_rate_bps=opening_player.finance.tax_policy.personal_income_rate_bps,
+            opening_capital=opening_capital,
+        )
+        route_cost = (
+            DECREE_POLITICAL_CAPITAL_COST
+            if budget.route is ProposalRoute.DECREE
+            else sum(a.political_capital for a in budget.influence)
+        )
+        investment = _affordable_nonzero_investment(
+            opening_relationship_bps=opening_bloc.government_relationship_bps,
+            capital_ceiling=max(0, opening_capital - route_cost),
+        )
+
+        decisions: list[BudgetDecision | BlocRelationshipInvestmentDecision] = [budget]
+        if investment > 0:
+            decisions.append(
+                BlocRelationshipInvestmentDecision(
+                    investments=(
+                        BlocInvestment(
+                            party_id="opposition_party",
+                            bloc_id="main",
+                            political_capital=investment,
+                        ),
+                    )
+                )
+            )
+        decisions.sort(key=lambda d: d.kind)
+
+        save = advance_game(
+            save,
+            DecisionSet(
+                expected_turn=opening_state.turn,
+                expected_state_version=opening_state.state_version,
+                decisions=tuple(decisions),
+            ),
+        )
+        assert save.current_turn() == turn + 1
+
+        report = save.entries[-1].report()
+        assert (
+            report is not None
+            and report.legislative is not None
+            and report.political_capital is not None
+        )
+        legislative = report.legislative
+        pcr = report.political_capital
+        outcomes[legislative.outcome] += 1
+
+        closing_player = save.current_state().world.countries["valdrun"]
+        assert (
+            closing_player.politics is not None and closing_player.politics.legislature is not None
+        )
+        closing_bloc = next(
+            bloc
+            for party in closing_player.politics.legislature.parties
+            for bloc in party.blocs
+            if party.id == "opposition_party" and bloc.id == "main"
+        )
+
+        # Capital never negative, never exceeds capacity, and every turn's total is bounded by
+        # THAT turn's opening capital (R2/R6) -- never by opening + regeneration.
+        assert 0 <= closing_player.politics.political_capital <= capacity
+        assert pcr.total_committed <= opening_capital
+
+        # Every relationship stays in range and is non-decreasing turn over turn -- 3B2A has no
+        # decay, so a bloc's relationship can only hold or improve.
+        assert -10_000 <= closing_bloc.government_relationship_bps <= 10_000
+        assert closing_bloc.government_relationship_bps >= opening_bloc.government_relationship_bps
+        if previous_relationship_bps is not None:
+            assert closing_bloc.government_relationship_bps >= previous_relationship_bps
+        previous_relationship_bps = closing_bloc.government_relationship_bps
+
+        # The ledger and the investment agree on what happened this turn.
+        if investment > 0:
+            assert len(pcr.relationship_changes) == 1
+            assert pcr.relationship_changes[0].political_capital == investment
+        else:
+            assert pcr.relationship_changes == ()
+
+    elapsed = time.monotonic() - started
+
+    assert validate_history(save) == []
+    assert save.current_turn() == TURNS
+    assert outcomes[LegislativeOutcome.PASSED_LEGISLATIVE] > 0
+    assert outcomes[LegislativeOutcome.ENACTED_BY_DECREE] > 0
+    assert sum(outcomes.values()) == TURNS
+
+    print(
+        f"\n{TURNS}-turn soak (decree_state, mixed budget + relationship investment every turn): "
+        f"{elapsed:.3f}s total, {elapsed / TURNS * 1000:.2f}ms/turn; outcomes="
         + ", ".join(f"{outcome.value}={count}" for outcome, count in sorted(outcomes.items()))
     )

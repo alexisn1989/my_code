@@ -7,7 +7,14 @@ from __future__ import annotations
 
 from app.cli import REASON_RENDERERS, render_entry
 from app.content.scenarios import load_scenario_file
-from app.simulation.decisions import BudgetDecision, DecisionSet, SpendingUpdate
+from app.simulation.decisions import (
+    BlocInvestment,
+    BlocRelationshipInvestmentDecision,
+    BudgetDecision,
+    DecisionSet,
+    InfluenceAllocation,
+    SpendingUpdate,
+)
 from app.simulation.report import TurnReportEntry
 from app.simulation.resolver import resolve_turn
 from app.simulation.state import SpendingCategory
@@ -77,6 +84,23 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "supporting_seats": 47,
         "required_yes_seats": 51,
         "shortfall_seats": 4,
+    },
+    "political_capital_ledger_resolved": {
+        "opening": 500,
+        "total_committed": 450,
+        "legislative_committed": 250,
+        "relationship_committed": 200,
+        "regeneration": 383,
+        "closing": 433,
+        "capacity": 1000,
+    },
+    "bloc_relationship_investment_resolved": {
+        "party_id": "opposition_party",
+        "bloc_id": "main",
+        "political_capital": 200,
+        "opening_relationship_bps": -8000,
+        "applied_change_bps": 5142,
+        "closing_relationship_bps": -2858,
     },
 }
 
@@ -350,6 +374,19 @@ def test_every_reason_id_emitted_by_a_real_legislative_resolution_is_registered(
             "decree_state.yaml",
             (BudgetDecision(personal_income_rate_bps=2500, route=ProposalRoute.DECREE),),
         ),
+        (
+            "deficit_demo.yaml",
+            (
+                BlocRelationshipInvestmentDecision(
+                    investments=(
+                        BlocInvestment(
+                            party_id="citizens_bloc", bloc_id="moderates", political_capital=100
+                        ),
+                    )
+                ),
+                BudgetDecision(personal_income_rate_bps=2000),
+            ),
+        ),
     )
     for scenario_name, decisions_tuple in cases:
         for entry in _resolve_with(scenario_name, decisions_tuple):
@@ -358,3 +395,82 @@ def test_every_reason_id_emitted_by_a_real_legislative_resolution_is_registered(
             rendered = render_entry(entry)
             assert "unrendered" not in rendered
             assert "error rendering" not in rendered
+
+
+# --- Phase 3B2A: the capital-ledger reason IDs --------------------------------
+
+
+def test_relationship_only_turn_emits_the_ledger_and_investment_reasons() -> None:
+    """A turn with no budget decision at all -- the simplest new thing this phase adds."""
+    entries = _resolve_with(
+        "deficit_demo.yaml",
+        (
+            BlocRelationshipInvestmentDecision(
+                investments=(
+                    BlocInvestment(
+                        party_id="citizens_bloc", bloc_id="moderates", political_capital=100
+                    ),
+                )
+            ),
+        ),
+    )
+    ids = [e.reason_id for e in entries]
+    assert "political_capital_ledger_resolved" in ids
+    assert "bloc_relationship_investment_resolved" in ids
+    # No budget was submitted, so there is genuinely no vote to report.
+    assert "legislative_vote_resolved" not in ids
+
+    ledger_entry = next(e for e in entries if e.reason_id == "political_capital_ledger_resolved")
+    assert ledger_entry.params["total_committed"] == 100
+    assert ledger_entry.params["legislative_committed"] == 0
+    assert ledger_entry.params["relationship_committed"] == 100
+    assert "unrendered" not in render_entry(ledger_entry)
+
+    investment_entry = next(
+        e for e in entries if e.reason_id == "bloc_relationship_investment_resolved"
+    )
+    assert investment_entry.params["party_id"] == "citizens_bloc"
+    assert investment_entry.params["bloc_id"] == "moderates"
+    assert investment_entry.params["political_capital"] == 100
+    assert investment_entry.params["applied_change_bps"] == 2_000
+    assert "unrendered" not in render_entry(investment_entry)
+
+
+def test_a_turn_with_no_expenditure_at_all_emits_no_ledger_entries() -> None:
+    """An empty ledger is valid and complete, but not worth narrating every single turn."""
+    entries = _resolve_with("tiny_valid.yaml")
+    ids = {e.reason_id for e in entries}
+    assert "political_capital_ledger_resolved" not in ids
+    assert "bloc_relationship_investment_resolved" not in ids
+
+
+def test_a_mixed_turn_emits_both_the_vote_and_the_ledger_reason() -> None:
+    entries = _resolve_with(
+        "deficit_demo.yaml",
+        (
+            BlocRelationshipInvestmentDecision(
+                investments=(
+                    BlocInvestment(
+                        party_id="citizens_bloc", bloc_id="moderates", political_capital=100
+                    ),
+                )
+            ),
+            BudgetDecision(
+                personal_income_rate_bps=2000,
+                influence=(
+                    InfluenceAllocation(
+                        party_id="citizens_bloc", bloc_id="moderates", political_capital=162
+                    ),
+                ),
+            ),
+        ),
+    )
+    ids = [e.reason_id for e in entries]
+    assert "legislative_vote_resolved" in ids
+    assert "political_capital_ledger_resolved" in ids
+    assert "bloc_relationship_investment_resolved" in ids
+
+    ledger_entry = next(e for e in entries if e.reason_id == "political_capital_ledger_resolved")
+    assert ledger_entry.params["total_committed"] == 262
+    assert ledger_entry.params["legislative_committed"] == 162
+    assert ledger_entry.params["relationship_committed"] == 100

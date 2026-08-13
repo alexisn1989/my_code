@@ -62,6 +62,7 @@ from app.simulation.report import (
     FinanceReport,
     LaborMarketReport,
     LegislativeReport,
+    PoliticalCapitalReport,
     PoliticalReport,
     ProductionReport,
     ResourceExtractionReport,
@@ -250,6 +251,36 @@ def _render_budget_blocked_by_legislature(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_political_capital_ledger_resolved(params: dict[str, str | int]) -> str:
+    opening = int(params["opening"])
+    total_committed = int(params["total_committed"])
+    legislative_committed = int(params["legislative_committed"])
+    relationship_committed = int(params["relationship_committed"])
+    regeneration = int(params["regeneration"])
+    closing = int(params["closing"])
+    capacity = int(params["capacity"])
+    return (
+        f"Political capital ledger resolved: opening={opening:,} committed={total_committed:,} "
+        f"(legislative/decree={legislative_committed:,}, "
+        f"relationship investment={relationship_committed:,}) regeneration=+{regeneration:,} "
+        f"-> closing={closing:,} / {capacity:,}."
+    )
+
+
+def _render_bloc_relationship_investment_resolved(params: dict[str, str | int]) -> str:
+    party_id = str(params["party_id"])
+    bloc_id = str(params["bloc_id"])
+    political_capital = int(params["political_capital"])
+    opening_bps = int(params["opening_relationship_bps"])
+    applied_bps = int(params["applied_change_bps"])
+    closing_bps = int(params["closing_relationship_bps"])
+    return (
+        f"Relationship investment in {party_id}/{bloc_id}: {political_capital:,} political "
+        f"capital moved the relationship from {_bps_to_percent_str(opening_bps)} to "
+        f"{_bps_to_percent_str(closing_bps)} ({_format_bps_delta(applied_bps)})."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -265,6 +296,8 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "political_capital_resolved": _render_political_capital_resolved,
     "legislative_vote_resolved": _render_legislative_vote_resolved,
     "budget_blocked_by_legislature": _render_budget_blocked_by_legislature,
+    "political_capital_ledger_resolved": _render_political_capital_ledger_resolved,
+    "bloc_relationship_investment_resolved": _render_bloc_relationship_investment_resolved,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -401,6 +434,38 @@ def _print_legislature_composition(politics: PoliticalState) -> None:
             )
 
 
+def _print_capital_relationships(politics: PoliticalState) -> None:
+    """(Phase 3B2A, §16) `inspect --capital`: every bloc's CURRENT `government_relationship_bps`,
+    read directly from state. The political-capital figure itself is already printed unconditionally
+    a few lines above this (like legitimacy) — this flag adds only what is genuinely opt-in: the
+    per-bloc relationship table.
+
+    Deliberately narrower than `--legislature`, which already shows this same field alongside
+    the full authored composition (seats, discipline, preferences) — this flag exists for the
+    player who only wants "what will next turn's investment be scored against", not the whole
+    institutional table. Unlike `--legislature`'s relationship figure (still authored-looking in
+    Phase 3B1), this one is genuinely live: slot 11 is `government_relationship_bps`'s only
+    writer, so the value shown here can differ from what a fresh scenario authored, and a
+    relationship-investment decision changes what it prints on the very next resolved turn.
+    """
+    legislature = politics.legislature
+    if legislature is None:
+        print("  bloc relationships:  none — this constitution has no legislature")
+        return
+    print("  bloc relationships:")
+    rows = [
+        (f"{party.id}/{bloc.id}", party.government_role, bloc.government_relationship_bps)
+        for party in legislature.parties
+        for bloc in party.blocs
+    ]
+    identity_width = max((len(identity) for identity, _, _ in rows), default=0)
+    for identity, role, relationship_bps in rows:
+        print(
+            f"    {identity:<{identity_width}}  {_ROLE_LABELS[role]:<21} "
+            f"{_bps_to_percent_str(relationship_bps):>8}"
+        )
+
+
 def _cmd_inspect(args: argparse.Namespace) -> int:
     path = Path(args.state)
     save = _read_save(path)
@@ -507,6 +572,8 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                 )
         if args.legislature:
             _print_legislature_composition(politics)
+        if args.capital:
+            _print_capital_relationships(politics)
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -780,6 +847,50 @@ def _print_legislative_report(legislative: LegislativeReport) -> None:
         print("      budget NOT applied — existing tax policy and spending plan remain in force")
 
 
+def _print_political_capital_ledger(political_capital: PoliticalCapitalReport) -> None:
+    """(Phase 3B2A, §16) The ONE capital-ledger renderer, following the rule
+    `_print_legislative_report` established: both live `resolve` output and historical
+    `history --turn N` output call this one function, so the two print paths can never drift
+    apart the way `_cmd_history`'s own inline path once silently omitted a whole section (Phase
+    3A). Every value is read straight off the already-self-validated `PoliticalCapitalReport` —
+    presentation only, nothing recomputed.
+    """
+    print("    political capital:")
+    print(
+        f"      opening {political_capital.opening_political_capital:,}  "
+        f"committed {political_capital.total_committed:,}  "
+        f"regeneration {political_capital.political_capital_regeneration:,}  "
+        f"closing {political_capital.closing_political_capital:,} of "
+        f"{political_capital.political_capital_capacity:,} capacity"
+    )
+    if not political_capital.expenditures:
+        print("      no political capital committed")
+        return
+
+    print("      expenditures:")
+    for expenditure in political_capital.expenditures:
+        target = (
+            f"{expenditure.party_id}/{expenditure.bloc_id}"
+            if expenditure.party_id is not None and expenditure.bloc_id is not None
+            else ""
+        )
+        print(
+            f"        {expenditure.category.value:<28} {target:<28} {expenditure.political_capital:,}"
+        )
+
+    if political_capital.relationship_changes:
+        print("      relationship changes:")
+        for change in political_capital.relationship_changes:
+            gap_pp = change.gap_bps / 100
+            print(
+                f"        {change.party_id}/{change.bloc_id}   "
+                f"{_bps_to_percent_str(change.opening_relationship_bps)} -> "
+                f"{_bps_to_percent_str(change.closing_relationship_bps)}  "
+                f"({_format_bps_delta(change.applied_change_bps)} on a {gap_pp:g}pp gap, "
+                f"{change.political_capital:,} capital)"
+            )
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
@@ -798,6 +909,8 @@ def _print_report(report: TurnReport) -> None:
         _print_political_report(report.political)
     if report.legislative is not None:
         _print_legislative_report(report.legislative)
+    if report.political_capital is not None:
+        _print_political_capital_ledger(report.political_capital)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -906,6 +1019,10 @@ def _cmd_history(args: argparse.Namespace) -> int:
             # The SAME helper `_print_report` uses, never a second inline copy — see
             # `_print_legislative_report`'s docstring for the Phase 3A omission this prevents.
             _print_legislative_report(report.legislative)
+        if report.political_capital is not None:
+            # Same discipline as the legislative block just above (Phase 3B2A): the SAME shared
+            # helper `_print_report` uses, never a second inline copy.
+            _print_political_capital_ledger(report.political_capital)
     return 0
 
 
@@ -940,6 +1057,14 @@ def build_parser() -> argparse.ArgumentParser:
         "thresholds, parties, blocs, roles and preferences) read directly from state. Shows no "
         "support tally: a tally depends on a specific proposal and appears only in a resolved "
         "turn's legislative report",
+    )
+    p_inspect.add_argument(
+        "--capital",
+        action="store_true",
+        help="also show every bloc's CURRENT government relationship, read directly from state "
+        "(Phase 3B2A: relationships are mutable, so this is this turn's live figure, not an "
+        "authored constant). Shows no ledger: a ledger is turn-local and appears only in a "
+        "resolved turn's political-capital report",
     )
     p_inspect.set_defaults(func=_cmd_inspect)
 
