@@ -902,6 +902,22 @@ def reconcile_political_and_legislative_report(
 
     # Group 23 (Phase 3B2B, new; R4/R5-expanded, absorbs the first draft's separate group 24):
     # three state-dependent facts `PoliticalRelationshipReport` cannot prove about itself.
+
+    # (c) Legislature presence: checked FIRST and unconditionally on `opening_legislature`, since
+    # the one case this exists to catch -- a fabricated `True` on a `Legislature.NONE` country --
+    # is exactly the case where `opening_legislature is None`. Gating this on
+    # `opening_legislature is not None` (as (a)/(b) legitimately do, since both need a bloc to
+    # exist at all) would make the check unreachable in its own target scenario.
+    if (
+        political_relationship_report is not None
+        and political_relationship_report.legislature_present != (opening_legislature is not None)
+    ):
+        problems.append(
+            "political_relationship.legislature_present="
+            f"{political_relationship_report.legislature_present} does not match "
+            f"opening_state politics.legislature presence ({opening_legislature is not None})"
+        )
+
     if political_relationship_report is not None and opening_legislature is not None:
         opening_bloc_by_key = {
             (party.id, bloc.id): bloc
@@ -968,18 +984,6 @@ def reconcile_political_and_legislative_report(
                     f"spending_preference_bps={memory_row.spending_preference_bps} does not match "
                     f"opening_state spending_preference_bps={bloc.spending_preference_bps}"
                 )
-
-        # (c) Legislature presence: `legislature_present` must truthfully describe whether
-        # opening_state actually has a legislature -- the fact that makes a `Legislature.NONE`
-        # decree turn produce zero decree-bypass components (report validator 5 already proves
-        # the components AGREE with `legislature_present`; this proves `legislature_present`
-        # itself is not a fabrication).
-        if political_relationship_report.legislature_present != (opening_legislature is not None):
-            problems.append(
-                "political_relationship.legislature_present="
-                f"{political_relationship_report.legislature_present} does not match "
-                f"opening_state politics.legislature presence ({opening_legislature is not None})"
-            )
 
     # Group 18: decision provenance -- located from the REAL DecisionSet, never inferred.
     if decisions is not None:
