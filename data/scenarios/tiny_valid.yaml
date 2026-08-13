@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.10.0"
+content_version: "0.11.0"
 seed: 42
 player_country_id: arken
 
@@ -334,6 +334,7 @@ countries:
                     seats: 24
                 discipline_bps: 5000
                 government_relationship_bps: 6000
+                baseline_government_relationship_bps: 6000
                 tax_preference_bps: 2000
                 spending_preference_bps: 2000
               - id: reform
@@ -345,6 +346,7 @@ countries:
                     seats: 6
                 discipline_bps: 2000
                 government_relationship_bps: 3000
+                baseline_government_relationship_bps: 3000
                 tax_preference_bps: 4000
                 spending_preference_bps: 4000
           - id: national_front
@@ -360,6 +362,7 @@ countries:
                     seats: 20
                 discipline_bps: 7000
                 government_relationship_bps: -7000
+                baseline_government_relationship_bps: -7000
                 tax_preference_bps: -6000
                 spending_preference_bps: -4000
               - id: populists
@@ -371,6 +374,7 @@ countries:
                     seats: 4
                 discipline_bps: 3000
                 government_relationship_bps: -3000
+                baseline_government_relationship_bps: -3000
                 tax_preference_bps: -3000
                 spending_preference_bps: 2000
           - id: rural_alliance
@@ -386,6 +390,7 @@ countries:
                     seats: 6
                 discipline_bps: 4000
                 government_relationship_bps: 2000
+                baseline_government_relationship_bps: 2000
                 tax_preference_bps: -1000
                 spending_preference_bps: 3000
 

@@ -445,6 +445,35 @@ def test_inspect_capital_is_opt_in(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "bloc relationships:" not in out
 
 
+# --- Phase 3B2B (§13): `inspect --relationships` -----------------------------------------------
+
+
+def test_inspect_relationships_shows_current_and_authored_baseline(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    capsys.readouterr()
+
+    assert main(["inspect", "--state", str(save0), "--relationships"]) == 0
+    out = capsys.readouterr().out
+
+    assert "bloc relationships (current / authored baseline):" in out
+    assert "rural_alliance/farmers" in out
+    assert "base " in out
+    # A fresh scenario opens every bloc exactly at its authored baseline (§9): zero deviation.
+    assert "at baseline" in out
+
+
+def test_inspect_relationships_is_opt_in(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    capsys.readouterr()
+    assert main(["inspect", "--state", str(save0)]) == 0
+    out = capsys.readouterr().out
+    assert "bloc relationships (current / authored baseline):" not in out
+
+
 def _resolve_with_decisions(
     tmp_path: Path,
     save0: Path,
@@ -515,7 +544,11 @@ def test_resolve_and_history_render_the_same_capital_ledger(
         "expenditures:",
         "bloc_relationship_investment",
         "rural_alliance/farmers",
-        "relationship changes:",
+        # (Phase 3B2B) Relationship detail moved off the capital-ledger block entirely, onto its
+        # own shared leaf renderer -- `_print_political_relationship_memory`, following the SAME
+        # "resolve and history must agree" discipline.
+        "bloc relationships:",
+        "baseline",
     ):
         assert fragment in resolve_out, fragment
         assert fragment in history_out, fragment
@@ -668,7 +701,10 @@ def test_decree_renders_without_any_chamber_or_bloc_vote_table(
     # A decree is not voted on: nothing to tabulate, so nothing is printed.
     assert "chamber:" not in out
     assert "apportionment:" not in out
-    assert "governing_party/core" not in out
+    # (Phase 3B2B) `governing_party/core` now legitimately appears in the bloc-relationships
+    # block -- a genuine policy reaction plus decree-bypass penalty, never a vote table -- so the
+    # absence check narrows to what it always meant: no vote/apportionment tabulation exists.
+    assert "bloc relationships:" in out
     assert "PASSED" not in out and "FAILED" not in out
 
 
@@ -714,3 +750,137 @@ def test_unavailable_decree_writes_no_output_or_temp_file(tmp_path: Path) -> Non
     assert save0.read_bytes() == before
     # No partial or temporary file left behind anywhere in the directory.
     assert {p.name for p in tmp_path.iterdir()} == {save0.name, decisions_file.name}
+
+
+# --- 11. inspect on an invalid save: concise error, nonzero exit, never a raw traceback -------
+#
+# `_cmd_inspect` deliberately still reports what it can on an invalid save (its own docstring:
+# "even an invalid save can be inspected"), but that tolerance had a real gap: reading the latest
+# entry's report for the "production (latest)"/"tax bases (latest)" convenience lines used to call
+# `.report()` unguarded, ahead of the final integrity check -- so a save whose latest entry's
+# report failed schema or semantic validation crashed with a raw `pydantic.ValidationError`
+# traceback instead of the documented "reported via a nonzero exit rather than a stack trace"
+# behavior. These three tests reproduce the tamper classes Part 3 requires and confirm the fix:
+# a concise, actionable error; exit 1; no traceback (an uncaught exception here would fail the
+# test itself, since `main()` only catches `MandateError`); no output file (inspect takes none);
+# and the input file byte-identical after the call.
+
+
+def _load_envelope(save_path: Path) -> dict:
+    return json.loads(save_path.read_text(encoding="utf-8"))
+
+
+def _write_envelope(save_path: Path, envelope: dict) -> None:
+    from app.core.canonical_json import canonical_dumps
+
+    save_path.write_text(canonical_dumps(envelope), encoding="utf-8")
+
+
+def _rehash_last_entry(envelope: dict) -> None:
+    """Recompute the last entry's `entry_hash` (and the envelope's `head_entry_hash`) from its
+    current, possibly-just-tampered content -- simulating a knowledgeable tamperer who does the
+    hash arithmetic themselves, per `test_history.py`'s `_retamper_entry_with_consistent_hash`."""
+    from app.core.canonical_json import canonical_digest, canonical_dumps
+    from app.simulation.history import _entry_hash_payload
+
+    entry = envelope["entries"][-1]
+    entry["report_json"] = canonical_dumps(json.loads(entry["report_json"]))
+    new_hash = canonical_digest(
+        _entry_hash_payload(
+            turn=entry["turn"],
+            previous_entry_hash=entry["previous_entry_hash"],
+            state=json.loads(entry["state_json"]),
+            decisions=(
+                json.loads(entry["decisions_json"]) if entry["decisions_json"] is not None else None
+            ),
+            report=json.loads(entry["report_json"]),
+            ruleset_version=entry["ruleset_version"],
+            content_version=entry["content_version"],
+        )
+    )
+    entry["entry_hash"] = new_hash
+    envelope["head_entry_hash"] = new_hash
+
+
+def test_inspect_on_a_stale_hash_tamper_reports_cleanly_not_a_traceback(tmp_path: Path) -> None:
+    """A traditional tamper: the report is edited but `entry_hash` is left stale (the tamperer
+    forgot to update it). Caught purely by the hash-chain check, well before any report content
+    is even schema-validated -- confirming the ordinary case never regressed."""
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    save1 = _resolve_with(tmp_path, save0, {"personal_income_rate_bps": 2_500})
+    before = save1.read_bytes()
+
+    envelope = _load_envelope(save1)
+    entry = envelope["entries"][-1]
+    report = json.loads(entry["report_json"])
+    report["legislative"]["political_capital_committed"] += 1
+    entry["report_json"] = json.dumps(report)  # deliberately NOT re-canonicalized or re-hashed
+    _write_envelope(save1, envelope)
+
+    exit_code = main(["inspect", "--state", str(save1)])
+
+    assert exit_code == 1
+    assert save1.read_bytes() != before  # this test's own setup wrote the tamper; expected
+
+
+def test_inspect_on_a_consistently_rehashed_schema_tamper_reports_cleanly(
+    tmp_path: Path,
+) -> None:
+    """A knowledgeable tamperer edits a report field out of its strict schema range (a negative
+    `political_capital_committed`) and recomputes `entry_hash` to match -- the hash chain passes,
+    so only `TurnReport.model_validate` (schema validation, at replay parse) can catch it. This
+    is exactly the call `_cmd_inspect` used to make unguarded."""
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    save1 = _resolve_with(tmp_path, save0, {"personal_income_rate_bps": 2_500})
+    before = save1.read_bytes()
+
+    envelope = _load_envelope(save1)
+
+    def _tamper(report: dict) -> None:
+        report["legislative"]["political_capital_committed"] = -1
+
+    entry = envelope["entries"][-1]
+    report = json.loads(entry["report_json"])
+    _tamper(report)
+    entry["report_json"] = json.dumps(report)
+    _rehash_last_entry(envelope)
+    _write_envelope(save1, envelope)
+
+    capsys_exit = main(["inspect", "--state", str(save1)])
+
+    assert capsys_exit == 1
+    assert save1.read_bytes() != before  # this test's own setup wrote the tamper; expected
+
+
+def test_inspect_on_a_consistently_rehashed_relationship_validator_tamper_reports_cleanly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A genuine decree on `decree_state` produces real `political_relationship.blocs` rows; one
+    row's `closing_relationship_bps` is edited to violate its OWN row validator
+    (`_closing_and_applied_change_match_the_single_clamp`), then the hash is recomputed to match.
+    This is the specific case Part 3 calls out: a semantic tamper that fails a
+    relationship-report validator, not just a bare schema range. Confirms `inspect` reports it
+    concisely (a validation error naming the row) rather than crashing, and that `integrity:
+    INVALID` still appears -- the same fact `validate_history` records, printed once, not
+    duplicated by a raw traceback."""
+    save0 = _new_save(tmp_path, DECREE_SCENARIO_PATH)
+    save1 = _resolve_with(tmp_path, save0, {"personal_income_rate_bps": 2_500, "route": "decree"})
+    before = save1.read_bytes()
+
+    envelope = _load_envelope(save1)
+    entry = envelope["entries"][-1]
+    report = json.loads(entry["report_json"])
+    blocs = report["political_relationship"]["blocs"]
+    assert blocs, "a genuine decree must produce at least one relationship-memory row"
+    blocs[0]["closing_relationship_bps"] += 1  # breaks the single-clamp identity
+    entry["report_json"] = json.dumps(report)
+    _rehash_last_entry(envelope)
+    _write_envelope(save1, envelope)
+
+    exit_code = main(["inspect", "--state", str(save1)])
+    out = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "integrity:           INVALID" in out
+    assert "closing_relationship_bps" in out
+    assert save1.read_bytes() != before  # this test's own setup wrote the tamper; expected

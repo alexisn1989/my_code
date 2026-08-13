@@ -1,17 +1,21 @@
-"""Validation-hardening audit for `PoliticalCapitalReport`/`CapitalExpenditureReport`/
-`BlocRelationshipChangeReport`'s self-validation and `TurnReport`'s three Phase 3B2A capital-ledger
-cross-validators, mirroring `test_legislative_report.py`'s own audit exactly.
+"""Validation-hardening audit for `PoliticalCapitalReport`/`CapitalExpenditureReport`'s
+self-validation and `TurnReport`'s Phase 3B2A/3B2B capital-ledger cross-validators, mirroring
+`test_legislative_report.py`'s own audit exactly.
 
-Every one of the 9 `PoliticalCapitalReport`-family responsibilities (8 declared directly on
-`PoliticalCapitalReport`, 1 delegated to `BlocRelationshipChangeReport`'s own formula validator —
-`report.py`'s own docstring numbering) gets at least one dedicated corruption test, exercised
-through **both** `model_validate` (dict) and `model_validate_json` (equivalent JSON string) via the
-`_PCR_LOADERS`/`_TURN_LOADERS` parametrize decorators — so each corruption case is actually two
-separately-collected pytest items, not one loop hiding two assertions. Two responsibilities that
-live on the row models rather than on `PoliticalCapitalReport` itself
-(`CapitalExpenditureReport._target_identity_matches_category_shape` and
+Each responsibility declared directly on `PoliticalCapitalReport` gets at least one dedicated
+corruption test, exercised through **both** `model_validate` (dict) and `model_validate_json`
+(equivalent JSON string) via the `_PCR_LOADERS`/`_TURN_LOADERS` parametrize decorators — so each
+corruption case is actually two separately-collected pytest items, not one loop hiding two
+assertions. Two responsibilities that live on the row models rather than on `PoliticalCapitalReport`
+itself (`CapitalExpenditureReport._target_identity_matches_category_shape` and
 `._decision_digest_is_a_well_formed_hex_digest`) are covered the same way, through the parent
 report's own round trip.
+
+**Phase 3B2B, §8:** `PoliticalCapitalReport.relationship_changes` and its two validators (former
+responsibilities 7-10) are REMOVED — that detail moved to the new ninth report,
+`PoliticalRelationshipReport`, whose own self-validators are audited in
+`test_political_relationship_report.py`, and whose relocated capital-ledger correspondence is
+audited below as a `TurnReport` cross-validator.
 
 Two sourcing strategies, chosen per case, exactly as `test_legislative_report.py` documents:
 
@@ -19,18 +23,17 @@ Two sourcing strategies, chosen per case, exactly as `test_legislative_report.py
   reaches the case cleanly): a genuinely valid report comes out of `resolve_turn` against
   `tiny_valid.yaml`/`deficit_demo.yaml`/`decree_state.yaml`, dumped to a dict, then exactly one
   claim is mutated.
-- **Direct construction** for cases no real scenario reaches cleanly (isolating the
-  `BlocRelationshipChangeReport` formula's three internal sub-checks without a real turn's other
-  fields moving too; the `model_construct` bypass for the positive-commitment backstop, which
-  `StrictPoliticalCapitalCommitment`'s own `ge=1` bound already makes unreachable through ordinary
-  validation). Every such report is still built by calling the real Pydantic constructors — nothing
-  is mocked — so it is still the real validator chain being exercised, just against hand-picked,
-  independently verified inputs instead of the resolver's output.
+- **Direct construction** for cases no real scenario reaches cleanly (the `model_construct` bypass
+  for the positive-commitment backstop, which `StrictPoliticalCapitalCommitment`'s own `ge=1` bound
+  already makes unreachable through ordinary validation). Every such report is still built by
+  calling the real Pydantic constructors — nothing is mocked — so it is still the real validator
+  chain being exercised, just against hand-picked, independently verified inputs instead of the
+  resolver's output.
 
 `_expenditure_categories_are_route_consistent` is deliberately **not** tested as a
 `PoliticalCapitalReport` responsibility here — Revision 3 assigns it to `TurnReport` because it
 needs `LegislativeReport.outcome`/`.route`, which `PoliticalCapitalReport` cannot see. It is
-audited in the `TurnReport` integration section below, alongside the other two Phase 3B2A
+audited in the `TurnReport` integration section below, alongside the other Phase 3B2A/3B2B
 cross-validators.
 """
 
@@ -50,9 +53,8 @@ from app.simulation.decisions import (
     InfluenceAllocation,
 )
 from app.simulation.legislature import CapitalExpenditureCategory, LegislativeOutcome, ProposalRoute
-from app.simulation.relationships import RELATIONSHIP_CEILING_BPS, RELATIONSHIP_HALF_GAP_CAPITAL
+from app.simulation.relationships import relationship_gain_bps
 from app.simulation.report import (
-    BlocRelationshipChangeReport,
     CapitalExpenditureReport,
     PoliticalCapitalReport,
     TurnReport,
@@ -102,7 +104,7 @@ def _valid_no_proposal_report_dict() -> dict:
     resolution = resolve_turn(state, _decisions_for(state))
     ledger = resolution.report.political_capital
     assert ledger is not None
-    assert ledger.expenditures == () and ledger.relationship_changes == ()
+    assert ledger.expenditures == ()
     return ledger.model_dump(mode="json")
 
 
@@ -159,7 +161,7 @@ def _valid_decree_report_dict() -> dict:
 
 def _valid_relationship_only_report_dict() -> dict:
     """`deficit_demo`, an investment with no budget decision at all -- `NO_PROPOSAL` carrying a
-    nonempty ledger and a nonempty `relationship_changes`, mirroring
+    nonempty ledger, mirroring
     `test_relationship_investment_paths.py::test_a_relationship_only_turn_is_a_valid_no_proposal_with_a_nonempty_ledger`."""
     state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
     investment = BlocRelationshipInvestmentDecision(
@@ -173,7 +175,6 @@ def _valid_relationship_only_report_dict() -> dict:
     ledger = resolution.report.political_capital
     assert ledger is not None
     assert ledger.total_committed == 100
-    assert len(ledger.relationship_changes) == 1
     return ledger.model_dump(mode="json")
 
 
@@ -202,7 +203,6 @@ def _valid_mixed_report_dict() -> dict:
     ledger = resolution.report.political_capital
     assert ledger is not None
     assert ledger.total_committed == 262
-    assert len(ledger.relationship_changes) == 1
     return ledger.model_dump(mode="json")
 
 
@@ -355,137 +355,6 @@ def test_6_two_decree_rows_is_rejected(load) -> None:
         data["opening_political_capital"] - new_total + data["political_capital_regeneration"],
     )
     with pytest.raises(ValidationError, match="at most one DECREE expenditure row is valid"):
-        load(data)
-
-
-# =============================================================================
-# 7/8. relationship rows: canonical order, no duplicate targets
-# =============================================================================
-
-
-def _relationship_only_two_bloc_investment_report_dict() -> dict:
-    """`deficit_demo` has five blocs across two parties; `citizens_bloc/hardliners` and
-    `citizens_bloc/moderates` give two genuinely distinct, canonically-orderable targets."""
-    state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
-    investment = BlocRelationshipInvestmentDecision(
-        investments=(
-            BlocInvestment(party_id="citizens_bloc", bloc_id="hardliners", political_capital=50),
-            BlocInvestment(party_id="citizens_bloc", bloc_id="moderates", political_capital=50),
-        )
-    )
-    resolution = resolve_turn(state, _decisions_for(state, investment))
-    ledger = resolution.report.political_capital
-    assert ledger is not None
-    assert len(ledger.relationship_changes) == 2
-    return ledger.model_dump(mode="json")
-
-
-@_PCR_LOADERS
-def test_7_reversed_relationship_row_order_is_rejected(load) -> None:
-    data = _relationship_only_two_bloc_investment_report_dict()
-    data["relationship_changes"] = list(reversed(data["relationship_changes"]))
-    with pytest.raises(ValidationError, match="relationship_changes must be sorted ascending"):
-        load(data)
-
-
-@_PCR_LOADERS
-def test_8_duplicate_relationship_target_is_rejected(load) -> None:
-    """A duplicated row with an IDENTICAL key trivially satisfies the sort-order check (equal keys
-    are their own sorted permutation) -- proving this is a genuinely distinct failure mode from
-    test_7's reordering, not the same corruption reached two ways."""
-    data = _relationship_only_two_bloc_investment_report_dict()
-    first = data["relationship_changes"][0]
-    data["relationship_changes"] = [first, dict(first)]
-    with pytest.raises(ValidationError, match="contains a duplicate"):
-        load(data)
-
-
-# =============================================================================
-# 9. (row) relationship-change arithmetic re-derived independently
-# =============================================================================
-
-
-def _consistent_relationship_change_report(
-    *, opening_relationship_bps: int, political_capital: int
-) -> BlocRelationshipChangeReport:
-    gap = RELATIONSHIP_CEILING_BPS - opening_relationship_bps
-    gain = (gap * political_capital) // (RELATIONSHIP_HALF_GAP_CAPITAL + political_capital)
-    # trunc toward zero; gap/political_capital/denominator are all non-negative here so floor div
-    # already truncates toward zero, matching `trunc_div_toward_zero` exactly for this domain.
-    return BlocRelationshipChangeReport(
-        party_id="citizens_bloc",
-        bloc_id="moderates",
-        political_capital=political_capital,
-        opening_relationship_bps=opening_relationship_bps,
-        gap_bps=gap,
-        applied_change_bps=gain,
-        closing_relationship_bps=opening_relationship_bps + gain,
-    )
-
-
-def test_9_a_genuinely_consistent_row_constructs() -> None:
-    row = _consistent_relationship_change_report(
-        opening_relationship_bps=-2_000, political_capital=100
-    )
-    assert row.gap_bps == 12_000
-    assert row.applied_change_bps == 2_000
-    assert row.closing_relationship_bps == 0
-
-
-def test_9_corrupted_gap_is_rejected() -> None:
-    row = _consistent_relationship_change_report(
-        opening_relationship_bps=-2_000, political_capital=100
-    )
-    data = row.model_dump(mode="json")
-    data["gap_bps"] += 1
-    with pytest.raises(ValidationError, match="gap_bps=.* does not match"):
-        BlocRelationshipChangeReport.model_validate(data)
-
-
-def test_9_corrupted_applied_change_is_rejected() -> None:
-    row = _consistent_relationship_change_report(
-        opening_relationship_bps=-2_000, political_capital=100
-    )
-    data = row.model_dump(mode="json")
-    data["applied_change_bps"] += 1
-    with pytest.raises(ValidationError, match="applied_change_bps=.* does not match"):
-        BlocRelationshipChangeReport.model_validate(data)
-
-
-def test_9_corrupted_closing_relationship_is_rejected() -> None:
-    row = _consistent_relationship_change_report(
-        opening_relationship_bps=-2_000, political_capital=100
-    )
-    data = row.model_dump(mode="json")
-    data["closing_relationship_bps"] += 1
-    with pytest.raises(ValidationError, match="closing_relationship_bps=.* does not match"):
-        BlocRelationshipChangeReport.model_validate(data)
-
-
-# =============================================================================
-# 10. relationship rows correspond bidirectionally to investment expenditure rows
-# =============================================================================
-
-
-@_PCR_LOADERS
-def test_10_relationship_row_with_no_matching_expenditure_row_is_rejected(load) -> None:
-    data = _valid_relationship_only_report_dict()
-    extra = _consistent_relationship_change_report(
-        opening_relationship_bps=-8_000, political_capital=50
-    ).model_dump(mode="json")
-    extra["party_id"], extra["bloc_id"] = "citizens_bloc", "hardliners"
-    data["relationship_changes"] = sorted(
-        [*data["relationship_changes"], extra], key=lambda r: (r["party_id"], r["bloc_id"])
-    )
-    with pytest.raises(ValidationError, match="does not correspond exactly"):
-        load(data)
-
-
-@_PCR_LOADERS
-def test_10_investment_expenditure_row_with_no_matching_relationship_row_is_rejected(load) -> None:
-    data = _valid_relationship_only_report_dict()
-    data["relationship_changes"] = []
-    with pytest.raises(ValidationError, match="does not correspond exactly"):
         load(data)
 
 
@@ -779,3 +648,83 @@ def test_no_proposal_outcome_with_a_decree_row_is_unreachable_through_ordinary_v
         ValueError, match="NO_PROPOSAL requires zero DECREE and zero LEGISLATIVE_INFLUENCE"
     ):
         TurnReport._expenditure_categories_are_route_consistent(unvalidated)
+
+
+# =============================================================================
+# Phase 3B2B: the relocated investment<->relationship-memory correspondence
+# (`TurnReport._relationship_investment_components_match_the_capital_ledger`, formerly
+# `PoliticalCapitalReport` validator 10)
+# =============================================================================
+
+
+@_TURN_LOADERS
+def test_relationship_memory_row_with_no_matching_expenditure_row_is_rejected(load) -> None:
+    """A `political_relationship` row claiming a DIFFERENT `investment_capital` than the ledger's
+    real `BLOC_RELATIONSHIP_INVESTMENT` row -- with every one of the row's OWN dependent fields
+    (`investment_component_bps`, the sum, the closing value) recomputed to stay genuinely
+    self-consistent under the new capital figure, isolating the cross-report correspondence
+    check specifically, rather than tripping the row's own formula validator first."""
+    data = _mixed_turn_report_dict()
+    investment_row = next(
+        r
+        for r in data["political_capital"]["expenditures"]
+        if r["category"] == CapitalExpenditureCategory.BLOC_RELATIONSHIP_INVESTMENT.value
+    )
+    assert investment_row["political_capital"] == 100
+    relationship_row = next(
+        r
+        for r in data["political_relationship"]["blocs"]
+        if r["party_id"] == investment_row["party_id"] and r["bloc_id"] == investment_row["bloc_id"]
+    )
+    assert relationship_row["investment_capital"] == 100
+    new_capital = 150
+    new_investment_component = relationship_gain_bps(
+        opening_relationship_bps=relationship_row["opening_relationship_bps"],
+        political_capital=new_capital,
+    )
+    delta = new_investment_component - relationship_row["investment_component_bps"]
+    relationship_row["investment_capital"] = new_capital
+    relationship_row["investment_component_bps"] = new_investment_component
+    relationship_row["uncapped_total_change_bps"] += delta
+    relationship_row["applied_total_change_bps"] += delta
+    relationship_row["closing_relationship_bps"] += delta
+    with pytest.raises(ValidationError, match="does not correspond exactly"):
+        load(data)
+
+
+@_TURN_LOADERS
+def test_investment_expenditure_row_with_no_matching_relationship_memory_row_is_rejected(
+    load,
+) -> None:
+    data = _mixed_turn_report_dict()
+    investment_row = next(
+        r
+        for r in data["political_capital"]["expenditures"]
+        if r["category"] == CapitalExpenditureCategory.BLOC_RELATIONSHIP_INVESTMENT.value
+    )
+    data["political_relationship"]["blocs"] = [
+        row
+        for row in data["political_relationship"]["blocs"]
+        if not (
+            row["party_id"] == investment_row["party_id"]
+            and row["bloc_id"] == investment_row["bloc_id"]
+        )
+    ]
+    with pytest.raises(ValidationError, match="does not correspond exactly"):
+        load(data)
+
+
+@_TURN_LOADERS
+def test_relationship_report_proposal_mismatch_with_legislative_report_is_rejected(load) -> None:
+    """(R4) `political_relationship`'s own copy of the proposal's shape must equal
+    `LegislativeReport`'s independently-stored fields. `_mixed_turn_report_dict`'s decision only
+    moves the tax axis, so `spending_direction` is `UNCHANGED` and the axis formula
+    (`_legislative_axis_component_bps`) short-circuits to `0` for EVERY row regardless of
+    `spending_intensity_bps`'s value -- corrupting `spending_intensity_bps` alone therefore leaves
+    `political_relationship`'s own self-validators fully satisfied (every row's
+    `policy_reaction_component_bps` is unaffected), so only this cross-report check can catch it."""
+    data = _mixed_turn_report_dict()
+    assert data["political_relationship"]["spending_direction"] == "unchanged"
+    data["political_relationship"]["spending_intensity_bps"] += 1
+    with pytest.raises(ValidationError, match="does not match legislative.spending_intensity_bps"):
+        load(data)

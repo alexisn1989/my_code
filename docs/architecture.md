@@ -331,6 +331,33 @@ hole that gap would otherwise leave open exactly on relationship-only turns. See
 `docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md` for the full rationale,
 the calibration evidence, and what remains explicitly deferred to Phase 3B2B.
 
+### Phase 3B2B political memory, policy reactions and relationship decay
+
+Still no new `PHASE_ORDER` slot: slot 11 (already the sole writer of `government_relationship_bps`)
+now writes on turns with no relationship-investment decision at all, since decay and an
+enacted-policy reaction can move a relationship with no player action that turn. `LegislativeBlocState`
+gains `baseline_government_relationship_bps` — authored, never derived from `government_role` or
+any constitutional axis, and never moved by anything except a scenario author.
+
+Slot 11 follows a strict three-step procedure (compute all four components — decay, investment,
+policy reaction, decree bypass — from the opening legislature; construct and validate every
+`BlocRelationshipMemoryReport` row; write only from each row's own validated `closing_relationship_bps`)
+rather than writing a raw formula result, preserving the same validate-before-mutate discipline the
+codebase already used at `phases.py:1617`. `PoliticalCapitalReport.relationship_changes` (Phase
+3B2A) is removed; the full per-bloc story moves to a new ninth top-level report,
+`PoliticalRelationshipReport`, which stores its own copy of the proposal's shape and each row its
+own bloc's preferences so policy-reaction and decree-bypass arithmetic can be self-validated
+without needing `BlocVoteReport`, which does not exist on `ENACTED_BY_DECREE`/`NO_PROPOSAL` turns.
+
+`reconcile_political_and_legislative_report` gains groups 22–23: group 22 re-derives each row's
+decay component from `opening_state`'s own baseline/relationship pair; group 23 proves three facts
+a report cannot see about itself — row coverage (which blocs must, or must not, carry a row),
+preference correspondence (a row's stored preferences match the bloc's *authored* values, not a
+fabricated pair), and whether `legislature_present` truthfully describes the opening state. See
+`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md` for the full rationale,
+the calibration evidence (including two real bugs the calibration work caught before release), and
+what remains explicitly deferred to Phase 3C.
+
 ### Government accounting phases (Phase 2A, extended in Phase 2B2)
 
 `apply_legal_and_administrative_changes` captures a frozen `OpeningFinanceSnapshot`

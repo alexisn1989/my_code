@@ -98,6 +98,19 @@ domestic, economic, diplomatic, and military decisions; end at least four turns;
 consequences; experience at least one crisis or event chain; save and resume; win or lose political
 support based on decisions rather than scripted outcomes.
 
+### Frontend note, Phase 3B2B (documentation only — nothing implemented)
+
+Once a frontend exists, a bloc's relationship should be shown as **baseline + deviation**, not one
+number, so a player can tell a structural opponent (a large deviation from a hostile baseline) from
+a temporarily annoyed friend (a small deviation from a loyal one). The four components (decay,
+investment, policy reaction, decree bypass) should be displayed as separate signed contributions
+with their causes named, never pre-summed. **Temporary** movement (investment, decaying back down)
+must be visually distinct from **structural** disposition (the baseline itself, which nothing but a
+scenario author moves). Policy approval and decree resentment should be shown separately even when
+they cancel in the same row. The next-turn implication ("this bloc's support falls 2 seats next
+turn") belongs beside the change, since every component is one-turn-delayed by construction (slot 1
+scores the vote against the opening relationship; slot 11 applies this turn's change afterward).
+
 ## 41. Explicitly deferred
 
 Multiplayer diplomacy, cooperative cabinet mode, opposition-party continuation after losing office,

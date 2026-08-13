@@ -25,13 +25,30 @@ from __future__ import annotations
 import pytest
 
 from app.content.scenarios import load_scenario_file
-from app.simulation.constitution import ExecutiveSelection, ExecutiveSystem, JudicialReview
+from app.core.money import BPS_DENOMINATOR
+from app.core.politics import (
+    POLICY_REACTION_CAP_BPS,
+    POLICY_REACTION_WEIGHT_BPS,
+    trunc_div_toward_zero,
+)
+from app.simulation.constitution import (
+    DecreeAuthority,
+    ExecutiveSelection,
+    ExecutiveSystem,
+    JudicialReview,
+    Legislature,
+)
 from app.simulation.decisions import BudgetDecision, DecisionSet, InfluenceAllocation
 from app.simulation.legislature import LegislativeChamber
+from app.simulation.political_memory import SPENDING_REACTION_WEIGHT_BPS, TAX_REACTION_WEIGHT_BPS
 from app.simulation.reconciliation import reconcile_political_and_legislative_report
-from app.simulation.report import EconomicBaselineReport, TurnReport
+from app.simulation.report import (
+    EconomicBaselineReport,
+    TurnReport,
+    _legislative_axis_component_bps,
+)
 from app.simulation.resolver import resolve_turn
-from tests.conftest import SCENARIO_DIR, make_game_state
+from tests.conftest import SCENARIO_DIR, make_country, make_game_state, make_politics
 
 
 def _empty_decisions_for(state) -> DecisionSet:  # type: ignore[no-untyped-def]
@@ -944,3 +961,183 @@ def test_no_legislative_report_produces_no_new_problems() -> None:
         decisions=decisions,
     )
     assert not any("legislative" in p for p in problems)
+
+
+# --- Phase 3B2B: groups 12 (baseline), 20 (relationship memory), 23 (row coverage,
+# preference correspondence, legislature presence) ------------------------------------------
+
+
+def test_closing_baseline_mutation_is_rejected() -> None:
+    """(Group 12, new) `baseline_government_relationship_bps` is authored, never a running
+    total -- a closing-state mutation of it is rejected even on a turn that also carries a real
+    relationship change (the slow path), which is exactly the turn the untouched
+    `government_relationship_bps` field must NOT be confused with."""
+    state, resolution, decisions = _tiny_valid_passing_turn()
+    player = resolution.state.world.countries[resolution.state.world.player_country_id]
+    assert player.politics is not None and player.politics.legislature is not None
+    party = player.politics.legislature.parties[0]
+    bloc = party.blocs[0]
+    mutated_bloc = bloc.model_copy(
+        update={
+            "baseline_government_relationship_bps": bloc.baseline_government_relationship_bps + 1
+        }
+    )
+    mutated_party = party.model_copy(update={"blocs": (mutated_bloc, *party.blocs[1:])})
+    mutated_legislature = player.politics.legislature.model_copy(
+        update={"parties": (mutated_party, *player.politics.legislature.parties[1:])}
+    )
+    mutated_politics = player.politics.model_copy(update={"legislature": mutated_legislature})
+    mutated_state = _with_player_politics(resolution.state, mutated_politics)
+    problems = reconcile_political_and_legislative_report(
+        opening_state=state,
+        closing_state=mutated_state,
+        report=resolution.report,
+        decisions=decisions,
+    )
+    assert any(
+        "baseline_government_relationship_bps changed" in p
+        and "authored baseline must never move" in p
+        for p in problems
+    )
+
+
+def test_relationship_memory_row_missing_for_a_bloc_that_needs_one_is_rejected() -> None:
+    """(Group 23a) `tiny_valid_passing_turn` genuinely enacts a proposal, so every authored bloc
+    must have a `political_relationship.blocs` row (§8's row-coverage rule) -- deleting one is
+    rejected even though the remaining report is otherwise internally consistent."""
+    state, resolution, decisions = _tiny_valid_passing_turn()
+    relationship = resolution.report.political_relationship
+    assert relationship is not None and len(relationship.blocs) > 1
+    thinned = relationship.model_copy(update={"blocs": relationship.blocs[1:]})
+    thinned_report = resolution.report.model_copy(update={"political_relationship": thinned})
+    problems = reconcile_political_and_legislative_report(
+        opening_state=state,
+        closing_state=resolution.state,
+        report=thinned_report,
+        decisions=decisions,
+    )
+    assert any("political_relationship.blocs is missing a row for" in p for p in problems)
+
+
+def test_relationship_memory_row_naming_a_nonexistent_bloc_is_rejected() -> None:
+    """(Group 23a) A row for a `(party_id, bloc_id)` the opening state does not contain at all."""
+    state, resolution, decisions = _tiny_valid_passing_turn()
+    relationship = resolution.report.political_relationship
+    assert relationship is not None and relationship.blocs
+    fabricated = relationship.blocs[0].model_copy(
+        update={"party_id": "not_a_real_party", "bloc_id": "not_a_real_bloc"}
+    )
+    widened = relationship.model_copy(
+        update={
+            "blocs": tuple(
+                sorted((*relationship.blocs, fabricated), key=lambda r: (r.party_id, r.bloc_id))
+            )
+        }
+    )
+    widened_report = resolution.report.model_copy(update={"political_relationship": widened})
+    problems = reconcile_political_and_legislative_report(
+        opening_state=state,
+        closing_state=resolution.state,
+        report=widened_report,
+        decisions=decisions,
+    )
+    assert any(
+        "political_relationship.blocs names ('not_a_real_party', 'not_a_real_bloc')" in p
+        for p in problems
+    )
+
+
+def test_relationship_memory_preference_fabrication_is_rejected() -> None:
+    """(Group 23b, R4/R5) A row's stored `tax_preference_bps` is edited to a DIFFERENT value than
+    the bloc's own authored preference -- and every dependent field (the row's own policy
+    reaction and the sum/closing chain) is recomputed to keep the row internally self-consistent
+    under its own formula validators. Only comparing the row's preference against the bloc's
+    AUTHORED value in `opening_state` catches this."""
+    state, resolution, decisions = _tiny_valid_passing_turn()
+    relationship = resolution.report.political_relationship
+    assert relationship is not None
+    row = next(r for r in relationship.blocs if r.tax_preference_bps != 0)
+    opening_player = state.world.countries[state.world.player_country_id]
+    assert opening_player.politics is not None and opening_player.politics.legislature is not None
+    real_bloc = next(
+        b
+        for p in opening_player.politics.legislature.parties
+        for b in p.blocs
+        if p.id == row.party_id and b.id == row.bloc_id
+    )
+    assert real_bloc.tax_preference_bps == row.tax_preference_bps
+
+    fabricated_preference = row.tax_preference_bps + 1_000
+    fabricated_axis = _legislative_axis_component_bps(
+        preference_bps=fabricated_preference,
+        direction=relationship.tax_direction,
+        intensity_bps=relationship.tax_intensity_bps,
+        weight_bps=TAX_REACTION_WEIGHT_BPS,
+    ) + _legislative_axis_component_bps(
+        preference_bps=row.spending_preference_bps,
+        direction=relationship.spending_direction,
+        intensity_bps=relationship.spending_intensity_bps,
+        weight_bps=SPENDING_REACTION_WEIGHT_BPS,
+    )
+    fabricated_reaction = trunc_div_toward_zero(
+        fabricated_axis * POLICY_REACTION_WEIGHT_BPS, BPS_DENOMINATOR
+    )
+    fabricated_reaction = max(
+        -POLICY_REACTION_CAP_BPS, min(POLICY_REACTION_CAP_BPS, fabricated_reaction)
+    )
+    delta = fabricated_reaction - row.policy_reaction_component_bps
+    fabricated_row = row.model_copy(
+        update={
+            "tax_preference_bps": fabricated_preference,
+            "policy_reaction_component_bps": fabricated_reaction,
+            "uncapped_total_change_bps": row.uncapped_total_change_bps + delta,
+            "applied_total_change_bps": row.applied_total_change_bps + delta,
+            "closing_relationship_bps": row.closing_relationship_bps + delta,
+        }
+    )
+    fabricated_blocs = tuple(
+        fabricated_row if r.party_id == row.party_id and r.bloc_id == row.bloc_id else r
+        for r in relationship.blocs
+    )
+    fabricated_relationship = relationship.model_copy(update={"blocs": fabricated_blocs})
+    fabricated_report = resolution.report.model_copy(
+        update={"political_relationship": fabricated_relationship}
+    )
+    problems = reconcile_political_and_legislative_report(
+        opening_state=state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any(
+        f"tax_preference_bps={fabricated_preference}" in p and "does not match opening_state" in p
+        for p in problems
+    )
+
+
+def test_legislature_present_fabrication_on_a_no_legislature_country_is_rejected() -> None:
+    """(Group 23c, R4/R5) `legislature_present` is flipped to `True` on a turn whose opening
+    state genuinely has no legislature at all -- `PoliticalRelationshipReport`'s own validators
+    cannot catch this alone (there is no row to disagree with an empty `blocs` tuple); only
+    comparing against `GameState` can."""
+    politics = make_politics(
+        legislature=Legislature.NONE, decree_authority=DecreeAuthority.UNLIMITED
+    )
+    state = make_game_state(countries={"testland": make_country("testland", politics=politics)})
+    assert state.world.countries["testland"].politics is not None
+    assert state.world.countries["testland"].politics.legislature is None
+    resolution = resolve_turn(state, _empty_decisions_for(state))
+    relationship = resolution.report.political_relationship
+    assert relationship is not None
+    assert relationship.legislature_present is False
+    fabricated = relationship.model_copy(update={"legislature_present": True})
+    fabricated_report = resolution.report.model_copy(update={"political_relationship": fabricated})
+    problems = reconcile_political_and_legislative_report(
+        opening_state=state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=_empty_decisions_for(state),
+    )
+    assert any(
+        "political_relationship.legislature_present=True does not match" in p for p in problems
+    )

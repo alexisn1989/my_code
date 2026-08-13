@@ -812,6 +812,20 @@ def _check_legislature(country: CountryState, *, is_player: bool) -> list[Invari
                         ),
                     )
                 )
+            if not (
+                _RELATIONSHIP_MIN <= bloc.baseline_government_relationship_bps <= _RELATIONSHIP_MAX
+            ):
+                violations.append(
+                    InvariantViolation(
+                        code="bloc_baseline_relationship_out_of_range",
+                        message=(
+                            f"country {country.id!r}: bloc {party.id!r}/{bloc.id!r} "
+                            "baseline_government_relationship_bps="
+                            f"{bloc.baseline_government_relationship_bps} "
+                            f"outside [{_RELATIONSHIP_MIN}, {_RELATIONSHIP_MAX}]"
+                        ),
+                    )
+                )
             if not (_BPS_MIN <= bloc.discipline_bps <= _BPS_MAX):
                 violations.append(
                     InvariantViolation(

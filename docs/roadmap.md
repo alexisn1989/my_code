@@ -639,17 +639,23 @@ and calibration:
 sub-phase.** A patient player eventually reaches a free budget everywhere; the counterweight is
 Phase 3B2B below. Legislature composition beyond `government_relationship_bps` remains static.
 
-### Phase 3B2B — Relationship decay, automatic reactions and non-budget laws
+### Phase 3B2B — Relationship decay, policy reactions and decree-bypass penalty — **complete**
 
-Scope: `POL-3`'s second half, plus the rest of §12/§10. Builds on 3B2A's mutable-but-improve-only
-relationships.
+Scope: `POL-3`'s second half. Builds on 3B2A's mutable-but-improve-only relationships, narrowed
+(relative to this section's earlier draft) to exactly what closes the improve-only ratchet: an
+authored `baseline_government_relationship_bps` distinct from the mutable current relationship;
+proportional decay back toward it; an automatic reaction to policy the government actually
+enacted (derived from the proposal's own stored shape and each bloc's authored preferences, never
+from a re-scored vote); a separate, procedural decree-bypass penalty; and the ninth top-level
+report, reconciliation groups, and history-replay coverage that carry all of it. See
+`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`.
 
-Acceptance criteria: bloc relationships **decay and react automatically** to how the government
-treats them (bypassed by decree, repeatedly ignored), closing the improve-only ratchet 3B2A leaves
-open; a second proposal kind (the union already exists to carry it); confidence votes and coalition
-collapse; conference committees or override procedures for bicameral disagreement; per-proposal
-supermajorities keyed to `amendment_difficulty`; seat realignment and defections; AI-country
-politics once AI economies exist.
+A second proposal kind, confidence votes, coalition collapse, conference committees or override
+procedures for bicameral disagreement, per-proposal supermajorities keyed to
+`amendment_difficulty`, seat realignment, defections, and AI-country politics were considered for
+this phase and explicitly deferred to Phase 3C instead — none of them are needed to close the
+improve-only ratchet, and bundling them would have widened this phase well past `POL-3`'s own
+scope.
 
 ### Phase 3C — Government survival
 
@@ -663,7 +669,10 @@ cabinet-relevant characters for the first scenario. Also the named unblockers fo
 limitations: an **emergency system** (which is what would give `decree_authority: emergency_only`
 any meaning), and **courts / judicial review / constitutional-crisis mechanics** (which is what
 illegal or extra-constitutional decrees would need — `judicial_review` already exists as a
-constitutional axis read by nothing), plus a **non-stock cost for decree use**.
+constitutional axis read by nothing), plus a **non-stock cost for decree use**. Also now carries
+the items deferred out of 3B2B above: a second proposal kind, confidence votes and coalition
+collapse, conference committees/override procedures, per-proposal supermajorities, seat
+realignment and defections, and AI-country politics.
 
 ### Named follow-up tickets
 
@@ -673,11 +682,12 @@ so each lands as its own reviewable change rather than riding along inside an un
 | Ticket | Scope | Status |
 |---|---|---|
 | `POL-2` | Resolve the `InstitutionState` / `LegislatureState` overlap. Both shipped scenarios author an inert institution whose id is literally `legislature`, with float approval/trust/loyalty metrics no formula reads. **Re-scoped** from "convert the floats to strict bps" to "resolve the overlap" — converting eight floats would not address the duplication. Migrating the remaining inert float fields to strict bps rides along with it. | open |
-| `POL-3` | Competing political-capital expenditures within a turn, plus relationship consequences for how blocs are treated. The specific unblocker for ADR 0010's retracted opportunity-cost claim. **First half (competing expenditures + mutable, improve-only relationships) closed by Phase 3B2A.** Second half (decay, automatic reactions) lands in Phase 3B2B. | half-closed |
+| `POL-3` | Competing political-capital expenditures within a turn, plus relationship consequences for how blocs are treated. The specific unblocker for ADR 0010's retracted opportunity-cost claim. **First half (competing expenditures + mutable, improve-only relationships) closed by Phase 3B2A. Second half (decay, automatic reactions, decree-bypass penalty) closed by Phase 3B2B.** | closed |
 | `POL-4` | A tagged expenditure-target model. `CapitalExpenditureReport` addresses a legislative bloc by `(party_id, bloc_id)` and nothing else; a future expenditure with a different target kind (character, population group, constitutional axis) needs a tagged `target` union. Deliberately not built in 3B2A, where it would be a union of one. | open |
 | `FIN-1` | Reconcile `FinanceReport` closing balances against `TreasuryState`. Deliberately **not** absorbed into 3B1: it would not have caught a gating bug, since a failed vote produces perfectly self-consistent finance numbers for the *wrong* budget — reconciliation group 16 is what catches that. | open |
 | `FE-1` | Clear the dev-only transitive `nanoid` advisory by regenerating the frontend lockfile so `postcss` resolves `nanoid >= 3.3.17`. Dev-only, transitive, fix available, not a regression (the advisory database changed). Kept separate from every gameplay phase. | open |
 | `HIST-1` | An unreachable duplicate `return` in `history.py`. **Closed** — its removal was forced during Phase 3B1 when `_validate_entry_payload`'s return type changed from a 3-tuple to a 4-tuple. | closed |
+| `TEST-1` | `test_legislative_neutrality.py`'s float/true-division/`random`/clock AST determinism scans cover `relationships.py` and (as of Phase 3B2B) `political_memory.py` only, even though `NEUTRAL_MODULES` names `apportionment.py`/`legislative_voting.py` too — a real, pre-existing gap in a determinism guard, noticed but deliberately not fixed during Phase 3B2B (generalizing the scan was rejected as an undiscussed bundled fix; see `docs/adr/0012-...md`). | open |
 
 ## Phase 4 — Persistence and API
 

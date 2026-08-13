@@ -280,6 +280,7 @@ def make_legislature(*, shape: Legislature = Legislature.UNICAMERAL) -> Legislat
                         seats=tuple(BlocSeats(chamber=c, seats=90) for c in chambers),
                         discipline_bps=5_000,
                         government_relationship_bps=6_000,
+                        baseline_government_relationship_bps=6_000,
                         tax_preference_bps=2_000,
                         spending_preference_bps=2_000,
                     ),
@@ -296,6 +297,7 @@ def make_legislature(*, shape: Legislature = Legislature.UNICAMERAL) -> Legislat
                         seats=tuple(BlocSeats(chamber=c, seats=10) for c in chambers),
                         discipline_bps=5_000,
                         government_relationship_bps=-6_000,
+                        baseline_government_relationship_bps=-6_000,
                         tax_preference_bps=-2_000,
                         spending_preference_bps=-2_000,
                     ),
@@ -439,7 +441,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id, politics=politics)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.10.0",
+        content_version="0.11.0",
         seed=seed,
         turn=turn,
         state_version=state_version,

@@ -59,6 +59,7 @@ def _bloc(
         seats=tuple(BlocSeats(chamber=c, seats=s) for c, s in chambers.items()),
         discipline_bps=0,
         government_relationship_bps=relationship_bps,
+        baseline_government_relationship_bps=relationship_bps,
         tax_preference_bps=0,
         spending_preference_bps=0,
     )
@@ -164,6 +165,7 @@ def _zero_seat_bloc_legislature() -> LegislatureState:
                         seats=(),
                         discipline_bps=0,
                         government_relationship_bps=0,
+                        baseline_government_relationship_bps=0,
                         tax_preference_bps=0,
                         spending_preference_bps=0,
                     ),

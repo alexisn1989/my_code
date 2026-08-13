@@ -18,7 +18,8 @@ every decision.
   [`docs/adr/0008-physical-extraction-derived-sector-output.md`](docs/adr/0008-physical-extraction-derived-sector-output.md),
   [`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`](docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md),
   [`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`](docs/adr/0010-legislature-parties-and-political-capital-bargaining.md),
-  [`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`](docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md)
+  [`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`](docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md),
+  [`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`](docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md)
 - **Economy formulas:** [`docs/economy_methodology.md`](docs/economy_methodology.md)
 
 ## Current status
@@ -28,8 +29,9 @@ gameplay), Phase 2B1 (sector production at fixed prices), Phase 2B2 (production-
 bases), Phase 2B3 (labor allocation and unemployment at fixed prices), Phase 2C1 (resource
 endowments and extraction), Phase 2C2 (physical extraction drives extraction-sector output), and
 Phase 3A (constitutional foundation, legitimacy and political capital), Phase 3B1
-(legislature, parties, blocs and political-capital bargaining), and Phase 3B2A (competing
-political-capital uses and bloc relationships) are complete and
+(legislature, parties, blocs and political-capital bargaining), Phase 3B2A (competing
+political-capital uses and bloc relationships), and Phase 3B2B (political memory, policy
+reactions and relationship decay) are complete and
 verified.** The player can propose tax rates and spending — and, as of Phase 3B1, must get that
 budget **through a legislature** to make it stick; eleven aggregate economic sectors
 resolve deterministic quarterly output at fixed base-year prices, staffed every turn by a
@@ -55,8 +57,15 @@ not change — so politics now affects the economy, closing the one-way gap Phas
 Phase 3B2A, political capital has a **second, competing use**: a bloc's relationship to the
 government is no longer fixed — the player can invest capital to improve it, at a diminishing,
 capped rate, with the improvement applying only from the **following** turn, so the same capital
-can never both buy a vote and improve the relationship that vote is scored against. The relationship
-is otherwise still one-directional: population/labor supply affects
+can never both buy a vote and improve the relationship that vote is scored against. As of
+Phase 3B2B, that relationship is no longer improve-only: every bloc has an authored, structural
+baseline distinct from its current standing, and the current value **decays** back toward that
+baseline when unmaintained, **reacts automatically** to policy the government actually enacted
+(never to a vote it merely influenced), and pays a separate, procedural cost for being bypassed
+by decree — so sustained investment converges to a genuine equilibrium instead of climbing to the
+ceiling forever, and governing by decree as a habit has a visible, bounded relationship cost
+distinct from whatever the decreed content itself did. The relationship is otherwise still
+one-directional: population/labor supply affects
 allocation and production; resource endowments affect extraction, which affects the extraction
 sector's production, which (like every sector) affects tax bases and revenue; economic performance
 affects legitimacy; and tax rates, spending, and politics still do not affect allocation,
@@ -65,8 +74,7 @@ debt resolve deterministically and reconcile exactly every turn, with a self-val
 chain proving labor allocation, resource extraction, production, tax-base derivation, finance, and
 politics agree with each other, not just internally. All of it is wrapped in the same hash-chained,
 immutable history from Phase 1. There is no API and no database yet; no elections, coups or removal
-from power; relationships can only **improve** — there is no decay or automatic reaction to how a
-bloc is treated yet, and non-budget laws still do not exist; and no prices,
+from power; non-budget laws still do not exist; and no prices,
 inflation, wages, hiring friction, resource trade, or
 resource-to-industry linkage for the other ten sectors — see `docs/roadmap.md` for what's
 implemented per phase and `docs/economy_methodology.md` for exactly what's simulated and what
@@ -324,9 +332,40 @@ Calibrated against the real engine, not hand-computed: on both `deficit_demo` an
 strategy that invests every turn alongside the cheapest available route is **behind** a
 never-invest/always-decree baseline for seven consecutive resolved turns and first becomes cheaper
 after resolved turn 8 — relationship investment is a genuinely long-term play, not a quick win.
-**Relationships can only improve in this phase** — there is no decay or automatic reaction yet, an
-explicit, named interim limitation, not an oversight. Full rationale and calibration:
+This phase's relationships could still only *improve* — there was no decay and no automatic
+reaction to how a bloc was actually treated, an explicit, named interim limitation closed by Phase
+3B2B below. Full rationale and calibration:
 [`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`](docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md).
+
+### Political memory, policy reactions and relationship decay (Phase 3B2B)
+
+`LegislativeBlocState` gains an authored, structural `baseline_government_relationship_bps`,
+distinct from the mutable current relationship — a political fact about who a bloc is, never
+derived from government form. Every turn, the current relationship now moves by up to four
+components computed from the **same opening value** and combined by one order-independent identity
+(`decay + investment + policy reaction + decree bypass`, summed, then clamped exactly once):
+**decay** pulls any deviation back toward the authored baseline at a proportional 1/8 per turn with
+a minimum one-bps step (no overshoot, exact termination — a ±10,000 deviation takes 65 turns);
+**policy reaction** is the bloc's own preference compared against what the government's budget
+*actually enacted* that turn, zero on a failed vote, on no proposal, and — because a budget target
+is an absolute rate — zero again the moment a change is merely held or resubmitted rather than
+genuinely moved further; and **decree bypass** is a uniform −200 bps procedural penalty on every
+seated bloc whenever the government routes around the legislature entirely, independent of whether
+the decreed content itself changed.
+
+Investment stops being a ratchet and acquires a real steady state: on `deficit_demo`, a bloc
+invested in every turn against decay alone, with no further policy shock, settles at **exactly
++4,856** and holds it indefinitely — stop investing, and it decays back down, confirmed by actually
+doing so. A government that governs by decree pays a visible, bounded price even when its content
+never changes: repeatedly re-decreeing an already-active rate converges every affected bloc into
+the same **−16.00 percentage point** band regardless of its baseline, purely from the procedural
+penalty. `TurnReport` gains a ninth report, `PoliticalRelationshipReport` — `relationship_changes`
+is removed from the eighth report rather than left to describe a value that decay could now make a
+lie — and reconciliation gains groups checking that the authored baseline never moves, that decay
+used the opening deviation, and that a report's claimed proposal and legislature presence match
+`GameState`, not merely its own internally-consistent story. Full rationale, the two real formula
+bugs this phase's own calibration work found and fixed, and the complete calibration record:
+[`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`](docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md).
 
 ## Frontend
 

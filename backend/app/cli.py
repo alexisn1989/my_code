@@ -63,6 +63,7 @@ from app.simulation.report import (
     LaborMarketReport,
     LegislativeReport,
     PoliticalCapitalReport,
+    PoliticalRelationshipReport,
     PoliticalReport,
     ProductionReport,
     ResourceExtractionReport,
@@ -267,17 +268,57 @@ def _render_political_capital_ledger_resolved(params: dict[str, str | int]) -> s
     )
 
 
-def _render_bloc_relationship_investment_resolved(params: dict[str, str | int]) -> str:
+def _render_relationship_decay_resolved(params: dict[str, str | int]) -> str:
     party_id = str(params["party_id"])
     bloc_id = str(params["bloc_id"])
-    political_capital = int(params["political_capital"])
+    baseline_bps = int(params["baseline_relationship_bps"])
     opening_bps = int(params["opening_relationship_bps"])
-    applied_bps = int(params["applied_change_bps"])
-    closing_bps = int(params["closing_relationship_bps"])
+    deviation_bps = int(params["opening_deviation_bps"])
+    decay_bps = int(params["decay_component_bps"])
     return (
-        f"Relationship investment in {party_id}/{bloc_id}: {political_capital:,} political "
-        f"capital moved the relationship from {_bps_to_percent_str(opening_bps)} to "
-        f"{_bps_to_percent_str(closing_bps)} ({_format_bps_delta(applied_bps)})."
+        f"{party_id}/{bloc_id} relationship decayed toward its baseline "
+        f"{_bps_to_percent_str(baseline_bps)}: opening {_bps_to_percent_str(opening_bps)} "
+        f"(deviation {_format_bps_delta(deviation_bps)}), decay {_format_bps_delta(decay_bps)}."
+    )
+
+
+def _render_enacted_policy_relationship_reaction(params: dict[str, str | int]) -> str:
+    party_id = str(params["party_id"])
+    bloc_id = str(params["bloc_id"])
+    tax_direction = str(params["tax_direction"])
+    tax_intensity = int(params["tax_intensity_bps"])
+    spending_direction = str(params["spending_direction"])
+    spending_intensity = int(params["spending_intensity_bps"])
+    reaction_bps = int(params["policy_reaction_component_bps"])
+    return (
+        f"{party_id}/{bloc_id} reacted to enacted policy (tax {tax_direction} "
+        f"{tax_intensity:,}bps, spending {spending_direction} {spending_intensity:,}bps): "
+        f"{_format_bps_delta(reaction_bps)}."
+    )
+
+
+def _render_decree_bypass_relationship_reaction(params: dict[str, str | int]) -> str:
+    party_id = str(params["party_id"])
+    bloc_id = str(params["bloc_id"])
+    bypass_bps = int(params["decree_bypass_component_bps"])
+    return (
+        f"{party_id}/{bloc_id} resents being bypassed by decree: {_format_bps_delta(bypass_bps)}."
+    )
+
+
+def _render_bloc_relationship_resolved(params: dict[str, str | int]) -> str:
+    party_id = str(params["party_id"])
+    bloc_id = str(params["bloc_id"])
+    opening_bps = int(params["opening_relationship_bps"])
+    uncapped_bps = int(params["uncapped_total_change_bps"])
+    applied_bps = int(params["applied_total_change_bps"])
+    closing_bps = int(params["closing_relationship_bps"])
+    truncation_note = (
+        f" (clamped from {_format_bps_delta(uncapped_bps)})" if uncapped_bps != applied_bps else ""
+    )
+    return (
+        f"{party_id}/{bloc_id} relationship resolved: {_bps_to_percent_str(opening_bps)} -> "
+        f"{_bps_to_percent_str(closing_bps)} ({_format_bps_delta(applied_bps)}{truncation_note})."
     )
 
 
@@ -297,7 +338,10 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "legislative_vote_resolved": _render_legislative_vote_resolved,
     "budget_blocked_by_legislature": _render_budget_blocked_by_legislature,
     "political_capital_ledger_resolved": _render_political_capital_ledger_resolved,
-    "bloc_relationship_investment_resolved": _render_bloc_relationship_investment_resolved,
+    "relationship_decay_resolved": _render_relationship_decay_resolved,
+    "enacted_policy_relationship_reaction": _render_enacted_policy_relationship_reaction,
+    "decree_bypass_relationship_reaction": _render_decree_bypass_relationship_reaction,
+    "bloc_relationship_resolved": _render_bloc_relationship_resolved,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -466,6 +510,37 @@ def _print_capital_relationships(politics: PoliticalState) -> None:
         )
 
 
+def _print_baseline_relationships(politics: PoliticalState) -> None:
+    """(Phase 3B2B, §13) `inspect --relationships`: every bloc's CURRENT relationship alongside
+    its AUTHORED baseline and the deviation between them -- the one figure `--capital`'s narrower
+    table cannot show. Distinct from `--capital`'s table (still available, unchanged): that one
+    answers "what will next turn's investment be scored against"; this one answers "is this bloc
+    a structural opponent or a temporarily annoyed friend", which needs the baseline to tell.
+    """
+    legislature = politics.legislature
+    if legislature is None:
+        print("  bloc relationships (current / authored baseline):  none — no legislature")
+        return
+    print("  bloc relationships (current / authored baseline):")
+    rows = [
+        (
+            f"{party.id}/{bloc.id}",
+            bloc.government_relationship_bps,
+            bloc.baseline_government_relationship_bps,
+        )
+        for party in legislature.parties
+        for bloc in party.blocs
+    ]
+    identity_width = max((len(identity) for identity, _, _ in rows), default=0)
+    for identity, current_bps, baseline_bps in rows:
+        deviation_bps = current_bps - baseline_bps
+        status = "at baseline" if deviation_bps == 0 else f"{_format_bps_delta(deviation_bps)}"
+        print(
+            f"    {identity:<{identity_width}}  {_bps_to_percent_str(current_bps):>8}  "
+            f"base {_bps_to_percent_str(baseline_bps):>8}   ({status})"
+        )
+
+
 def _cmd_inspect(args: argparse.Namespace) -> int:
     path = Path(args.state)
     save = _read_save(path)
@@ -507,7 +582,17 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                 )
 
     if player.economy is not None and save.entries:
-        latest_report = save.entries[-1].report()
+        # The latest entry's report may fail schema/semantic validation on an invalid save (a
+        # consistently-rehashed tamper that `validate_history` above has already caught and
+        # recorded in `problems`) -- `inspect`'s whole point is to still report on an invalid
+        # save rather than crash, so this parse is guarded the same way `validate_history`
+        # itself guards every entry's parse. The failure is not re-reported here: `problems`
+        # already carries the identical "stored report fails schema validation" message, printed
+        # once below.
+        try:
+            latest_report = save.entries[-1].report()
+        except ValidationError:
+            latest_report = None
         if latest_report is not None and latest_report.production is not None:
             production = latest_report.production
             print(
@@ -574,6 +659,8 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
             _print_legislature_composition(politics)
         if args.capital:
             _print_capital_relationships(politics)
+        if args.relationships:
+            _print_baseline_relationships(politics)
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -878,17 +965,36 @@ def _print_political_capital_ledger(political_capital: PoliticalCapitalReport) -
             f"        {expenditure.category.value:<28} {target:<28} {expenditure.political_capital:,}"
         )
 
-    if political_capital.relationship_changes:
-        print("      relationship changes:")
-        for change in political_capital.relationship_changes:
-            gap_pp = change.gap_bps / 100
-            print(
-                f"        {change.party_id}/{change.bloc_id}   "
-                f"{_bps_to_percent_str(change.opening_relationship_bps)} -> "
-                f"{_bps_to_percent_str(change.closing_relationship_bps)}  "
-                f"({_format_bps_delta(change.applied_change_bps)} on a {gap_pp:g}pp gap, "
-                f"{change.political_capital:,} capital)"
-            )
+
+def _print_political_relationship_memory(
+    political_relationship: PoliticalRelationshipReport,
+) -> None:
+    """(Phase 3B2B, §13/§16) The ONE relationship-memory renderer, following the rule
+    `_print_political_capital_ledger` established: both live `resolve` output and historical
+    `history --turn N` output call this one function, so the two print paths can never drift apart
+    the way `_cmd_history`'s own inline path once silently omitted a whole section (Phase 3A, M10).
+    Every value is read straight off the already-self-validated `PoliticalRelationshipReport` —
+    presentation only, nothing recomputed."""
+    if not political_relationship.blocs:
+        return
+    print("    bloc relationships:")
+    for row in political_relationship.blocs:
+        print(
+            f"      {row.party_id}/{row.bloc_id}   "
+            f"{_bps_to_percent_str(row.opening_relationship_bps)} -> "
+            f"{_bps_to_percent_str(row.closing_relationship_bps)}  "
+            f"({_format_bps_delta(row.applied_total_change_bps)})"
+        )
+        print(
+            f"        baseline {_bps_to_percent_str(row.baseline_relationship_bps)}  "
+            f"deviation {_format_bps_delta(row.opening_deviation_bps)}"
+        )
+        print(
+            f"        decay {_format_bps_delta(row.decay_component_bps)}   "
+            f"investment {_format_bps_delta(row.investment_component_bps)}   "
+            f"policy {_format_bps_delta(row.policy_reaction_component_bps)}   "
+            f"decree bypass {_format_bps_delta(row.decree_bypass_component_bps)}"
+        )
 
 
 def _print_report(report: TurnReport) -> None:
@@ -911,6 +1017,8 @@ def _print_report(report: TurnReport) -> None:
         _print_legislative_report(report.legislative)
     if report.political_capital is not None:
         _print_political_capital_ledger(report.political_capital)
+    if report.political_relationship is not None:
+        _print_political_relationship_memory(report.political_relationship)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -1023,6 +1131,9 @@ def _cmd_history(args: argparse.Namespace) -> int:
             # Same discipline as the legislative block just above (Phase 3B2A): the SAME shared
             # helper `_print_report` uses, never a second inline copy.
             _print_political_capital_ledger(report.political_capital)
+        if report.political_relationship is not None:
+            # Same discipline again (Phase 3B2B): the SAME shared helper `_print_report` uses.
+            _print_political_relationship_memory(report.political_relationship)
     return 0
 
 
@@ -1065,6 +1176,14 @@ def build_parser() -> argparse.ArgumentParser:
         "(Phase 3B2A: relationships are mutable, so this is this turn's live figure, not an "
         "authored constant). Shows no ledger: a ledger is turn-local and appears only in a "
         "resolved turn's political-capital report",
+    )
+    p_inspect.add_argument(
+        "--relationships",
+        action="store_true",
+        help="also show every bloc's CURRENT relationship alongside its AUTHORED baseline and "
+        "the deviation between them (Phase 3B2B), read directly from state. Distinguishes a "
+        "structural opponent (large deviation from a hostile baseline) from a bloc merely "
+        "resting at a hostile baseline (zero deviation)",
     )
     p_inspect.set_defaults(func=_cmd_inspect)
 

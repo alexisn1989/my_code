@@ -39,7 +39,7 @@
 schema_version: 1
 scenario_id: decree_state
 name: "Decree State Fixture"
-content_version: "0.10.0"
+content_version: "0.11.0"
 seed: 77
 player_country_id: valdrun
 
@@ -353,6 +353,7 @@ countries:
                     seats: 45
                 discipline_bps: 5000
                 government_relationship_bps: 6000
+                baseline_government_relationship_bps: 6000
                 tax_preference_bps: 2000
                 spending_preference_bps: 0
           - id: opposition_party
@@ -366,6 +367,7 @@ countries:
                     seats: 55
                 discipline_bps: 8000
                 government_relationship_bps: -8000
+                baseline_government_relationship_bps: -8000
                 tax_preference_bps: -6000
                 spending_preference_bps: 0
 

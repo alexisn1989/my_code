@@ -55,10 +55,11 @@ extraction), Phase 2C1 (`"0.6.0"`, extraction sector output still abstract, not 
 physical extraction), Phase 2C2 (`"0.7.0"`, no constitution, legitimacy or political capital), and
 Phase 3A (`"0.8.0"`, no legislature, and political capital that regenerates but cannot be spent),
 and Phase 3B1 (`"0.9.0"`, one budget decision at a time, static bloc relationships, no expenditure
-ledger) saves are intentionally excluded: each ruleset bump changes what turn resolution actually
-*does* and/or what `GameState` must contain (Phase 2A added required player finance; Phase 2B1
-added required player economy; Phase 2B2 removes authored `tax_bases` in favor of required
-`tax_base_coefficients` and per-sector shares; Phase 2B3 removes authored
+ledger), and Phase 3B2A (`"0.10.0"`, relationships only ever improve, no authored baseline, no
+policy reaction, no decree-bypass cost) saves are intentionally excluded: each ruleset bump changes
+what turn resolution actually *does* and/or what `GameState` must contain (Phase 2A added required
+player finance; Phase 2B1 added required player economy; Phase 2B2 removes authored `tax_bases` in
+favor of required `tax_base_coefficients` and per-sector shares; Phase 2B3 removes authored
 `SectorState.employed_workers` in favor of a required
 `EconomyState.effective_labor_force_share_bps`; Phase 2C1 adds a new required
 `EconomyState.resource_deposits`; Phase 2C2 adds a new required
@@ -66,33 +67,36 @@ added required player economy; Phase 2B2 removes authored `tax_bases` in favor o
 `CountryState.politics`; Phase 3B1 adds a required `PoliticalState.legislature` wherever the
 constitution declares one, and routes the budget through a legislative vote that can reject it;
 Phase 3B2A makes `DecisionSet.decisions` a tagged union and `TurnReport` carry an eighth report
-with no 0.9.0 data to reconstruct it from), and an older save has no recorded data to run the new
-behavior against, so there is nothing to migrate — rejected with an actionable message, same as the
-save-format-version case above. See `docs/adr/0003-government-accounting.md`,
+with no 0.9.0 data to reconstruct it from; Phase 3B2B adds a new required
+`LegislativeBlocState.baseline_government_relationship_bps` with no authored political history in
+a 0.10.0 save to backfill it from, and `TurnReport` carries a ninth report while
+`PoliticalCapitalReport` loses its `relationship_changes` field), and an older save has no recorded
+data to run the new behavior against, so there is nothing to migrate — rejected with an actionable
+message, same as the save-format-version case above. See `docs/adr/0003-government-accounting.md`,
 `docs/adr/0004-sector-production-fixed-prices.md`, `docs/adr/0005-production-derived-tax-bases.md`,
 `docs/adr/0006-labor-allocation-at-fixed-prices.md`,
 `docs/adr/0007-resource-endowments-and-extraction.md`,
 `docs/adr/0008-physical-extraction-derived-sector-output.md`,
 `docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`,
-`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`, and
-`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`.
+`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`,
+`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`, and
+`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`.
 """
 
-SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.10.0"})
+SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.11.0"})
 """Tracks content-*schema* compatibility (what shape scenario-authored data must have), not a
 fingerprint of any scenario's actual parameter values — two scenarios sharing a content_version
 routinely carry different `resource_output_coefficients`/`resource_deposits`/`sectors` values
 (`tiny_valid.yaml` and `deficit_demo.yaml` always have), and now different `constitution`/
 `constitutional_order_support_bps` and `legislature` values too — `tiny_valid` seats a bicameral
 majority coalition and `deficit_demo` a unicameral minority government, at the same content
-version, because they share a *shape* and not a set of numbers. Bumped `"0.9.0" -> "0.10.0"` for
-Phase 3B2A: no scenario field changes shape (every calibration value in every scenario is
-unchanged — see `test_compatibility.py`'s bump-is-version-line-only proof), but the bump still
-applies because scenario content is loaded into a `GameState` whose overall shape changed
-(the mutable-relationship reconciliation groups and the eighth report), and content-version
-gating exists precisely to keep "what shape a scenario must have" honest about that. See
+version, because they share a *shape* and not a set of numbers. Bumped `"0.10.0" -> "0.11.0"` for
+Phase 3B2B: every bloc in every scenario gains one new authored line,
+`baseline_government_relationship_bps`, set equal to that bloc's `government_relationship_bps` —
+no other scenario field changes shape or value (see `test_compatibility.py`'s
+bump-is-version-line-only proof, extended to also allow exactly the new baseline lines). See
 `docs/adr/0008-physical-extraction-derived-sector-output.md`, "Content-version policy", and
-`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`."""
+`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`."""
 
 _REQUIRED_ENVELOPE_KEYS = {
     "save_format_version",

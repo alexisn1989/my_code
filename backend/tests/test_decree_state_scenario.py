@@ -284,11 +284,31 @@ def test_influence_attached_to_a_decree_is_rejected_by_construction() -> None:
 # --- 11. legislature composition is byte-identical after both routes (D7) ----------------------
 
 
+def _strip_relationship(legislature_json: dict) -> dict:
+    """(Phase 3B2B) `government_relationship_bps` is genuinely mutable now -- decay and a policy
+    reaction move it on EVERY enacted-proposal turn, by design, on both routes. Composition
+    (chambers, parties, seats, roles, discipline, preferences) and the AUTHORED
+    `baseline_government_relationship_bps` remain exactly as static as D7 always required; this
+    strips only the one field 3B2B deliberately makes mutable, mirroring M11's soak-test fix."""
+    stripped = dict(legislature_json)
+    stripped["parties"] = [
+        {
+            **party,
+            "blocs": [
+                {k: v for k, v in bloc.items() if k != "government_relationship_bps"}
+                for bloc in party["blocs"]
+            ],
+        }
+        for party in legislature_json["parties"]
+    ]
+    return stripped
+
+
 def test_legislature_is_byte_identical_after_both_routes() -> None:
     state = _load()
     opening_legislature = state.world.countries[_COUNTRY_ID].politics.legislature
     assert opening_legislature is not None
-    opening_json = canonical_dumps(opening_legislature.model_dump(mode="json"))
+    opening_json = canonical_dumps(_strip_relationship(opening_legislature.model_dump(mode="json")))
 
     legislative_resolution = resolve_turn(state, _decisions_for(state, _LEGISLATIVE_283))
     decree_resolution = resolve_turn(state, _decisions_for(state, _DECREE_250))
@@ -296,7 +316,10 @@ def test_legislature_is_byte_identical_after_both_routes() -> None:
     for resolution in (legislative_resolution, decree_resolution):
         closing_legislature = resolution.state.world.countries[_COUNTRY_ID].politics.legislature
         assert closing_legislature is not None
-        assert canonical_dumps(closing_legislature.model_dump(mode="json")) == opening_json
+        closing_json = canonical_dumps(
+            _strip_relationship(closing_legislature.model_dump(mode="json"))
+        )
+        assert closing_json == opening_json
 
 
 # --- 12. all three shipped scenarios have at least one affordable successful route -------------

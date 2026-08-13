@@ -11,10 +11,10 @@ onto new games.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
-import yaml
 
 from app.content.scenarios import load_scenario_file
 from app.core.errors import (
@@ -391,21 +391,67 @@ def test_scenario_content_version_bump_is_the_only_change(
     scenario_name: str, tmp_path: Path
 ) -> None:
     """Proves "each scenario file is modified only for its content-version bump" as a test, not a
-    claim. Reverting only the `content_version` key in the current (0.10.0) file and reparsing
-    produces a `GameState` identical to the real file's, once `content_version` is set back to
-    match -- so no other field could have moved between the two versions of the file without this
-    test catching it."""
+    claim, for every bump through Phase 3B2A -- reverting only `content_version` and reparsing
+    produced a `GameState` identical to the real file's, because none of those bumps changed any
+    scenario field's shape or value.
+
+    Phase 3B2B's bump is different in kind: every bloc gains one new authored line,
+    `baseline_government_relationship_bps`, so a 0.10.0-shaped file (no such field at all) can no
+    longer even be parsed by this build's required-field schema -- there is nothing to "revert to
+    and reload" without fabricating data the file never had. This test is adapted accordingly:
+    it strips every `baseline_government_relationship_bps` line via the *same* mechanical rule
+    used to author them (equal to that line's own `government_relationship_bps`, inserted
+    immediately after it) and reverts `content_version`, then re-applies that exact rule and
+    proves it reproduces the real, current file byte-for-byte. That is a genuine regression check:
+    it fails if a baseline value is ever hand-edited to differ from its bloc's current
+    relationship, or if any other line moves.
+    """
     current_path = SCENARIOS_DIR / scenario_name
+    current_text = current_path.read_text(encoding="utf-8")
     current_state = load_scenario_file(current_path)
-    assert current_state.content_version == "0.10.0"
+    assert current_state.content_version == "0.11.0"
 
-    raw = yaml.safe_load(current_path.read_text(encoding="utf-8"))
-    assert raw["content_version"] == "0.10.0"
-    raw["content_version"] = "0.9.0"
+    baseline_pattern = re.compile(r"^(\s*)baseline_government_relationship_bps:\s*-?\d+\s*$")
+    stripped_lines = [line for line in current_text.split("\n") if not baseline_pattern.match(line)]
+    stripped_text = "\n".join(stripped_lines).replace(
+        'content_version: "0.11.0"', 'content_version: "0.10.0"'
+    )
+    assert "baseline_government_relationship_bps" not in stripped_text
 
-    reverted_path = tmp_path / scenario_name
-    reverted_path.write_text(yaml.safe_dump(raw, sort_keys=False), encoding="utf-8")
-    reverted_state = load_scenario_file(reverted_path)
+    relationship_pattern = re.compile(r"^(\s*)government_relationship_bps:\s*(-?\d+)\s*$")
+    rebuilt_lines: list[str] = []
+    for line in stripped_text.split("\n"):
+        rebuilt_lines.append(line)
+        match = relationship_pattern.match(line)
+        if match:
+            indent, value = match.groups()
+            rebuilt_lines.append(f"{indent}baseline_government_relationship_bps: {value}")
+    rebuilt_text = "\n".join(rebuilt_lines).replace(
+        'content_version: "0.10.0"', 'content_version: "0.11.0"'
+    )
+    assert rebuilt_text == current_text
 
-    assert reverted_state.content_version == "0.9.0"
-    assert reverted_state.model_copy(update={"content_version": "0.10.0"}) == current_state
+    rebuilt_path = tmp_path / scenario_name
+    rebuilt_path.write_text(rebuilt_text, encoding="utf-8")
+    rebuilt_state = load_scenario_file(rebuilt_path)
+    assert rebuilt_state == current_state
+
+
+@pytest.mark.parametrize(
+    "scenario_name", ["tiny_valid.yaml", "deficit_demo.yaml", "decree_state.yaml"]
+)
+def test_every_bloc_baseline_equals_its_opening_relationship(scenario_name: str) -> None:
+    """The design rule every scenario author must follow at 0.11.0: initially authored equal, so
+    turn 1 opens at zero deviation and decay is a no-op until something moves the relationship.
+    Reject-not-normalize -- the loader never defaults one field from the other -- so this is a
+    genuine content fact about the three shipped files, not something the schema enforces."""
+    state = load_scenario_file(SCENARIOS_DIR / scenario_name)
+    player = state.world.countries[state.world.player_country_id]
+    assert player.politics is not None
+    assert player.politics.legislature is not None
+    for party in player.politics.legislature.parties:
+        for bloc in party.blocs:
+            assert bloc.baseline_government_relationship_bps == bloc.government_relationship_bps, (
+                f"{scenario_name}: {party.id}/{bloc.id} authored baseline does not match opening "
+                "relationship"
+            )
