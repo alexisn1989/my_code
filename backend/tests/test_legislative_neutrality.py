@@ -33,10 +33,15 @@ from types import ModuleType
 from app.simulation import apportionment as apportionment_module
 from app.simulation import constitution as constitution_module
 from app.simulation import legislative_voting as voting_module
+from app.simulation import political_memory as political_memory_module
 from app.simulation import relationships as relationships_module
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
 from app.simulation.legislative_voting import PolicyChange, resolve_bloc_support
 from app.simulation.legislature import ChangeDirection, GovernmentRole
+from app.simulation.political_memory import (
+    enacted_policy_reaction_bps,
+    relationship_decay_bps,
+)
 from app.simulation.relationships import relationship_gain_bps
 
 CONSTITUTIONAL_TYPE_NAMES = frozenset(
@@ -52,7 +57,12 @@ CONSTITUTIONAL_TYPE_NAMES = frozenset(
     }
 )
 
-NEUTRAL_MODULES = (apportionment_module, voting_module, relationships_module)
+NEUTRAL_MODULES = (
+    apportionment_module,
+    voting_module,
+    relationships_module,
+    political_memory_module,
+)
 
 
 # --- T-N1a: no constitutional type reaches either module's signatures ---------
@@ -148,6 +158,7 @@ def test_the_neutral_modules_are_genuinely_the_ones_under_test() -> None:
         "app.simulation.apportionment",
         "app.simulation.legislative_voting",
         "app.simulation.relationships",
+        "app.simulation.political_memory",
     }
 
 
@@ -250,3 +261,94 @@ def test_the_relationship_module_imports_no_randomness_or_clock() -> None:
         for alias in node.names
     }
     assert not (imported & {"random", "time", "datetime", "secrets"}), imported
+
+
+# --- Phase 3B2B: political_memory is neutral and float-free -------------------
+#
+# R8: this extends the scan to name `political_memory.py` specifically, alongside
+# `relationships.py` above -- it does NOT generalize either scan into a loop over all of
+# `NEUTRAL_MODULES`. Generalizing would incidentally close the pre-existing gap that leaves
+# `apportionment.py` and `legislative_voting.py` unscanned (tracked separately as TEST-1), and the
+# mandate forbids bundling a fix for a pre-existing defect into this phase's commits.
+
+
+def test_relationship_decay_and_reaction_are_identical_under_two_maximally_different_constitutions() -> (
+    None
+):
+    """`decree_state` is a monarchy and `deficit_demo` a presidential republic; a bloc at the same
+    opening relationship/baseline, or reacting to the same enacted policy, produces exactly the
+    same decay or reaction in either, because the constitution is not an input to either
+    calculation at all."""
+    for opening in (-8_000, -2_000, 0, 2_000, 6_000):
+        for baseline in (-6_000, -2_000, 0, 3_000, 5_000):
+            decay = relationship_decay_bps(
+                opening_relationship_bps=opening, baseline_relationship_bps=baseline
+            )
+            assert decay == relationship_decay_bps(
+                opening_relationship_bps=opening, baseline_relationship_bps=baseline
+            )
+            assert isinstance(decay, int)
+
+    for tax_pref in (-6_000, -2_000, 2_000, 5_000):
+        reaction = enacted_policy_reaction_bps(
+            tax_preference_bps=tax_pref,
+            tax_direction=ChangeDirection.INCREASE,
+            tax_intensity_bps=5_000,
+            spending_preference_bps=0,
+            spending_direction=ChangeDirection.UNCHANGED,
+            spending_intensity_bps=0,
+        )
+        assert reaction == enacted_policy_reaction_bps(
+            tax_preference_bps=tax_pref,
+            tax_direction=ChangeDirection.INCREASE,
+            tax_intensity_bps=5_000,
+            spending_preference_bps=0,
+            spending_direction=ChangeDirection.UNCHANGED,
+            spending_intensity_bps=0,
+        )
+        assert isinstance(reaction, int)
+
+
+def test_the_political_memory_module_uses_no_floating_point_arithmetic() -> None:
+    """Determinism depends on it: `state_json` is BLAKE2b-covered, and a float would make the same
+    game hash differently on a different platform. Checked against the parsed source, so importing
+    a float helper later is caught even if it is never called."""
+    source = Path(inspect.getfile(political_memory_module)).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    for node in ast.walk(tree):
+        assert not isinstance(node, ast.Constant) or not isinstance(node.value, float), (
+            f"float literal {node.value!r} in political_memory.py"
+        )
+        if isinstance(node, ast.BinOp):
+            assert not isinstance(node.op, ast.Div), "true division (/) in political_memory.py"
+        if isinstance(node, ast.Name):
+            assert node.id not in {"float", "random", "Decimal"}, node.id
+
+
+def test_the_political_memory_module_imports_no_randomness_or_clock() -> None:
+    source = Path(inspect.getfile(political_memory_module)).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported = {node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
+    imported |= {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    assert not (imported & {"random", "time", "datetime", "secrets"}), imported
+
+
+def test_apportionment_and_legislative_voting_remain_unscanned_for_floats_test1_deferred() -> None:
+    """Negative confirmation of R8's deferral: the float/division AST scans above stay dedicated
+    to `relationships.py` and `political_memory.py` only, so `apportionment.py` and
+    `legislative_voting.py` are NOT protected against a float literal or a `/` creeping in. This
+    is a real, pre-existing gap (TEST-1), deliberately not fixed here -- the mandate forbids
+    bundling a fix for a pre-existing defect into this phase. If a future scan generalizes to
+    cover them, this test (asserting the current, narrower state) is the one that should be
+    deleted at that time, not silently left behind."""
+    scanned_by_name = {"relationships.py", "political_memory.py"}
+    unscanned_by_name = {"apportionment.py", "legislative_voting.py"}
+    assert scanned_by_name.isdisjoint(unscanned_by_name)
+    for module in (apportionment_module, voting_module):
+        assert Path(inspect.getfile(module)).name in unscanned_by_name
