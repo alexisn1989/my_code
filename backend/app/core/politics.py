@@ -246,3 +246,56 @@ def clamp_bps(value: int, *, low: int = LEGITIMACY_MIN_BPS, high: int = LEGITIMA
     if low > high:
         raise ValueError(f"clamp_bps: low={low} exceeds high={high}")
     return max(low, min(high, value))
+
+
+# --- Phase 3B2B: political memory -- decay, policy reactions, decree bypass --------------------
+
+StrictRelationshipChangeBps: TypeAlias = Annotated[
+    int, Field(strict=True, ge=-2 * BPS_DENOMINATOR, le=2 * BPS_DENOMINATOR)
+]
+"""A SIGNED per-turn relationship change: decay, a policy reaction, a decree-bypass penalty, or
+their sum before clamping. Deliberately a sibling of (not a widening of)
+`StrictRelationshipGainBps`: that type stays `ge=0` because the quantity it describes -- the
+investment gain against the ceiling gap -- genuinely still cannot be negative, and widening it to
+admit negative values would weaken a true guarantee to accommodate a different quantity. The bound
+is the widest a signed component or an unclamped sum of up to four such components could reach
+(`StrictRelationshipBps`'s own span doubled), not a per-component cap -- the per-component caps
+(`POLICY_REACTION_CAP_BPS`, `DECREE_BYPASS_PENALTY_BPS`) are separate, explicit, and re-derivable
+constants, not folded into the type.
+"""
+
+RELATIONSHIP_DECAY_NUMERATOR = 1
+RELATIONSHIP_DECAY_DENOMINATOR = 8
+"""A bloc's relationship decays 1/8 of its deviation from `baseline_government_relationship_bps`
+toward that baseline every turn (a turn is a quarter; half-life ~5.2 quarters), with a minimum
+one-bps step for any nonzero residual so a deviation that has shrunk below the natural floor of
+the fraction still terminates exactly rather than freezing forever
+(`simulation.political_memory.relationship_decay_bps`)."""
+
+POLICY_REACTION_WEIGHT_BPS = 2_500
+"""How strongly a bloc reacts to genuinely enacted policy content, applied to the same
+`[-4,000, +4,000]` compatibility scale `simulation.legislative_voting.policy_compatibility_bps`
+computes for the vote -- structurally bounded to `[-1,000, +1,000]` before the cap below is even
+consulted, confirmed on real scenario data to never approach the cap at this weight
+(`test_relationship_memory_calibration.py`)."""
+
+POLICY_REACTION_CAP_BPS = 1_000
+"""The per-turn ceiling on a policy reaction -- a defence against a future, larger weight or a
+more extreme authored preference, not a bound this weight's real data ever reaches."""
+
+DECREE_BYPASS_PENALTY_BPS = 200
+"""The flat relationship cost every seated bloc pays when the government enacts by decree instead
+of a vote, regardless of whether the decreed content itself changed. Combined with 1/8 decay, an
+isolated, content-free decree trajectory settles in the band `floor(|deviation| / 8) == 200`
+(bps -1,600 through -1,607), never runs away, and reaching the relationship floor requires a
+sustained, genuinely adversarial policy campaign on top of the penalty, not the penalty alone."""
+
+
+def clamp_relationship_bps(value: int) -> int:
+    """The signed relationship clamp: `[-StrictRelationshipBps, +StrictRelationshipBps]`, i.e.
+    `[-10_000, 10_000]`. `clamp_bps`'s defaults are `[0, 10_000]` (the legitimacy scale) and cannot
+    express a signed relationship; this is `clamp_bps`'s Phase 3B2B sibling, not a reuse of it,
+    because supplying `low=-BPS_DENOMINATOR` to `clamp_bps` at every call site would be exactly the
+    kind of repeated, easy-to-typo argument a named helper exists to remove.
+    """
+    return clamp_bps(value, low=-BPS_DENOMINATOR, high=BPS_DENOMINATOR)

@@ -14,8 +14,13 @@ from hypothesis import strategies as st
 from pydantic import BaseModel, ValidationError
 
 from app.core.politics import (
+    DECREE_BYPASS_PENALTY_BPS,
     LEGITIMACY_MAX_BPS,
     LEGITIMACY_MIN_BPS,
+    POLICY_REACTION_CAP_BPS,
+    POLICY_REACTION_WEIGHT_BPS,
+    RELATIONSHIP_DECAY_DENOMINATOR,
+    RELATIONSHIP_DECAY_NUMERATOR,
     RELATIONSHIP_INVESTMENT_CAP,
     StrictLegitimacyBps,
     StrictPoliticalCapital,
@@ -24,6 +29,7 @@ from app.core.politics import (
     StrictPositiveSeatCount,
     StrictPreferenceBps,
     StrictRelationshipBps,
+    StrictRelationshipChangeBps,
     StrictRelationshipGainBps,
     StrictRelationshipInvestment,
     StrictSeatCount,
@@ -31,6 +37,7 @@ from app.core.politics import (
     StrictSignedBps,
     StrictSignedLegitimacyBps,
     clamp_bps,
+    clamp_relationship_bps,
     trunc_div_toward_zero,
 )
 
@@ -81,6 +88,10 @@ class _CapitalCommitmentHolder(BaseModel):
 
 class _RelationshipGainHolder(BaseModel):
     value: StrictRelationshipGainBps
+
+
+class _RelationshipChangeHolder(BaseModel):
+    value: StrictRelationshipChangeBps
 
 
 class _SeatNumeratorHolder(BaseModel):
@@ -465,3 +476,81 @@ def test_relationship_gain_is_non_negative_and_spans_the_widest_gap() -> None:
         _RelationshipGainHolder(value=-1)
     with pytest.raises(ValidationError):
         _RelationshipGainHolder(value=20_001)
+
+
+# --- Phase 3B2B: signed relationship change, decay/policy/decree constants, clamp_relationship_bps
+
+RELATIONSHIP_CHANGE_INVALID_INT_REPRESENTATIONS = INVALID_INT_REPRESENTATIONS
+
+
+@pytest.mark.parametrize("bad_value", RELATIONSHIP_CHANGE_INVALID_INT_REPRESENTATIONS)
+def test_strict_relationship_change_bps_rejects_invalid_representations(bad_value: object) -> None:
+    with pytest.raises(ValidationError):
+        _RelationshipChangeHolder(value=bad_value)
+
+
+def test_relationship_change_bps_is_signed_and_spans_double_the_relationship_scale() -> None:
+    """Sibling of `StrictRelationshipGainBps`, not a widening of it: a component (or an unclamped
+    sum of up to four) can genuinely be negative, so this type -- unlike the gain type -- must
+    accept the full signed range, doubled to hold an unclamped four-component sum before the
+    single clamp is applied."""
+    assert _RelationshipChangeHolder(value=0).value == 0
+    assert _RelationshipChangeHolder(value=-20_000).value == -20_000
+    assert _RelationshipChangeHolder(value=20_000).value == 20_000
+    with pytest.raises(ValidationError):
+        _RelationshipChangeHolder(value=-20_001)
+    with pytest.raises(ValidationError):
+        _RelationshipChangeHolder(value=20_001)
+
+
+def test_relationship_change_bps_is_not_the_gain_type_widened() -> None:
+    """`StrictRelationshipGainBps` must keep rejecting negative values even though its sibling now
+    exists -- the two types describe different quantities and neither absorbed the other."""
+    with pytest.raises(ValidationError):
+        _RelationshipGainHolder(value=-1)
+    assert _RelationshipChangeHolder(value=-1).value == -1
+
+
+def test_the_decay_fraction_is_one_eighth() -> None:
+    """Pinned as values: half-life ~5.2 quarters, and both the numerator and denominator are
+    part of the accepted formula, so changing either is a calibration event, not an accident."""
+    assert RELATIONSHIP_DECAY_NUMERATOR == 1
+    assert RELATIONSHIP_DECAY_DENOMINATOR == 8
+
+
+def test_the_policy_reaction_weight_and_cap_are_pinned() -> None:
+    assert POLICY_REACTION_WEIGHT_BPS == 2_500
+    assert POLICY_REACTION_CAP_BPS == 1_000
+
+
+def test_the_decree_bypass_penalty_is_two_hundred() -> None:
+    """-200 bps is exactly -2.00 relationship percentage points (10,000 bps spans 100.00%) -- the
+    unit conversion this constant's every consumer (CLI rendering, calibration tables) depends on."""
+    assert DECREE_BYPASS_PENALTY_BPS == 200
+
+
+# --- clamp_relationship_bps ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param(-10_255, -10_000, id="below-floor"),
+        pytest.param(-10_000, -10_000, id="at-floor"),
+        pytest.param(0, 0, id="middle"),
+        pytest.param(10_000, 10_000, id="at-ceiling"),
+        pytest.param(10_255, 10_000, id="above-ceiling"),
+    ],
+)
+def test_clamp_relationship_bps_bounds_to_the_signed_relationship_scale(
+    value: int, expected: int
+) -> None:
+    assert clamp_relationship_bps(value) == expected
+
+
+def test_clamp_relationship_bps_differs_from_clamp_bps_defaults() -> None:
+    """`clamp_bps`'s defaults are `[0, 10_000]` (the legitimacy scale) and would silently floor
+    every negative relationship to zero -- exactly the bug `clamp_relationship_bps` exists to make
+    structurally impossible to write by accident."""
+    assert clamp_bps(-500) == 0
+    assert clamp_relationship_bps(-500) == -500
