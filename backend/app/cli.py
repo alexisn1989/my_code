@@ -510,6 +510,37 @@ def _print_capital_relationships(politics: PoliticalState) -> None:
         )
 
 
+def _print_baseline_relationships(politics: PoliticalState) -> None:
+    """(Phase 3B2B, §13) `inspect --relationships`: every bloc's CURRENT relationship alongside
+    its AUTHORED baseline and the deviation between them -- the one figure `--capital`'s narrower
+    table cannot show. Distinct from `--capital`'s table (still available, unchanged): that one
+    answers "what will next turn's investment be scored against"; this one answers "is this bloc
+    a structural opponent or a temporarily annoyed friend", which needs the baseline to tell.
+    """
+    legislature = politics.legislature
+    if legislature is None:
+        print("  bloc relationships (current / authored baseline):  none — no legislature")
+        return
+    print("  bloc relationships (current / authored baseline):")
+    rows = [
+        (
+            f"{party.id}/{bloc.id}",
+            bloc.government_relationship_bps,
+            bloc.baseline_government_relationship_bps,
+        )
+        for party in legislature.parties
+        for bloc in party.blocs
+    ]
+    identity_width = max((len(identity) for identity, _, _ in rows), default=0)
+    for identity, current_bps, baseline_bps in rows:
+        deviation_bps = current_bps - baseline_bps
+        status = "at baseline" if deviation_bps == 0 else f"{_format_bps_delta(deviation_bps)}"
+        print(
+            f"    {identity:<{identity_width}}  {_bps_to_percent_str(current_bps):>8}  "
+            f"base {_bps_to_percent_str(baseline_bps):>8}   ({status})"
+        )
+
+
 def _cmd_inspect(args: argparse.Namespace) -> int:
     path = Path(args.state)
     save = _read_save(path)
@@ -618,6 +649,8 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
             _print_legislature_composition(politics)
         if args.capital:
             _print_capital_relationships(politics)
+        if args.relationships:
+            _print_baseline_relationships(politics)
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -1133,6 +1166,14 @@ def build_parser() -> argparse.ArgumentParser:
         "(Phase 3B2A: relationships are mutable, so this is this turn's live figure, not an "
         "authored constant). Shows no ledger: a ledger is turn-local and appears only in a "
         "resolved turn's political-capital report",
+    )
+    p_inspect.add_argument(
+        "--relationships",
+        action="store_true",
+        help="also show every bloc's CURRENT relationship alongside its AUTHORED baseline and "
+        "the deviation between them (Phase 3B2B), read directly from state. Distinguishes a "
+        "structural opponent (large deviation from a hostile baseline) from a bloc merely "
+        "resting at a hostile baseline (zero deviation)",
     )
     p_inspect.set_defaults(func=_cmd_inspect)
 

@@ -445,6 +445,35 @@ def test_inspect_capital_is_opt_in(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "bloc relationships:" not in out
 
 
+# --- Phase 3B2B (§13): `inspect --relationships` -----------------------------------------------
+
+
+def test_inspect_relationships_shows_current_and_authored_baseline(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    capsys.readouterr()
+
+    assert main(["inspect", "--state", str(save0), "--relationships"]) == 0
+    out = capsys.readouterr().out
+
+    assert "bloc relationships (current / authored baseline):" in out
+    assert "rural_alliance/farmers" in out
+    assert "base " in out
+    # A fresh scenario opens every bloc exactly at its authored baseline (§9): zero deviation.
+    assert "at baseline" in out
+
+
+def test_inspect_relationships_is_opt_in(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    capsys.readouterr()
+    assert main(["inspect", "--state", str(save0)]) == 0
+    out = capsys.readouterr().out
+    assert "bloc relationships (current / authored baseline):" not in out
+
+
 def _resolve_with_decisions(
     tmp_path: Path,
     save0: Path,
