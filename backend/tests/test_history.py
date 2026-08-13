@@ -19,10 +19,18 @@ from app.simulation.decisions import (
     bloc_relationship_investment_digest,
 )
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
-from app.simulation.legislature import ProposalRoute
-from app.simulation.political_memory import combine_relationship_components, relationship_decay_bps
+from app.simulation.legislature import ChangeDirection, LegislativeOutcome, ProposalRoute
+from app.simulation.political_memory import (
+    combine_relationship_components,
+    enacted_policy_reaction_bps,
+    relationship_decay_bps,
+)
 from app.simulation.relationships import relationship_gain_bps
-from app.simulation.report import BlocRelationshipMemoryReport, TurnReportEntry
+from app.simulation.report import (
+    BlocRelationshipMemoryReport,
+    PoliticalRelationshipReport,
+    TurnReportEntry,
+)
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json
 from app.simulation.state import SpendingCategory
 from tests.conftest import make_game_state
@@ -1609,5 +1617,194 @@ def test_consistently_rehashed_untargeted_bloc_state_tamper_still_fails_reconcil
     assert any(
         "government_relationship_bps changed" in p
         and "not named by any political_relationship.blocs row" in p
+        for p in problems
+    )
+
+
+def test_consistently_rehashed_outcome_flip_with_matching_components_fails_at_replay_parse() -> (
+    None
+):
+    """(plan §10.1 case 15) A NO_PROPOSAL turn's `political_relationship` report is replaced
+    wholesale with a fabricated `PASSED_LEGISLATIVE` story: outcome, tax_direction, and
+    tax_intensity_bps are all changed together, and the one row added is internally consistent
+    with that new story under EVERY row and report self-validator (the policy-reaction component
+    is computed by the real `enacted_policy_reaction_bps` formula from the fabricated proposal
+    shape). No row-level or report-level self-validator can catch this, because the lie is
+    internally coherent on its own terms.
+
+    Only `TurnReport` cross-validator 2 (`_relationship_report_proposal_matches_the_legislative_
+    report`), comparing this report's proposal fields against `LegislativeReport`'s
+    independently-stored ones (left untouched, still `NO_PROPOSAL`), catches it -- and it does so
+    at REPLAY PARSE (`TurnReport.model_validate`), before reconciliation ever runs, since the
+    cross-validator lives on `TurnReport` itself."""
+    save = _advance_n(_fresh_save(), 1)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None
+    assert report.legislative is not None
+    assert report.legislative.outcome is LegislativeOutcome.NO_PROPOSAL
+    assert report.political_relationship is not None
+    assert report.political_relationship.outcome is LegislativeOutcome.NO_PROPOSAL
+
+    state = original.state()
+    assert state is not None
+    country = state.world.countries[state.world.player_country_id]
+    assert country.politics is not None and country.politics.legislature is not None
+    core = next(
+        b
+        for p in country.politics.legislature.parties
+        for b in p.blocs
+        if p.id == "governing_party" and b.id == "core"
+    )
+    assert core.government_relationship_bps == core.baseline_government_relationship_bps
+
+    fabricated_tax_direction = ChangeDirection.INCREASE
+    fabricated_tax_intensity_bps = 1_000
+    policy = enacted_policy_reaction_bps(
+        tax_preference_bps=core.tax_preference_bps,
+        tax_direction=fabricated_tax_direction,
+        tax_intensity_bps=fabricated_tax_intensity_bps,
+        spending_preference_bps=core.spending_preference_bps,
+        spending_direction=ChangeDirection.UNCHANGED,
+        spending_intensity_bps=0,
+    )
+    assert policy != 0, "the fabricated proposal must produce a genuinely nonzero reaction"
+    uncapped, applied, closing = combine_relationship_components(
+        opening_relationship_bps=core.government_relationship_bps,
+        decay_component_bps=0,
+        investment_component_bps=0,
+        policy_reaction_component_bps=policy,
+        decree_bypass_component_bps=0,
+    )
+    fabricated_row = BlocRelationshipMemoryReport(
+        party_id="governing_party",
+        bloc_id="core",
+        baseline_relationship_bps=core.baseline_government_relationship_bps,
+        opening_relationship_bps=core.government_relationship_bps,
+        opening_deviation_bps=0,
+        decay_component_bps=0,
+        investment_component_bps=0,
+        investment_capital=0,
+        tax_preference_bps=core.tax_preference_bps,
+        spending_preference_bps=core.spending_preference_bps,
+        policy_reaction_component_bps=policy,
+        decree_bypass_component_bps=0,
+        uncapped_total_change_bps=uncapped,
+        applied_total_change_bps=applied,
+        closing_relationship_bps=closing,
+    )
+    fabricated_report = PoliticalRelationshipReport(
+        outcome=LegislativeOutcome.PASSED_LEGISLATIVE,
+        legislature_present=True,
+        tax_direction=fabricated_tax_direction,
+        tax_intensity_bps=fabricated_tax_intensity_bps,
+        spending_direction=ChangeDirection.UNCHANGED,
+        spending_intensity_bps=0,
+        blocs=(fabricated_row,),
+    )
+    tampered_full_report = report.model_copy(update={"political_relationship": fabricated_report})
+    tampered_report_json = canonical_dumps(tampered_full_report.model_dump(mode="json"))
+    assert tampered_report_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(
+        save, index=index, report_json=tampered_report_json
+    )
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("stored report fails schema validation" in p for p in problems)
+    assert any(
+        "political_relationship.outcome" in p and "does not match legislative.outcome" in p
+        for p in problems
+    )
+
+
+def test_consistently_rehashed_unchanged_target_fabricated_reaction_fails_self_validation() -> None:
+    """(plan §10.1 case 18, R12) A real `PASSED_LEGISLATIVE` turn resubmits the ALREADY-ACTIVE
+    personal-income rate -- a legal decision that genuinely produces `ChangeDirection.UNCHANGED`
+    (§7.2: re-submitting or holding an already-active absolute target is provably zero reaction).
+    A nonzero `policy_reaction_component_bps` is then injected into the one row for that turn.
+
+    Unlike case 15, this tamper does NOT need a cross-report or state comparison to catch: the
+    report's OWN `tax_direction`/`spending_direction` fields are already `UNCHANGED`, so
+    `PoliticalRelationshipReport` validator 4 (`_policy_reaction_components_match_the_proposal_
+    and_preferences`) re-derives compatibility from them and gets exactly 0 regardless of what the
+    row's stored preferences claim -- self-validation alone catches the fabricated value, at
+    REPLAY PARSE, before reconciliation or any cross-report check ever runs."""
+    save = _advance_n(_fresh_save(), 1)
+    state = save.current_state()
+    current_rate = state.world.countries[
+        state.world.player_country_id
+    ].finance.tax_policy.personal_income_rate_bps
+    decisions = DecisionSet(
+        expected_turn=state.turn,
+        expected_state_version=state.state_version,
+        decisions=[BudgetDecision(personal_income_rate_bps=current_rate)],
+    )
+    save = advance_game(save, decisions)
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None
+    assert report.legislative is not None
+    assert report.legislative.outcome is LegislativeOutcome.PASSED_LEGISLATIVE
+    assert report.political_relationship is not None
+    assert report.political_relationship.tax_direction is ChangeDirection.UNCHANGED
+    assert report.political_relationship.tax_intensity_bps == 0
+
+    state_after = original.state()
+    assert state_after is not None
+    country = state_after.world.countries[state_after.world.player_country_id]
+    assert country.politics is not None and country.politics.legislature is not None
+    core = next(
+        b
+        for p in country.politics.legislature.parties
+        for b in p.blocs
+        if p.id == "governing_party" and b.id == "core"
+    )
+
+    fabricated_policy = 150
+    uncapped, applied, closing = combine_relationship_components(
+        opening_relationship_bps=core.government_relationship_bps,
+        decay_component_bps=0,
+        investment_component_bps=0,
+        policy_reaction_component_bps=fabricated_policy,
+        decree_bypass_component_bps=0,
+    )
+    fabricated_row = BlocRelationshipMemoryReport(
+        party_id="governing_party",
+        bloc_id="core",
+        baseline_relationship_bps=core.baseline_government_relationship_bps,
+        opening_relationship_bps=core.government_relationship_bps,
+        opening_deviation_bps=core.government_relationship_bps
+        - core.baseline_government_relationship_bps,
+        decay_component_bps=0,
+        investment_component_bps=0,
+        investment_capital=0,
+        tax_preference_bps=core.tax_preference_bps,
+        spending_preference_bps=core.spending_preference_bps,
+        policy_reaction_component_bps=fabricated_policy,
+        decree_bypass_component_bps=0,
+        uncapped_total_change_bps=uncapped,
+        applied_total_change_bps=applied,
+        closing_relationship_bps=closing,
+    )
+    fabricated_relationship_report = report.political_relationship.model_copy(
+        update={"blocs": (fabricated_row,)}
+    )
+    tampered_full_report = report.model_copy(
+        update={"political_relationship": fabricated_relationship_report}
+    )
+    tampered_report_json = canonical_dumps(tampered_full_report.model_dump(mode="json"))
+    assert tampered_report_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(
+        save, index=index, report_json=tampered_report_json
+    )
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("stored report fails schema validation" in p for p in problems)
+    assert any(
+        "policy_reaction_component_bps" in p and "does not match the policy-reaction formula" in p
         for p in problems
     )
