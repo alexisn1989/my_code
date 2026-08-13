@@ -25,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.10.0"
+content_version: "0.11.0"
 seed: 99
 player_country_id: strapped
 
@@ -297,6 +297,7 @@ countries:
                     seats: 30
                 discipline_bps: 8000
                 government_relationship_bps: -8000
+                baseline_government_relationship_bps: -8000
                 tax_preference_bps: -6000
                 spending_preference_bps: -5000
               - id: moderates
@@ -306,6 +307,7 @@ countries:
                     seats: 20
                 discipline_bps: 2000
                 government_relationship_bps: -2000
+                baseline_government_relationship_bps: -2000
                 tax_preference_bps: -2000
                 spending_preference_bps: 0
           - id: governing_party
@@ -319,6 +321,7 @@ countries:
                     seats: 34
                 discipline_bps: 6000
                 government_relationship_bps: 5000
+                baseline_government_relationship_bps: 5000
                 tax_preference_bps: 3000
                 spending_preference_bps: 3000
               - id: left
@@ -328,6 +331,7 @@ countries:
                     seats: 6
                 discipline_bps: 2000
                 government_relationship_bps: 1000
+                baseline_government_relationship_bps: 1000
                 tax_preference_bps: 5000
                 spending_preference_bps: 5000
           - id: independents
@@ -341,5 +345,6 @@ countries:
                     seats: 10
                 discipline_bps: 1000
                 government_relationship_bps: 1000
+                baseline_government_relationship_bps: 1000
                 tax_preference_bps: -2000
                 spending_preference_bps: 2000

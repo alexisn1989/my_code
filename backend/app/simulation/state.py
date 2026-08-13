@@ -570,6 +570,16 @@ class LegislativeBlocState(BaseModel):
     negative prefers a decrease, positive an increase, zero indifferent — deliberately separate
     from the relationship, because a bloc can be devoted to a government and still hate its
     budget.
+
+    **`baseline_government_relationship_bps` (Phase 3B2B) is the bloc's authored, structural
+    disposition toward the government — a political FACT about who these people are, not a
+    running total.** `government_relationship_bps` decays toward THIS every turn
+    (`simulation.political_memory.relationship_decay_bps`), never toward zero. It is authored
+    independently of `government_relationship_bps` — never derived from it, from
+    `government_role`, or from any constitutional axis — and is static: nothing in Phase 3B2B
+    moves it, and `simulation.reconciliation` proves so (group 12). A scenario author sets both
+    fields explicitly; setting them equal (the only choice all three shipped scenarios make) means
+    the bloc opens with zero deviation and decay is a no-op until something moves it.
     """
 
     model_config = _STRICT_CONFIG
@@ -579,6 +589,7 @@ class LegislativeBlocState(BaseModel):
     seats: tuple[BlocSeats, ...] = Field(default_factory=tuple)
     discipline_bps: StrictBps
     government_relationship_bps: StrictRelationshipBps
+    baseline_government_relationship_bps: StrictRelationshipBps
     tax_preference_bps: StrictPreferenceBps
     spending_preference_bps: StrictPreferenceBps
 
@@ -850,7 +861,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.10.0"
+RULESET_VERSION = "0.11.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -882,7 +893,17 @@ through the same parse path; `TurnReport` gains an eighth report,
 0.9.0 turn spent capital on exactly one thing and has no expenditure ledger to reconstruct; and
 `PoliticalState.legislature`'s `government_relationship_bps` becomes mutable turn to turn, so
 replaying 0.9.0 history against 3B2A's reconciliation groups 12/14 would require inventing
-relationship provenance no 0.9.0 save ever recorded).
+relationship provenance no 0.9.0 save ever recorded), and
+`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md` (bumped `"0.10.0" ->
+"0.11.0"` for Phase 3B2B: `LegislativeBlocState.baseline_government_relationship_bps` becomes a
+new required field with no authored political history in a 0.10.0 save to backfill it from —
+defaulting it to that save's *current* relationship would assert every historical bloc was exactly
+at its structural baseline at the moment of the save, a claim about political history the save
+does not contain; `TurnReport` gains a ninth report, `political_relationship:
+PoliticalRelationshipReport`, and `PoliticalCapitalReport.relationship_changes` is removed (moved
+onto the new report), so a 0.10.0 turn's relationship-investment ledger no longer round-trips
+through the same field; and turn resolution now writes `government_relationship_bps` on turns with
+no decisions at all (decay), so the same decisions no longer produce the same closing state).
 """
 
 

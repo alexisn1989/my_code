@@ -112,6 +112,7 @@ def _bloc(
     bloc_id: str = "core",
     seats: tuple[BlocSeats, ...],
     relationship: int = 0,
+    baseline: int = 0,
     discipline: int = 0,
     tax_preference: int = 0,
     spending_preference: int = 0,
@@ -124,6 +125,7 @@ def _bloc(
         seats=seats,
         discipline_bps=discipline,
         government_relationship_bps=relationship,
+        baseline_government_relationship_bps=baseline,
         tax_preference_bps=tax_preference,
         spending_preference_bps=spending_preference,
     )
@@ -138,6 +140,7 @@ def _bad_bloc(**field_overrides: object) -> LegislativeBlocState:
         "seats": (),
         "discipline_bps": 0,
         "government_relationship_bps": 0,
+        "baseline_government_relationship_bps": 0,
         "tax_preference_bps": 0,
         "spending_preference_bps": 0,
     }
@@ -656,6 +659,26 @@ def test_bloc_relationship_out_of_range(relationship: int) -> None:
     assert "bloc_relationship_out_of_range" in _codes(state)
 
 
+# --- 22 (Phase 3B2B): bloc_baseline_relationship_out_of_range --------------------
+
+
+@pytest.mark.parametrize("baseline", [10_001, -10_001])
+def test_bloc_baseline_relationship_out_of_range(baseline: int) -> None:
+    """The exact sibling of `bloc_relationship_out_of_range` for the authored baseline field --
+    only reachable via a `model_construct` bypass, since `StrictRelationshipBps` already bounds
+    it at real construction time."""
+    bad = _bad_bloc(
+        seats=(BlocSeats(chamber=LOWER, seats=100),),
+        baseline_government_relationship_bps=baseline,
+    )
+    party = _bad_party(blocs=(bad,))
+    legislature = _bad_legislature(
+        chambers=(ChamberState(chamber=LOWER, total_seats=100),), parties=(party,)
+    )
+    state = _with_legislature(_valid_state(), legislature=legislature)
+    assert "bloc_baseline_relationship_out_of_range" in _codes(state)
+
+
 # --- 19: bloc_discipline_out_of_range --------------------------------------------
 
 
@@ -778,9 +801,10 @@ def test_invariants_module_does_not_import_voting_or_report_machinery() -> None:
                 )
 
 
-def test_all_twenty_one_legislature_codes_are_distinct() -> None:
+def test_all_twenty_two_legislature_codes_are_distinct() -> None:
     """A regression pin, mirroring the existing 12-political-code guard: if two legislature
-    checks ever accidentally shared a code, this catches it."""
+    checks ever accidentally shared a code, this catches it. Extended to 22 in Phase 3B2B for
+    `bloc_baseline_relationship_out_of_range`."""
     expected = {
         "legislature_required_by_constitution",
         "legislature_forbidden_by_constitution",
@@ -800,8 +824,9 @@ def test_all_twenty_one_legislature_codes_are_distinct() -> None:
         "bloc_seats_reference_unknown_chamber",
         "chamber_seat_total_mismatch",
         "bloc_relationship_out_of_range",
+        "bloc_baseline_relationship_out_of_range",
         "bloc_discipline_out_of_range",
         "bloc_preference_out_of_range",
         "non_player_legislature_not_supported",
     }
-    assert len(expected) == 21
+    assert len(expected) == 22
