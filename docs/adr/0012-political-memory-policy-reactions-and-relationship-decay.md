@@ -175,14 +175,24 @@ non-decreasing; the legislature is no longer byte-identical to the authored copy
 
 ## What is deferred
 
-The pre-implementation plan's full §12 calibration matrix (three `deficit_demo` strategies, eight
+The pre-implementation plan's full §12 calibration matrix — three `deficit_demo` strategies, eight
 `decree_state` strategies, five `tiny_valid` cases, each pinned turn-by-turn for the plan's full
-horizon) is not reproduced verbatim in the shipped test suite. A reduced-scope replacement,
-`test_relationship_memory_calibration.py`, pins the phase's central claims (the 4,856 fixed point,
-the -1,600 decree-only band, single-decree recovery, the affordability guarantee) against the real
-resolver. The full exhaustive matrix — every bargain cost and capital-ledger figure across all 16
-strategies — is tracked as follow-up work, not lost: §12 of the working plan remains the reference
-for what a complete pass would need to verify.
+horizon — was initially shipped only as a reduced-scope replacement
+(`test_relationship_memory_calibration.py`, five tests pinning the central claims) and disclosed as
+deferred follow-up work. A closeout review correctly identified that as a material, undisclosed
+scope reduction from a plan that made the matrix binding. `test_full_political_memory_calibration.py`
+now restores it: all 16 strategies, driven turn-by-turn through the real `resolve_turn` engine and
+the real `_exhaustive_cheapest_bargain` DP, every field the plan requires pinned as a literal
+(absolute targets, direction/intensity, opening/closing relationships, all four components,
+cheapest bargain, vote tallies and outcomes, capital opening/closing, total and cumulative
+commitments, and — for `tiny_valid` — both chambers reported separately). Every figure reproduced
+the plan's own precomputed §12 tables exactly, including the turn-13 `deficit_demo` crossover
+(confirmed independently twice, via Strategy B and Strategy C-invest), all 16 strategies staying
+affordable, the flat 250/turn decree cost across strategies 2–5, and strategy 7 (invest then
+transition) becoming cheapest at turn 6 and winning by turn 20 (3,485 versus the next-best
+strategy's 4,929) — no discrepancy required a "reality wins" correction on this pass.
+`test_relationship_memory_calibration.py` is kept alongside it as the narrower, faster-reading
+smoke test for the same central claims; it is not superseded, only supplemented.
 
 Elections, seat redistribution, defections, coalition collapse, confidence votes, characters,
 ministers, coups, protests, repression, civil war, an emergency system and courts remain out of
