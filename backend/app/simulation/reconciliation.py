@@ -68,6 +68,11 @@ individual field within a group, is independently corruptible and independently 
 
 from __future__ import annotations
 
+from app.core.politics import (
+    RELATIONSHIP_DECAY_DENOMINATOR,
+    RELATIONSHIP_DECAY_NUMERATOR,
+    trunc_div_toward_zero,
+)
 from app.simulation.constitution import constitution_digest
 from app.simulation.decisions import (
     BudgetDecision,
@@ -380,9 +385,10 @@ def reconcile_political_and_legislative_report(
     # turn with no legislative proposal would leave chamber/bloc/seat corruption completely
     # unchecked -- the same class of coverage hole R12 closed for report-bearing turns.
     political_capital_report = report.political_capital
+    political_relationship_report = report.political_relationship
     if opening_legislature is not None and closing_legislature is not None:
         has_relationship_changes = bool(
-            political_capital_report is not None and political_capital_report.relationship_changes
+            political_relationship_report is not None and political_relationship_report.blocs
         )
         if not has_relationship_changes:
             # Fast path: a turn with no reported relationship change must leave the legislature
@@ -415,6 +421,30 @@ def reconcile_political_and_legislative_report(
                         f"politics.legislature row {structural_key!r} changed a non-relationship "
                         f"field between opening_state {state_opening_rows[structural_key]} and "
                         f"closing_state {state_closing_rows[structural_key]}"
+                    )
+
+            # (Phase 3B2B) `baseline_government_relationship_bps` is authored, not a running
+            # total -- unlike `government_relationship_bps` (group 20's job), it must NEVER move,
+            # on ANY turn, whether or not that turn carries a reported relationship change. Keyed
+            # by (party_id, bloc_id) alone, not chamber, since a bloc's baseline is a single fact
+            # regardless of how many chambers it sits in.
+            opening_baselines = {
+                (party.id, bloc.id): bloc.baseline_government_relationship_bps
+                for party in opening_legislature.parties
+                for bloc in party.blocs
+            }
+            closing_baselines = {
+                (party.id, bloc.id): bloc.baseline_government_relationship_bps
+                for party in closing_legislature.parties
+                for bloc in party.blocs
+            }
+            for bloc_key in set(opening_baselines) & set(closing_baselines):
+                if opening_baselines[bloc_key] != closing_baselines[bloc_key]:
+                    problems.append(
+                        f"politics.legislature bloc {bloc_key!r}: "
+                        f"baseline_government_relationship_bps changed from "
+                        f"{opening_baselines[bloc_key]} to {closing_baselines[bloc_key]} -- the "
+                        "authored baseline must never move"
                     )
 
     # Groups 13-15 need REPORT chamber/bloc rows to compare against state; NOTE (R12): unlike
@@ -691,13 +721,22 @@ def reconcile_political_and_legislative_report(
                 f"({legislative_share})"
             )
 
-    # Group 20 (Phase 3B2A): relationship changes vs BOTH states, and untargeted immutability.
-    # This is where "did the closing relationship the report claims actually land in state"
-    # (as opposed to group 14's "was the vote scored against the real opening relationship") is
-    # proved -- the two groups are deliberately disjoint, one per endpoint, never merged.
-    if political_capital_report is not None and opening_legislature is not None:
+    # Group 20 (Phase 3B2A, REWRITTEN Phase 3B2B): relationship memory vs BOTH states, and
+    # untargeted immutability. This is where "did the closing relationship the report claims
+    # actually land in state" (as opposed to group 14's "was the vote scored against the real
+    # opening relationship") is proved -- the two groups are deliberately disjoint, one per
+    # endpoint, never merged. Re-keyed from `political_capital_report.relationship_changes`
+    # (removed, §8) onto `political_relationship_report.blocs`, and extended to also prove each
+    # row's `baseline_relationship_bps` against BOTH states (group 12 already proves the baseline
+    # never MOVES between the two states; this proves the row didn't lie about what it is).
+    if political_relationship_report is not None and opening_legislature is not None:
         opening_relationship_by_key = {
             (party.id, bloc.id): bloc.government_relationship_bps
+            for party in opening_legislature.parties
+            for bloc in party.blocs
+        }
+        opening_baseline_by_key = {
+            (party.id, bloc.id): bloc.baseline_government_relationship_bps
             for party in opening_legislature.parties
             for bloc in party.blocs
         }
@@ -710,30 +749,59 @@ def reconcile_political_and_legislative_report(
             if closing_legislature is not None
             else {}
         )
+        closing_baseline_by_key = (
+            {
+                (party.id, bloc.id): bloc.baseline_government_relationship_bps
+                for party in closing_legislature.parties
+                for bloc in party.blocs
+            }
+            if closing_legislature is not None
+            else {}
+        )
         changed_keys = {
-            (change_row.party_id, change_row.bloc_id)
-            for change_row in political_capital_report.relationship_changes
+            (memory_row.party_id, memory_row.bloc_id)
+            for memory_row in political_relationship_report.blocs
         }
-        for change_row in political_capital_report.relationship_changes:
-            relationship_key = (change_row.party_id, change_row.bloc_id)
-            real_opening = opening_relationship_by_key.get(relationship_key)
-            if real_opening is not None and change_row.opening_relationship_bps != real_opening:
+        for memory_row in political_relationship_report.blocs:
+            memory_key = (memory_row.party_id, memory_row.bloc_id)
+            real_opening_baseline = opening_baseline_by_key.get(memory_key)
+            if (
+                real_opening_baseline is not None
+                and memory_row.baseline_relationship_bps != real_opening_baseline
+            ):
                 problems.append(
-                    f"relationship_changes row {relationship_key!r}: opening_relationship_bps="
-                    f"{change_row.opening_relationship_bps} does not match opening_state "
+                    f"political_relationship.blocs row {memory_key!r}: "
+                    f"baseline_relationship_bps={memory_row.baseline_relationship_bps} does not match "
+                    f"opening_state baseline_government_relationship_bps={real_opening_baseline}"
+                )
+            real_closing_baseline = closing_baseline_by_key.get(memory_key)
+            if (
+                real_closing_baseline is not None
+                and memory_row.baseline_relationship_bps != real_closing_baseline
+            ):
+                problems.append(
+                    f"political_relationship.blocs row {memory_key!r}: "
+                    f"baseline_relationship_bps={memory_row.baseline_relationship_bps} does not match "
+                    f"closing_state baseline_government_relationship_bps={real_closing_baseline}"
+                )
+            real_opening = opening_relationship_by_key.get(memory_key)
+            if real_opening is not None and memory_row.opening_relationship_bps != real_opening:
+                problems.append(
+                    f"political_relationship.blocs row {memory_key!r}: opening_relationship_bps="
+                    f"{memory_row.opening_relationship_bps} does not match opening_state "
                     f"government_relationship_bps={real_opening}"
                 )
-            real_closing = closing_relationship_by_key.get(relationship_key)
-            if real_closing is not None and change_row.closing_relationship_bps != real_closing:
+            real_closing = closing_relationship_by_key.get(memory_key)
+            if real_closing is not None and memory_row.closing_relationship_bps != real_closing:
                 problems.append(
-                    f"relationship_changes row {relationship_key!r}: closing_relationship_bps="
-                    f"{change_row.closing_relationship_bps} does not match closing_state "
+                    f"political_relationship.blocs row {memory_key!r}: closing_relationship_bps="
+                    f"{memory_row.closing_relationship_bps} does not match closing_state "
                     f"government_relationship_bps={real_closing}"
                 )
-        # Untargeted immutability: every bloc NOT named by a relationship_changes row must have
-        # an identical relationship in both states -- this is the check a naive "just drop the
-        # group-12 guard" fix could still miss, and it is asserted independently of group 12's own
-        # structural comparison.
+        # Untargeted immutability: every bloc NOT named by a memory row must have an identical
+        # relationship in both states -- this is the check a naive "just drop the group-12 guard"
+        # fix could still miss, and it is asserted independently of group 12's own structural
+        # comparison.
         for bloc_key, real_closing_value in closing_relationship_by_key.items():
             if bloc_key in changed_keys:
                 continue
@@ -742,11 +810,14 @@ def reconcile_political_and_legislative_report(
                 problems.append(
                     f"bloc {bloc_key!r} government_relationship_bps changed from "
                     f"{real_opening_value} to {real_closing_value} but is not named by any "
-                    "relationship_changes row"
+                    "political_relationship.blocs row"
                 )
 
-    # Group 21 (Phase 3B2A): relationship-investment decision provenance -- located from the REAL
-    # DecisionSet, never inferred, mirroring group 18's discipline exactly.
+    # Group 21 (Phase 3B2A, NARROWED Phase 3B2B): relationship-investment decision provenance --
+    # located from the REAL DecisionSet, never inferred, mirroring group 18's discipline exactly.
+    # Reads investment capital from the LEDGER rows only (`political_capital.expenditures`); the
+    # report-side correspondence between the ledger and `political_relationship.blocs` moved to
+    # `TurnReport` cross-validator 1 (§8), so it is not re-proved here.
     if decisions is not None and political_capital_report is not None:
         investment_decision = decisions.relationship_investment_decision()
         decision_investments: dict[tuple[str, str], int] = (
@@ -776,11 +847,6 @@ def reconcile_political_and_legislative_report(
                     f"political_capital.expenditures shows {report_amount} invested in "
                     f"{investment_key!r}, but the submitted decision does not commit that"
                 )
-        if investment_decision is None and political_capital_report.relationship_changes:
-            problems.append(
-                "no relationship-investment decision was submitted but "
-                "political_capital.relationship_changes is non-empty"
-            )
 
         # Provenance digest: every BLOC_RELATIONSHIP_INVESTMENT row's `decision_digest` must equal
         # `bloc_relationship_investment_digest` of the REAL submitted decision -- mirroring group
@@ -802,6 +868,118 @@ def reconcile_political_and_legislative_report(
                         "bloc_relationship_investment_digest(the submitted decision)="
                         f"{expected_investment_digest!r}"
                     )
+
+    # Group 22 (Phase 3B2B, new): decay is based on the OPENING deviation from the authored
+    # baseline -- re-derived here from `opening_state` alone, independently of row validator 2's
+    # own re-derivation from the row's OWN stored `opening_deviation_bps`, so a row that lies about
+    # its own opening/baseline pair (consistent with itself, per row validator 1) but disagrees
+    # with the real state is still caught.
+    if political_relationship_report is not None and opening_legislature is not None:
+        opening_bloc_by_key = {
+            (party.id, bloc.id): bloc
+            for party in opening_legislature.parties
+            for bloc in party.blocs
+        }
+        for memory_row in political_relationship_report.blocs:
+            bloc = opening_bloc_by_key.get((memory_row.party_id, memory_row.bloc_id))
+            if bloc is None:
+                continue  # already reported by group 23(a) below
+            deviation = bloc.government_relationship_bps - bloc.baseline_government_relationship_bps
+            if deviation == 0:
+                expected_decay = 0
+            else:
+                magnitude = trunc_div_toward_zero(
+                    abs(deviation) * RELATIONSHIP_DECAY_NUMERATOR, RELATIONSHIP_DECAY_DENOMINATOR
+                )
+                magnitude = max(1, min(magnitude, abs(deviation)))
+                expected_decay = -magnitude if deviation > 0 else magnitude
+            if memory_row.decay_component_bps != expected_decay:
+                problems.append(
+                    f"political_relationship.blocs row ({memory_row.party_id!r}, {memory_row.bloc_id!r}): "
+                    f"decay_component_bps={memory_row.decay_component_bps} does not match the decay "
+                    f"formula over opening_state's own deviation ({expected_decay})"
+                )
+
+    # Group 23 (Phase 3B2B, new; R4/R5-expanded, absorbs the first draft's separate group 24):
+    # three state-dependent facts `PoliticalRelationshipReport` cannot prove about itself.
+    if political_relationship_report is not None and opening_legislature is not None:
+        opening_bloc_by_key = {
+            (party.id, bloc.id): bloc
+            for party in opening_legislature.parties
+            for bloc in party.blocs
+        }
+        report_keys = {
+            (memory_row.party_id, memory_row.bloc_id)
+            for memory_row in political_relationship_report.blocs
+        }
+
+        # (a) Row coverage: every bloc meeting §8's row-coverage rule has exactly one row, and no
+        # row names a bloc absent from the opening state.
+        investment_keys = (
+            {
+                (expenditure_row.party_id, expenditure_row.bloc_id)
+                for expenditure_row in political_capital_report.expenditures
+                if expenditure_row.category
+                is CapitalExpenditureCategory.BLOC_RELATIONSHIP_INVESTMENT
+            }
+            if political_capital_report is not None
+            else set()
+        )
+        policy_enacted = report.legislative is not None and report.legislative.outcome in (
+            LegislativeOutcome.PASSED_LEGISLATIVE,
+            LegislativeOutcome.ENACTED_BY_DECREE,
+        )
+        for bloc_key, bloc in opening_bloc_by_key.items():
+            deviation = bloc.government_relationship_bps - bloc.baseline_government_relationship_bps
+            needs_row = deviation != 0 or bloc_key in investment_keys or policy_enacted
+            has_row = bloc_key in report_keys
+            if needs_row and not has_row:
+                problems.append(
+                    f"political_relationship.blocs is missing a row for {bloc_key!r}, which "
+                    "opening_state's own deviation/investment/enacted-policy facts require one for"
+                )
+            elif has_row and not needs_row:
+                problems.append(
+                    f"political_relationship.blocs carries a row for {bloc_key!r}, which none of "
+                    "opening_state's deviation/investment/enacted-policy facts require one for"
+                )
+        for row_key in report_keys - set(opening_bloc_by_key):
+            problems.append(
+                f"political_relationship.blocs names {row_key!r}, which opening_state's "
+                "legislature does not contain"
+            )
+
+        # (b) Preference correspondence: each row's stored preferences must equal that bloc's own
+        # AUTHORED preferences in opening_state -- a row cannot fabricate a preference to
+        # manufacture a policy reaction that didn't happen.
+        for memory_row in political_relationship_report.blocs:
+            bloc = opening_bloc_by_key.get((memory_row.party_id, memory_row.bloc_id))
+            if bloc is None:
+                continue  # already reported above
+            if memory_row.tax_preference_bps != bloc.tax_preference_bps:
+                problems.append(
+                    f"political_relationship.blocs row ({memory_row.party_id!r}, {memory_row.bloc_id!r}): "
+                    f"tax_preference_bps={memory_row.tax_preference_bps} does not match opening_state "
+                    f"tax_preference_bps={bloc.tax_preference_bps}"
+                )
+            if memory_row.spending_preference_bps != bloc.spending_preference_bps:
+                problems.append(
+                    f"political_relationship.blocs row ({memory_row.party_id!r}, {memory_row.bloc_id!r}): "
+                    f"spending_preference_bps={memory_row.spending_preference_bps} does not match "
+                    f"opening_state spending_preference_bps={bloc.spending_preference_bps}"
+                )
+
+        # (c) Legislature presence: `legislature_present` must truthfully describe whether
+        # opening_state actually has a legislature -- the fact that makes a `Legislature.NONE`
+        # decree turn produce zero decree-bypass components (report validator 5 already proves
+        # the components AGREE with `legislature_present`; this proves `legislature_present`
+        # itself is not a fabrication).
+        if political_relationship_report.legislature_present != (opening_legislature is not None):
+            problems.append(
+                "political_relationship.legislature_present="
+                f"{political_relationship_report.legislature_present} does not match "
+                f"opening_state politics.legislature presence ({opening_legislature is not None})"
+            )
 
     # Group 18: decision provenance -- located from the REAL DecisionSet, never inferred.
     if decisions is not None:

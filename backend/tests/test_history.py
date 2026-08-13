@@ -20,8 +20,9 @@ from app.simulation.decisions import (
 )
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
 from app.simulation.legislature import ProposalRoute
+from app.simulation.political_memory import combine_relationship_components, relationship_decay_bps
 from app.simulation.relationships import relationship_gain_bps
-from app.simulation.report import BlocRelationshipChangeReport, TurnReportEntry
+from app.simulation.report import BlocRelationshipMemoryReport, TurnReportEntry
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json
 from app.simulation.state import SpendingCategory
 from tests.conftest import make_game_state
@@ -1249,26 +1250,56 @@ def _investment_of(decision_set: DecisionSet) -> BlocRelationshipInvestmentDecis
     return investment_decision
 
 
-def _consistent_relationship_row(
-    *, party_id: str, bloc_id: str, political_capital: int, opening_relationship_bps: int
-) -> BlocRelationshipChangeReport:
-    """Build a `BlocRelationshipChangeReport` that is internally self-consistent under its own
-    formula validator for an arbitrary `opening_relationship_bps` -- i.e. a row that WILL construct
-    but describes a bloc relationship that never existed in the real state. Used to tamper a report
-    row without tripping `_relationship_change_matches_the_formula` itself, so the only thing left
-    to catch the lie is reconciliation comparing it against real state (group 20)."""
-    gap_bps = 10_000 - opening_relationship_bps
+def _consistent_relationship_memory_row(
+    *,
+    party_id: str,
+    bloc_id: str,
+    political_capital: int,
+    opening_relationship_bps: int,
+    baseline_relationship_bps: int | None = None,
+) -> BlocRelationshipMemoryReport:
+    """Build a `BlocRelationshipMemoryReport` that is internally self-consistent under its own
+    formula validators for an arbitrary `opening_relationship_bps` -- i.e. a row that WILL
+    construct but describes a bloc relationship that never existed in the real state. Used to
+    tamper a report row without tripping any of the row's OWN validators, so the only thing left
+    to catch the lie is reconciliation comparing it against real state (group 20 or 22).
+    `baseline_relationship_bps` defaults to `opening_relationship_bps` (zero deviation, zero
+    decay) so callers that only care about the investment component don't have to think about
+    decay at all."""
+    baseline = (
+        baseline_relationship_bps
+        if baseline_relationship_bps is not None
+        else opening_relationship_bps
+    )
     gain = relationship_gain_bps(
         opening_relationship_bps=opening_relationship_bps, political_capital=political_capital
     )
-    return BlocRelationshipChangeReport(
+    decay = relationship_decay_bps(
+        opening_relationship_bps=opening_relationship_bps, baseline_relationship_bps=baseline
+    )
+    uncapped, applied, closing = combine_relationship_components(
+        opening_relationship_bps=opening_relationship_bps,
+        decay_component_bps=decay,
+        investment_component_bps=gain,
+        policy_reaction_component_bps=0,
+        decree_bypass_component_bps=0,
+    )
+    return BlocRelationshipMemoryReport(
         party_id=party_id,
         bloc_id=bloc_id,
-        political_capital=political_capital,
+        baseline_relationship_bps=baseline,
         opening_relationship_bps=opening_relationship_bps,
-        gap_bps=gap_bps,
-        applied_change_bps=gain,
-        closing_relationship_bps=opening_relationship_bps + gain,
+        opening_deviation_bps=opening_relationship_bps - baseline,
+        decay_component_bps=decay,
+        investment_component_bps=gain,
+        investment_capital=political_capital,
+        tax_preference_bps=0,
+        spending_preference_bps=0,
+        policy_reaction_component_bps=0,
+        decree_bypass_component_bps=0,
+        uncapped_total_change_bps=uncapped,
+        applied_total_change_bps=applied,
+        closing_relationship_bps=closing,
     )
 
 
@@ -1434,26 +1465,29 @@ def test_consistently_rehashed_investment_digest_tamper_still_fails_reconciliati
 def test_consistently_rehashed_report_opening_relationship_tamper_still_fails_reconciliation() -> (
     None
 ):
-    """The report's `relationship_changes` row is replaced with an internally-consistent row (it
-    still satisfies `BlocRelationshipChangeReport`'s own formula validator) describing a DIFFERENT
-    opening relationship than the bloc actually had -- only group 20, comparing against the real
-    opening state, catches the lie."""
+    """The report's `political_relationship.blocs` row is replaced with an internally-consistent
+    row (it still satisfies `BlocRelationshipMemoryReport`'s own formula validators) describing a
+    DIFFERENT opening relationship than the bloc actually had -- only group 20, comparing against
+    the real opening state, catches the lie."""
     save, index = _save_with_investment(_investment_decision(political_capital=100))
     original = save.entries[index]
     report = original.report()
-    assert report is not None and report.political_capital is not None
-    real_row = report.political_capital.relationship_changes[0]
+    assert report is not None and report.political_relationship is not None
+    real_row = report.political_relationship.blocs[0]
     assert real_row.opening_relationship_bps == _INVESTMENT_OPENING_RELATIONSHIP_BPS
-    fake_row = _consistent_relationship_row(
+    fake_row = _consistent_relationship_memory_row(
         party_id=real_row.party_id,
         bloc_id=real_row.bloc_id,
-        political_capital=real_row.political_capital,
+        political_capital=real_row.investment_capital,
         opening_relationship_bps=real_row.opening_relationship_bps - 1_000,
+        baseline_relationship_bps=real_row.baseline_relationship_bps,
     )
-    tampered_capital_report = report.political_capital.model_copy(
-        update={"relationship_changes": (fake_row,)}
+    tampered_relationship_report = report.political_relationship.model_copy(
+        update={"blocs": (fake_row,)}
     )
-    tampered_report = report.model_copy(update={"political_capital": tampered_capital_report})
+    tampered_report = report.model_copy(
+        update={"political_relationship": tampered_relationship_report}
+    )
     tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
     assert tampered_json != original.report_json
     tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
@@ -1464,29 +1498,33 @@ def test_consistently_rehashed_report_opening_relationship_tamper_still_fails_re
 
 
 def test_consistently_rehashed_relationship_row_capital_tamper_is_a_schema_problem() -> None:
-    """`closing_relationship_bps` is a pure function of `(opening_relationship_bps,
-    political_capital)` under `BlocRelationshipChangeReport`'s own formula validator, so it cannot
-    be tampered independently of one of those two without either breaking that row-level formula
-    check (an internally-inconsistent row) or breaking `PoliticalCapitalReport` validator 8 (a row
-    whose capital no longer matches its own ledger entry) -- there is no third way to make the
-    closing value lie. This proves the latter: a row claiming a DIFFERENT capital than its own
-    ledger row is caught at REPLAY PARSE, before reconciliation ever runs."""
+    """A row claiming a DIFFERENT `investment_capital` than its own ledger entry stays internally
+    self-consistent under `BlocRelationshipMemoryReport`'s own formula validators (the row's
+    `investment_component_bps`/`closing_relationship_bps` are recomputed to genuinely match the
+    NEW capital figure) -- there is no row-level way to catch this. Only `TurnReport` cross-
+    validator 1 (the relocated investment/ledger correspondence), comparing this row's
+    `investment_capital` against the real `BLOC_RELATIONSHIP_INVESTMENT` expenditure row, catches
+    the lie -- at REPLAY PARSE, since that cross-validator lives on `TurnReport` itself, before
+    reconciliation ever runs."""
     save, index = _save_with_investment(_investment_decision(political_capital=100))
     original = save.entries[index]
     report = original.report()
-    assert report is not None and report.political_capital is not None
-    real_row = report.political_capital.relationship_changes[0]
-    fake_row = _consistent_relationship_row(
+    assert report is not None and report.political_relationship is not None
+    real_row = report.political_relationship.blocs[0]
+    fake_row = _consistent_relationship_memory_row(
         party_id=real_row.party_id,
         bloc_id=real_row.bloc_id,
         political_capital=50,
         opening_relationship_bps=real_row.opening_relationship_bps,
+        baseline_relationship_bps=real_row.baseline_relationship_bps,
     )
     assert fake_row.closing_relationship_bps != real_row.closing_relationship_bps
-    tampered_capital_report = report.political_capital.model_copy(
-        update={"relationship_changes": (fake_row,)}
+    tampered_relationship_report = report.political_relationship.model_copy(
+        update={"blocs": (fake_row,)}
     )
-    tampered_report = report.model_copy(update={"political_capital": tampered_capital_report})
+    tampered_report = report.model_copy(
+        update={"political_relationship": tampered_relationship_report}
+    )
     tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
     tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
 
@@ -1522,10 +1560,10 @@ def test_consistently_rehashed_report_total_committed_tamper_still_fails_reconci
 
 
 def test_consistently_rehashed_untargeted_bloc_state_tamper_still_fails_reconciliation() -> None:
-    """The CLOSING state's relationship for a bloc NOT named by any `relationship_changes` row is
-    mutated -- the untargeted-immutability guarantee (group 20) exists specifically for this case,
-    which the rewritten group 12 alone would also catch (both are asserted, since T17 case 12 in
-    the plan calls this out as the proof D8's carve-out left no hole)."""
+    """The CLOSING state's relationship for a bloc NOT named by any `political_relationship.blocs`
+    row is mutated -- the untargeted-immutability guarantee (group 20) exists specifically for
+    this case, which the rewritten group 12 alone would also catch (both are asserted, since T17
+    case 12 in the plan calls this out as the proof D8's carve-out left no hole)."""
     save, index = _save_with_investment(_investment_decision())
     original = save.entries[index]
     state = original.state()
@@ -1570,6 +1608,6 @@ def test_consistently_rehashed_untargeted_bloc_state_tamper_still_fails_reconcil
     assert not any("entry_hash does not match" in p for p in problems)
     assert any(
         "government_relationship_bps changed" in p
-        and "not named by any relationship_changes row" in p
+        and "not named by any political_relationship.blocs row" in p
         for p in problems
     )

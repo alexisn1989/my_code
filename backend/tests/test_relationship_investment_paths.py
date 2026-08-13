@@ -140,9 +140,9 @@ def test_a_real_investment_at_the_same_scenario_is_accepted() -> None:
         ),
     )
     resolution = resolve_turn(state, decisions)
-    report = resolution.report.political_capital
+    report = resolution.report.political_relationship
     assert report is not None
-    assert report.relationship_changes[0].applied_change_bps == 2_000
+    assert report.blocs[0].applied_total_change_bps == 2_000
 
 
 # --- R12: mixed investment + vote turns, and the retroactive-rescoring tamper -
@@ -189,7 +189,9 @@ def test_a_turn_with_both_a_legislative_vote_and_an_investment_reconciles_clean(
         for bloc in party.blocs
         if party.id == "citizens_bloc" and bloc.id == "moderates"
     )
-    assert closing_bloc.government_relationship_bps == 0  # -2000 + gain(2000)
+    # -2000 (opening) + investment gain(2000) + policy reaction(-50, this bloc dislikes the
+    # genuine +5pp rise the vote just enacted) + decay(0, opening deviation was already 0).
+    assert closing_bloc.government_relationship_bps == -50
     assert closing_bloc.government_relationship_bps != vote_row.government_relationship_bps
 
     problems = reconcile_political_and_legislative_report(
@@ -352,7 +354,9 @@ def test_a_relationship_only_turn_is_a_valid_no_proposal_with_a_nonempty_ledger(
     ledger = resolution.report.political_capital
     assert ledger is not None
     assert ledger.total_committed == 100
-    assert len(ledger.relationship_changes) == 1
+    relationship_report = resolution.report.political_relationship
+    assert relationship_report is not None
+    assert len(relationship_report.blocs) == 1
 
     problems = reconcile_political_and_legislative_report(
         opening_state=state,
@@ -373,7 +377,9 @@ def test_no_decisions_at_all_leaves_the_ledger_empty_and_politics_unchanged() ->
     assert ledger is not None
     assert ledger.total_committed == 0
     assert ledger.expenditures == ()
-    assert ledger.relationship_changes == ()
+    relationship_report = resolution.report.political_relationship
+    assert relationship_report is not None
+    assert relationship_report.blocs == ()
 
     opening_player = state.world.countries[state.world.player_country_id]
     closing_player = resolution.state.world.countries[resolution.state.world.player_country_id]

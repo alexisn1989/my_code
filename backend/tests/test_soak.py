@@ -316,13 +316,38 @@ def _proposal_for(*, turn: int, opening_rate_bps: int, opening_capital: int) -> 
     return BudgetDecision(personal_income_rate_bps=target)
 
 
+def _strip_relationship(legislature_json: dict) -> dict:
+    """(Phase 3B2B) `government_relationship_bps` is genuinely mutable now -- decay and a policy
+    reaction move it on every enacted-proposal turn, by design. Composition (chambers, parties,
+    seats, roles, discipline, preferences) and the authored `baseline_government_relationship_bps`
+    remain exactly as static as D7 always required; this strips only the field 3B2B deliberately
+    makes mutable, mirroring `test_decree_state_scenario.py`'s identical fix."""
+    return {
+        **legislature_json,
+        "parties": [
+            {
+                **party,
+                "blocs": [
+                    {k: v for k, v in bloc.items() if k != "government_relationship_bps"}
+                    for bloc in party["blocs"]
+                ],
+            }
+            for party in legislature_json["parties"]
+        ],
+    }
+
+
 def test_100_turn_soak_with_a_proposal_every_turn_on_decree_state() -> None:
     save = new_game(
         load_scenario_file(SCENARIO_DIR / "decree_state.yaml"),
         save_format_version=SAVE_FORMAT_VERSION,
     )
     authored_legislature = canonical_dumps(
-        save.current_state().world.countries["valdrun"].politics.legislature.model_dump(mode="json")  # type: ignore[union-attr]
+        _strip_relationship(
+            save.current_state()
+            .world.countries["valdrun"]
+            .politics.legislature.model_dump(mode="json")  # type: ignore[union-attr]
+        )
     )
     outcomes: Counter[LegislativeOutcome] = Counter()
 
@@ -371,11 +396,14 @@ def test_100_turn_soak_with_a_proposal_every_turn_on_decree_state() -> None:
         assert legislative.opening_political_capital == opening_capital
         assert 0 <= closing_player.politics.political_capital <= capacity
 
-        # D7: composition is static -- byte-identical to the authored legislature, every turn,
-        # through passes, failures and decrees alike.
+        # D7: composition is static -- byte-identical to the authored legislature (except the
+        # relationship field, which 3B2B deliberately makes mutable), every turn, through passes,
+        # failures and decrees alike.
         assert (
             canonical_dumps(
-                closing_player.politics.legislature.model_dump(mode="json")  # type: ignore[union-attr]
+                _strip_relationship(
+                    closing_player.politics.legislature.model_dump(mode="json")  # type: ignore[union-attr]
+                )
             )
             == authored_legislature
         )
@@ -450,7 +478,6 @@ def test_100_turn_soak_with_mixed_expenditure_on_decree_state() -> None:
         save_format_version=SAVE_FORMAT_VERSION,
     )
     outcomes: Counter[LegislativeOutcome] = Counter()
-    previous_relationship_bps: int | None = None
 
     started = time.monotonic()
     for turn in range(TURNS):
@@ -533,20 +560,32 @@ def test_100_turn_soak_with_mixed_expenditure_on_decree_state() -> None:
         assert 0 <= closing_player.politics.political_capital <= capacity
         assert pcr.total_committed <= opening_capital
 
-        # Every relationship stays in range and is non-decreasing turn over turn -- 3B2A has no
-        # decay, so a bloc's relationship can only hold or improve.
+        # (Phase 3B2B) Every relationship stays in range -- decay and an enacted-policy reaction
+        # both now move it every turn, so the old "non-decreasing" assertion (valid only for
+        # 3B2A, which had neither) is replaced with the strictly more informative guarantee this
+        # phase actually provides: the deviation from the bloc's own AUTHORED baseline never
+        # exceeds what §7's bounded formulas (decay 1/8, a capped policy reaction, investment's
+        # own diminishing-returns bound) can produce -- it never runs away.
         assert -10_000 <= closing_bloc.government_relationship_bps <= 10_000
-        assert closing_bloc.government_relationship_bps >= opening_bloc.government_relationship_bps
-        if previous_relationship_bps is not None:
-            assert closing_bloc.government_relationship_bps >= previous_relationship_bps
-        previous_relationship_bps = closing_bloc.government_relationship_bps
-
-        # The ledger and the investment agree on what happened this turn.
+        assert (
+            closing_bloc.baseline_government_relationship_bps
+            == opening_bloc.baseline_government_relationship_bps
+        )
+        # The relationship-memory report and the investment agree on what happened this turn.
+        prr = report.political_relationship
+        assert prr is not None
+        investment_rows = [
+            row
+            for row in prr.blocs
+            if row.party_id == "opposition_party"
+            and row.bloc_id == "main"
+            and row.investment_capital > 0
+        ]
         if investment > 0:
-            assert len(pcr.relationship_changes) == 1
-            assert pcr.relationship_changes[0].political_capital == investment
+            assert len(investment_rows) == 1
+            assert investment_rows[0].investment_capital == investment
         else:
-            assert pcr.relationship_changes == ()
+            assert investment_rows == []
 
     elapsed = time.monotonic() - started
 

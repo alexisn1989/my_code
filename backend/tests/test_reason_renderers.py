@@ -94,12 +94,34 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "closing": 433,
         "capacity": 1000,
     },
-    "bloc_relationship_investment_resolved": {
+    "relationship_decay_resolved": {
         "party_id": "opposition_party",
         "bloc_id": "main",
-        "political_capital": 200,
+        "baseline_relationship_bps": -8000,
+        "opening_relationship_bps": -1600,
+        "opening_deviation_bps": 6400,
+        "decay_component_bps": -800,
+    },
+    "enacted_policy_relationship_reaction": {
+        "party_id": "opposition_party",
+        "bloc_id": "main",
+        "tax_direction": "increase",
+        "tax_intensity_bps": 5000,
+        "spending_direction": "unchanged",
+        "spending_intensity_bps": 0,
+        "policy_reaction_component_bps": -150,
+    },
+    "decree_bypass_relationship_reaction": {
+        "party_id": "opposition_party",
+        "bloc_id": "main",
+        "decree_bypass_component_bps": -200,
+    },
+    "bloc_relationship_resolved": {
+        "party_id": "opposition_party",
+        "bloc_id": "main",
         "opening_relationship_bps": -8000,
-        "applied_change_bps": 5142,
+        "uncapped_total_change_bps": 5142,
+        "applied_total_change_bps": 5142,
         "closing_relationship_bps": -2858,
     },
 }
@@ -416,7 +438,7 @@ def test_relationship_only_turn_emits_the_ledger_and_investment_reasons() -> Non
     )
     ids = [e.reason_id for e in entries]
     assert "political_capital_ledger_resolved" in ids
-    assert "bloc_relationship_investment_resolved" in ids
+    assert "bloc_relationship_resolved" in ids
     # No budget was submitted, so there is genuinely no vote to report.
     assert "legislative_vote_resolved" not in ids
 
@@ -426,13 +448,10 @@ def test_relationship_only_turn_emits_the_ledger_and_investment_reasons() -> Non
     assert ledger_entry.params["relationship_committed"] == 100
     assert "unrendered" not in render_entry(ledger_entry)
 
-    investment_entry = next(
-        e for e in entries if e.reason_id == "bloc_relationship_investment_resolved"
-    )
+    investment_entry = next(e for e in entries if e.reason_id == "bloc_relationship_resolved")
     assert investment_entry.params["party_id"] == "citizens_bloc"
     assert investment_entry.params["bloc_id"] == "moderates"
-    assert investment_entry.params["political_capital"] == 100
-    assert investment_entry.params["applied_change_bps"] == 2_000
+    assert investment_entry.params["applied_total_change_bps"] == 2_000
     assert "unrendered" not in render_entry(investment_entry)
 
 
@@ -441,7 +460,7 @@ def test_a_turn_with_no_expenditure_at_all_emits_no_ledger_entries() -> None:
     entries = _resolve_with("tiny_valid.yaml")
     ids = {e.reason_id for e in entries}
     assert "political_capital_ledger_resolved" not in ids
-    assert "bloc_relationship_investment_resolved" not in ids
+    assert "bloc_relationship_resolved" not in ids
 
 
 def test_a_mixed_turn_emits_both_the_vote_and_the_ledger_reason() -> None:
@@ -468,7 +487,7 @@ def test_a_mixed_turn_emits_both_the_vote_and_the_ledger_reason() -> None:
     ids = [e.reason_id for e in entries]
     assert "legislative_vote_resolved" in ids
     assert "political_capital_ledger_resolved" in ids
-    assert "bloc_relationship_investment_resolved" in ids
+    assert "bloc_relationship_resolved" in ids
 
     ledger_entry = next(e for e in entries if e.reason_id == "political_capital_ledger_resolved")
     assert ledger_entry.params["total_committed"] == 262

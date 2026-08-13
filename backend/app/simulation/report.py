@@ -41,6 +41,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.core.canonical_json import canonical_digest
 from app.core.money import BPS_DENOMINATOR, StrictBps, StrictMoney, StrictSignedMoney
 from app.core.politics import (
+    DECREE_BYPASS_PENALTY_BPS,
+    POLICY_REACTION_CAP_BPS,
+    POLICY_REACTION_WEIGHT_BPS,
+    RELATIONSHIP_DECAY_DENOMINATOR,
+    RELATIONSHIP_DECAY_NUMERATOR,
     StrictLegitimacyBps,
     StrictPoliticalCapital,
     StrictPoliticalCapitalCapacity,
@@ -48,12 +53,14 @@ from app.core.politics import (
     StrictPositiveSeatCount,
     StrictPreferenceBps,
     StrictRelationshipBps,
+    StrictRelationshipChangeBps,
     StrictRelationshipGainBps,
     StrictSeatCount,
     StrictSeatNumerator,
     StrictSignedBps,
     StrictSignedLegitimacyBps,
     clamp_bps,
+    clamp_relationship_bps,
     trunc_div_toward_zero,
 )
 from app.core.quantity import (
@@ -103,6 +110,7 @@ from app.simulation.legitimacy import (
     POLITICAL_CAPITAL_BASE_REGENERATION,
     UNEMPLOYMENT_SENSITIVITY_BPS,
 )
+from app.simulation.political_memory import SPENDING_REACTION_WEIGHT_BPS, TAX_REACTION_WEIGHT_BPS
 from app.simulation.relationships import RELATIONSHIP_CEILING_BPS, RELATIONSHIP_HALF_GAP_CAPITAL
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
@@ -2229,11 +2237,12 @@ class CapitalExpenditureReport(BaseModel):
 
     Homogeneous by design, mirroring `BlocVoteReport`/`ChamberVoteReport`'s own row-level
     validation: this row carries only what every category needs — a stable category, an optional
-    bloc target, the amount, and provenance. `BlocRelationshipChangeReport` carries the *detail* a
-    relationship-investment row's target implies; the two are linked by identity
-    (`PoliticalCapitalReport` validator 8) rather than merged into one wider shape, so a future
-    expenditure with no detail at all (an appointment, a campaign with no bloc target) fits this
-    row without inventing empty detail fields it would never use.
+    bloc target, the amount, and provenance. `BlocRelationshipMemoryReport` (Phase 3B2B) carries
+    the *detail* a relationship-investment row's target implies; the two are linked by identity
+    (`TurnReport` cross-validator 1, Phase 3B2B — relocated from `PoliticalCapitalReport`'s own
+    validator 8) rather than merged into one wider shape, so a future expenditure with no detail
+    at all (an appointment, a campaign with no bloc target) fits this row without inventing empty
+    detail fields it would never use.
 
     R8, stated precisely: the total-spending identity `PoliticalCapitalReport` enforces is
     extensible to any future category. This *row* is not — it addresses a legislative bloc by
@@ -2286,64 +2295,273 @@ class CapitalExpenditureReport(BaseModel):
         return self
 
 
-class BlocRelationshipChangeReport(BaseModel):
-    """One bloc's relationship change from a `BLOC_RELATIONSHIP_INVESTMENT` this turn (Phase
-    3B2A). Re-derives `simulation.relationships.relationship_gain_bps`'s formula from its OWN
-    stored fields — never by calling that module — mirroring exactly how `BlocVoteReport`
-    re-derives `legislative_voting`'s formulas: a bug in one code path is likely to be caught by
-    the other.
+class BlocRelationshipMemoryReport(BaseModel):
+    """One bloc's complete automatic relationship memory this turn (Phase 3B2B): decay toward its
+    authored baseline, its reaction to policy the government genuinely enacted, the procedural
+    cost of being bypassed by decree, and any investment from this turn's political-capital
+    ledger — combined into ONE closing relationship. Supersedes 3B2A's
+    `BlocRelationshipChangeReport`, whose investment-only detail lived on `PoliticalCapitalReport`
+    (see `PoliticalRelationshipReport`'s docstring for why the row moved off that report entirely).
+
+    Re-derives every formula from its OWN stored fields, mirroring `BlocVoteReport` and the
+    superseded `BlocRelationshipChangeReport`: never by calling `simulation.political_memory` or
+    `simulation.relationships` — a bug in one code path is likely to be caught by the other.
     """
 
     model_config = _STRICT_CONFIG
 
     party_id: str
     bloc_id: str
-    political_capital: StrictPoliticalCapitalCommitment
+    baseline_relationship_bps: StrictRelationshipBps
     opening_relationship_bps: StrictRelationshipBps
-    gap_bps: StrictRelationshipGainBps
-    applied_change_bps: StrictRelationshipGainBps
+    opening_deviation_bps: StrictRelationshipChangeBps
+    decay_component_bps: StrictRelationshipChangeBps
+    investment_component_bps: StrictRelationshipGainBps
+    investment_capital: StrictPoliticalCapital
+    """The capital committed to THIS bloc's relationship investment this turn, or `0` when none
+    was — unlike 3B2A's `BlocRelationshipChangeReport.political_capital` (`StrictPoliticalCapitalCommitment`,
+    `ge=1`), a row can now exist for a bloc that received no investment at all."""
+    tax_preference_bps: StrictPreferenceBps
+    spending_preference_bps: StrictPreferenceBps
+    policy_reaction_component_bps: StrictRelationshipChangeBps
+    decree_bypass_component_bps: StrictRelationshipChangeBps
+    uncapped_total_change_bps: StrictRelationshipChangeBps
+    applied_total_change_bps: StrictRelationshipChangeBps
     closing_relationship_bps: StrictRelationshipBps
 
     @model_validator(mode="after")
-    def _relationship_change_matches_the_formula(self) -> BlocRelationshipChangeReport:
-        expected_gap = RELATIONSHIP_CEILING_BPS - self.opening_relationship_bps
-        if self.gap_bps != expected_gap:
+    def _opening_deviation_matches_baseline_and_opening(self) -> BlocRelationshipMemoryReport:
+        expected = self.opening_relationship_bps - self.baseline_relationship_bps
+        if self.opening_deviation_bps != expected:
             raise ValueError(
-                f"gap_bps={self.gap_bps} does not match RELATIONSHIP_CEILING_BPS - "
-                f"opening_relationship_bps ({expected_gap})"
+                f"opening_deviation_bps={self.opening_deviation_bps} does not match "
+                f"opening_relationship_bps - baseline_relationship_bps ({expected})"
             )
-        expected_gain = trunc_div_toward_zero(
-            self.gap_bps * self.political_capital,
-            RELATIONSHIP_HALF_GAP_CAPITAL + self.political_capital,
+        return self
+
+    @model_validator(mode="after")
+    def _decay_component_matches_the_formula(self) -> BlocRelationshipMemoryReport:
+        deviation = self.opening_deviation_bps
+        if deviation == 0:
+            expected = 0
+        else:
+            magnitude = trunc_div_toward_zero(
+                abs(deviation) * RELATIONSHIP_DECAY_NUMERATOR, RELATIONSHIP_DECAY_DENOMINATOR
+            )
+            magnitude = max(1, min(magnitude, abs(deviation)))
+            expected = -magnitude if deviation > 0 else magnitude
+        if self.decay_component_bps != expected:
+            raise ValueError(
+                f"decay_component_bps={self.decay_component_bps} does not match the decay "
+                f"formula over opening_deviation_bps ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _investment_component_matches_the_gain_formula(self) -> BlocRelationshipMemoryReport:
+        if self.investment_capital == 0:
+            expected = 0
+        else:
+            gap_bps = RELATIONSHIP_CEILING_BPS - self.opening_relationship_bps
+            expected = trunc_div_toward_zero(
+                gap_bps * self.investment_capital,
+                RELATIONSHIP_HALF_GAP_CAPITAL + self.investment_capital,
+            )
+        if self.investment_component_bps != expected:
+            raise ValueError(
+                f"investment_component_bps={self.investment_component_bps} does not match the "
+                f"relationship-gain formula over investment_capital ({expected})"
+            )
+        if (self.investment_capital == 0) != (self.investment_component_bps == 0):
+            raise ValueError(
+                "investment_capital == 0 must exactly coincide with "
+                f"investment_component_bps == 0, got investment_capital={self.investment_capital}, "
+                f"investment_component_bps={self.investment_component_bps}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _uncapped_total_is_the_sum_of_the_four_components(self) -> BlocRelationshipMemoryReport:
+        expected = (
+            self.decay_component_bps
+            + self.investment_component_bps
+            + self.policy_reaction_component_bps
+            + self.decree_bypass_component_bps
         )
-        if self.applied_change_bps != expected_gain:
+        if self.uncapped_total_change_bps != expected:
             raise ValueError(
-                f"applied_change_bps={self.applied_change_bps} does not match the relationship "
-                f"formula over gap_bps and political_capital ({expected_gain})"
+                f"uncapped_total_change_bps={self.uncapped_total_change_bps} does not match the "
+                f"sum of the four components ({expected})"
             )
-        expected_closing = self.opening_relationship_bps + self.applied_change_bps
+        return self
+
+    @model_validator(mode="after")
+    def _closing_and_applied_change_match_the_single_clamp(self) -> BlocRelationshipMemoryReport:
+        expected_closing = clamp_relationship_bps(
+            self.opening_relationship_bps + self.uncapped_total_change_bps
+        )
         if self.closing_relationship_bps != expected_closing:
             raise ValueError(
                 f"closing_relationship_bps={self.closing_relationship_bps} does not match "
-                f"opening_relationship_bps + applied_change_bps ({expected_closing})"
+                f"clamp(opening_relationship_bps + uncapped_total_change_bps) ({expected_closing})"
             )
+        expected_applied = self.closing_relationship_bps - self.opening_relationship_bps
+        if self.applied_total_change_bps != expected_applied:
+            raise ValueError(
+                f"applied_total_change_bps={self.applied_total_change_bps} does not match "
+                f"closing_relationship_bps - opening_relationship_bps ({expected_applied})"
+            )
+        return self
+
+
+class PoliticalRelationshipReport(BaseModel):
+    """The ninth top-level report (Phase 3B2B): every bloc's automatic relationship memory this
+    turn — decay toward its authored baseline, its reaction to policy the government genuinely
+    enacted, and the procedural cost of being bypassed by decree — combined with any investment
+    from this turn's political-capital ledger into one closing relationship per bloc.
+
+    Stores its OWN copy of the proposal's shape (`tax_direction`/`tax_intensity_bps`/
+    `spending_direction`/`spending_intensity_bps`) and delegates each bloc's own preferences to
+    its rows, so policy-reaction and decree-bypass arithmetic are fully self-validating here.
+    Per M4, `BlocVoteReport.policy_compatibility_bps` — which would otherwise be the obvious
+    source for this — does not exist on a DECREE or NO_PROPOSAL turn (`bloc_reports = ()`), the
+    two outcomes this report cares about most, so this report cannot depend on it. `TurnReport`
+    cross-validator 2 checks this report's proposal fields against `LegislativeReport`'s
+    independently-stored ones; reconciliation group 23(b)/(c) checks each row's preferences and
+    `legislature_present` against `GameState`. Neither check can happen here, on a report that
+    cannot see either `LegislativeReport` or `GameState`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    outcome: LegislativeOutcome
+    legislature_present: bool
+    tax_direction: LegislativeChangeDirection
+    tax_intensity_bps: StrictBps
+    spending_direction: LegislativeChangeDirection
+    spending_intensity_bps: StrictBps
+    blocs: tuple[BlocRelationshipMemoryReport, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def _bloc_rows_are_in_canonical_order(self) -> PoliticalRelationshipReport:
+        keys = [(row.party_id, row.bloc_id) for row in self.blocs]
+        if keys != sorted(keys):
+            raise ValueError(f"blocs must be sorted ascending by (party_id, bloc_id), got {keys!r}")
+        return self
+
+    @model_validator(mode="after")
+    def _no_duplicate_bloc_targets(self) -> PoliticalRelationshipReport:
+        keys = [(row.party_id, row.bloc_id) for row in self.blocs]
+        if len(keys) != len(set(keys)):
+            raise ValueError("blocs contains a duplicate (party_id, bloc_id)")
+        return self
+
+    @model_validator(mode="after")
+    def _policy_and_decree_components_match_the_outcome(self) -> PoliticalRelationshipReport:
+        policy_eligible = self.outcome in (
+            LegislativeOutcome.PASSED_LEGISLATIVE,
+            LegislativeOutcome.ENACTED_BY_DECREE,
+        )
+        decree_eligible = (
+            self.outcome is LegislativeOutcome.ENACTED_BY_DECREE and self.legislature_present
+        )
+        for row in self.blocs:
+            if not policy_eligible and row.policy_reaction_component_bps != 0:
+                raise ValueError(
+                    f"bloc ({row.party_id!r}, {row.bloc_id!r}) carries a nonzero "
+                    f"policy_reaction_component_bps={row.policy_reaction_component_bps} on "
+                    f"outcome={self.outcome.value!r}, which cannot produce a policy reaction"
+                )
+            if not decree_eligible and row.decree_bypass_component_bps != 0:
+                raise ValueError(
+                    f"bloc ({row.party_id!r}, {row.bloc_id!r}) carries a nonzero "
+                    f"decree_bypass_component_bps={row.decree_bypass_component_bps} on "
+                    f"outcome={self.outcome.value!r}/legislature_present="
+                    f"{self.legislature_present}, which cannot produce a decree-bypass penalty"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _policy_reaction_components_match_the_proposal_and_preferences(
+        self,
+    ) -> PoliticalRelationshipReport:
+        """§7.2's outcome gate applies here too, exactly as validator 3 already gates existence:
+        enactment is necessary, not merely a genuinely-moving proposal. A `FAILED_LEGISLATIVE`
+        turn can carry a real, nonzero `tax_intensity_bps` (the proposal that was REJECTED), and
+        re-deriving compatibility from that intensity without checking `outcome` would demand a
+        reaction for content that never took effect -- directly contradicting validator 3's own
+        existence rule on that same outcome."""
+        policy_eligible = self.outcome in (
+            LegislativeOutcome.PASSED_LEGISLATIVE,
+            LegislativeOutcome.ENACTED_BY_DECREE,
+        )
+        for row in self.blocs:
+            if not policy_eligible:
+                expected = 0
+            else:
+                compatibility = _legislative_axis_component_bps(
+                    preference_bps=row.tax_preference_bps,
+                    direction=self.tax_direction,
+                    intensity_bps=self.tax_intensity_bps,
+                    weight_bps=TAX_REACTION_WEIGHT_BPS,
+                ) + _legislative_axis_component_bps(
+                    preference_bps=row.spending_preference_bps,
+                    direction=self.spending_direction,
+                    intensity_bps=self.spending_intensity_bps,
+                    weight_bps=SPENDING_REACTION_WEIGHT_BPS,
+                )
+                reaction = trunc_div_toward_zero(
+                    compatibility * POLICY_REACTION_WEIGHT_BPS, BPS_DENOMINATOR
+                )
+                expected = max(-POLICY_REACTION_CAP_BPS, min(POLICY_REACTION_CAP_BPS, reaction))
+            if row.policy_reaction_component_bps != expected:
+                raise ValueError(
+                    f"bloc ({row.party_id!r}, {row.bloc_id!r}) policy_reaction_component_bps="
+                    f"{row.policy_reaction_component_bps} does not match the policy-reaction "
+                    f"formula over this report's proposal and the row's own preferences "
+                    f"({expected})"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _decree_bypass_components_match_the_route_and_legislature_presence(
+        self,
+    ) -> PoliticalRelationshipReport:
+        expected = (
+            -DECREE_BYPASS_PENALTY_BPS
+            if self.outcome is LegislativeOutcome.ENACTED_BY_DECREE and self.legislature_present
+            else 0
+        )
+        for row in self.blocs:
+            if row.decree_bypass_component_bps != expected:
+                raise ValueError(
+                    f"bloc ({row.party_id!r}, {row.bloc_id!r}) decree_bypass_component_bps="
+                    f"{row.decree_bypass_component_bps} does not match the expected value for "
+                    f"outcome={self.outcome.value!r}/legislature_present="
+                    f"{self.legislature_present} ({expected})"
+                )
         return self
 
 
 class PoliticalCapitalReport(BaseModel):
     """Structured, machine-readable Phase 3B2A political-capital ledger: every commitment this
-    turn made, and every relationship it moved.
+    turn made.
 
-    D7: one report carrying both a homogeneous ledger summary (`expenditures`) and a homogeneous
-    relationship-detail tuple (`relationship_changes`), rather than folding either into
-    `PoliticalReport` or `LegislativeReport`. `total_committed` generalizes what
-    `PoliticalReport.political_capital_spent` has always meant: before this phase it was the
-    legislative/decree commitment alone; now it is the sum of every sink, and the identity below
-    is unchanged — `closing = min(capacity, opening - total_committed + regeneration)`.
+    `total_committed` generalizes what `PoliticalReport.political_capital_spent` has always
+    meant: before Phase 3B2A it was the legislative/decree commitment alone; now it is the sum of
+    every sink, and the identity below is unchanged — `closing = min(capacity, opening -
+    total_committed + regeneration)`.
 
-    Eight validators live directly here; the ninth (the relationship formula) is enforced one
-    level down on `BlocRelationshipChangeReport` itself — never duplicated, exactly how
-    `LegislativeReport` delegates baseline/raw/final-support formulas to `BlocVoteReport`.
+    **Phase 3B2B, §8: no longer carries relationship detail.** 3B2A's `relationship_changes`
+    field is REMOVED — the ninth report, `PoliticalRelationshipReport`, is the one place that
+    describes how every bloc's relationship moved (decay, investment, policy reaction and
+    decree-bypass together), because a field on THIS report named "closing" could only ever have
+    meant "opening + investment only" once decay could also move the same relationship on the
+    same turn — precisely the kind of field that could only lie, the same defect that got
+    `spending_delta_bps` deleted in 3B2A's own R7. The bidirectional guarantee this field's
+    validator used to enforce (that investment expenditure rows and relationship rows correspond
+    exactly) is preserved, not dropped — it moved to `TurnReport` cross-validator 1, the only
+    model that can see both this report's `expenditures` and `PoliticalRelationshipReport`'s rows.
 
     R11: `_expenditure_categories_are_route_consistent` (decree outcome implies exactly one
     decree row and no influence rows, etc.) is deliberately **not** here — it needs
@@ -2359,7 +2577,6 @@ class PoliticalCapitalReport(BaseModel):
     total_committed: StrictPoliticalCapital
     closing_political_capital: StrictPoliticalCapital
     expenditures: tuple[CapitalExpenditureReport, ...] = Field(default_factory=tuple)
-    relationship_changes: tuple[BlocRelationshipChangeReport, ...] = Field(default_factory=tuple)
 
     @model_validator(mode="after")
     def _total_committed_matches_expenditure_rows(self) -> PoliticalCapitalReport:
@@ -2418,42 +2635,6 @@ class PoliticalCapitalReport(BaseModel):
         )
         if decree_rows > 1:
             raise ValueError(f"at most one DECREE expenditure row is valid, got {decree_rows}")
-        return self
-
-    @model_validator(mode="after")
-    def _relationship_rows_are_in_canonical_order(self) -> PoliticalCapitalReport:
-        keys = [(row.party_id, row.bloc_id) for row in self.relationship_changes]
-        if keys != sorted(keys):
-            raise ValueError(
-                f"relationship_changes must be sorted ascending by (party_id, bloc_id), got "
-                f"{keys!r}"
-            )
-        if len(keys) != len(set(keys)):
-            raise ValueError("relationship_changes contains a duplicate (party_id, bloc_id)")
-        return self
-
-    @model_validator(mode="after")
-    def _relationship_rows_correspond_to_investment_expenditure_rows(
-        self,
-    ) -> PoliticalCapitalReport:
-        """A relationship-only turn (`NO_PROPOSAL` with only investment rows) is valid and
-        produces a nonempty `relationship_changes` here — that is exactly the case this check
-        must accept, not reject; it asserts correspondence, not co-occurrence with a legislative
-        outcome."""
-        investment_keys = {
-            (row.party_id, row.bloc_id, row.political_capital)
-            for row in self.expenditures
-            if row.category is CapitalExpenditureCategory.BLOC_RELATIONSHIP_INVESTMENT
-        }
-        relationship_keys = {
-            (row.party_id, row.bloc_id, row.political_capital) for row in self.relationship_changes
-        }
-        if investment_keys != relationship_keys:
-            raise ValueError(
-                "relationship_changes does not correspond exactly to the "
-                f"BLOC_RELATIONSHIP_INVESTMENT expenditure rows: relationship_changes="
-                f"{sorted(relationship_keys)!r}, expenditures={sorted(investment_keys)!r}"
-            )
         return self
 
     @model_validator(mode="after")
@@ -2519,15 +2700,21 @@ class TurnReport(BaseModel):
     expenditure at all — an empty ledger is still a valid, complete one. Assembled at slot 15 from
     the scratch slot 1 (legislative/decree commitment, relationship targets) and slot 10
     (regeneration, closing capital) produce; see `phases.py`."""
+    political_relationship: PoliticalRelationshipReport | None = None
+    """`None` only when the relationship-memory phase did not run (never for a successful Phase
+    3B2B+ turn on a valid player state). Built for every resolved turn, including turns with no
+    memory rows at all (every bloc already at baseline, no investment, no enacted proposal, no
+    decree) — an empty `blocs` tuple is still a valid, complete report. Assembled at slot 15 from
+    slot 11's already-validated rows (§6.2); see `phases.py`."""
 
     @model_validator(mode="after")
-    def _labor_resources_production_derivation_finance_political_legislative_and_capital_are_all_present_or_all_absent(
+    def _labor_resources_production_derivation_finance_political_legislative_capital_and_relationship_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
-        """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1 and Phase
-        3B2A): a partial combination of these eight player-economy/politics reports would
-        represent a broken audit chain (e.g. production ran but derivation silently didn't) —
-        reject it outright rather than accepting whatever subset happens to be present.
+        """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1, Phase 3B2A
+        and Phase 3B2B): a partial combination of these nine player-economy/politics reports
+        would represent a broken audit chain (e.g. production ran but derivation silently didn't)
+        — reject it outright rather than accepting whatever subset happens to be present.
         """
         present = (
             self.labor_market is not None,
@@ -2538,13 +2725,15 @@ class TurnReport(BaseModel):
             self.political is not None,
             self.legislative is not None,
             self.political_capital is not None,
+            self.political_relationship is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
                 "labor_market, resources, production, tax_base_derivation, finance, political, "
-                "legislative, and political_capital must be all present or all absent on a "
-                f"TurnReport — got present={present} (labor_market, resources, production, "
-                "tax_base_derivation, finance, political, legislative, political_capital)"
+                "legislative, political_capital, and political_relationship must be all present "
+                f"or all absent on a TurnReport — got present={present} (labor_market, "
+                "resources, production, tax_base_derivation, finance, political, legislative, "
+                "political_capital, political_relationship)"
             )
         return self
 
@@ -2659,6 +2848,75 @@ class TurnReport(BaseModel):
                 raise ValueError(
                     "outcome=NO_PROPOSAL requires zero DECREE and zero LEGISLATIVE_INFLUENCE "
                     f"expenditure rows, got decree={decree_rows} influence={influence_rows}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _relationship_investment_components_match_the_capital_ledger(self) -> TurnReport:
+        """(Phase 3B2B, §8) The relocated `PoliticalCapitalReport` validator 10 (3B2A): the
+        `(party_id, bloc_id, investment_capital)` multiset of nonzero investment components on
+        `political_relationship` equals that of the `BLOC_RELATIONSHIP_INVESTMENT` expenditure
+        rows on `political_capital`, in both directions. Moved here because it is genuinely
+        cross-report — needs both `PoliticalCapitalReport` and `PoliticalRelationshipReport`,
+        which cannot see each other."""
+        if self.political_capital is None or self.political_relationship is None:
+            return self
+        investment_keys = {
+            (row.party_id, row.bloc_id, row.political_capital)
+            for row in self.political_capital.expenditures
+            if row.category is CapitalExpenditureCategory.BLOC_RELATIONSHIP_INVESTMENT
+        }
+        relationship_keys = {
+            (row.party_id, row.bloc_id, row.investment_capital)
+            for row in self.political_relationship.blocs
+            if row.investment_capital > 0
+        }
+        if investment_keys != relationship_keys:
+            raise ValueError(
+                "political_relationship.blocs' nonzero investment_capital does not correspond "
+                f"exactly to the BLOC_RELATIONSHIP_INVESTMENT expenditure rows: relationship="
+                f"{sorted(relationship_keys)!r}, expenditures={sorted(investment_keys)!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _relationship_report_proposal_matches_the_legislative_report(self) -> TurnReport:
+        """(Phase 3B2B, R4, new) `political_relationship`'s own copy of the proposal's shape
+        (`outcome`/`tax_direction`/`tax_intensity_bps`/`spending_direction`/`spending_intensity_bps`)
+        must equal `LegislativeReport`'s independently-stored fields exactly — the check that
+        stops a `PoliticalRelationshipReport` from being internally self-consistent (every one of
+        its own validators can pass) while lying about what was actually proposed. Genuinely
+        cross-report: `PoliticalRelationshipReport` cannot see `LegislativeReport` on its own."""
+        if self.legislative is None or self.political_relationship is None:
+            return self
+        pairs = (
+            ("outcome", self.political_relationship.outcome, self.legislative.outcome),
+            (
+                "tax_direction",
+                self.political_relationship.tax_direction,
+                self.legislative.tax_direction,
+            ),
+            (
+                "tax_intensity_bps",
+                self.political_relationship.tax_intensity_bps,
+                self.legislative.tax_intensity_bps,
+            ),
+            (
+                "spending_direction",
+                self.political_relationship.spending_direction,
+                self.legislative.spending_direction,
+            ),
+            (
+                "spending_intensity_bps",
+                self.political_relationship.spending_intensity_bps,
+                self.legislative.spending_intensity_bps,
+            ),
+        )
+        for field_name, relationship_value, legislative_value in pairs:
+            if relationship_value != legislative_value:
+                raise ValueError(
+                    f"political_relationship.{field_name}={relationship_value!r} does not match "
+                    f"legislative.{field_name}={legislative_value!r}"
                 )
         return self
 

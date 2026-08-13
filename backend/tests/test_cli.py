@@ -515,7 +515,11 @@ def test_resolve_and_history_render_the_same_capital_ledger(
         "expenditures:",
         "bloc_relationship_investment",
         "rural_alliance/farmers",
-        "relationship changes:",
+        # (Phase 3B2B) Relationship detail moved off the capital-ledger block entirely, onto its
+        # own shared leaf renderer -- `_print_political_relationship_memory`, following the SAME
+        # "resolve and history must agree" discipline.
+        "bloc relationships:",
+        "baseline",
     ):
         assert fragment in resolve_out, fragment
         assert fragment in history_out, fragment
@@ -668,7 +672,10 @@ def test_decree_renders_without_any_chamber_or_bloc_vote_table(
     # A decree is not voted on: nothing to tabulate, so nothing is printed.
     assert "chamber:" not in out
     assert "apportionment:" not in out
-    assert "governing_party/core" not in out
+    # (Phase 3B2B) `governing_party/core` now legitimately appears in the bloc-relationships
+    # block -- a genuine policy reaction plus decree-bypass penalty, never a vote table -- so the
+    # absence check narrows to what it always meant: no vote/apportionment tabulation exists.
+    assert "bloc relationships:" in out
     assert "PASSED" not in out and "FAILED" not in out
 
 
