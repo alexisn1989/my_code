@@ -59,6 +59,7 @@ from app.simulation.legislative_voting import required_yes_seats
 from app.simulation.legislature import GovernmentRole, LegislativeChamber, LegislativeOutcome
 from app.simulation.report import (
     BlocVoteReport,
+    ElectionReport,
     FinanceReport,
     LaborMarketReport,
     LegislativeReport,
@@ -684,6 +685,26 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                     f"output={baseline.total_gross_output:,}  "
                     f"unemployment={_bps_to_percent_str(baseline.unemployment_rate_bps)}"
                 )
+            next_election = (
+                f"turn {politics.next_election_turn}"
+                if politics.next_election_turn is not None
+                else "none scheduled"
+            )
+            print(
+                "  government survival: "
+                f"consecutive_terms_held={politics.consecutive_terms_held}  "
+                f"next_election={next_election}  "
+                "regime_transition_pressure="
+                f"{_bps_to_percent_str(politics.regime_transition_pressure_bps)}"
+            )
+            if politics.terminal_outcome is not None:
+                outcome = politics.terminal_outcome
+                reason = outcome.victory_reason or outcome.removal_reason
+                assert reason is not None
+                print(
+                    f"  game concluded:      turn {outcome.turn}  "
+                    f"{outcome.bucket.value} ({reason.value})"
+                )
         if args.legislature:
             _print_legislature_composition(politics)
         if args.capital:
@@ -1026,6 +1047,40 @@ def _print_political_relationship_memory(
         )
 
 
+def _print_election_report(election: ElectionReport) -> None:
+    """(Phase 3C, Gate 3C1) The ONE election renderer -- same `_print_political_capital_ledger`
+    discipline: both live `resolve` output and historical `history --turn N` output call this one
+    function (M10). Every value is read straight off the already-self-validated `ElectionReport`
+    -- presentation only, nothing recomputed."""
+    if not election.scheduled:
+        return
+    if election.result == "term_limit_exit":
+        print("    election: term limit reached; the incumbent may not stand again")
+        return
+    verb = "WON" if election.result == "won" else "LOST"
+    print(
+        f"    election: {verb}  "
+        f"{_bps_to_percent_str(election.final_support_bps)} support "
+        f"(required {_bps_to_percent_str(election.required_support_bps)})"
+    )
+    print(
+        "      legislative "
+        f"{_bps_to_percent_str(election.legislative_support_contribution_bps) if election.legislative_support_contribution_bps is not None else 'n/a'}"
+        f"   population {_bps_to_percent_str(election.population_approval_contribution_bps)}"
+        f"   legitimacy {_bps_to_percent_str(election.legitimacy_contribution_bps)}"
+        f"   baseline {_bps_to_percent_str(election.baseline_support_bps)}"
+        f"   polling swing {_format_bps_delta(election.polling_uncertainty_bps)}"
+    )
+    if election.liberalization_completed:
+        print("      liberalization campaign completed: VICTORY")
+    for party in election.parties:
+        print(
+            f"      {party.party_id} ({party.government_role.value}): "
+            f"{party.seats}/{party.total_seats} seats  "
+            f"relationship {_bps_to_percent_str(party.relationship_weighted_support_bps)}"
+        )
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
@@ -1048,6 +1103,8 @@ def _print_report(report: TurnReport) -> None:
         _print_political_capital_ledger(report.political_capital)
     if report.political_relationship is not None:
         _print_political_relationship_memory(report.political_relationship)
+    if report.election is not None:
+        _print_election_report(report.election)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -1163,6 +1220,10 @@ def _cmd_history(args: argparse.Namespace) -> int:
         if report.political_relationship is not None:
             # Same discipline again (Phase 3B2B): the SAME shared helper `_print_report` uses.
             _print_political_relationship_memory(report.political_relationship)
+        if report.election is not None:
+            # Same discipline again (Phase 3C, Gate 3C1): the SAME shared helper `_print_report`
+            # uses.
+            _print_election_report(report.election)
     return 0
 
 
