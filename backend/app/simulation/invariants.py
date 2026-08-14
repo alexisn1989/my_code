@@ -931,6 +931,19 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
                     ),
                 )
             )
+        military_rows = [row for row in player.institutions if row.id == "military"]
+        if len(military_rows) != 1:
+            violations.append(
+                InvariantViolation(
+                    code="player_military_institution_required",
+                    message=(
+                        f"player country {player.id!r} has {len(military_rows)} institution rows "
+                        "with id='military', expected exactly 1 — the coup-risk formula "
+                        "(simulation.government_survival, Phase 3C) requires a single, "
+                        "unambiguous military institution row for the player"
+                    ),
+                )
+            )
 
     for country in state.world.countries.values():
         is_player = country.id == state.world.player_country_id

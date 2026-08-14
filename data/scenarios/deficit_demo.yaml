@@ -40,18 +40,28 @@ countries:
       - id: citizens
         name: "Citizens"
         population_share: 1.0
-        political_influence: 50
-        approval: 45
-        trust: 40
-        organization: 25
-        radicalization: 8
+        political_influence: 5000
+        approval: 4500
+        trust: 4000
+        organization: 2500
+        radicalization: 800
     institutions:
       - id: executive
         name: "Executive Government"
-        loyalty: 60
-        power: 55
-        competence: 45
-        corruption: 25
+        loyalty: 6000
+        power: 5500
+        competence: 4500
+        corruption: 2500
+      # (Phase 3C) Newly authored: deficit_demo previously had no military institution row.
+      # A middling, unremarkable military — loyal enough that coup risk stays low absent a real
+      # shock, but not maximally so, matching this scenario's authored "strapped, not stable"
+      # flavor (see the political-capital calibration notes below).
+      - id: military
+        name: "Military"
+        loyalty: 7000
+        power: 6000
+        competence: 5500
+        corruption: 2000
     finance:
       # As of Phase 2B2, tax bases are derived from the economy below, not authored here.
       tax_base_coefficients:
@@ -271,6 +281,11 @@ countries:
       legitimacy_bps: 6000                      # 60.00% current legitimacy
       political_capital: 300
       political_capital_capacity: 800
+      # Phase 3C: term 1 already underway at genesis; first scheduled election at turn 20
+      # (genesis + the authored interval, above); no constitutional amendment has occurred yet.
+      consecutive_terms_held: 1
+      next_election_turn: 20
+      regime_transition_pressure_bps: 0
       # Phase 3B1: a unicameral chamber in which the government is four seats short (see
       # docs/adr/0010 and docs/economy_methodology.md, "Legislative calibration"). This is the
       # scenario that makes the phase mean something: against the walkthrough proposal (+5 pp

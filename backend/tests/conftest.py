@@ -403,7 +403,10 @@ def make_country(
         name=country_id.title(),
         population=population,
         population_groups=groups,
-        institutions=[InstitutionState(id="executive", name="Executive Government")],
+        institutions=[
+            InstitutionState(id="executive", name="Executive Government"),
+            InstitutionState(id="military", name="Military"),
+        ],
         treasury=TreasuryState(cash_on_hand=1_000_00, debt=100_00),
         finance=resolved_finance,
         economy=resolved_economy,

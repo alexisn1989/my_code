@@ -54,46 +54,42 @@ countries:
       - id: urban_workers
         name: "Urban Workers"
         population_share: 0.40
-        political_influence: 55
-        approval: 52
-        trust: 48
-        organization: 35
-        radicalization: 10
+        political_influence: 5500
+        approval: 5200
+        trust: 4800
+        organization: 3500
+        radicalization: 1000
       - id: rural_farmers
         name: "Rural Farmers"
         population_share: 0.35
-        political_influence: 45
-        approval: 50
-        trust: 50
-        organization: 25
-        radicalization: 5
+        political_influence: 4500
+        approval: 5000
+        trust: 5000
+        organization: 2500
+        radicalization: 500
       - id: business_owners
         name: "Business Owners"
         population_share: 0.25
-        political_influence: 70
-        approval: 60
-        trust: 55
-        organization: 40
-        radicalization: 2
+        political_influence: 7000
+        approval: 6000
+        trust: 5500
+        organization: 4000
+        radicalization: 200
     institutions:
+      # (Phase 3C, POL-2) The redundant `id: legislature` row is removed: it duplicated
+      # LegislatureState, which already carries this country's real legislative composition.
       - id: executive
         name: "Executive Government"
-        loyalty: 80
-        power: 70
-        competence: 60
-        corruption: 15
-      - id: legislature
-        name: "Legislature"
-        loyalty: 60
-        power: 55
-        competence: 50
-        corruption: 20
+        loyalty: 8000
+        power: 7000
+        competence: 6000
+        corruption: 1500
       - id: military
         name: "Military"
-        loyalty: 75
-        power: 65
-        competence: 60
-        corruption: 10
+        loyalty: 7500
+        power: 6500
+        competence: 6000
+        corruption: 1000
     finance:
       # As of Phase 2B2, tax bases are NOT authored here — they are derived every turn from
       # this country's economy (below) via simulation.tax_base_derivation. What IS authored
@@ -326,6 +322,11 @@ countries:
       legitimacy_bps: 6000                      # 60.00% current legitimacy -- form-neutral
       political_capital: 500
       political_capital_capacity: 1000
+      # Phase 3C: term 1 already underway at genesis. No national_election_interval_turns is
+      # authored above, so next_election_turn is correspondingly omitted (None) -- no election is
+      # scheduled until a constitutional amendment establishes one. No amendment has occurred yet.
+      consecutive_terms_held: 1
+      regime_transition_pressure_bps: 0
       # Committed Regime C exactly (test_decree_capital_calibration.py,
       # test_regime_c_reachable_deep_shortfall_minimum_is_exactly_283): one chamber, 45
       # governing seats against 55 opposition seats -- a reachable but genuine shortfall the
@@ -381,15 +382,15 @@ countries:
       - id: citizens
         name: "Citizens"
         population_share: 1.0
-        political_influence: 50
-        approval: 55
-        trust: 50
-        organization: 20
-        radicalization: 3
+        political_influence: 5000
+        approval: 5500
+        trust: 5000
+        organization: 2000
+        radicalization: 300
     institutions:
       - id: executive
         name: "Executive Government"
-        loyalty: 70
-        power: 60
-        competence: 55
-        corruption: 20
+        loyalty: 7000
+        power: 6000
+        competence: 5500
+        corruption: 2000
