@@ -24,7 +24,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.core.errors import DecisionSetError, StateValidationError, TurnResolutionError
+from app.core.errors import (
+    DecisionSetError,
+    GameAlreadyConcludedError,
+    StateValidationError,
+    TurnResolutionError,
+)
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
 from app.simulation.phases import PhaseContext, run_phases
@@ -67,6 +72,15 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
     canonical JSON before calling `resolve_turn` and asserts it is byte-
     identical afterward whenever an error is raised.
     """
+    player = state.world.countries.get(state.world.player_country_id)
+    if player is not None and player.politics is not None and player.politics.terminal_outcome:
+        outcome = player.politics.terminal_outcome
+        reason = outcome.victory_reason or outcome.removal_reason
+        assert reason is not None, "TerminalOutcomeState guarantees exactly one reason is set"
+        raise GameAlreadyConcludedError(
+            bucket=outcome.bucket.value, reason=reason.value, turn=outcome.turn
+        )
+
     try:
         _validate_decision_set(state, decisions)
     except DecisionSetError as exc:

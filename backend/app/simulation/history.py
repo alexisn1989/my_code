@@ -313,6 +313,12 @@ def validate_history(save: GameSave) -> list[str]:
         problems.append("genesis entry (turn 0) must have report=None")
 
     previous_state_model: GameState | None = None
+    concluded_at: int | None = None
+    """(Phase 3C) The turn a `terminal_outcome` was first observed, or `None`. A genuine save
+    could never contain an entry after this turn — `resolve_turn`'s own top-of-function refusal
+    (`GameAlreadyConcludedError`) prevents advancing a concluded save through the CLI, but a
+    hand-assembled save could still smuggle extra entries in from the start; this is the
+    independent guard that catches that case."""
     for index, entry in enumerate(save.entries):
         if entry.turn != index:
             problems.append(
@@ -372,6 +378,22 @@ def validate_history(save: GameSave) -> list[str]:
                     decisions=decisions_model,
                 )
             )
+        if concluded_at is not None:
+            problems.append(
+                f"turn {entry.turn}: entry exists after the game concluded at turn "
+                f"{concluded_at}; a concluded game cannot be advanced further, and a genuine "
+                "save could never contain entries after that turn"
+            )
+        if state_model is not None:
+            player = state_model.world.countries.get(state_model.world.player_country_id)
+            if (
+                player is not None
+                and player.politics is not None
+                and player.politics.terminal_outcome is not None
+                and concluded_at is None
+            ):
+                concluded_at = entry.turn
+
         previous_state_model = state_model
 
     if save.entry_count != len(save.entries):
