@@ -233,15 +233,44 @@ class TestDeficitDemoTimberThreeRegimeTrajectoryThroughTheRealEngine:
         assert boundary.closing_stock == 0
         assert boundary.status == DepositStatus.STOCK_CONSTRAINED
 
-    def test_resolutions_41_plus_are_the_steady_state(self) -> None:
-        rows = self._run(45)
-        for i, row in enumerate(rows[40:], start=41):
-            assert row.opening_stock == 0, f"resolution {i}"
-            assert row.regenerated == 5_000, f"resolution {i}"
-            assert row.extracted == 5_000, f"resolution {i}"
-            assert row.closing_stock == 0, f"resolution {i}"
-            assert row.status == DepositStatus.STOCK_CONSTRAINED, f"resolution {i}"
-            assert row.status != DepositStatus.DEPLETED, f"resolution {i}"
+    def test_the_game_concludes_at_the_stock_constrained_boundary_turn_and_turn_41_is_unreachable(
+        self,
+    ) -> None:
+        """Phase 3C: `deficit_demo` concludes via `ELECTORAL_DEFEAT` at turn 40 -- the same turn
+        as the `STOCK_CONSTRAINED` boundary above -- so the steady-state regime (resolutions 41+)
+        this test asserted pre-3C is no longer reachable through ordinary play; a further
+        resolution attempt is refused by `GameAlreadyConcludedError` instead (`docs.adr` 0013)."""
+        state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
+        save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+        for _ in range(40):
+            current = save.current_state()
+            decisions = DecisionSet(
+                expected_turn=current.turn,
+                expected_state_version=current.state_version,
+                decisions=(),
+            )
+            save = advance_game(save, decisions)
+
+        politics = save.current_state().world.countries["strapped"].politics
+        assert politics is not None
+        assert politics.terminal_outcome is not None
+        assert politics.terminal_outcome.bucket.value == "defeat"
+        assert politics.terminal_outcome.removal_reason is not None
+        assert politics.terminal_outcome.removal_reason.value == "electoral_defeat"
+        assert politics.terminal_outcome.turn == 40
+
+        from app.core.errors import GameAlreadyConcludedError
+
+        stale_decisions = DecisionSet(
+            expected_turn=save.current_turn(),
+            expected_state_version=save.current_state().state_version,
+            decisions=(),
+        )
+        try:
+            advance_game(save, stale_decisions)
+            raise AssertionError("expected GameAlreadyConcludedError")
+        except GameAlreadyConcludedError:
+            pass
 
 
 # --- Phase 2C2, T21: the direct accounting identity — extraction output is counted exactly ------
@@ -278,8 +307,9 @@ class TestDeficitDemoExtractionSectorOutputTrajectoryThroughTheRealEngine:
     """Phase 2C2's extraction-sector output tracks the timber/iron_ore physical trajectory
     (`TestDeficitDemoTimberThreeRegimeTrajectoryThroughTheRealEngine` above) through the exact
     hand-worked figures from the plan's §8: 500,000,000 through turn 25, stepping to
-    100,000,000 at turn 26 (iron_ore depletion), holding through turn 40, then stepping to
-    50,000,000 at turn 41 (timber's steady state).
+    100,000,000 at turn 26 (iron_ore depletion), holding through turn 40. Phase 3C: the game
+    concludes via `ELECTORAL_DEFEAT` at turn 40 itself, so the third regime (50,000,000 from
+    turn 41, timber's steady state) is no longer reachable through ordinary play.
     """
 
     def _run(self, turns: int) -> list:
@@ -319,20 +349,46 @@ class TestDeficitDemoExtractionSectorOutputTrajectoryThroughTheRealEngine:
             assert resources.extraction_sector_real_output == 100_000_000, f"turn {i}"
             assert resources.extraction_sector_potential_output == 100_000_000, f"turn {i}"
 
-    def test_turn_41_is_the_second_boundary_at_50_million(self) -> None:
-        reports = self._run(41)
-        turn_40, turn_41 = reports[39], reports[40]
-        assert turn_40.extraction_sector_real_output == 100_000_000
-        assert turn_41.extraction_sector_real_output == 50_000_000
-        assert turn_41.extraction_sector_potential_output == 50_000_000
+    def test_turn_40_holds_at_100_million_and_turn_41_is_unreachable(self) -> None:
+        """Phase 3C: the game concludes via `ELECTORAL_DEFEAT` at turn 40, so the third regime
+        (50,000,000 from turn 41) that this test asserted pre-3C is no longer reachable through
+        ordinary play; a further resolution attempt is refused instead."""
+        state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
+        save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+        for _ in range(40):
+            current = save.current_state()
+            decisions = DecisionSet(
+                expected_turn=current.turn,
+                expected_state_version=current.state_version,
+                decisions=(),
+            )
+            save = advance_game(save, decisions)
+
+        report = save.entries[-1].report()
+        assert report is not None
+        assert report.resources is not None
+        assert report.resources.extraction_sector_real_output == 100_000_000
+
+        from app.core.errors import GameAlreadyConcludedError
+
+        stale_decisions = DecisionSet(
+            expected_turn=save.current_turn(),
+            expected_state_version=save.current_state().state_version,
+            decisions=(),
+        )
+        try:
+            advance_game(save, stale_decisions)
+            raise AssertionError("expected GameAlreadyConcludedError")
+        except GameAlreadyConcludedError:
+            pass
 
     def test_extraction_row_stays_physical_resource_constrained_throughout(self) -> None:
         """Labor never binds in this fixture (a known, documented limitation, §18) — every turn
-        classifies as PHYSICAL_RESOURCE_CONSTRAINED, never LABOR_CONSTRAINED, across all three
-        regimes."""
+        classifies as PHYSICAL_RESOURCE_CONSTRAINED, never LABOR_CONSTRAINED, across both regimes
+        reachable within the scenario's real, Phase-3C-natural 40-turn horizon."""
         state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
         save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
-        for i in range(1, 46):
+        for i in range(1, 41):
             current = save.current_state()
             decisions = DecisionSet(
                 expected_turn=current.turn,

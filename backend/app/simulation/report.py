@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -55,10 +56,12 @@ from app.core.politics import (
     StrictRelationshipBps,
     StrictRelationshipChangeBps,
     StrictRelationshipGainBps,
+    StrictRiskBps,
     StrictSeatCount,
     StrictSeatNumerator,
     StrictSignedBps,
     StrictSignedLegitimacyBps,
+    StrictTermsHeld,
     clamp_bps,
     clamp_relationship_bps,
     trunc_div_toward_zero,
@@ -80,7 +83,12 @@ from app.simulation.constitution import (
     ExecutiveSystem,
     JudicialReview,
     Legislature,
+    StrictTermCount,
     TerritorialOrganization,
+)
+from app.simulation.government_survival import (
+    MAX_POLLING_UNCERTAINTY_SWING_BPS,
+    REQUIRED_ELECTION_SUPPORT_BPS,
 )
 from app.simulation.legislative_voting import (
     DECREE_POLITICAL_CAPITAL_COST,
@@ -2655,6 +2663,138 @@ class PoliticalCapitalReport(BaseModel):
         return self
 
 
+class PartyElectionStanceReport(BaseModel):
+    """One party's real seat holding at the moment of a scheduled election (Phase 3C, R10:
+    exact seat counts, never an independently-rounded seat-share)."""
+
+    model_config = _STRICT_CONFIG
+
+    party_id: str
+    government_role: GovernmentRole
+    seats: int = Field(ge=0)
+    total_seats: int = Field(gt=0)
+    relationship_weighted_support_bps: StrictRelationshipBps
+
+    @model_validator(mode="after")
+    def _seats_do_not_exceed_total(self) -> PartyElectionStanceReport:
+        if self.seats > self.total_seats:
+            raise ValueError(f"seats={self.seats} exceeds total_seats={self.total_seats}")
+        return self
+
+
+class ElectionReport(BaseModel):
+    """Whether an election was scheduled this turn, and — if so — its complete, re-derivable
+    result (Phase 3C, `TurnReport`'s 10th report, added in Gate 3C1).
+
+    `liberalization_completed` is always `False` in this gate: nothing can set
+    `PoliticalState.pending_liberalization` until constitutional amendments exist (Gate 3C3), and
+    §5's provenance rule means a `True` value here can only ever be produced by a real, resolved
+    qualifying transition — never merely asserted.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    scheduled: bool
+    eligible_to_stand: bool
+    consecutive_terms_held: StrictTermsHeld
+    executive_term_limit_terms: StrictTermCount | None
+    legislative_support_contribution_bps: StrictRiskBps | None
+    population_approval_contribution_bps: StrictRiskBps
+    legitimacy_contribution_bps: StrictRiskBps
+    baseline_support_bps: StrictRiskBps
+    polling_uncertainty_bps: int = Field(
+        ge=-MAX_POLLING_UNCERTAINTY_SWING_BPS, le=MAX_POLLING_UNCERTAINTY_SWING_BPS
+    )
+    final_support_bps: StrictRiskBps
+    required_support_bps: StrictRiskBps
+    result: Literal["not_scheduled", "term_limit_exit", "won", "lost"]
+    liberalization_completed: bool
+    next_election_turn: int | None
+    parties: tuple[PartyElectionStanceReport, ...] = ()
+
+    @model_validator(mode="after")
+    def _not_scheduled_implies_no_result_content(self) -> ElectionReport:
+        if not self.scheduled and (self.result != "not_scheduled" or self.parties):
+            raise ValueError(
+                "scheduled=False requires result='not_scheduled' and an empty parties tuple"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _final_support_matches_the_clamp_identity(self) -> ElectionReport:
+        if not self.scheduled or self.result == "term_limit_exit":
+            return self
+        expected = clamp_bps(self.baseline_support_bps + self.polling_uncertainty_bps)
+        if self.final_support_bps != expected:
+            raise ValueError(
+                f"final_support_bps={self.final_support_bps} does not match "
+                f"clamp(baseline_support_bps + polling_uncertainty_bps) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _required_support_is_the_scale_constant(self) -> ElectionReport:
+        if (
+            self.scheduled
+            and self.result in ("won", "lost")
+            and self.required_support_bps != REQUIRED_ELECTION_SUPPORT_BPS
+        ):
+            raise ValueError(
+                f"required_support_bps={self.required_support_bps} does not match "
+                f"REQUIRED_ELECTION_SUPPORT_BPS ({REQUIRED_ELECTION_SUPPORT_BPS})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _result_matches_support_and_term_limit(self) -> ElectionReport:
+        if not self.scheduled:
+            return self
+        term_limited = (
+            self.executive_term_limit_terms is not None
+            and self.consecutive_terms_held >= self.executive_term_limit_terms
+        )
+        if term_limited:
+            if self.result != "term_limit_exit":
+                raise ValueError(
+                    f"consecutive_terms_held={self.consecutive_terms_held} >= "
+                    f"executive_term_limit_terms={self.executive_term_limit_terms} requires "
+                    f"result='term_limit_exit', got {self.result!r}"
+                )
+        else:
+            expected = "won" if self.final_support_bps >= self.required_support_bps else "lost"
+            if self.result != expected:
+                raise ValueError(f"result={self.result!r} does not match expected {expected!r}")
+        return self
+
+    @model_validator(mode="after")
+    def _liberalization_completed_implies_won(self) -> ElectionReport:
+        if self.liberalization_completed and self.result != "won":
+            raise ValueError("liberalization_completed=True requires result='won'")
+        return self
+
+    @model_validator(mode="after")
+    def _parties_nonempty_only_when_scheduled_and_eligible(self) -> ElectionReport:
+        if self.parties and not (self.scheduled and self.eligible_to_stand):
+            raise ValueError(
+                "parties must be empty unless scheduled=True and eligible_to_stand=True"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _party_seat_totals_are_internally_consistent(self) -> ElectionReport:
+        """Every party row reports the SAME chamber total (a single scalar `total_seats` field
+        would be ambiguous across a bicameral legislature's two chambers, so this is a per-row
+        field instead — but the rows still describe one election, so their totals must agree)."""
+        if not self.parties:
+            return self
+        totals = {row.total_seats for row in self.parties}
+        if len(totals) != 1:
+            raise ValueError(f"parties disagree on total_seats: {sorted(totals)}")
+        if sum(row.seats for row in self.parties) != next(iter(totals)):
+            raise ValueError("sum(parties.seats) does not match parties[0].total_seats")
+        return self
+
+
 class TurnReport(BaseModel):
     """The full report produced by one `resolve_turn` call."""
 
@@ -2706,15 +2846,21 @@ class TurnReport(BaseModel):
     memory rows at all (every bloc already at baseline, no investment, no enacted proposal, no
     decree) — an empty `blocs` tuple is still a valid, complete report. Assembled at slot 15 from
     slot 11's already-validated rows (§6.2); see `phases.py`."""
+    election: ElectionReport | None = None
+    """`None` only when the election phase did not run (never for a successful Phase 3C Gate-3C1+
+    turn on a valid player state). Built for every resolved turn, including turns with no election
+    scheduled at all — an inert `scheduled=False` report is still a valid, complete one. Slot 13;
+    see `phases.py`."""
 
     @model_validator(mode="after")
-    def _labor_resources_production_derivation_finance_political_legislative_capital_and_relationship_are_all_present_or_all_absent(
+    def _labor_resources_production_derivation_finance_political_legislative_capital_relationship_and_election_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
-        """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1, Phase 3B2A
-        and Phase 3B2B): a partial combination of these nine player-economy/politics reports
-        would represent a broken audit chain (e.g. production ran but derivation silently didn't)
-        — reject it outright rather than accepting whatever subset happens to be present.
+        """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1, Phase 3B2A,
+        Phase 3B2B and Phase 3C Gate 3C1): a partial combination of these ten player-economy/
+        politics reports would represent a broken audit chain (e.g. production ran but derivation
+        silently didn't) — reject it outright rather than accepting whatever subset happens to be
+        present.
         """
         present = (
             self.labor_market is not None,
@@ -2726,14 +2872,15 @@ class TurnReport(BaseModel):
             self.legislative is not None,
             self.political_capital is not None,
             self.political_relationship is not None,
+            self.election is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
                 "labor_market, resources, production, tax_base_derivation, finance, political, "
-                "legislative, political_capital, and political_relationship must be all present "
-                f"or all absent on a TurnReport — got present={present} (labor_market, "
-                "resources, production, tax_base_derivation, finance, political, legislative, "
-                "political_capital, political_relationship)"
+                "legislative, political_capital, political_relationship, and election must be "
+                f"all present or all absent on a TurnReport — got present={present} "
+                "(labor_market, resources, production, tax_base_derivation, finance, political, "
+                "legislative, political_capital, political_relationship, election)"
             )
         return self
 

@@ -124,6 +124,17 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "applied_total_change_bps": 5142,
         "closing_relationship_bps": -2858,
     },
+    "election_scheduled": {"turn": 16, "eligible_to_stand": True},
+    "election_result": {
+        "result": "won",
+        "final_support_bps": 5706,
+        "required_support_bps": 5000,
+    },
+    "game_concluded": {
+        "bucket": "defeat",
+        "reason": "term_limit_exit",
+        "turn": 32,
+    },
 }
 
 

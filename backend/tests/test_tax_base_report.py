@@ -363,6 +363,7 @@ class TestR1CrossReportValidation:
         data["legislative"] = None
         data["political_capital"] = None
         data["political_relationship"] = None
+        data["election"] = None
         report = TurnReport.model_validate(data)
         assert report.labor_market is None
         assert report.resources is None
@@ -373,6 +374,7 @@ class TestR1CrossReportValidation:
         assert report.legislative is None
         assert report.political_capital is None
         assert report.political_relationship is None
+        assert report.election is None
 
     def test_all_five_present_and_consistent_is_valid(self) -> None:
         data, report = _valid_turn_report_dict()

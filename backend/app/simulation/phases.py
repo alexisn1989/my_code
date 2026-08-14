@@ -33,10 +33,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from app.core.errors import DecisionSetError
 from app.core.money import BPS_DENOMINATOR, Money
+from app.core.politics import trunc_div_toward_zero
 from app.core.rng import derive_rng
 from app.simulation.accounting import (
     compute_quarterly_interest,
@@ -51,6 +52,14 @@ from app.simulation.decisions import (
     DecisionSet,
     bloc_relationship_investment_digest,
     budget_decision_digest,
+)
+from app.simulation.government_survival import (
+    MAX_POLLING_UNCERTAINTY_SWING_BPS,
+    REQUIRED_ELECTION_SUPPORT_BPS,
+    election_baseline_support_bps,
+    final_election_support_bps,
+    legislative_support_bps,
+    population_weighted_mean_bps,
 )
 from app.simulation.labor_allocation import (
     aggregate_labor_market,
@@ -93,9 +102,11 @@ from app.simulation.report import (
     ChangeDirection,
     ConstitutionSummary,
     EconomicBaselineReport,
+    ElectionReport,
     FinanceReport,
     LaborMarketReport,
     LegislativeReport,
+    PartyElectionStanceReport,
     PhaseStatus,
     PoliticalCapitalReport,
     PoliticalRelationshipReport,
@@ -132,10 +143,13 @@ from app.simulation.state import (
     EconomicBaselineState,
     GameState,
     LegislatureState,
+    OutcomeBucket,
+    RemovalReason,
     SectorCategory,
     SpendingPlanState,
     TaxBaseState,
     TaxPolicyState,
+    TerminalOutcomeState,
 )
 from app.simulation.tax_base_derivation import (
     aggregate_tax_base_contributions,
@@ -330,6 +344,11 @@ class PhaseContext:
     political_relationship_report: PoliticalRelationshipReport | None = None
     """Set by `generate_turn_report` (slot 15) from `relationship_memory_rows`; `resolver.py`
     copies this onto the final `TurnReport`. Phase 3B2B."""
+    election_report: ElectionReport | None = None
+    """Set directly by `_evaluate_elections` (slot 13, Phase 3C Gate 3C1); `resolver.py` copies
+    this onto the final `TurnReport`. Unlike the legislative/capital/relationship reports, this one
+    has no separate scratch object -- slot 13 both resolves the election and builds its own report
+    in one function, since nothing later in the same turn needs the intermediate values."""
     finance: FinanceScratch | None = None
     """Set by `apply_legal_and_administrative_changes`; read by the two phases after it."""
     finance_report: FinanceReport | None = None
@@ -1757,6 +1776,244 @@ def _apply_bloc_relationship_investments(ctx: PhaseContext) -> None:
     ctx.mark_implemented()
 
 
+def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
+    """Phase 3C, Gate 3C1, slot 13 (`evaluate_elections_and_constitutional_events`): resolve this
+    turn's scheduled election, if any (§4.2/§4.4).
+
+    Runs after slots 10/11 (legitimacy, capital, relationship investment/decay) have already
+    mutated `ctx.state` this same turn -- support is scored against the CURRENT (post-slot-11)
+    legislature and legitimacy, per the R7 ordering rule: there is no analogous "same-turn buy"
+    loophole here the way there is for the budget vote (slot 1 scores against the OPENING
+    relationship precisely so this turn's investment cannot buy the vote it is used in) -- nothing
+    in this slot can retroactively cheapen itself using this turn's own legitimacy/relationship
+    resolution.
+
+    `pending_liberalization`/constitutional amendments do not exist until Gate 3C3, so
+    `liberalization_completed` is always `False` in this gate; `politics.terminal_outcome` is
+    always `None` entering this slot in this gate too (coup/unrest/impeachment, slot 12, are still
+    a no-op) -- the defensive check below is kept anyway, matching every later gate's shape.
+    """
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    politics = player.politics
+    assert politics is not None, "checked by check_invariants before resolve_turn runs"
+
+    if politics.terminal_outcome is not None:
+        ctx.election_report = ElectionReport(
+            scheduled=False,
+            eligible_to_stand=False,
+            consecutive_terms_held=politics.consecutive_terms_held,
+            executive_term_limit_terms=politics.constitution.executive_term_limit_terms,
+            legislative_support_contribution_bps=None,
+            population_approval_contribution_bps=0,
+            legitimacy_contribution_bps=0,
+            baseline_support_bps=0,
+            polling_uncertainty_bps=0,
+            final_support_bps=0,
+            required_support_bps=0,
+            result="not_scheduled",
+            liberalization_completed=False,
+            next_election_turn=politics.next_election_turn,
+            parties=(),
+        )
+        ctx.mark_implemented()
+        return
+
+    scheduled = politics.next_election_turn == ctx.state.turn
+    if not scheduled:
+        ctx.election_report = ElectionReport(
+            scheduled=False,
+            eligible_to_stand=False,
+            consecutive_terms_held=politics.consecutive_terms_held,
+            executive_term_limit_terms=politics.constitution.executive_term_limit_terms,
+            legislative_support_contribution_bps=None,
+            population_approval_contribution_bps=0,
+            legitimacy_contribution_bps=0,
+            baseline_support_bps=0,
+            polling_uncertainty_bps=0,
+            final_support_bps=0,
+            required_support_bps=0,
+            result="not_scheduled",
+            liberalization_completed=False,
+            next_election_turn=politics.next_election_turn,
+            parties=(),
+        )
+        ctx.mark_implemented()
+        return
+
+    term_limit = politics.constitution.executive_term_limit_terms
+    term_limited = term_limit is not None and politics.consecutive_terms_held >= term_limit
+
+    legislature = politics.legislature
+    if legislature is not None:
+        chamber_supports = []
+        for chamber_state in legislature.chambers:
+            pairs = tuple(
+                (seat_entry.seats, bloc.government_relationship_bps)
+                for party in legislature.parties
+                for bloc in party.blocs
+                for seat_entry in bloc.seats
+                if seat_entry.chamber == chamber_state.chamber
+            )
+            if pairs:
+                chamber_supports.append(
+                    (
+                        chamber_state.total_seats,
+                        legislative_support_bps(
+                            bloc_seats_and_relationships=pairs,
+                            total_seats=chamber_state.total_seats,
+                        ),
+                    )
+                )
+        total_seats_all = sum(seats for seats, _ in chamber_supports)
+        legislative_support = (
+            trunc_div_toward_zero(
+                sum(seats * support for seats, support in chamber_supports), total_seats_all
+            )
+            if total_seats_all > 0
+            else None
+        )
+    else:
+        legislative_support = None
+
+    population_approval = population_weighted_mean_bps(
+        shares_and_metrics=tuple(
+            (round(group.population_share * BPS_DENOMINATOR), group.approval)
+            for group in player.population_groups
+        )
+    )
+    assessment = election_baseline_support_bps(
+        legislative_support_bps=legislative_support,
+        population_approval_bps=population_approval,
+        legitimacy_bps=politics.legitimacy_bps,
+    )
+
+    result: Literal["not_scheduled", "term_limit_exit", "won", "lost"]
+    if term_limited:
+        result = "term_limit_exit"
+        polling_swing = 0
+        final_support = assessment.baseline_support_bps
+        eligible_to_stand = False
+        parties: tuple[PartyElectionStanceReport, ...] = ()
+        new_terminal_outcome = TerminalOutcomeState(
+            bucket=OutcomeBucket.DEFEAT,
+            removal_reason=RemovalReason.TERM_LIMIT_EXIT,
+            turn=ctx.state.turn,
+        )
+        new_next_election_turn = politics.next_election_turn  # frozen -- never read again
+        new_terms_held = politics.consecutive_terms_held
+        liberalization_completed = False
+    else:
+        eligible_to_stand = True
+        polling_swing = ctx.rng("election").randint(
+            -MAX_POLLING_UNCERTAINTY_SWING_BPS, MAX_POLLING_UNCERTAINTY_SWING_BPS
+        )
+        final_support = final_election_support_bps(
+            baseline_support_bps=assessment.baseline_support_bps, polling_swing_bps=polling_swing
+        )
+        won = final_support >= REQUIRED_ELECTION_SUPPORT_BPS
+        result = "won" if won else "lost"
+        liberalization_completed = False  # Gate 3C3 wires this live once amendments exist
+        party_rows = []
+        if legislature is not None:
+            for party in legislature.parties:
+                seats = sum(seat_entry.seats for bloc in party.blocs for seat_entry in bloc.seats)
+                total_seats = sum(chamber.total_seats for chamber in legislature.chambers)
+                weighted = sum(
+                    seat_entry.seats * bloc.government_relationship_bps
+                    for bloc in party.blocs
+                    for seat_entry in bloc.seats
+                )
+                relationship_weighted_support_bps = (
+                    trunc_div_toward_zero(weighted, seats) if seats > 0 else 0
+                )
+                party_rows.append(
+                    PartyElectionStanceReport(
+                        party_id=party.id,
+                        government_role=party.government_role,
+                        seats=seats,
+                        total_seats=total_seats,
+                        relationship_weighted_support_bps=relationship_weighted_support_bps,
+                    )
+                )
+        parties = tuple(party_rows)
+
+        if won:
+            new_terms_held = politics.consecutive_terms_held + 1
+            interval = politics.constitution.national_election_interval_turns
+            assert interval is not None, "a scheduled election requires an authored interval"
+            new_next_election_turn = ctx.state.turn + interval
+            new_terminal_outcome = None
+        else:
+            new_terms_held = politics.consecutive_terms_held
+            new_next_election_turn = politics.next_election_turn  # frozen -- never read again
+            new_terminal_outcome = TerminalOutcomeState(
+                bucket=OutcomeBucket.DEFEAT,
+                removal_reason=RemovalReason.ELECTORAL_DEFEAT,
+                turn=ctx.state.turn,
+            )
+
+    player.politics = politics.model_copy(
+        update={
+            "consecutive_terms_held": new_terms_held,
+            "next_election_turn": new_next_election_turn,
+            "terminal_outcome": new_terminal_outcome,
+        }
+    )
+
+    ctx.election_report = ElectionReport(
+        scheduled=True,
+        eligible_to_stand=eligible_to_stand,
+        consecutive_terms_held=politics.consecutive_terms_held,
+        executive_term_limit_terms=term_limit,
+        legislative_support_contribution_bps=assessment.legislative_support_bps,
+        population_approval_contribution_bps=assessment.population_approval_bps,
+        legitimacy_contribution_bps=assessment.legitimacy_bps,
+        baseline_support_bps=assessment.baseline_support_bps,
+        polling_uncertainty_bps=polling_swing,
+        final_support_bps=final_support,
+        required_support_bps=0 if term_limited else REQUIRED_ELECTION_SUPPORT_BPS,
+        result=result,
+        liberalization_completed=liberalization_completed,
+        next_election_turn=new_next_election_turn,
+        parties=parties,
+    )
+
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="politics",
+            reason_id="election_scheduled",
+            params={"turn": ctx.state.turn, "eligible_to_stand": eligible_to_stand},
+        )
+    )
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="politics",
+            reason_id="election_result",
+            params={
+                "result": result,
+                "final_support_bps": final_support,
+                "required_support_bps": 0 if term_limited else REQUIRED_ELECTION_SUPPORT_BPS,
+            },
+        )
+    )
+    if new_terminal_outcome is not None:
+        reason = new_terminal_outcome.removal_reason
+        assert reason is not None
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="administration",
+                reason_id="game_concluded",
+                params={
+                    "bucket": new_terminal_outcome.bucket.value,
+                    "reason": reason.value,
+                    "turn": new_terminal_outcome.turn,
+                },
+            )
+        )
+
+    ctx.mark_implemented()
+
+
 def _generate_turn_report(ctx: PhaseContext) -> None:
     scratch = ctx.finance
     if scratch is not None:
@@ -2061,7 +2318,7 @@ PHASE_ORDER: tuple[tuple[str, PhaseHandler], ...] = (
         _apply_bloc_relationship_investments,
     ),
     ("evaluate_protests_strikes_insurgency_coups_revolutions", _noop),
-    ("evaluate_elections_and_constitutional_events", _noop),
+    ("evaluate_elections_and_constitutional_events", _evaluate_elections),
     ("trigger_narrative_events", _noop),
     ("generate_turn_report", _generate_turn_report),
 )

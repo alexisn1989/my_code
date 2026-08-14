@@ -322,6 +322,32 @@ def _render_bloc_relationship_resolved(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_election_scheduled(params: dict[str, str | int]) -> str:
+    turn = int(params["turn"])
+    eligible = bool(params["eligible_to_stand"])
+    return f"Election scheduled at turn {turn} (eligible to stand: {eligible})."
+
+
+def _render_election_result(params: dict[str, str | int]) -> str:
+    result = str(params["result"])
+    final_bps = int(params["final_support_bps"])
+    required_bps = int(params["required_support_bps"])
+    if result == "term_limit_exit":
+        return "Election result: term limit reached; the incumbent may not stand again."
+    verb = "won" if result == "won" else "lost"
+    return (
+        f"Election result: {verb} with {_bps_to_percent_str(final_bps)} support "
+        f"(required {_bps_to_percent_str(required_bps)})."
+    )
+
+
+def _render_game_concluded(params: dict[str, str | int]) -> str:
+    bucket = str(params["bucket"])
+    reason = str(params["reason"])
+    turn = int(params["turn"])
+    return f"Game concluded at turn {turn}: {bucket} ({reason})."
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -342,6 +368,9 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "enacted_policy_relationship_reaction": _render_enacted_policy_relationship_reaction,
     "decree_bypass_relationship_reaction": _render_decree_bypass_relationship_reaction,
     "bloc_relationship_resolved": _render_bloc_relationship_resolved,
+    "election_scheduled": _render_election_scheduled,
+    "election_result": _render_election_result,
+    "game_concluded": _render_game_concluded,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
