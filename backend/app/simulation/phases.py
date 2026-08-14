@@ -75,7 +75,12 @@ from app.simulation.legislative_voting import (
     spending_policy_change,
     tax_policy_change,
 )
-from app.simulation.legislature import CapitalExpenditureCategory, LegislativeOutcome, ProposalRoute
+from app.simulation.legislature import (
+    CapitalExpenditureCategory,
+    LegislativeChamber,
+    LegislativeOutcome,
+    ProposalRoute,
+)
 from app.simulation.legislature import ChangeDirection as LegislativeChangeDirection
 from app.simulation.legitimacy import (
     PerformanceSignals,
@@ -1843,33 +1848,30 @@ def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
     term_limit = politics.constitution.executive_term_limit_terms
     term_limited = term_limit is not None and politics.consecutive_terms_held >= term_limit
 
+    # §3.4/§13's worked example (tiny_valid: lower chamber alone = 5,310, feeding a baseline of
+    # 5,487) reads confidence from the LOWER chamber only, never a seat-weighted blend across
+    # chambers -- LegislativeChamber.LOWER is, by the enum's own convention, "the sole chamber of
+    # a unicameral legislature" (legislature.py), so this one rule covers both shapes uniformly:
+    # a unicameral legislature's only chamber IS its lower chamber.
     legislature = politics.legislature
     if legislature is not None:
-        chamber_supports = []
-        for chamber_state in legislature.chambers:
-            pairs = tuple(
-                (seat_entry.seats, bloc.government_relationship_bps)
-                for party in legislature.parties
-                for bloc in party.blocs
-                for seat_entry in bloc.seats
-                if seat_entry.chamber == chamber_state.chamber
-            )
-            if pairs:
-                chamber_supports.append(
-                    (
-                        chamber_state.total_seats,
-                        legislative_support_bps(
-                            bloc_seats_and_relationships=pairs,
-                            total_seats=chamber_state.total_seats,
-                        ),
-                    )
-                )
-        total_seats_all = sum(seats for seats, _ in chamber_supports)
+        lower_chamber = next(
+            chamber_state
+            for chamber_state in legislature.chambers
+            if chamber_state.chamber == LegislativeChamber.LOWER
+        )
+        lower_pairs = tuple(
+            (seat_entry.seats, bloc.government_relationship_bps)
+            for party in legislature.parties
+            for bloc in party.blocs
+            for seat_entry in bloc.seats
+            if seat_entry.chamber == LegislativeChamber.LOWER
+        )
         legislative_support = (
-            trunc_div_toward_zero(
-                sum(seats * support for seats, support in chamber_supports), total_seats_all
+            legislative_support_bps(
+                bloc_seats_and_relationships=lower_pairs, total_seats=lower_chamber.total_seats
             )
-            if total_seats_all > 0
+            if lower_pairs
             else None
         )
     else:
@@ -1915,13 +1917,29 @@ def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
         liberalization_completed = False  # Gate 3C3 wires this live once amendments exist
         party_rows = []
         if legislature is not None:
+            lower_total_seats = next(
+                chamber_state.total_seats
+                for chamber_state in legislature.chambers
+                if chamber_state.chamber == LegislativeChamber.LOWER
+            )
             for party in legislature.parties:
-                seats = sum(seat_entry.seats for bloc in party.blocs for seat_entry in bloc.seats)
-                total_seats = sum(chamber.total_seats for chamber in legislature.chambers)
-                weighted = sum(
-                    seat_entry.seats * bloc.government_relationship_bps
+                seats = sum(
+                    seat_entry.seats
                     for bloc in party.blocs
                     for seat_entry in bloc.seats
+                    if seat_entry.chamber == LegislativeChamber.LOWER
+                )
+                total_seats = lower_total_seats
+                # Support-space, not raw relationship: the SAME (relationship_bps + 10,000) // 2
+                # rescale legislative_support_bps applies per bloc, so this field genuinely lives
+                # in [0, 10,000] as StrictRiskBps declares, consistent with what actually decided
+                # the election (the lower chamber alone, per the fix above).
+                weighted = sum(
+                    seat_entry.seats
+                    * trunc_div_toward_zero(bloc.government_relationship_bps + BPS_DENOMINATOR, 2)
+                    for bloc in party.blocs
+                    for seat_entry in bloc.seats
+                    if seat_entry.chamber == LegislativeChamber.LOWER
                 )
                 relationship_weighted_support_bps = (
                     trunc_div_toward_zero(weighted, seats) if seats > 0 else 0

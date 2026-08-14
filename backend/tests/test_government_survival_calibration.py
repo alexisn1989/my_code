@@ -44,9 +44,9 @@ class TestTinyValidTermLimitExit:
         assert election is not None
         assert election.scheduled
         assert election.result == "won"
-        assert election.baseline_support_bps == 5_544
+        assert election.baseline_support_bps == 5_568
         assert election.polling_uncertainty_bps == -119
-        assert election.final_support_bps == 5_425
+        assert election.final_support_bps == 5_449
         assert election.required_support_bps == 5_000
         assert not election.liberalization_completed
 
@@ -139,11 +139,11 @@ class TestDeficitDemoSeedSweepProvesTheElectionIsGenuinelyContested:
     not a foregone conclusion dressed up with cosmetic randomness."""
 
     _EXPECTED = {
-        42: (5_544, -119, 5_425, "won"),
-        1: (5_544, -459, 5_085, "won"),
-        2: (5_544, 713, 6_257, "won"),
-        3: (5_544, -856, 4_688, "lost"),
-        77: (5_544, -374, 5_170, "won"),
+        42: (5_568, -119, 5_449, "won"),
+        1: (5_568, -459, 5_109, "won"),
+        2: (5_568, 713, 6_281, "won"),
+        3: (5_568, -856, 4_712, "lost"),
+        77: (5_568, -374, 5_194, "won"),
     }
 
     def test_seed_sweep_matches_pinned_figures_and_seed_3_flips_the_outcome(self) -> None:

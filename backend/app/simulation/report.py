@@ -2664,8 +2664,16 @@ class PoliticalCapitalReport(BaseModel):
 
 
 class PartyElectionStanceReport(BaseModel):
-    """One party's real seat holding at the moment of a scheduled election (Phase 3C, R10:
-    exact seat counts, never an independently-rounded seat-share)."""
+    """One party's real seat holding at the moment of a scheduled election, scoped to the LOWER
+    chamber alone -- the chamber that actually decides the election (§3.4/§13's worked example;
+    `LegislativeChamber.LOWER` is, by its own enum convention, also the sole chamber of a
+    unicameral legislature, so this scoping is uniform across both shapes). R10: exact seat
+    counts, never an independently-rounded seat-share.
+
+    `relationship_weighted_support_bps` lives in SUPPORT space, `[0, 10_000]`, not raw signed
+    relationship space -- the same `(relationship_bps + 10_000) // 2` rescale
+    `legislative_support_bps` applies per bloc before seat-weighting, so a maximally hostile bloc
+    contributes 0, not a negative number."""
 
     model_config = _STRICT_CONFIG
 
@@ -2673,7 +2681,7 @@ class PartyElectionStanceReport(BaseModel):
     government_role: GovernmentRole
     seats: int = Field(ge=0)
     total_seats: int = Field(gt=0)
-    relationship_weighted_support_bps: StrictRelationshipBps
+    relationship_weighted_support_bps: StrictRiskBps
 
     @model_validator(mode="after")
     def _seats_do_not_exceed_total(self) -> PartyElectionStanceReport:
