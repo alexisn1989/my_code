@@ -985,6 +985,104 @@ def reconcile_political_and_legislative_report(
                     f"opening_state spending_preference_bps={bloc.spending_preference_bps}"
                 )
 
+    # Group 24 (Phase 3C, new): the election report's pre-election facts -- the count and limit
+    # the election was actually evaluated against -- match the OPENING state, never a
+    # post-election value.
+    election = report.election
+    if election is not None:
+        if election.consecutive_terms_held != opening_politics.consecutive_terms_held:
+            problems.append(
+                f"election.consecutive_terms_held={election.consecutive_terms_held} does not "
+                "match opening_state politics.consecutive_terms_held="
+                f"{opening_politics.consecutive_terms_held}"
+            )
+        opening_term_limit = opening_politics.constitution.executive_term_limit_terms
+        if election.executive_term_limit_terms != opening_term_limit:
+            problems.append(
+                f"election.executive_term_limit_terms={election.executive_term_limit_terms} "
+                "does not match opening_state politics.constitution.executive_term_limit_terms="
+                f"{opening_term_limit}"
+            )
+
+    # Group 25 (Phase 3C, new): the election report's closing facts -- next_election_turn, the
+    # post-result consecutive_terms_held, and terminal_outcome -- match the CLOSING state exactly,
+    # never merely a story the report is internally consistent with itself about.
+    if election is not None:
+        if election.next_election_turn != closing_politics.next_election_turn:
+            problems.append(
+                f"election.next_election_turn={election.next_election_turn} does not match "
+                f"closing_state politics.next_election_turn={closing_politics.next_election_turn}"
+            )
+        expected_terms_held = (
+            opening_politics.consecutive_terms_held + 1
+            if election.result == "won"
+            else opening_politics.consecutive_terms_held
+        )
+        if closing_politics.consecutive_terms_held != expected_terms_held:
+            problems.append(
+                "closing_state politics.consecutive_terms_held="
+                f"{closing_politics.consecutive_terms_held} does not match the election "
+                f"result={election.result!r} applied to opening_state's "
+                f"consecutive_terms_held={opening_politics.consecutive_terms_held}"
+            )
+        if election.result in ("term_limit_exit", "lost"):
+            expected_reason = (
+                "term_limit_exit" if election.result == "term_limit_exit" else "electoral_defeat"
+            )
+            outcome = closing_politics.terminal_outcome
+            if outcome is None:
+                problems.append(
+                    f"election.result={election.result!r} requires closing_state to carry a "
+                    "terminal_outcome, but it has none"
+                )
+            else:
+                if outcome.bucket.value != "defeat":
+                    problems.append(
+                        f"election.result={election.result!r} requires terminal_outcome.bucket="
+                        f"'defeat', but closing_state has {outcome.bucket.value!r}"
+                    )
+                if (
+                    outcome.removal_reason is None
+                    or outcome.removal_reason.value != expected_reason
+                ):
+                    problems.append(
+                        f"election.result={election.result!r} requires terminal_outcome"
+                        f".removal_reason={expected_reason!r}, but closing_state has "
+                        f"{outcome.removal_reason.value if outcome.removal_reason else None!r}"
+                    )
+                if outcome.turn != closing_state.turn:
+                    problems.append(
+                        f"terminal_outcome.turn={outcome.turn} does not match "
+                        f"closing_state.turn={closing_state.turn}"
+                    )
+        elif closing_politics.terminal_outcome is not None:
+            problems.append(
+                f"election.result={election.result!r} does not conclude the game, but "
+                f"closing_state carries a terminal_outcome={closing_politics.terminal_outcome!r}"
+            )
+
+    # Group 26 (Phase 3C, new): an election turn that was NOT scheduled must leave
+    # consecutive_terms_held, next_election_turn and terminal_outcome exactly as they opened --
+    # a no-op election evaluation must be a genuine no-op, proved state-to-state.
+    if election is not None and not election.scheduled:
+        if closing_politics.consecutive_terms_held != opening_politics.consecutive_terms_held:
+            problems.append(
+                "election.scheduled=False but closing_state politics.consecutive_terms_held="
+                f"{closing_politics.consecutive_terms_held} differs from opening_state's "
+                f"{opening_politics.consecutive_terms_held}"
+            )
+        if closing_politics.next_election_turn != opening_politics.next_election_turn:
+            problems.append(
+                "election.scheduled=False but closing_state politics.next_election_turn="
+                f"{closing_politics.next_election_turn} differs from opening_state's "
+                f"{opening_politics.next_election_turn}"
+            )
+        if closing_politics.terminal_outcome != opening_politics.terminal_outcome:
+            problems.append(
+                "election.scheduled=False but closing_state politics.terminal_outcome differs "
+                "from opening_state's"
+            )
+
     # Group 18: decision provenance -- located from the REAL DecisionSet, never inferred.
     if decisions is not None:
         budget_count = sum(1 for d in decisions.decisions if isinstance(d, BudgetDecision))

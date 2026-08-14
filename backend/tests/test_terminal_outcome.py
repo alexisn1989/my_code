@@ -10,6 +10,7 @@ import pytest
 from app.content.scenarios import load_scenario_file
 from app.core.errors import GameAlreadyConcludedError
 from app.simulation.decisions import DecisionSet
+from app.simulation.government_survival import REQUIRED_ELECTION_SUPPORT_BPS
 from app.simulation.history import _make_entry, new_game, validate_history
 from app.simulation.resolver import resolve_turn
 from app.simulation.state import (
@@ -91,11 +92,11 @@ def test_a_concluded_game_input_state_is_never_mutated() -> None:
 
 def test_validate_history_rejects_an_entry_after_the_game_concluded() -> None:
     """A genuine two-entry save whose LAST entry's state is replaced with a concluded one (same
-    turn/report, only `terminal_outcome` added -- no reconciliation group in this gate reads that
-    field, so this alone stays clean), followed by a THIRD entry hand-assembled directly, never
-    through `resolve_turn`/`advance_game` (which would themselves refuse via
-    `GameAlreadyConcludedError`) -- exactly the "hand-crafted save smuggling extra turns" gap that
-    guard alone cannot reach."""
+    turn, its report's `election` block hand-adjusted to describe the SAME conclusion so
+    reconciliation's election groups (24-26) stay clean), followed by a THIRD entry
+    hand-assembled directly, never through `resolve_turn`/`advance_game` (which would themselves
+    refuse via `GameAlreadyConcludedError`) -- exactly the "hand-crafted save smuggling extra
+    turns" gap that guard alone cannot reach."""
     genesis_state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
     save = new_game(genesis_state, save_format_version=1)
     resolution = resolve_turn(genesis_state, _empty_decisions_for(genesis_state))
@@ -103,15 +104,27 @@ def test_validate_history_rejects_an_entry_after_the_game_concluded() -> None:
     concluded_turn1_state = _with_terminal_outcome(
         resolution.state,
         TerminalOutcomeState(
-            bucket=OutcomeBucket.DEFEAT, removal_reason=RemovalReason.COUP, turn=1
+            bucket=OutcomeBucket.DEFEAT, removal_reason=RemovalReason.ELECTORAL_DEFEAT, turn=1
         ),
+    )
+    assert resolution.report.election is not None
+    concluded_report = resolution.report.model_copy(
+        update={
+            "election": resolution.report.election.model_copy(
+                update={
+                    "scheduled": True,
+                    "result": "lost",
+                    "required_support_bps": REQUIRED_ELECTION_SUPPORT_BPS,
+                }
+            )
+        }
     )
     turn1_entry = _make_entry(
         turn=1,
         previous_entry_hash=save.head_entry_hash,
         state=concluded_turn1_state,
         decisions=_empty_decisions_for(genesis_state),
-        report=resolution.report,
+        report=concluded_report,
         ruleset_version=save.ruleset_version,
         content_version=save.content_version,
     )
