@@ -193,6 +193,33 @@ def test_resolve_refuses_to_overwrite_its_input(tmp_path: Path) -> None:
     assert exit_code == 2
 
 
+def test_resolve_stops_cleanly_at_a_mid_batch_conclusion_and_persists_what_ran(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Phase 3C (R10): `tiny_valid` concludes via `TERM_LIMIT_EXIT` at its real, natural turn 32
+    -- requesting 40 turns must stop cleanly at 32, still write the save (every genuinely
+    resolved turn persisted, not discarded because the batch as a whole didn't reach 40), exit
+    successfully, and say so -- never a bare "error:" for turns that actually completed."""
+    save0 = tmp_path / "save0.json"
+    save1 = tmp_path / "save1.json"
+    assert main(["new", "--scenario", SCENARIO_PATH, "--out", str(save0)]) == 0
+    capsys.readouterr()
+
+    exit_code = main(["resolve", "--state", str(save0), "--turns", "40", "--out", str(save1)])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "game concluded" in out
+    assert "fewer turns were resolved than requested" in out
+    assert save1.exists()
+
+    exit_code = main(["inspect", "--state", str(save1), "--politics"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "current_turn:        32" in out
+    assert "integrity:           OK" in out
+    assert "game concluded:      turn 32  defeat (term_limit_exit)" in out
+
+
 def test_history_shows_a_deficit_scenarios_borrowing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

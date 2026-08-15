@@ -50,7 +50,12 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from app.content.scenarios import load_scenario_file
-from app.core.errors import DecisionSetError, HistoryValidationError, MandateError
+from app.core.errors import (
+    DecisionSetError,
+    GameAlreadyConcludedError,
+    HistoryValidationError,
+    MandateError,
+)
 from app.core.money import format_money
 from app.saves import read_save_file, write_save_atomic
 from app.simulation.decisions import DecisionSet
@@ -1130,6 +1135,14 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
     save = _read_save(state_path)
     print(f"resolving {args.turns} turn(s) from turn {save.current_turn()}")
 
+    # A stop-vs-refusal split (R10): GameAlreadyConcludedError on turn N of a requested batch
+    # means turns 1..N-1 in THIS loop genuinely, successfully resolved -- it is not a failure of
+    # the batch, only a signal that the game reached its natural end partway through it. Every
+    # OTHER exception (an invalid decision, an invariant violation) still leaves `save` pointing
+    # at the last good save and propagates uncaught, matching "no partial output file" -- but a
+    # concluded game's already-resolved turns must still be written, not discarded along with the
+    # refused (N+1)th call.
+    concluded = False
     for _ in range(args.turns):
         if args.decisions_file is not None:
             decisions = _read_decisions_file(Path(args.decisions_file))
@@ -1140,12 +1153,12 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
                 expected_state_version=current.state_version,
                 decisions=(),
             )
-        # advance_game validates history + the decision set + the resolved
-        # state, in that order, and raises before appending anything on any
-        # failure — so a mid-batch failure here leaves `save` (this local
-        # variable) pointing at the last good save and never reaches the
-        # write below, matching "no partial output file."
-        save = advance_game(save, decisions)
+        try:
+            save = advance_game(save, decisions)
+        except GameAlreadyConcludedError as exc:
+            print(f"game concluded: {exc}")
+            concluded = True
+            break
         report = save.entries[-1].report()
         assert report is not None, "a just-appended, non-genesis entry always has a report"
         _print_report(report)
@@ -1156,6 +1169,8 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
         f"final: turn={final.turn} state_version={final.state_version} "
         f"entries={len(save.entries)} -> wrote {out_path}"
     )
+    if concluded:
+        print("(fewer turns were resolved than requested: the game concluded)")
     return 0
 
 

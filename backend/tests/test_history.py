@@ -7,6 +7,7 @@ import json
 
 import pytest
 
+from app.content.scenarios import load_scenario_file
 from app.core.canonical_json import canonical_dumps
 from app.core.errors import HistoryValidationError, SnapshotNotFoundError, TurnResolutionError
 from app.simulation.decisions import (
@@ -33,7 +34,7 @@ from app.simulation.report import (
 )
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json
 from app.simulation.state import SpendingCategory
-from tests.conftest import make_game_state
+from tests.conftest import SCENARIO_DIR, make_game_state
 
 _SFV = SAVE_FORMAT_VERSION
 
@@ -1806,5 +1807,53 @@ def test_consistently_rehashed_unchanged_target_fabricated_reaction_fails_self_v
     assert any("stored report fails schema validation" in p for p in problems)
     assert any(
         "policy_reaction_component_bps" in p and "does not match the policy-reaction formula" in p
+        for p in problems
+    )
+
+
+# --- Phase 3C, Gate 3C1: consistently re-hashed ELECTION tampering ------------------------------
+
+
+def test_consistently_rehashed_election_result_flip_still_fails_reconciliation() -> None:
+    """A knowledgeable tamperer flips a real WON election's `result` to `lost`, adjusting
+    `final_support_bps`/`required_support_bps` to keep `ElectionReport`'s own self-validators
+    internally satisfied (a legal, self-consistent "lost" report on its own terms), then
+    recomputes `entry_hash` to match -- the hash chain verifies perfectly. Only comparing against
+    the real, persisted CLOSING state (group 39: `result == "won"` implies the incumbent's term
+    count actually incremented) catches it, since the report alone cannot see that
+    `consecutive_terms_held` genuinely moved from 1 to 2 in the real state this entry stores."""
+    state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+    save = new_game(state, save_format_version=_SFV)
+    for _ in range(16):
+        current = save.current_state()
+        decisions = DecisionSet(
+            expected_turn=current.turn, expected_state_version=current.state_version, decisions=()
+        )
+        save = advance_game(save, decisions)
+
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.election is not None
+    assert report.election.result == "won"
+
+    tampered_election = report.election.model_copy(
+        update={
+            "result": "lost",
+            "final_support_bps": report.election.required_support_bps - 1,
+            "polling_uncertainty_bps": (
+                report.election.required_support_bps - 1 - report.election.baseline_support_bps
+            ),
+        }
+    )
+    tampered_report = report.model_copy(update={"election": tampered_election})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any(
+        "does not match the election result='lost' applied to opening_state's" in p
         for p in problems
     )
