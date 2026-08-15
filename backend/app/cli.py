@@ -64,6 +64,7 @@ from app.simulation.legislative_voting import required_yes_seats
 from app.simulation.legislature import GovernmentRole, LegislativeChamber, LegislativeOutcome
 from app.simulation.report import (
     BlocVoteReport,
+    CoupUnrestReport,
     ElectionReport,
     FinanceReport,
     LaborMarketReport,
@@ -78,7 +79,7 @@ from app.simulation.report import (
     TurnReportEntry,
 )
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json, load_save_json
-from app.simulation.state import RESOURCE_UNITS, PoliticalState
+from app.simulation.state import RESOURCE_UNITS, InstitutionState, PoliticalState
 
 # --- reason_id -> English rendering (presentation layer only; never stored) --
 
@@ -563,6 +564,21 @@ def _print_legislature_composition(politics: PoliticalState) -> None:
             )
 
 
+def _print_institutions(institutions: list[InstitutionState]) -> None:
+    """(Phase 3C, Gate 3C2) `inspect --institutions`: every authored institution row's strict-bps
+    metrics, read directly from state -- the coup-formula's own inputs, shown for the record
+    rather than only implied by the printed risk figures inside a resolved turn's report."""
+    print("  institutions:")
+    for institution in institutions:
+        print(
+            f"    {institution.id} ({institution.name}): "
+            f"loyalty={_bps_to_percent_str(institution.loyalty)} "
+            f"power={_bps_to_percent_str(institution.power)} "
+            f"competence={_bps_to_percent_str(institution.competence)} "
+            f"corruption={_bps_to_percent_str(institution.corruption)}"
+        )
+
+
 def _print_capital_relationships(politics: PoliticalState) -> None:
     """(Phase 3B2A, §16) `inspect --capital`: every bloc's CURRENT `government_relationship_bps`,
     read directly from state. The political-capital figure itself is already printed unconditionally
@@ -766,6 +782,8 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
             _print_capital_relationships(politics)
         if args.relationships:
             _print_baseline_relationships(politics)
+        if args.institutions:
+            _print_institutions(player.institutions)
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -1102,6 +1120,39 @@ def _print_political_relationship_memory(
         )
 
 
+def _print_coup_unrest_report(coup_unrest: CoupUnrestReport) -> None:
+    """(Phase 3C, Gate 3C2) The ONE coup/unrest/impeachment renderer -- same
+    `_print_political_capital_ledger`/`_print_election_report` discipline: both live `resolve`
+    output and historical `history --turn N` output call this one function. Every value is read
+    straight off the already-self-validated `CoupUnrestReport` -- presentation only, nothing
+    recomputed. Prints unconditionally (unlike election, there is no "not scheduled" inert case:
+    every turn assesses all three channels), but stays terse when nothing happened."""
+    coup = coup_unrest.coup
+    unrest = coup_unrest.popular_unrest
+    impeachment = coup_unrest.impeachment
+    print(
+        "    survival risk: "
+        f"coup {_bps_to_percent_str(coup.attempt_risk_bps)}"
+        f"{'/' + _bps_to_percent_str(coup.success_probability_bps) if coup.attempted else ''}"
+        f"   unrest {_bps_to_percent_str(unrest.attempt_risk_bps)}"
+        f"{'/' + _bps_to_percent_str(unrest.success_probability_bps) if unrest.attempted else ''}"
+        "   impeachment "
+        f"{(_bps_to_percent_str(impeachment.attempt_risk_bps) if impeachment.eligible else 'ineligible')}"
+        f"{'/' + _bps_to_percent_str(impeachment.success_probability_bps) if impeachment.attempted else ''}"
+    )
+    if coup.attempted:
+        outcome = "SUCCEEDED" if coup.succeeded else "failed"
+        print(f"      coup attempt {outcome}")
+    if unrest.outcome != "none":
+        label = {"contained": "contained", "forced_abdication": "SUCCEEDED (forced abdication)"}
+        print(f"      popular unrest: {label.get(unrest.outcome, unrest.outcome.upper())}")
+    if impeachment.attempted:
+        outcome = "SUCCEEDED" if impeachment.succeeded else "failed"
+        print(f"      impeachment motion {outcome}")
+    if coup_unrest.removal_triggered is not None:
+        print(f"      REMOVAL: {coup_unrest.removal_triggered.value}")
+
+
 def _print_election_report(election: ElectionReport) -> None:
     """(Phase 3C, Gate 3C1) The ONE election renderer -- same `_print_political_capital_ledger`
     discipline: both live `resolve` output and historical `history --turn N` output call this one
@@ -1158,6 +1209,8 @@ def _print_report(report: TurnReport) -> None:
         _print_political_capital_ledger(report.political_capital)
     if report.political_relationship is not None:
         _print_political_relationship_memory(report.political_relationship)
+    if report.coup_unrest is not None:
+        _print_coup_unrest_report(report.coup_unrest)
     if report.election is not None:
         _print_election_report(report.election)
     not_implemented = [
@@ -1285,6 +1338,10 @@ def _cmd_history(args: argparse.Namespace) -> int:
         if report.political_relationship is not None:
             # Same discipline again (Phase 3B2B): the SAME shared helper `_print_report` uses.
             _print_political_relationship_memory(report.political_relationship)
+        if report.coup_unrest is not None:
+            # Same discipline again (Phase 3C, Gate 3C2): the SAME shared helper `_print_report`
+            # uses.
+            _print_coup_unrest_report(report.coup_unrest)
         if report.election is not None:
             # Same discipline again (Phase 3C, Gate 3C1): the SAME shared helper `_print_report`
             # uses.
@@ -1339,6 +1396,13 @@ def build_parser() -> argparse.ArgumentParser:
         "the deviation between them (Phase 3B2B), read directly from state. Distinguishes a "
         "structural opponent (large deviation from a hostile baseline) from a bloc merely "
         "resting at a hostile baseline (zero deviation)",
+    )
+    p_inspect.add_argument(
+        "--institutions",
+        action="store_true",
+        help="also show every authored institution's strict-bps metrics (loyalty, power, "
+        "competence, corruption), read directly from state (Phase 3C, Gate 3C2) -- the coup "
+        "channel's own inputs",
     )
     p_inspect.set_defaults(func=_cmd_inspect)
 

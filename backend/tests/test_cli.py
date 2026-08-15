@@ -637,6 +637,40 @@ def test_resolve_and_history_render_the_same_election_block(
         assert fragment in history_out, fragment
 
 
+def test_resolve_and_history_render_the_same_survival_risk_block(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """(Gate 3C2) `_cmd_resolve` and `_cmd_history` must agree on the coup/unrest/impeachment
+    block too, the same M10 discipline `_print_coup_unrest_report` follows -- a quiet turn-1
+    resolution against `tiny_valid`'s real genesis data (no decisions), read from the real,
+    unmodified engine."""
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    save1 = tmp_path / "save1.json"
+    capsys.readouterr()
+    assert main(["resolve", "--state", str(save0), "--turns", "1", "--out", str(save1)]) == 0
+    resolve_out = capsys.readouterr().out
+
+    assert main(["history", "--state", str(save1), "--turn", "1"]) == 0
+    history_out = capsys.readouterr().out
+
+    for fragment in ("survival risk: coup", "unrest", "impeachment"):
+        assert fragment in resolve_out, fragment
+        assert fragment in history_out, fragment
+
+
+def test_inspect_institutions_shows_real_bps_metrics(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """(Gate 3C2) `inspect --institutions` reads the coup formula's own inputs directly from
+    state, in strict bps."""
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    capsys.readouterr()
+    assert main(["inspect", "--state", str(save0), "--institutions"]) == 0
+    out = capsys.readouterr().out
+    assert "institutions:" in out
+    assert "military (Military): loyalty=75% power=65% competence=60% corruption=10%" in out
+
+
 # --- 5. no proposal ---------------------------------------------------------------------------
 
 
