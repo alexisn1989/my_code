@@ -75,7 +75,12 @@ from app.core.politics import (
     trunc_div_toward_zero,
 )
 from app.core.rng import derive_rng
-from app.simulation.constitution import constitution_digest
+from app.simulation.constitution import (
+    ExecutiveSelection,
+    JudicialReview,
+    Legislature,
+    constitution_digest,
+)
 from app.simulation.decisions import (
     BudgetDecision,
     DecisionSet,
@@ -83,18 +88,41 @@ from app.simulation.decisions import (
     budget_decision_digest,
 )
 from app.simulation.government_survival import (
+    ASSASSINATION_SEVERITY_THRESHOLD_BPS,
     MAX_POLLING_UNCERTAINTY_SWING_BPS,
+    coup_attempt_risk_bps,
+    coup_success_probability_bps,
     election_baseline_support_bps,
+    impeachment_attempt_risk_bps,
+    impeachment_success_probability_bps,
     legislative_support_bps,
     population_weighted_mean_bps,
+    resolve_transition_pressure_bps,
+    transition_pressure_added_bps,
+    unrest_attempt_risk_bps,
+    unrest_success_probability_bps,
 )
 from app.simulation.legislature import (
     CapitalExpenditureCategory,
+    GovernmentRole,
     LegislativeChamber,
     LegislativeOutcome,
 )
 from app.simulation.report import TurnReport
-from app.simulation.state import GameState, LegislatureState, SpendingCategory
+from app.simulation.state import GameState, LegislatureState, RemovalReason, SpendingCategory
+
+_COUP_UNREST_OWNED_REMOVAL_REASONS = frozenset(
+    {
+        RemovalReason.COUP,
+        RemovalReason.FORCED_ABDICATION,
+        RemovalReason.ASSASSINATION,
+        RemovalReason.IMPEACHMENT,
+    }
+)
+"""The only four `RemovalReason` values slot 12 (coup/unrest/impeachment) can ever produce --
+`ELECTORAL_DEFEAT`/`TERM_LIMIT_EXIT` come exclusively from slot 13 (election). Group 33 uses this
+to tell a legitimate election-caused conclusion (which `coup_unrest.removal_triggered` correctly
+leaves `None` for) apart from a fabricated `None` hiding a real coup/unrest/impeachment removal."""
 
 _CONSTITUTION_FIELDS = (
     "executive_system",
@@ -138,6 +166,30 @@ def _structural_rows(
                     seat_entry.seats,
                 )
     return rows
+
+
+def _opposition_seat_share_bps(legislature: LegislatureState | None) -> int | None:
+    """Mirrors `phases._opposition_seat_share_bps` exactly (this module deliberately never
+    imports `phases.py` -- see groups 35-40's own `legislative_support_bps` recompute for the
+    same "independently re-derive, never call the phase handler" discipline): the share of
+    LOWER-chamber seats held by OPPOSITION-role parties alone. `None` when no legislature
+    exists."""
+    if legislature is None:
+        return None
+    lower_chamber = next(
+        chamber_state
+        for chamber_state in legislature.chambers
+        if chamber_state.chamber == LegislativeChamber.LOWER
+    )
+    opposition_seats = sum(
+        seat_entry.seats
+        for party in legislature.parties
+        if party.government_role == GovernmentRole.OPPOSITION
+        for bloc in party.blocs
+        for seat_entry in bloc.seats
+        if seat_entry.chamber == LegislativeChamber.LOWER
+    )
+    return trunc_div_toward_zero(opposition_seats * BPS_DENOMINATOR, lower_chamber.total_seats)
 
 
 def reconcile_political_legislative_and_survival_report(
@@ -1006,6 +1058,424 @@ def reconcile_political_legislative_and_survival_report(
             "resolved against this state"
         )
 
+    # Groups 24-34 (plan §8, Gate 3C2): the coup/unrest/impeachment report against real state and
+    # real seeded RNG -- never merely against the report's own self-validated story. Computed
+    # BEFORE the election groups below, both numerically (24-34 precede 35-40) and because the
+    # election groups need `coup_unrest_concluded` to know whether slot 13 legitimately
+    # short-circuited this turn.
+    coup_unrest = report.coup_unrest
+    coup_unrest_concluded = coup_unrest is not None and coup_unrest.removal_triggered is not None
+    if coup_unrest is not None:
+        military = next(row for row in closing_player.institutions if row.id == "military")
+        opposition_seat_share_bps = _opposition_seat_share_bps(closing_politics.legislature)
+
+        # Group 24: coup attempt-risk recompute, from closing_state's military row, legislature
+        # (opposition seat share), legitimacy, and the report's own closing_transition_pressure_bps
+        # (group 34 separately proves THAT value is itself correct).
+        for field_name, report_value, state_value in (
+            ("military_loyalty_bps", coup_unrest.coup.military_loyalty_bps, military.loyalty),
+            ("military_power_bps", coup_unrest.coup.military_power_bps, military.power),
+            (
+                "military_competence_bps",
+                coup_unrest.coup.military_competence_bps,
+                military.competence,
+            ),
+            (
+                "legitimacy_bps",
+                coup_unrest.coup.legitimacy_bps,
+                closing_politics.legitimacy_bps,
+            ),
+        ):
+            if report_value != state_value:
+                problems.append(
+                    f"coup_unrest.coup.{field_name}={report_value} does not match closing_state "
+                    f"({state_value})"
+                )
+        expected_coup_risk = coup_attempt_risk_bps(
+            military_loyalty_bps=military.loyalty,
+            military_power_bps=military.power,
+            legitimacy_bps=closing_politics.legitimacy_bps,
+            opposition_seat_share_bps=opposition_seat_share_bps,
+            transition_pressure_bps=coup_unrest.closing_transition_pressure_bps,
+        )
+        for field_name, report_value, expected_value in (
+            (
+                "loyalty_contribution_bps",
+                coup_unrest.coup.loyalty_contribution_bps,
+                expected_coup_risk.loyalty_contribution_bps,
+            ),
+            (
+                "legitimacy_contribution_bps",
+                coup_unrest.coup.legitimacy_contribution_bps,
+                expected_coup_risk.legitimacy_contribution_bps,
+            ),
+            (
+                "opposition_contribution_bps",
+                coup_unrest.coup.opposition_contribution_bps,
+                expected_coup_risk.opposition_contribution_bps,
+            ),
+            (
+                "transition_pressure_contribution_bps",
+                coup_unrest.coup.transition_pressure_contribution_bps,
+                expected_coup_risk.transition_pressure_contribution_bps,
+            ),
+            (
+                "attempt_risk_bps",
+                coup_unrest.coup.attempt_risk_bps,
+                expected_coup_risk.attempt_risk_bps,
+            ),
+        ):
+            if report_value != expected_value:
+                problems.append(
+                    f"coup_unrest.coup.{field_name}={report_value} does not match the recomputed "
+                    f"figure from closing_state ({expected_value})"
+                )
+
+        # Group 25: coup success-probability recompute, independent of the RNG draw.
+        if coup_unrest.coup.attempted:
+            expected_coup_success = coup_success_probability_bps(
+                military_power_bps=military.power,
+                military_competence_bps=military.competence,
+                legitimacy_bps=closing_politics.legitimacy_bps,
+            )
+            if coup_unrest.coup.success_probability_bps != expected_coup_success:
+                problems.append(
+                    "coup_unrest.coup.success_probability_bps="
+                    f"{coup_unrest.coup.success_probability_bps} does not match the recomputed "
+                    f"figure ({expected_coup_success})"
+                )
+
+        # Group 26: coup RNG-draw recompute -- the SAME seeded streams slot 12 actually drew
+        # from, redrawn independently.
+        expected_coup_attempted = (
+            derive_rng(opening_state.seed, opening_state.turn, "coup_attempt").randint(
+                1, BPS_DENOMINATOR
+            )
+            <= expected_coup_risk.attempt_risk_bps
+        )
+        if coup_unrest.coup.attempted != expected_coup_attempted:
+            problems.append(
+                f"coup_unrest.coup.attempted={coup_unrest.coup.attempted} does not match the "
+                f"redrawn derive_rng(seed, turn, 'coup_attempt') outcome ({expected_coup_attempted})"
+            )
+        elif coup_unrest.coup.attempted:
+            expected_coup_succeeded = derive_rng(
+                opening_state.seed, opening_state.turn, "coup_outcome"
+            ).randint(1, BPS_DENOMINATOR) <= (coup_unrest.coup.success_probability_bps or 0)
+            if coup_unrest.coup.succeeded != expected_coup_succeeded:
+                problems.append(
+                    f"coup_unrest.coup.succeeded={coup_unrest.coup.succeeded} does not match the "
+                    "redrawn derive_rng(seed, turn, 'coup_outcome') outcome "
+                    f"({expected_coup_succeeded})"
+                )
+
+        # Group 27: popular-unrest attempt-risk recompute, from closing_state's population groups.
+        radicalization_bps = population_weighted_mean_bps(
+            shares_and_metrics=tuple(
+                (round(group.population_share * BPS_DENOMINATOR), group.radicalization)
+                for group in closing_player.population_groups
+            )
+        )
+        organization_bps = population_weighted_mean_bps(
+            shares_and_metrics=tuple(
+                (round(group.population_share * BPS_DENOMINATOR), group.organization)
+                for group in closing_player.population_groups
+            )
+        )
+        disapproval_bps = population_weighted_mean_bps(
+            shares_and_metrics=tuple(
+                (
+                    round(group.population_share * BPS_DENOMINATOR),
+                    BPS_DENOMINATOR - group.approval,
+                )
+                for group in closing_player.population_groups
+            )
+        )
+        for field_name, report_value, state_value in (
+            (
+                "radicalization_bps",
+                coup_unrest.popular_unrest.radicalization_bps,
+                radicalization_bps,
+            ),
+            ("organization_bps", coup_unrest.popular_unrest.organization_bps, organization_bps),
+            ("disapproval_bps", coup_unrest.popular_unrest.disapproval_bps, disapproval_bps),
+            (
+                "legitimacy_bps",
+                coup_unrest.popular_unrest.legitimacy_bps,
+                closing_politics.legitimacy_bps,
+            ),
+        ):
+            if report_value != state_value:
+                problems.append(
+                    f"coup_unrest.popular_unrest.{field_name}={report_value} does not match "
+                    f"closing_state ({state_value})"
+                )
+        expected_unrest_risk = unrest_attempt_risk_bps(
+            radicalization_bps=radicalization_bps,
+            organization_bps=organization_bps,
+            disapproval_bps=disapproval_bps,
+        )
+        for field_name, report_value, expected_value in (
+            (
+                "radicalization_contribution_bps",
+                coup_unrest.popular_unrest.radicalization_contribution_bps,
+                expected_unrest_risk.radicalization_contribution_bps,
+            ),
+            (
+                "disapproval_contribution_bps",
+                coup_unrest.popular_unrest.disapproval_contribution_bps,
+                expected_unrest_risk.disapproval_contribution_bps,
+            ),
+            (
+                "attempt_risk_bps",
+                coup_unrest.popular_unrest.attempt_risk_bps,
+                expected_unrest_risk.attempt_risk_bps,
+            ),
+        ):
+            if report_value != expected_value:
+                problems.append(
+                    f"coup_unrest.popular_unrest.{field_name}={report_value} does not match the "
+                    f"recomputed figure from closing_state ({expected_value})"
+                )
+
+        # Group 28: popular-unrest success-probability recompute, independent of the RNG draw.
+        if coup_unrest.popular_unrest.attempted:
+            expected_unrest_success = unrest_success_probability_bps(
+                organization_bps=organization_bps, legitimacy_bps=closing_politics.legitimacy_bps
+            )
+            if coup_unrest.popular_unrest.success_probability_bps != expected_unrest_success:
+                problems.append(
+                    "coup_unrest.popular_unrest.success_probability_bps="
+                    f"{coup_unrest.popular_unrest.success_probability_bps} does not match the "
+                    f"recomputed figure ({expected_unrest_success})"
+                )
+
+        # Group 29: popular-unrest RNG-draw + severity recompute.
+        expected_unrest_attempted = (
+            derive_rng(opening_state.seed, opening_state.turn, "unrest_attempt").randint(
+                1, BPS_DENOMINATOR
+            )
+            <= expected_unrest_risk.attempt_risk_bps
+        )
+        if coup_unrest.popular_unrest.attempted != expected_unrest_attempted:
+            problems.append(
+                f"coup_unrest.popular_unrest.attempted={coup_unrest.popular_unrest.attempted} "
+                "does not match the redrawn derive_rng(seed, turn, 'unrest_attempt') outcome "
+                f"({expected_unrest_attempted})"
+            )
+        elif coup_unrest.popular_unrest.attempted:
+            expected_unrest_succeeded = derive_rng(
+                opening_state.seed, opening_state.turn, "unrest_outcome"
+            ).randint(1, BPS_DENOMINATOR) <= (
+                coup_unrest.popular_unrest.success_probability_bps or 0
+            )
+            if coup_unrest.popular_unrest.succeeded != expected_unrest_succeeded:
+                problems.append(
+                    f"coup_unrest.popular_unrest.succeeded={coup_unrest.popular_unrest.succeeded} "
+                    "does not match the redrawn derive_rng(seed, turn, 'unrest_outcome') outcome "
+                    f"({expected_unrest_succeeded})"
+                )
+            elif coup_unrest.popular_unrest.succeeded:
+                severity_draw = derive_rng(
+                    opening_state.seed, opening_state.turn, "unrest_severity"
+                ).randint(1, BPS_DENOMINATOR)
+                expected_outcome = (
+                    "assassination"
+                    if severity_draw <= ASSASSINATION_SEVERITY_THRESHOLD_BPS
+                    else "forced_abdication"
+                )
+                if coup_unrest.popular_unrest.outcome != expected_outcome:
+                    problems.append(
+                        f"coup_unrest.popular_unrest.outcome={coup_unrest.popular_unrest.outcome!r} "
+                        "does not match the redrawn derive_rng(seed, turn, 'unrest_severity') "
+                        f"outcome ({expected_outcome!r})"
+                    )
+
+        # Group 30: impeachment eligibility + attempt-risk recompute, from closing_state's
+        # constitution (never checked against a report field, since ImpeachmentChannelReport
+        # carries no constitution axes of its own).
+        expected_eligible = (
+            closing_politics.constitution.legislature is not Legislature.NONE
+            and closing_politics.constitution.judicial_review is not JudicialReview.NONE
+            and closing_politics.constitution.executive_selection
+            is not ExecutiveSelection.HEREDITARY
+        )
+        if coup_unrest.impeachment.eligible != expected_eligible:
+            problems.append(
+                f"coup_unrest.impeachment.eligible={coup_unrest.impeachment.eligible} does not "
+                f"match the recomputed eligibility from closing_state's constitution "
+                f"({expected_eligible})"
+            )
+        expected_impeachment_risk = None
+        if expected_eligible and coup_unrest.impeachment.eligible:
+            if coup_unrest.impeachment.opposition_seat_share_bps != opposition_seat_share_bps:
+                problems.append(
+                    "coup_unrest.impeachment.opposition_seat_share_bps="
+                    f"{coup_unrest.impeachment.opposition_seat_share_bps} does not match "
+                    f"closing_state ({opposition_seat_share_bps})"
+                )
+            if coup_unrest.impeachment.legitimacy_bps != closing_politics.legitimacy_bps:
+                problems.append(
+                    f"coup_unrest.impeachment.legitimacy_bps={coup_unrest.impeachment.legitimacy_bps} "
+                    f"does not match closing_state ({closing_politics.legitimacy_bps})"
+                )
+            assert opposition_seat_share_bps is not None
+            expected_impeachment_risk = impeachment_attempt_risk_bps(
+                opposition_seat_share_bps=opposition_seat_share_bps,
+                legitimacy_bps=closing_politics.legitimacy_bps,
+                judicial_review=closing_politics.constitution.judicial_review,
+            )
+            for field_name, report_value, expected_value in (
+                (
+                    "legitimacy_contribution_bps",
+                    coup_unrest.impeachment.legitimacy_contribution_bps,
+                    expected_impeachment_risk.legitimacy_contribution_bps,
+                ),
+                (
+                    "opposition_contribution_bps",
+                    coup_unrest.impeachment.opposition_contribution_bps,
+                    expected_impeachment_risk.opposition_contribution_bps,
+                ),
+                (
+                    "attempt_risk_bps",
+                    coup_unrest.impeachment.attempt_risk_bps,
+                    expected_impeachment_risk.attempt_risk_bps,
+                ),
+            ):
+                if report_value != expected_value:
+                    problems.append(
+                        f"coup_unrest.impeachment.{field_name}={report_value} does not match the "
+                        f"recomputed figure from closing_state ({expected_value})"
+                    )
+
+        # Group 31: impeachment success-probability recompute, independent of the RNG draw.
+        if (
+            expected_eligible
+            and coup_unrest.impeachment.eligible
+            and coup_unrest.impeachment.attempted
+        ):
+            assert opposition_seat_share_bps is not None
+            expected_impeachment_success = impeachment_success_probability_bps(
+                opposition_seat_share_bps=opposition_seat_share_bps,
+                legitimacy_bps=closing_politics.legitimacy_bps,
+            )
+            if coup_unrest.impeachment.success_probability_bps != expected_impeachment_success:
+                problems.append(
+                    "coup_unrest.impeachment.success_probability_bps="
+                    f"{coup_unrest.impeachment.success_probability_bps} does not match the "
+                    f"recomputed figure ({expected_impeachment_success})"
+                )
+
+        # Group 32: impeachment RNG-draw recompute.
+        if (
+            expected_eligible
+            and coup_unrest.impeachment.eligible
+            and expected_impeachment_risk is not None
+        ):
+            expected_impeachment_attempted = (
+                derive_rng(opening_state.seed, opening_state.turn, "impeachment_attempt").randint(
+                    1, BPS_DENOMINATOR
+                )
+                <= expected_impeachment_risk.attempt_risk_bps
+            )
+            if coup_unrest.impeachment.attempted != expected_impeachment_attempted:
+                problems.append(
+                    f"coup_unrest.impeachment.attempted={coup_unrest.impeachment.attempted} does "
+                    "not match the redrawn derive_rng(seed, turn, 'impeachment_attempt') outcome "
+                    f"({expected_impeachment_attempted})"
+                )
+            elif coup_unrest.impeachment.attempted:
+                expected_impeachment_succeeded = derive_rng(
+                    opening_state.seed, opening_state.turn, "impeachment_outcome"
+                ).randint(1, BPS_DENOMINATOR) <= (
+                    coup_unrest.impeachment.success_probability_bps or 0
+                )
+                if coup_unrest.impeachment.succeeded != expected_impeachment_succeeded:
+                    problems.append(
+                        f"coup_unrest.impeachment.succeeded={coup_unrest.impeachment.succeeded} "
+                        "does not match the redrawn derive_rng(seed, turn, "
+                        f"'impeachment_outcome') outcome ({expected_impeachment_succeeded})"
+                    )
+
+        # Group 33: removal_triggered vs closing_state's own terminal_outcome. Slot 12 runs
+        # before slot 13, so `removal_triggered is None` does not by itself mean anything is
+        # wrong -- the election phase (slot 13, groups 35-40) may have concluded the game
+        # instead, via ELECTORAL_DEFEAT/TERM_LIMIT_EXIT, a different and equally legitimate
+        # source. But a coup/forced-abdication/assassination/impeachment removal reason can ONLY
+        # ever come from THIS channel -- if closing_state carries one of those four and
+        # `removal_triggered` is `None` or disagrees, that is unambiguously a fabrication
+        # (tamper-matrix case 22).
+        outcome = closing_politics.terminal_outcome
+        state_removal_reason = outcome.removal_reason if outcome is not None else None
+        if state_removal_reason in _COUP_UNREST_OWNED_REMOVAL_REASONS:
+            if coup_unrest.removal_triggered != state_removal_reason:
+                problems.append(
+                    f"coup_unrest.removal_triggered={coup_unrest.removal_triggered!r} does not "
+                    "match closing_state politics.terminal_outcome.removal_reason "
+                    f"({state_removal_reason!r})"
+                )
+        elif coup_unrest.removal_triggered is not None:
+            problems.append(
+                f"coup_unrest.removal_triggered={coup_unrest.removal_triggered!r} does not "
+                "match closing_state politics.terminal_outcome.removal_reason "
+                f"({state_removal_reason!r})"
+            )
+        if coup_unrest.removal_triggered is not None and outcome is not None:
+            if outcome.bucket.value != "defeat":
+                problems.append(
+                    "coup_unrest.removal_triggered is set, but closing_state politics."
+                    f"terminal_outcome does not carry bucket='defeat' ({outcome!r})"
+                )
+            elif outcome.turn != closing_state.turn:
+                problems.append(
+                    f"closing_state terminal_outcome.turn={outcome.turn} does not match "
+                    f"closing_state.turn={closing_state.turn}"
+                )
+
+        # Group 34 (R6): transition-pressure identity recompute -- the ONE combining formula,
+        # applied once, reading the turn's OPENING pressure and (Gate 3C3 scope; always 0 here,
+        # since ConstitutionalAmendmentDecision does not exist yet) the amendment-added amount.
+        expected_added = transition_pressure_added_bps(
+            difficulty=opening_politics.constitution.amendment_difficulty, axes_changed=0
+        )
+        expected_pressure = resolve_transition_pressure_bps(
+            opening_pressure_bps=opening_politics.regime_transition_pressure_bps,
+            amendment_added_bps=expected_added,
+        )
+        for field_name, report_value, expected_value in (
+            (
+                "opening_transition_pressure_bps",
+                coup_unrest.opening_transition_pressure_bps,
+                expected_pressure.opening_bps,
+            ),
+            (
+                "decayed_transition_pressure_bps",
+                coup_unrest.decayed_transition_pressure_bps,
+                expected_pressure.decayed_bps,
+            ),
+            (
+                "added_transition_pressure_bps",
+                coup_unrest.added_transition_pressure_bps,
+                expected_pressure.added_bps,
+            ),
+            (
+                "closing_transition_pressure_bps",
+                coup_unrest.closing_transition_pressure_bps,
+                expected_pressure.closing_bps,
+            ),
+        ):
+            if report_value != expected_value:
+                problems.append(
+                    f"coup_unrest.{field_name}={report_value} does not match the recomputed R6 "
+                    f"identity ({expected_value})"
+                )
+        if closing_politics.regime_transition_pressure_bps != expected_pressure.closing_bps:
+            problems.append(
+                "closing_state politics.regime_transition_pressure_bps="
+                f"{closing_politics.regime_transition_pressure_bps} does not match the "
+                f"recomputed R6 identity ({expected_pressure.closing_bps})"
+            )
+
     # Groups 35-40 (plan §8, Gate 3C1): the election report against real state, real seeded RNG,
     # and (§4.4) the exact next_election_turn scheduling table -- never merely against the
     # report's own self-validated story.
@@ -1021,10 +1491,8 @@ def reconcile_political_legislative_and_survival_report(
         # not_scheduled report regardless of whether this turn also happened to be a scheduled
         # election milestone (§4.2). Every group below that reasons about `election.scheduled`/
         # `.result` against the OPENING schedule needs to know that, or a coup landing on what
-        # would otherwise have been an election turn reads as a reconciliation bug.
-        coup_unrest_concluded = (
-            report.coup_unrest is not None and report.coup_unrest.removal_triggered is not None
-        )
+        # would otherwise have been an election turn reads as a reconciliation bug --
+        # `coup_unrest_concluded` (computed once, above, alongside groups 24-34) carries that.
 
         # Group 35: scheduling recompute -- `scheduled` vs the OPENING schedule, and
         # `next_election_turn`'s new-or-unchanged value re-derived per §4.4's table (Gate 3C1's

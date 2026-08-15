@@ -1144,6 +1144,312 @@ def test_legislature_present_fabrication_on_a_no_legislature_country_is_rejected
     )
 
 
+# --- Phase 3C, Gate 3C2: coup/unrest/impeachment reconciliation, groups 24-34 ------------------
+
+
+def _resolve_with_edits(
+    *,
+    scenario: str = "tiny_valid",
+    seed: int | None = None,
+    military_loyalty: int | None = None,
+    legitimacy_bps: int | None = None,
+    unrest_boost: bool = False,
+):  # type: ignore[no-untyped-def]
+    """Same methodology as `test_coup_unrest_report.py`'s own helper: a real `resolve_turn` call
+    against `scenario`'s genesis state, with an optional edited seed/military-loyalty/legitimacy/
+    population-unrest-boost, returning `(opening_state, resolution, decisions)`."""
+    state = load_scenario_file(SCENARIO_DIR / f"{scenario}.yaml")
+    if seed is not None:
+        state = state.model_copy(update={"seed": seed})
+    player = state.world.countries[state.world.player_country_id]
+    if military_loyalty is not None:
+        institutions = list(player.institutions)
+        for index, institution_row in enumerate(institutions):
+            if institution_row.id == "military":
+                institutions[index] = institution_row.model_copy(
+                    update={"loyalty": military_loyalty, "power": 10_000, "competence": 10_000}
+                )
+        player.institutions = institutions
+    if unrest_boost:
+        groups = list(player.population_groups)
+        for index, group_row in enumerate(groups):
+            groups[index] = group_row.model_copy(
+                update={"approval": 0, "radicalization": 10_000, "organization": 10_000}
+            )
+        player.population_groups = groups
+    if legitimacy_bps is not None:
+        assert player.politics is not None
+        player.politics = player.politics.model_copy(update={"legitimacy_bps": legitimacy_bps})
+    decisions = _empty_decisions_for(state)
+    resolution = resolve_turn(state, decisions)
+    return state, resolution, decisions
+
+
+def _quiet_turn():  # type: ignore[no-untyped-def]
+    """A real, quiet turn: no channel attempts anything (`tiny_valid` genesis, seed 42)."""
+    return _resolve_with_edits()
+
+
+def _coup_attempted_turn():  # type: ignore[no-untyped-def]
+    return _resolve_with_edits(military_loyalty=0, seed=0)
+
+
+def _unrest_attempted_turn():  # type: ignore[no-untyped-def]
+    return _resolve_with_edits(unrest_boost=True, seed=1)
+
+
+def _impeachment_attempted_turn():  # type: ignore[no-untyped-def]
+    return _resolve_with_edits(legitimacy_bps=0, seed=40)
+
+
+def test_group_24_coup_attempt_risk_field_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    fabricated_coup = coup_unrest.coup.model_copy(
+        update={
+            "opposition_contribution_bps": coup_unrest.coup.opposition_contribution_bps + 1,
+            "attempt_risk_bps": coup_unrest.coup.attempt_risk_bps + 1,
+        }
+    )
+    fabricated = coup_unrest.model_copy(update={"coup": fabricated_coup})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.coup.opposition_contribution_bps=" in p for p in problems)
+
+
+def test_group_25_coup_success_probability_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _coup_attempted_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert coup_unrest.coup.attempted
+    assert coup_unrest.coup.success_probability_bps is not None
+    fabricated_coup = coup_unrest.coup.model_copy(
+        update={"success_probability_bps": coup_unrest.coup.success_probability_bps + 1}
+    )
+    fabricated = coup_unrest.model_copy(update={"coup": fabricated_coup})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.coup.success_probability_bps=" in p for p in problems)
+
+
+def test_group_26_coup_attempted_flag_flipped_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert not coup_unrest.coup.attempted
+    fabricated_coup = coup_unrest.coup.model_copy(
+        update={"attempted": True, "success_probability_bps": 300, "succeeded": False}
+    )
+    fabricated = coup_unrest.model_copy(update={"coup": fabricated_coup})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.coup.attempted=True does not match the redrawn" in p for p in problems)
+
+
+def test_group_27_unrest_attempt_risk_field_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    fabricated_unrest = coup_unrest.popular_unrest.model_copy(
+        update={"radicalization_bps": coup_unrest.popular_unrest.radicalization_bps + 1}
+    )
+    fabricated = coup_unrest.model_copy(update={"popular_unrest": fabricated_unrest})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.popular_unrest.radicalization_bps=" in p for p in problems)
+
+
+def test_group_28_unrest_success_probability_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _unrest_attempted_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert coup_unrest.popular_unrest.attempted
+    assert coup_unrest.popular_unrest.success_probability_bps is not None
+    fabricated_unrest = coup_unrest.popular_unrest.model_copy(
+        update={"success_probability_bps": coup_unrest.popular_unrest.success_probability_bps + 1}
+    )
+    fabricated = coup_unrest.model_copy(update={"popular_unrest": fabricated_unrest})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.popular_unrest.success_probability_bps=" in p for p in problems)
+
+
+def test_group_29_unrest_attempted_flag_flipped_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert not coup_unrest.popular_unrest.attempted
+    fabricated_unrest = coup_unrest.popular_unrest.model_copy(
+        update={
+            "attempted": True,
+            "success_probability_bps": 0,
+            "succeeded": False,
+            "outcome": "contained",
+        }
+    )
+    fabricated = coup_unrest.model_copy(update={"popular_unrest": fabricated_unrest})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any(
+        "coup_unrest.popular_unrest.attempted=True does not match the redrawn" in p
+        for p in problems
+    )
+
+
+def test_group_30_impeachment_eligibility_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert coup_unrest.impeachment.eligible
+    fabricated_impeachment = coup_unrest.impeachment.model_copy(
+        update={
+            "eligible": False,
+            "legitimacy_bps": None,
+            "opposition_seat_share_bps": None,
+            "legitimacy_contribution_bps": None,
+            "opposition_contribution_bps": None,
+            "attempt_risk_bps": None,
+            "attempted": None,
+            "success_probability_bps": None,
+            "succeeded": None,
+        }
+    )
+    fabricated = coup_unrest.model_copy(update={"impeachment": fabricated_impeachment})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.impeachment.eligible=False does not match" in p for p in problems)
+
+
+def test_group_31_impeachment_success_probability_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _impeachment_attempted_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert coup_unrest.impeachment.attempted
+    assert coup_unrest.impeachment.success_probability_bps is not None
+    fabricated_impeachment = coup_unrest.impeachment.model_copy(
+        update={"success_probability_bps": coup_unrest.impeachment.success_probability_bps + 1}
+    )
+    fabricated = coup_unrest.model_copy(update={"impeachment": fabricated_impeachment})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.impeachment.success_probability_bps=" in p for p in problems)
+
+
+def test_group_32_impeachment_attempted_flag_flipped_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert not coup_unrest.impeachment.attempted
+    fabricated_impeachment = coup_unrest.impeachment.model_copy(
+        update={"attempted": True, "success_probability_bps": 0, "succeeded": False}
+    )
+    fabricated = coup_unrest.model_copy(update={"impeachment": fabricated_impeachment})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any(
+        "coup_unrest.impeachment.attempted=True does not match the redrawn" in p for p in problems
+    )
+
+
+def test_group_33_removal_triggered_claimed_absent_while_state_carries_a_coup_is_rejected() -> None:
+    """Group 33 (also case 22 of the tamper matrix): `removal_triggered=None` while
+    `closing_state.terminal_outcome` is actually set, from a real coup-succeeded turn."""
+    opening_state, resolution, decisions = _resolve_with_edits(
+        military_loyalty=0, legitimacy_bps=0, seed=6
+    )
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert coup_unrest.removal_triggered == RemovalReason.COUP
+    fabricated_coup = coup_unrest.coup.model_copy(update={"succeeded": False})
+    fabricated = coup_unrest.model_copy(update={"coup": fabricated_coup, "removal_triggered": None})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any(
+        "coup_unrest.removal_triggered=None does not match closing_state" in p for p in problems
+    )
+
+
+def test_group_34_transition_pressure_left_unchanged_is_rejected() -> None:
+    """Group 34 (also case 23 of the tamper matrix): a nonzero opening pressure's decay is
+    fabricated to leave the closing figure unchanged rather than actually decaying it."""
+    opening_state, resolution, decisions = _quiet_turn()
+    player_id = opening_state.world.player_country_id
+    edited_opening_politics = opening_state.world.countries[player_id].politics.model_copy(
+        update={"regime_transition_pressure_bps": 6_000}
+    )
+    edited_opening_state = opening_state.model_copy(deep=True)
+    edited_opening_state.world.countries[player_id].politics = edited_opening_politics
+
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    fabricated = coup_unrest.model_copy(
+        update={
+            "opening_transition_pressure_bps": 6_000,
+            "decayed_transition_pressure_bps": 0,
+            "closing_transition_pressure_bps": 6_000,
+        }
+    )
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=edited_opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("does not match the recomputed R6 identity" in p for p in problems)
+
+
 # --- Phase 3C, Gate 3C1: election reconciliation, groups 35-40 and 45 --------------------------
 
 
