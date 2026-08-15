@@ -33,7 +33,7 @@ from app.simulation.report import (
     TurnReportEntry,
 )
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json
-from app.simulation.state import SpendingCategory
+from app.simulation.state import RemovalReason, SpendingCategory
 from tests.conftest import SCENARIO_DIR, make_game_state
 
 _SFV = SAVE_FORMAT_VERSION
@@ -1857,3 +1857,211 @@ def test_consistently_rehashed_election_result_flip_still_fails_reconciliation()
         "does not match the election result='lost' applied to opening_state's" in p
         for p in problems
     )
+
+
+# --- Phase 3C, Gate 3C2: coup/unrest/impeachment tamper matrix, cases 19-23 --------------------
+
+
+def _new_edited_save(
+    *,
+    scenario: str = "tiny_valid",
+    seed: int | None = None,
+    military_loyalty: int | None = None,
+    legitimacy_bps: int | None = None,
+    regime_transition_pressure_bps: int | None = None,
+) -> GameSave:
+    """A fresh `GameSave` from `scenario`'s genesis, with an optional edited seed/military
+    loyalty/legitimacy/opening transition pressure -- the same "edit one input, run the real
+    engine" methodology `test_coup_unrest_report.py` uses, applied at genesis so the resulting
+    save's hash chain is genuinely consistent from the start (R10's own manual-walkthrough
+    discipline: never a post-hoc edited save)."""
+    state = load_scenario_file(SCENARIO_DIR / f"{scenario}.yaml")
+    if seed is not None:
+        state = state.model_copy(update={"seed": seed})
+    player = state.world.countries[state.world.player_country_id]
+    if military_loyalty is not None:
+        institutions = list(player.institutions)
+        for index, institution_row in enumerate(institutions):
+            if institution_row.id == "military":
+                institutions[index] = institution_row.model_copy(
+                    update={"loyalty": military_loyalty, "power": 10_000, "competence": 10_000}
+                )
+        player.institutions = institutions
+    if legitimacy_bps is not None or regime_transition_pressure_bps is not None:
+        assert player.politics is not None
+        updates: dict[str, int] = {}
+        if legitimacy_bps is not None:
+            updates["legitimacy_bps"] = legitimacy_bps
+        if regime_transition_pressure_bps is not None:
+            updates["regime_transition_pressure_bps"] = regime_transition_pressure_bps
+        player.politics = player.politics.model_copy(update=updates)
+    return new_game(state, save_format_version=_SFV)
+
+
+def _advance_quietly(save: GameSave, *, turns: int = 1) -> GameSave:
+    for _ in range(turns):
+        current = save.current_state()
+        decisions = DecisionSet(
+            expected_turn=current.turn, expected_state_version=current.state_version, decisions=()
+        )
+        save = advance_game(save, decisions)
+    return save
+
+
+def test_case_19_coup_attempt_risk_field_tamper_still_fails_reconciliation() -> None:
+    """Case 19: `CoupChannelReport.attempt_risk_bps`, tampered internally consistently with its
+    own named contributions (so the report's own self-validator is satisfied), still disagrees
+    with the real military/legislature/legitimacy state -- caught by group 24."""
+    save = _new_edited_save(military_loyalty=0, legitimacy_bps=0)
+    save = _advance_quietly(save)
+
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.coup_unrest is not None
+
+    tampered_coup = report.coup_unrest.coup.model_copy(
+        update={
+            "opposition_contribution_bps": report.coup_unrest.coup.opposition_contribution_bps + 1,
+            "attempt_risk_bps": report.coup_unrest.coup.attempt_risk_bps + 1,
+        }
+    )
+    tampered_coup_unrest = report.coup_unrest.model_copy(update={"coup": tampered_coup})
+    tampered_report = report.model_copy(update={"coup_unrest": tampered_coup_unrest})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("coup_unrest.coup.opposition_contribution_bps=" in p for p in problems)
+
+
+def test_case_20_coup_success_probability_tamper_still_fails_reconciliation() -> None:
+    """Case 20: coup `success_probability_bps` recomputed differently -- tampered alongside
+    `military_competence_bps` (kept self-consistent per the report's own re-derivation formula,
+    so `CoupChannelReport`'s own validator passes) but no longer matching the real military
+    institution row -- caught by group 24/25. Seed 0 (already established in
+    `test_coup_unrest_report.py`) is a real `attempted=True` turn under this exact edit."""
+    save = _new_edited_save(military_loyalty=0, seed=0)
+    save = _advance_quietly(save)
+
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.coup_unrest is not None
+    coup = report.coup_unrest.coup
+    assert coup.attempted and coup.success_probability_bps is not None
+
+    tampered_competence = coup.military_competence_bps - 1_000
+    tampered_success = coup.success_probability_bps - 100
+    tampered_coup = coup.model_copy(
+        update={
+            "military_competence_bps": tampered_competence,
+            "success_probability_bps": tampered_success,
+        }
+    )
+    tampered_coup_unrest = report.coup_unrest.model_copy(update={"coup": tampered_coup})
+    tampered_report = report.model_copy(update={"coup_unrest": tampered_coup_unrest})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("coup_unrest.coup.military_competence_bps=" in p for p in problems)
+
+
+def test_case_21_coup_rng_outcome_flipped_still_fails_reconciliation() -> None:
+    """Case 21: the coup RNG outcome (`succeeded`) is flipped, with every named contribution and
+    risk figure left untouched and self-consistent -- caught only by group 26's independent
+    redraw of the SAME seeded stream, since nothing else about the report changed. Seed 0 (already
+    established in `test_coup_unrest_report.py`) is a real `attempted=True, succeeded=False` turn
+    under this exact edit, so flipping to `True` both changes nothing else about the report and
+    is unambiguously wrong."""
+    save = _new_edited_save(military_loyalty=0, seed=0)
+    save = _advance_quietly(save)
+
+    entry_index = len(save.entries) - 1
+    original = save.entries[entry_index]
+    report = original.report()
+    assert report is not None and report.coup_unrest is not None
+    coup = report.coup_unrest.coup
+    assert coup.attempted and coup.succeeded is False
+
+    tampered_coup = coup.model_copy(update={"succeeded": True})
+    tampered_coup_unrest = report.coup_unrest.model_copy(
+        update={"coup": tampered_coup, "removal_triggered": RemovalReason.COUP}
+    )
+    tampered_report = report.model_copy(update={"coup_unrest": tampered_coup_unrest})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(
+        save, index=entry_index, report_json=tampered_json
+    )
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("coup_unrest.coup.succeeded=" in p and "redrawn" in p for p in problems)
+
+
+def test_case_22_removal_triggered_claimed_absent_still_fails_reconciliation() -> None:
+    """Case 22: a real coup-succeeded turn's `removal_triggered` is fabricated back to `None`
+    (with `coup.succeeded` also flipped to keep `CoupUnrestReport`'s own priority-order validator
+    satisfied) -- but `closing_state.politics.terminal_outcome` genuinely carries the coup, caught
+    by group 33. Seed 6 (already established in test_coup_unrest_report.py /
+    test_reconciliation.py) is a real, genuine coup success under this exact edit."""
+    save = _new_edited_save(military_loyalty=0, legitimacy_bps=0, seed=6)
+    save = _advance_quietly(save)
+
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.coup_unrest is not None
+    assert report.coup_unrest.removal_triggered == RemovalReason.COUP
+
+    tampered_coup = report.coup_unrest.coup.model_copy(update={"succeeded": False})
+    tampered_coup_unrest = report.coup_unrest.model_copy(
+        update={"coup": tampered_coup, "removal_triggered": None}
+    )
+    tampered_report = report.model_copy(update={"coup_unrest": tampered_coup_unrest})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any(
+        "coup_unrest.removal_triggered=None does not match closing_state" in p for p in problems
+    )
+
+
+def test_case_23_transition_pressure_left_unchanged_still_fails_reconciliation() -> None:
+    """Case 23 (adapted for Gate 3C2, per the plan's own note: the amendment mechanism that would
+    normally ADD pressure does not exist until Gate 3C3): a genesis authored with nonzero opening
+    `regime_transition_pressure_bps` (never true of any shipped scenario, but the formula must
+    still be provably correct for one), and the closing figure fabricated to claim the SAME value
+    -- as if decay never ran -- while the real state genuinely decayed it. Caught by group 34."""
+    save = _new_edited_save(regime_transition_pressure_bps=6_000)
+    save = _advance_quietly(save)
+
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.coup_unrest is not None
+    coup_unrest = report.coup_unrest
+    assert coup_unrest.opening_transition_pressure_bps == 6_000
+    assert coup_unrest.decayed_transition_pressure_bps > 0
+    assert coup_unrest.closing_transition_pressure_bps == 5_000
+
+    tampered_coup_unrest = coup_unrest.model_copy(
+        update={"decayed_transition_pressure_bps": 0, "closing_transition_pressure_bps": 6_000}
+    )
+    tampered_report = report.model_copy(update={"coup_unrest": tampered_coup_unrest})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    assert tampered_json != original.report_json
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("does not match the recomputed R6 identity" in p for p in problems)
