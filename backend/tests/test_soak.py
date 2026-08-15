@@ -510,6 +510,15 @@ def test_100_turn_soak_with_a_proposal_every_turn_on_decree_state() -> None:
     assert validate_history(save) == []
     assert save.current_turn() == TURNS
 
+    # Phase 3C, Gate 3C1: decree_state authors no national_election_interval_turns, so it is the
+    # natural control for a GENUINE 100-turn soak -- the election channel can never conclude it,
+    # unlike tiny_valid/deficit_demo's own soaks (test_soak.py, above), which now stop at their
+    # real natural conclusions. Asserted directly, not merely assumed from the scenario's authored
+    # shape.
+    final_politics = save.current_state().world.countries["valdrun"].politics
+    assert final_politics is not None
+    assert final_politics.terminal_outcome is None
+
     # The sequence genuinely exercised every route, rather than silently degenerating into one.
     assert outcomes[LegislativeOutcome.PASSED_LEGISLATIVE] > 0
     assert outcomes[LegislativeOutcome.FAILED_LEGISLATIVE] > 0
@@ -666,6 +675,14 @@ def test_100_turn_soak_with_mixed_expenditure_on_decree_state() -> None:
 
     assert validate_history(save) == []
     assert save.current_turn() == TURNS
+
+    # Phase 3C, Gate 3C1: decree_state authors no national_election_interval_turns, so it is a
+    # genuine, unaffected 100-turn soak -- unlike tiny_valid/deficit_demo's, which now stop at
+    # their real natural conclusions (above).
+    final_politics = save.current_state().world.countries["valdrun"].politics
+    assert final_politics is not None
+    assert final_politics.terminal_outcome is None
+
     assert outcomes[LegislativeOutcome.PASSED_LEGISLATIVE] > 0
     assert outcomes[LegislativeOutcome.ENACTED_BY_DECREE] > 0
     assert sum(outcomes.values()) == TURNS
