@@ -33,7 +33,7 @@ from app.core.errors import (
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
 from app.simulation.phases import PhaseContext, run_phases
-from app.simulation.reconciliation import reconcile_political_and_legislative_report
+from app.simulation.reconciliation import reconcile_political_legislative_and_survival_report
 from app.simulation.report import TurnReport, TurnReportDevMeta
 from app.simulation.state import GameState
 
@@ -131,7 +131,7 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
         election=ctx.election_report,
     )
 
-    reconciliation_problems = reconcile_political_and_legislative_report(
+    reconciliation_problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=working, report=report, decisions=decisions
     )
     if reconciliation_problems:

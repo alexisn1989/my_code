@@ -175,7 +175,7 @@ def test_political_reconciliation_failure_is_atomic(monkeypatch: pytest.MonkeyPa
     """(T-D4, Phase 3A; extended Phase 3B1, R8) A forced reconciliation mismatch raises
     `TurnResolutionError`, leaves the caller's input `state` byte-identical -- whole-state, and
     field-by-field for `politics`/`finance` specifically -- and produces no `TurnResolution`,
-    exactly like an invariant violation. `reconcile_political_and_legislative_report` is
+    exactly like an invariant violation. `reconcile_political_legislative_and_survival_report` is
     monkeypatched to force a mismatch, since the real resolver's own output never disagrees with
     itself (see `test_reconciliation.py::test_a_clean_resolution_reconciles_with_no_problems`)."""
     import app.simulation.resolver as resolver_module
@@ -189,7 +189,7 @@ def test_political_reconciliation_failure_is_atomic(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(
         resolver_module,
-        "reconcile_political_and_legislative_report",
+        "reconcile_political_legislative_and_survival_report",
         lambda **_kwargs: ["forced mismatch for T-D4"],
     )
 
@@ -221,7 +221,7 @@ def test_political_reconciliation_failure_appends_no_history_entry(
 
     monkeypatch.setattr(
         resolver_module,
-        "reconcile_political_and_legislative_report",
+        "reconcile_political_legislative_and_survival_report",
         lambda **_kwargs: ["forced mismatch for T-D4"],
     )
 

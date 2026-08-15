@@ -63,7 +63,7 @@ from app.core.canonical_json import canonical_digest, canonical_dumps
 from app.core.errors import HistoryValidationError, SnapshotNotFoundError
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
-from app.simulation.reconciliation import reconcile_political_and_legislative_report
+from app.simulation.reconciliation import reconcile_political_legislative_and_survival_report
 from app.simulation.report import TurnReport
 from app.simulation.resolver import resolve_turn
 from app.simulation.state import GameState
@@ -371,7 +371,7 @@ def validate_history(save: GameSave) -> list[str]:
         ):
             problems.extend(
                 f"turn {entry.turn}: {problem}"
-                for problem in reconcile_political_and_legislative_report(
+                for problem in reconcile_political_legislative_and_survival_report(
                     opening_state=previous_state_model,
                     closing_state=state_model,
                     report=report_model,

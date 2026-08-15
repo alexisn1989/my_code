@@ -1,4 +1,4 @@
-"""Tests for `simulation.reconciliation.reconcile_political_and_legislative_report`
+"""Tests for `simulation.reconciliation.reconcile_political_legislative_and_survival_report`
 (Phase 3A groups 1-11, T-R5/T-R6; Phase 3B1 groups 12-18, R8).
 
 Every corruption below is built with `model_copy(update=...)`, which does NOT re-run
@@ -41,7 +41,7 @@ from app.simulation.constitution import (
 from app.simulation.decisions import BudgetDecision, DecisionSet, InfluenceAllocation
 from app.simulation.legislature import LegislativeChamber
 from app.simulation.political_memory import SPENDING_REACTION_WEIGHT_BPS, TAX_REACTION_WEIGHT_BPS
-from app.simulation.reconciliation import reconcile_political_and_legislative_report
+from app.simulation.reconciliation import reconcile_political_legislative_and_survival_report
 from app.simulation.report import (
     EconomicBaselineReport,
     TurnReport,
@@ -71,13 +71,13 @@ def test_a_clean_resolution_reconciles_with_no_problems() -> None:
     everything below corrupts a `model_copy`, never the resolver's real output."""
     state, first, second = _resolve_twice()
     assert (
-        reconcile_political_and_legislative_report(
+        reconcile_political_legislative_and_survival_report(
             opening_state=state, closing_state=first.state, report=first.report, decisions=None
         )
         == []
     )
     assert (
-        reconcile_political_and_legislative_report(
+        reconcile_political_legislative_and_survival_report(
             opening_state=first.state,
             closing_state=second.state,
             report=second.report,
@@ -93,7 +93,7 @@ def test_corrupted_opening_legitimacy_is_rejected() -> None:
         update={"opening_legitimacy_bps": first.report.political.opening_legitimacy_bps + 1}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("opening_legitimacy_bps" in p for p in problems)
@@ -105,7 +105,7 @@ def test_corrupted_closing_legitimacy_is_rejected() -> None:
         update={"closing_legitimacy_bps": first.report.political.closing_legitimacy_bps + 1}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("closing_legitimacy_bps" in p for p in problems)
@@ -117,7 +117,7 @@ def test_corrupted_opening_political_capital_is_rejected() -> None:
         update={"opening_political_capital": first.report.political.opening_political_capital + 1}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("opening_political_capital" in p for p in problems)
@@ -129,7 +129,7 @@ def test_corrupted_closing_political_capital_is_rejected() -> None:
         update={"closing_political_capital": first.report.political.closing_political_capital + 1}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("closing_political_capital" in p for p in problems)
@@ -147,7 +147,7 @@ def test_opening_baseline_presence_mismatch_is_rejected() -> None:
         update={"opening_economic_baseline": fabricated_baseline}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("opening_economic_baseline presence" in p for p in problems)
@@ -172,7 +172,7 @@ def test_each_opening_baseline_field_is_independently_rejected() -> None:
             update={"opening_economic_baseline": corrupted_baseline}
         )
         corrupted_report = second.report.model_copy(update={"political": corrupted_political})
-        problems = reconcile_political_and_legislative_report(
+        problems = reconcile_political_legislative_and_survival_report(
             opening_state=first.state,
             closing_state=second.state,
             report=corrupted_report,
@@ -197,7 +197,7 @@ def test_each_closing_baseline_field_is_independently_rejected() -> None:
             update={"closing_economic_baseline": corrupted_baseline}
         )
         corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-        problems = reconcile_political_and_legislative_report(
+        problems = reconcile_political_legislative_and_survival_report(
             opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
         )
         assert any(f"closing_economic_baseline.{field_name}" in p for p in problems), field_name
@@ -224,7 +224,7 @@ def test_each_of_the_nine_constitutional_fields_is_independently_rejected() -> N
             update={"constitution": corrupted_constitution}
         )
         corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-        problems = reconcile_political_and_legislative_report(
+        problems = reconcile_political_legislative_and_survival_report(
             opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
         )
         assert any(f"constitution.{field_name}" in p for p in problems), field_name
@@ -244,7 +244,7 @@ def test_digest_alone_corrupted_with_fields_intact_is_rejected() -> None:
         update={"constitution": corrupted_constitution}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("constitution_digest" in p for p in problems)
@@ -260,7 +260,7 @@ def test_corrupted_constitutional_order_support_is_rejected() -> None:
         }
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("constitutional_order_support_bps" in p for p in problems)
@@ -272,7 +272,7 @@ def test_corrupted_political_capital_capacity_is_rejected() -> None:
         update={"political_capital_capacity": first.report.political.political_capital_capacity + 1}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("political_capital_capacity" in p for p in problems)
@@ -284,7 +284,7 @@ def test_no_political_report_produces_no_problems() -> None:
     state, first, _ = _resolve_twice()
     report_without_political = first.report.model_copy(update={"political": None})
     assert (
-        reconcile_political_and_legislative_report(
+        reconcile_political_legislative_and_survival_report(
             opening_state=state,
             closing_state=first.state,
             report=report_without_political,
@@ -325,7 +325,7 @@ def test_a_working_copy_mutation_of_a_constitutional_field_is_caught() -> None:
             )
         }
     )
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=mutated_state, report=first.report, decisions=None
     )
     assert any("judicial_review" in p for p in problems)
@@ -351,7 +351,7 @@ def test_a_working_copy_mutation_of_support_or_capacity_is_caught() -> None:
             )
         }
     )
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=mutated_state, report=first.report, decisions=None
     )
     assert any("political_capital_capacity" in p for p in problems)
@@ -469,7 +469,7 @@ _RECONCILE_PATHS = pytest.mark.parametrize(
 def test_a_clean_legislative_resolution_reconciles_with_no_problems() -> None:
     state, resolution, decisions = _tiny_valid_passing_turn()
     assert (
-        reconcile_political_and_legislative_report(
+        reconcile_political_legislative_and_survival_report(
             opening_state=state,
             closing_state=resolution.state,
             report=resolution.report,
@@ -488,7 +488,7 @@ def test_chamber_identity_missing_row_is_rejected() -> None:
     lower_only = tuple(c for c in legislative.chambers if c.chamber is LegislativeChamber.LOWER)
     corrupted_legislative = legislative.model_copy(update={"chambers": lower_only})
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -510,7 +510,7 @@ def test_party_identity_mismatch_is_rejected() -> None:
         party_id="not_a_real_party",
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -531,7 +531,7 @@ def test_bloc_identity_mismatch_is_rejected() -> None:
         bloc_id="not_a_real_bloc",
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -549,7 +549,7 @@ def test_seats_mismatch_is_rejected() -> None:
         legislative, match_party_id="civic_union", match_bloc_id="mainstream", seats=1
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -577,7 +577,7 @@ def test_discipline_mismatch_is_rejected() -> None:
         discipline_bps=row.discipline_bps ^ 1,
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -605,7 +605,7 @@ def test_baseline_support_input_relationship_mismatch_is_rejected() -> None:
         government_relationship_bps=row.government_relationship_bps - 1000,
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -690,7 +690,7 @@ def test_legislature_mutation_is_rejected() -> None:
     )
     mutated_politics = player.politics.model_copy(update={"legislature": mutated_legislature})
     mutated_state = _with_player_politics(resolution.state, mutated_politics)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -712,7 +712,7 @@ def test_opening_capital_mismatch_is_rejected() -> None:
         update={"opening_political_capital": legislative.opening_political_capital + 1}
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -730,7 +730,7 @@ def test_committed_capital_mismatch_is_rejected_directly() -> None:
         update={"political_capital_committed": legislative.political_capital_committed + 1}
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -768,7 +768,7 @@ def test_closing_capital_mismatch_is_rejected() -> None:
         update={"political_capital": player.politics.political_capital + 1}
     )
     mutated_state = _with_player_politics(resolution.state, mutated_politics)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -791,7 +791,7 @@ def test_route_mismatch_with_submitted_decision_is_rejected_directly() -> None:
 
     corrupted_legislative = legislative.model_copy(update={"route": ProposalRoute.DECREE})
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -829,7 +829,7 @@ def test_influence_allocation_mismatch_with_submitted_decision_is_rejected() -> 
         influence_bps=600,
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -853,7 +853,7 @@ def test_decision_digest_mismatch_is_rejected(load) -> None:  # type: ignore[no-
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
     reloaded_report = load(corrupted_report)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=reloaded_report,
@@ -884,7 +884,7 @@ def test_applied_policy_after_a_failed_vote_is_rejected() -> None:
         }
     )
     mutated_state = _with_player_finance(resolution.state, mutated_finance)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -914,7 +914,7 @@ def test_missing_policy_application_after_a_passed_vote_is_rejected() -> None:
         }
     )
     mutated_state = _with_player_finance(resolution.state, mutated_finance)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -937,7 +937,7 @@ def test_mutation_of_an_untargeted_spending_category_is_rejected() -> None:
         }
     )
     mutated_state = _with_player_finance(resolution.state, mutated_finance)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -954,7 +954,7 @@ def test_no_legislative_report_produces_no_new_problems() -> None:
     # (report_without_legislative is not itself a valid TurnReport -- completeness is a
     # construction-time rule -- but reconciliation takes an already-built Python object and must
     # not crash on this shape either way.)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=report_without_legislative,
@@ -988,7 +988,7 @@ def test_closing_baseline_mutation_is_rejected() -> None:
     )
     mutated_politics = player.politics.model_copy(update={"legislature": mutated_legislature})
     mutated_state = _with_player_politics(resolution.state, mutated_politics)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -1010,7 +1010,7 @@ def test_relationship_memory_row_missing_for_a_bloc_that_needs_one_is_rejected()
     assert relationship is not None and len(relationship.blocs) > 1
     thinned = relationship.model_copy(update={"blocs": relationship.blocs[1:]})
     thinned_report = resolution.report.model_copy(update={"political_relationship": thinned})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=thinned_report,
@@ -1035,7 +1035,7 @@ def test_relationship_memory_row_naming_a_nonexistent_bloc_is_rejected() -> None
         }
     )
     widened_report = resolution.report.model_copy(update={"political_relationship": widened})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=widened_report,
@@ -1103,7 +1103,7 @@ def test_relationship_memory_preference_fabrication_is_rejected() -> None:
     fabricated_report = resolution.report.model_copy(
         update={"political_relationship": fabricated_relationship}
     )
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=fabricated_report,
@@ -1132,7 +1132,7 @@ def test_legislature_present_fabrication_on_a_no_legislature_country_is_rejected
     assert relationship.legislature_present is False
     fabricated = relationship.model_copy(update={"legislature_present": True})
     fabricated_report = resolution.report.model_copy(update={"political_relationship": fabricated})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=fabricated_report,

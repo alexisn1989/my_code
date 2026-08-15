@@ -10,8 +10,7 @@ import pytest
 from app.content.scenarios import load_scenario_file
 from app.core.errors import GameAlreadyConcludedError
 from app.simulation.decisions import DecisionSet
-from app.simulation.government_survival import REQUIRED_ELECTION_SUPPORT_BPS
-from app.simulation.history import _make_entry, new_game, validate_history
+from app.simulation.history import _make_entry, advance_game, new_game, validate_history
 from app.simulation.resolver import resolve_turn
 from app.simulation.state import (
     GameState,
@@ -91,67 +90,39 @@ def test_a_concluded_game_input_state_is_never_mutated() -> None:
 
 
 def test_validate_history_rejects_an_entry_after_the_game_concluded() -> None:
-    """A genuine two-entry save whose LAST entry's state is replaced with a concluded one (same
-    turn, its report's `election` block hand-adjusted to describe the SAME conclusion so
-    reconciliation's election groups (24-26) stay clean), followed by a THIRD entry
-    hand-assembled directly, never through `resolve_turn`/`advance_game` (which would themselves
-    refuse via `GameAlreadyConcludedError`) -- exactly the "hand-crafted save smuggling extra
-    turns" gap that guard alone cannot reach."""
+    """`tiny_valid`'s real, natural conclusion (turn 32, `TERM_LIMIT_EXIT` -- the SAME real
+    horizon `test_soak.py` and `test_government_survival_calibration.py` establish), driven
+    entirely through genuine `resolve_turn` calls with no fabricated report or state at all,
+    followed by a hand-assembled 33rd entry appended directly, never through
+    `resolve_turn`/`advance_game` (which would themselves refuse via `GameAlreadyConcludedError`)
+    -- exactly the "hand-crafted save smuggling extra turns" gap that guard alone cannot reach."""
     genesis_state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
     save = new_game(genesis_state, save_format_version=1)
-    resolution = resolve_turn(genesis_state, _empty_decisions_for(genesis_state))
-
-    concluded_turn1_state = _with_terminal_outcome(
-        resolution.state,
-        TerminalOutcomeState(
-            bucket=OutcomeBucket.DEFEAT, removal_reason=RemovalReason.ELECTORAL_DEFEAT, turn=1
-        ),
-    )
-    assert resolution.report.election is not None
-    concluded_report = resolution.report.model_copy(
-        update={
-            "election": resolution.report.election.model_copy(
-                update={
-                    "scheduled": True,
-                    "result": "lost",
-                    "required_support_bps": REQUIRED_ELECTION_SUPPORT_BPS,
-                }
-            )
-        }
-    )
-    turn1_entry = _make_entry(
-        turn=1,
-        previous_entry_hash=save.head_entry_hash,
-        state=concluded_turn1_state,
-        decisions=_empty_decisions_for(genesis_state),
-        report=concluded_report,
-        ruleset_version=save.ruleset_version,
-        content_version=save.content_version,
-    )
-    save = dataclasses.replace(
-        save,
-        entry_count=2,
-        head_entry_hash=turn1_entry.entry_hash,
-        entries=(*save.entries, turn1_entry),
-    )
+    for _ in range(32):
+        current = save.current_state()
+        save = advance_game(save, _empty_decisions_for(current))
     assert validate_history(save) == []
+    last_report = save.entries[-1].report()
+    assert last_report is not None
+    concluded_state = save.current_state()
+    assert concluded_state.world.countries["arken"].politics.terminal_outcome is not None
 
-    turn2_state = concluded_turn1_state.model_copy(update={"turn": 2, "state_version": 2})
-    turn2_entry = _make_entry(
-        turn=2,
-        previous_entry_hash=turn1_entry.entry_hash,
-        state=turn2_state,
-        decisions=_empty_decisions_for(turn2_state),
-        report=resolution.report,
+    smuggled_state = concluded_state.model_copy(update={"turn": 33, "state_version": 33})
+    smuggled_entry = _make_entry(
+        turn=33,
+        previous_entry_hash=save.head_entry_hash,
+        state=smuggled_state,
+        decisions=_empty_decisions_for(smuggled_state),
+        report=last_report,
         ruleset_version=save.ruleset_version,
         content_version=save.content_version,
     )
     save = dataclasses.replace(
         save,
-        entry_count=3,
-        head_entry_hash=turn2_entry.entry_hash,
-        entries=(*save.entries, turn2_entry),
+        entry_count=save.entry_count + 1,
+        head_entry_hash=smuggled_entry.entry_hash,
+        entries=(*save.entries, smuggled_entry),
     )
 
     problems = validate_history(save)
-    assert any("entry exists after the game concluded at turn 1" in p for p in problems), problems
+    assert any("entry exists after the game concluded at turn 32" in p for p in problems), problems

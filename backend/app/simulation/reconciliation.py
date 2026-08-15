@@ -68,17 +68,25 @@ individual field within a group, is independently corruptible and independently 
 
 from __future__ import annotations
 
+from app.core.money import BPS_DENOMINATOR
 from app.core.politics import (
     RELATIONSHIP_DECAY_DENOMINATOR,
     RELATIONSHIP_DECAY_NUMERATOR,
     trunc_div_toward_zero,
 )
+from app.core.rng import derive_rng
 from app.simulation.constitution import constitution_digest
 from app.simulation.decisions import (
     BudgetDecision,
     DecisionSet,
     bloc_relationship_investment_digest,
     budget_decision_digest,
+)
+from app.simulation.government_survival import (
+    MAX_POLLING_UNCERTAINTY_SWING_BPS,
+    election_baseline_support_bps,
+    legislative_support_bps,
+    population_weighted_mean_bps,
 )
 from app.simulation.legislature import (
     CapitalExpenditureCategory,
@@ -132,7 +140,7 @@ def _structural_rows(
     return rows
 
 
-def reconcile_political_and_legislative_report(
+def reconcile_political_legislative_and_survival_report(
     *,
     opening_state: GameState,
     closing_state: GameState,
@@ -985,34 +993,163 @@ def reconcile_political_and_legislative_report(
                     f"opening_state spending_preference_bps={bloc.spending_preference_bps}"
                 )
 
-    # Group 24 (Phase 3C, new): the election report's pre-election facts -- the count and limit
-    # the election was actually evaluated against -- match the OPENING state, never a
-    # post-election value.
+    # Group 45 (plan §8, Gate 3C1's slice of the coup/unrest backstop): terminal-outcome
+    # non-retroactivity. `opening_state.politics.terminal_outcome` must be `None` on every turn
+    # reconciliation is asked to check at all -- the redundant, independently-checkable backstop
+    # for the guarantee `resolve_turn`'s own top-of-function refusal already promises (`errors.
+    # GameAlreadyConcludedError`), so a save whose history layer bypasses that guard (a
+    # hand-assembled entry, never produced by a real `resolve_turn` call) is still caught here.
+    if opening_politics.terminal_outcome is not None:
+        problems.append(
+            "opening_state politics.terminal_outcome is already set "
+            f"({opening_politics.terminal_outcome!r}); no further turn should ever have been "
+            "resolved against this state"
+        )
+
+    # Groups 35-40 (plan §8, Gate 3C1): the election report against real state, real seeded RNG,
+    # and (§4.4) the exact next_election_turn scheduling table -- never merely against the
+    # report's own self-validated story.
     election = report.election
     if election is not None:
-        if election.consecutive_terms_held != opening_politics.consecutive_terms_held:
+        term_limit = opening_politics.constitution.executive_term_limit_terms
+        term_limited = (
+            term_limit is not None and opening_politics.consecutive_terms_held >= term_limit
+        )
+
+        # Group 35: scheduling recompute -- `scheduled` vs the OPENING schedule, and
+        # `next_election_turn`'s new-or-unchanged value re-derived per §4.4's table (Gate 3C1's
+        # four reachable rows: WIN reschedules by the closing constitution's own interval; a
+        # LOSS/TERM_LIMIT_EXIT/non-scheduled turn leaves it frozen -- the two amendment-driven
+        # rows are Gate 3C3 scope, unreachable while no amendment mechanism exists).
+        expected_scheduled = opening_politics.next_election_turn == closing_state.turn
+        if election.scheduled != expected_scheduled:
             problems.append(
-                f"election.consecutive_terms_held={election.consecutive_terms_held} does not "
-                "match opening_state politics.consecutive_terms_held="
-                f"{opening_politics.consecutive_terms_held}"
+                f"election.scheduled={election.scheduled} does not match "
+                f"opening_state politics.next_election_turn == closing_state.turn "
+                f"({expected_scheduled})"
             )
-        opening_term_limit = opening_politics.constitution.executive_term_limit_terms
-        if election.executive_term_limit_terms != opening_term_limit:
+        if election.scheduled and not term_limited and election.result == "won":
+            interval = closing_politics.constitution.national_election_interval_turns
+            expected_next = (closing_state.turn + interval) if interval is not None else None
+        else:
+            expected_next = opening_politics.next_election_turn
+        if election.next_election_turn != expected_next:
             problems.append(
-                f"election.executive_term_limit_terms={election.executive_term_limit_terms} "
-                "does not match opening_state politics.constitution.executive_term_limit_terms="
-                f"{opening_term_limit}"
+                f"election.next_election_turn={election.next_election_turn} does not match the "
+                f"§4.4 scheduling rule's expected value ({expected_next})"
+            )
+        if closing_politics.next_election_turn != election.next_election_turn:
+            problems.append(
+                f"closing_state politics.next_election_turn={closing_politics.next_election_turn} "
+                f"does not match election.next_election_turn={election.next_election_turn}"
             )
 
-    # Group 25 (Phase 3C, new): the election report's closing facts -- next_election_turn, the
-    # post-result consecutive_terms_held, and terminal_outcome -- match the CLOSING state exactly,
-    # never merely a story the report is internally consistent with itself about.
-    if election is not None:
-        if election.next_election_turn != closing_politics.next_election_turn:
-            problems.append(
-                f"election.next_election_turn={election.next_election_turn} does not match "
-                f"closing_state politics.next_election_turn={closing_politics.next_election_turn}"
+        # Group 36: term-limit recompute -- `eligible_to_stand`/`result == "term_limit_exit"`
+        # against the OPENING `consecutive_terms_held`/`executive_term_limit_terms`, the values
+        # the check was actually run against, never a post-election value.
+        if election.scheduled:
+            if election.executive_term_limit_terms != term_limit:
+                problems.append(
+                    f"election.executive_term_limit_terms={election.executive_term_limit_terms} "
+                    f"does not match opening_state's executive_term_limit_terms={term_limit}"
+                )
+            if term_limited != (election.result == "term_limit_exit"):
+                problems.append(
+                    f"term_limited={term_limited} (opening consecutive_terms_held="
+                    f"{opening_politics.consecutive_terms_held} >= term_limit={term_limit}) does "
+                    f"not match election.result={election.result!r}"
+                )
+            if election.eligible_to_stand == term_limited:
+                problems.append(
+                    f"election.eligible_to_stand={election.eligible_to_stand} does not match "
+                    f"term_limited={term_limited}"
+                )
+
+        # Group 37: support-score recompute -- legislative/population/legitimacy contributions
+        # re-derived from CLOSING state (R7: nothing after slot 11 touches the legislature,
+        # population approval, or legitimacy, so closing_state's values are provably what slot 13
+        # actually read), matched field by field against the report -- never re-trusting the
+        # report's own arithmetic.
+        if election.scheduled and not term_limited:
+            closing_legislature = closing_politics.legislature
+            if closing_legislature is not None:
+                lower_chamber = next(
+                    (
+                        chamber_state
+                        for chamber_state in closing_legislature.chambers
+                        if chamber_state.chamber == LegislativeChamber.LOWER
+                    ),
+                    None,
+                )
+                lower_pairs = tuple(
+                    (seat_entry.seats, bloc.government_relationship_bps)
+                    for party in closing_legislature.parties
+                    for bloc in party.blocs
+                    for seat_entry in bloc.seats
+                    if seat_entry.chamber == LegislativeChamber.LOWER
+                )
+                expected_legislative_support = (
+                    legislative_support_bps(
+                        bloc_seats_and_relationships=lower_pairs,
+                        total_seats=lower_chamber.total_seats,
+                    )
+                    if lower_chamber is not None and lower_pairs
+                    else None
+                )
+            else:
+                expected_legislative_support = None
+            if election.legislative_support_contribution_bps != expected_legislative_support:
+                problems.append(
+                    "election.legislative_support_contribution_bps="
+                    f"{election.legislative_support_contribution_bps} does not match the "
+                    f"recomputed lower-chamber figure ({expected_legislative_support})"
+                )
+            expected_population_approval = population_weighted_mean_bps(
+                shares_and_metrics=tuple(
+                    (round(group.population_share * BPS_DENOMINATOR), group.approval)
+                    for group in closing_player.population_groups
+                )
             )
+            if election.population_approval_contribution_bps != expected_population_approval:
+                problems.append(
+                    "election.population_approval_contribution_bps="
+                    f"{election.population_approval_contribution_bps} does not match the "
+                    f"recomputed figure ({expected_population_approval})"
+                )
+            if election.legitimacy_contribution_bps != closing_politics.legitimacy_bps:
+                problems.append(
+                    f"election.legitimacy_contribution_bps={election.legitimacy_contribution_bps} "
+                    f"does not match closing_state politics.legitimacy_bps="
+                    f"{closing_politics.legitimacy_bps}"
+                )
+            expected_assessment = election_baseline_support_bps(
+                legislative_support_bps=election.legislative_support_contribution_bps,
+                population_approval_bps=election.population_approval_contribution_bps,
+                legitimacy_bps=election.legitimacy_contribution_bps,
+            )
+            if election.baseline_support_bps != expected_assessment.baseline_support_bps:
+                problems.append(
+                    f"election.baseline_support_bps={election.baseline_support_bps} does not "
+                    f"match the recomputed figure ({expected_assessment.baseline_support_bps})"
+                )
+
+            # Group 38: RNG-draw recompute -- the SAME seeded stream slot 13 actually drew from,
+            # redrawn independently and compared to the stored swing (only ever drawn on a real,
+            # non-term-limited election evaluation).
+            expected_swing = derive_rng(opening_state.seed, opening_state.turn, "election").randint(
+                -MAX_POLLING_UNCERTAINTY_SWING_BPS, MAX_POLLING_UNCERTAINTY_SWING_BPS
+            )
+            if election.polling_uncertainty_bps != expected_swing:
+                problems.append(
+                    f"election.polling_uncertainty_bps={election.polling_uncertainty_bps} does "
+                    f"not match the redrawn derive_rng(seed, turn, 'election') swing "
+                    f"({expected_swing})"
+                )
+
+        # Group 39: result vs closing state -- `result == "won"` implies the incumbent's term
+        # count actually incremented and (Gate 3C1: liberalization does not exist yet) no
+        # terminal_outcome was set; `result in ("lost", "term_limit_exit")` implies the closing
+        # state's terminal_outcome matches exactly.
         expected_terms_held = (
             opening_politics.consecutive_terms_held + 1
             if election.result == "won"
@@ -1061,21 +1198,70 @@ def reconcile_political_and_legislative_report(
                 f"closing_state carries a terminal_outcome={closing_politics.terminal_outcome!r}"
             )
 
-    # Group 26 (Phase 3C, new): an election turn that was NOT scheduled must leave
-    # consecutive_terms_held, next_election_turn and terminal_outcome exactly as they opened --
-    # a no-op election evaluation must be a genuine no-op, proved state-to-state.
+        # Group 40: `election.parties` vs `closing_state.politics.legislature`, by `party_id`
+        # identity -- exact seats/total_seats match, read from state DIRECTLY, never through
+        # `LegislativeReport` (a bug an earlier draft's design would have introduced, since a
+        # decree/no-proposal turn's `LegislativeReport` carries no chamber/bloc rows at all).
+        if election.parties:
+            closing_legislature = closing_politics.legislature
+            assert closing_legislature is not None, (
+                "election.parties is non-empty, which self-validation already requires a "
+                "legislature to exist for"
+            )
+            lower_chamber = next(
+                (
+                    chamber_state
+                    for chamber_state in closing_legislature.chambers
+                    if chamber_state.chamber == LegislativeChamber.LOWER
+                ),
+                None,
+            )
+            expected_total_seats = lower_chamber.total_seats if lower_chamber is not None else 0
+            expected_seats_by_party = {
+                party.id: sum(
+                    seat_entry.seats
+                    for bloc in party.blocs
+                    for seat_entry in bloc.seats
+                    if seat_entry.chamber == LegislativeChamber.LOWER
+                )
+                for party in closing_legislature.parties
+            }
+            report_party_ids = {party_row.party_id for party_row in election.parties}
+            for party_row in election.parties:
+                if party_row.total_seats != expected_total_seats:
+                    problems.append(
+                        f"election.parties[{party_row.party_id!r}].total_seats="
+                        f"{party_row.total_seats} does not match closing_state's lower-chamber "
+                        f"total_seats ({expected_total_seats})"
+                    )
+                expected_seats = expected_seats_by_party.get(party_row.party_id)
+                if expected_seats is None:
+                    problems.append(
+                        f"election.parties names {party_row.party_id!r}, which closing_state's "
+                        "legislature does not contain"
+                    )
+                elif party_row.seats != expected_seats:
+                    problems.append(
+                        f"election.parties[{party_row.party_id!r}].seats={party_row.seats} does "
+                        f"not match closing_state's lower-chamber seats ({expected_seats})"
+                    )
+            for party_id in expected_seats_by_party:
+                if party_id not in report_party_ids:
+                    problems.append(
+                        f"election.parties is missing a row for {party_id!r}, which "
+                        "closing_state's legislature holds lower-chamber seats for"
+                    )
+
+    # An election turn that was NOT scheduled must leave consecutive_terms_held and
+    # terminal_outcome exactly as they opened (next_election_turn's own staticness is already
+    # proved by group 35 above) -- a no-op election evaluation must be a genuine no-op, proved
+    # state-to-state.
     if election is not None and not election.scheduled:
         if closing_politics.consecutive_terms_held != opening_politics.consecutive_terms_held:
             problems.append(
                 "election.scheduled=False but closing_state politics.consecutive_terms_held="
                 f"{closing_politics.consecutive_terms_held} differs from opening_state's "
                 f"{opening_politics.consecutive_terms_held}"
-            )
-        if closing_politics.next_election_turn != opening_politics.next_election_turn:
-            problems.append(
-                "election.scheduled=False but closing_state politics.next_election_turn="
-                f"{closing_politics.next_election_turn} differs from opening_state's "
-                f"{opening_politics.next_election_turn}"
             )
         if closing_politics.terminal_outcome != opening_politics.terminal_outcome:
             problems.append(
