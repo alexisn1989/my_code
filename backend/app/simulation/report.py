@@ -2266,10 +2266,10 @@ class CapitalExpenditureReport(BaseModel):
     detail fields it would never use.
 
     R8, stated precisely: the total-spending identity `PoliticalCapitalReport` enforces is
-    extensible to any future category. This *row* is not — it addresses a legislative bloc by
-    `(party_id, bloc_id)` and nothing else. A future expenditure with a different kind of target
-    (a character, a population group, a constitutional axis) needs a tagged target model or a
-    report-schema extension, tracked as POL-4, not claimed as free here.
+    extensible to any future category. This row addresses either a legislative bloc or no target.
+    Constitutional amendments deliberately use both forms: bloc-targeted legislative influence
+    and the untargeted flat decree cost. A future expenditure with a different target vocabulary
+    (a character or population group) still needs a tagged target model or schema extension.
     """
 
     model_config = _STRICT_CONFIG
@@ -2279,11 +2279,10 @@ class CapitalExpenditureReport(BaseModel):
     bloc_id: str | None
     political_capital: StrictPoliticalCapitalCommitment
     decision_digest: str
-    """The digest of the decision that produced this row — `budget_decision_digest` for
-    `LEGISLATIVE_INFLUENCE`/`DECREE` rows, `bloc_relationship_investment_digest` for
-    `BLOC_RELATIONSHIP_INVESTMENT` rows. Only its *syntax* is checked here (the two-code-paths
-    rule, mirroring `LegislativeReport.budget_decision_digest`); semantic correctness against the
-    real submitted `DecisionSet` is `simulation.reconciliation`'s job (groups 19/21)."""
+    """The digest of the decision that produced this row — `budget_decision_digest`,
+    `bloc_relationship_investment_digest`, or `constitutional_amendment_decision_digest` according
+    to category. Only syntax is checked here; reconciliation proves semantic correctness against
+    the real submitted `DecisionSet` (including amendment group 43)."""
 
     @model_validator(mode="after")
     def _decision_digest_is_a_well_formed_hex_digest(self) -> CapitalExpenditureReport:
@@ -2296,14 +2295,23 @@ class CapitalExpenditureReport(BaseModel):
 
     @model_validator(mode="after")
     def _target_identity_matches_category_shape(self) -> CapitalExpenditureReport:
-        """A decree is an act of the executive with no bloc on the other side of it; every other
-        category names the bloc whose support or relationship was bought. The cross-row half of
-        this rule — that at most one `DECREE` row exists at all — is
+        """A budget decree is untargeted; ordinary categories target one bloc. Constitutional
+        amendments permit either shape because legislative influence targets blocs while the flat
+        amendment-decree cost does not. The cross-row half of the decree rule is
         `PoliticalCapitalReport._at_most_one_decree_expenditure_row`'s job; a single row cannot
         see its siblings."""
         is_decree = self.category is CapitalExpenditureCategory.DECREE
-        has_target = self.party_id is not None or self.bloc_id is not None
-        if is_decree and has_target:
+        is_amendment = self.category is CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT
+        has_either_target = self.party_id is not None or self.bloc_id is not None
+        has_both_targets = self.party_id is not None and self.bloc_id is not None
+        if is_amendment:
+            if has_either_target and not has_both_targets:
+                raise ValueError(
+                    "category=CONSTITUTIONAL_AMENDMENT must carry either both party_id/bloc_id "
+                    f"or neither, got ({self.party_id!r}, {self.bloc_id!r})"
+                )
+            return self
+        if is_decree and has_either_target:
             raise ValueError(
                 f"category=DECREE must carry no party_id/bloc_id target, got "
                 f"({self.party_id!r}, {self.bloc_id!r})"

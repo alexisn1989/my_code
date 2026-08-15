@@ -69,6 +69,7 @@ def test_capital_expenditure_category_values_and_declaration_order_are_stable() 
     members changes every entry hash in every save that carries a ledger."""
     assert [category.value for category in CapitalExpenditureCategory] == [
         "bloc_relationship_investment",
+        "constitutional_amendment",
         "decree",
         "legislative_influence",
     ]
@@ -83,13 +84,15 @@ def test_capital_expenditure_category_values_are_alphabetical() -> None:
     assert values == sorted(values)
 
 
-def test_only_one_category_is_untargeted() -> None:
-    """A decree is an act of the executive with no bloc on the other side of it; every other
-    category names the bloc whose support or relationship was bought. `report`'s target-shape
-    validator encodes exactly this split, and it is pinned here so the two cannot drift."""
+def test_only_the_amendment_category_allows_either_target_shape() -> None:
+    """An amendment can spend capital on bloc influence or as one untargeted decree cost."""
     assert CapitalExpenditureCategory.DECREE.value == "decree"
-    targeted = set(CapitalExpenditureCategory) - {CapitalExpenditureCategory.DECREE}
+    targeted = {
+        CapitalExpenditureCategory.BLOC_RELATIONSHIP_INVESTMENT,
+        CapitalExpenditureCategory.LEGISLATIVE_INFLUENCE,
+    }
     assert {category.value for category in targeted} == {
         "bloc_relationship_investment",
         "legislative_influence",
     }
+    assert CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT not in targeted

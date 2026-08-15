@@ -102,6 +102,18 @@ class LegislativeOutcome(StrEnum):
     ENACTED_BY_DECREE = "enacted_by_decree"
 
 
+class AmendmentThreshold(StrEnum):
+    """Procedural vote threshold for a constitutional amendment.
+
+    The phase boundary maps the constitution's authored amendment difficulty onto this
+    same-valued legislative enum before asking the neutral voting module for a seat threshold.
+    """
+
+    SIMPLE_MAJORITY = "simple_majority"
+    SUPERMAJORITY = "supermajority"
+    ENTRENCHED = "entrenched"
+
+
 class CapitalExpenditureCategory(StrEnum):
     """What a committed unit of political capital was spent *on*, for the expenditure ledger
     (Phase 3B2A).
@@ -119,13 +131,13 @@ class CapitalExpenditureCategory(StrEnum):
     **How far this scales, stated precisely.** Adding another *bloc-targeted* expenditure — whipping
     a bloc on a non-budget proposal, say — costs exactly one new member here and nothing else. A
     future expenditure with a *different kind of target* (appointing a character, an untargeted
-    national campaign, repression aimed at a population group, a constitutional-reform push aimed at
-    an axis) does **not** fit that way: `report.CapitalExpenditureReport` addresses a legislative
-    bloc by `(party_id, bloc_id)` and nothing else, so those need a tagged target model or a report
-    schema extension. That work is deliberately not done now — a union of one target kind is not a
-    union — and is tracked as POL-4.
+    national campaign, or repression aimed at a population group) does **not** fit that way.
+    Constitutional amendments are the one dual-shape exception: legislative influence rows target
+    blocs, while the flat decree cost is untargeted; the amendment report cross-validates which
+    shape the selected route permits.
     """
 
     BLOC_RELATIONSHIP_INVESTMENT = "bloc_relationship_investment"
+    CONSTITUTIONAL_AMENDMENT = "constitutional_amendment"
     DECREE = "decree"
     LEGISLATIVE_INFLUENCE = "legislative_influence"

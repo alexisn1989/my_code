@@ -6,7 +6,7 @@ placeholder. From Phase 2A through 3B1 it was the *only* kind, so
 `DecisionSet.decisions` was a homogeneous `tuple[BudgetDecision, ...]` rather
 than a discriminated union: a `Union` of one member is not a union.
 
-**Phase 3B2A is that second kind.** `BlocRelationshipInvestmentDecision` gives
+**Phase 3B2A added that second kind.** `BlocRelationshipInvestmentDecision` gives
 political capital a sink that competes with legislative influence and decrees,
 and `Decision` is now the tagged union this docstring anticipated. `"budget"`
 keeps its serialised tag value, so no already-written payload changes shape.
@@ -35,6 +35,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.core.canonical_json import canonical_digest
 from app.core.money import StrictBps, StrictMoney
 from app.core.politics import StrictRelationshipInvestment
+from app.simulation.constitution import (
+    DecreeAuthority,
+    ExecutiveSelection,
+    ExecutiveSystem,
+    StrictTermCount,
+    StrictTurnInterval,
+)
 from app.simulation.legislature import ProposalRoute
 from app.simulation.state import SpendingCategory
 
@@ -70,6 +77,61 @@ class InfluenceAllocation(BaseModel):
     party_id: _StrictNonemptyId
     bloc_id: _StrictNonemptyId
     political_capital: Annotated[int, Field(strict=True, gt=0)]
+
+
+class DecreeAuthorityTarget(BaseModel):
+    """Replace the constitution's decree-authority axis."""
+
+    model_config = _STRICT_CONFIG
+
+    axis: Literal["decree_authority"] = "decree_authority"
+    value: DecreeAuthority
+
+
+class ExecutiveSystemTarget(BaseModel):
+    """Replace the constitution's executive-system axis."""
+
+    model_config = _STRICT_CONFIG
+
+    axis: Literal["executive_system"] = "executive_system"
+    value: ExecutiveSystem
+
+
+class ExecutiveSelectionTarget(BaseModel):
+    """Replace the constitution's executive-selection axis."""
+
+    model_config = _STRICT_CONFIG
+
+    axis: Literal["executive_selection"] = "executive_selection"
+    value: ExecutiveSelection
+
+
+class ElectionIntervalTarget(BaseModel):
+    """Replace or abolish the scheduled national-election interval."""
+
+    model_config = _STRICT_CONFIG
+
+    axis: Literal["national_election_interval_turns"] = "national_election_interval_turns"
+    value: StrictTurnInterval | None
+
+
+class TermLimitTarget(BaseModel):
+    """Replace or abolish the executive term limit."""
+
+    model_config = _STRICT_CONFIG
+
+    axis: Literal["executive_term_limit_terms"] = "executive_term_limit_terms"
+    value: StrictTermCount | None
+
+
+ConstitutionalAxisTarget: TypeAlias = Annotated[
+    DecreeAuthorityTarget
+    | ExecutiveSystemTarget
+    | ExecutiveSelectionTarget
+    | ElectionIntervalTarget
+    | TermLimitTarget,
+    Field(discriminator="axis"),
+]
 
 
 class BudgetDecision(BaseModel):
@@ -172,6 +234,68 @@ class BudgetDecision(BaseModel):
         return self
 
 
+class ConstitutionalAmendmentDecision(BaseModel):
+    """Propose one atomic amendment across one or more constitutional axes (Phase 3C).
+
+    This model validates only state-independent shape. Whether the selected route is legal,
+    whether every target changes the opening constitution, whether the final combination remains
+    coherent under C1-C10, and whether the political-capital commitment is affordable are all
+    resolution-time checks in slot 1.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    kind: Literal["constitutional_amendment"] = "constitutional_amendment"
+    targets: tuple[ConstitutionalAxisTarget, ...] = Field(min_length=1)
+    route: ProposalRoute = ProposalRoute.LEGISLATIVE
+    influence: tuple[InfluenceAllocation, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def _targets_are_in_canonical_axis_order(self) -> ConstitutionalAmendmentDecision:
+        axes = [target.axis for target in self.targets]
+        if axes != sorted(axes):
+            raise ValueError(f"targets must be sorted ascending by axis name, got {axes!r}")
+        return self
+
+    @model_validator(mode="after")
+    def _no_duplicate_axes(self) -> ConstitutionalAmendmentDecision:
+        axes = [target.axis for target in self.targets]
+        if len(axes) != len(set(axes)):
+            duplicates = sorted({axis for axis in axes if axes.count(axis) > 1})
+            raise ValueError(f"targets cannot name the same axis twice: {duplicates}")
+        return self
+
+    @model_validator(mode="after")
+    def _influence_is_in_canonical_identity_order(
+        self,
+    ) -> ConstitutionalAmendmentDecision:
+        targets = [(allocation.party_id, allocation.bloc_id) for allocation in self.influence]
+        if targets != sorted(targets):
+            raise ValueError(
+                f"influence must be sorted ascending by (party_id, bloc_id), got {targets!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _reject_duplicate_influence_targets(self) -> ConstitutionalAmendmentDecision:
+        targets = [(allocation.party_id, allocation.bloc_id) for allocation in self.influence]
+        if len(targets) != len(set(targets)):
+            duplicates = sorted({target for target in targets if targets.count(target) > 1})
+            raise ValueError(
+                f"influence cannot target the same (party_id, bloc_id) twice: {duplicates}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _decree_route_takes_no_influence(self) -> ConstitutionalAmendmentDecision:
+        if self.route is ProposalRoute.DECREE and self.influence:
+            raise ValueError(
+                "a decree route takes no influence allocations; a decree is not voted on, so "
+                "there is nobody to whip"
+            )
+        return self
+
+
 class BlocInvestment(BaseModel):
     """Political capital committed to *improving* one bloc's relationship (Phase 3B2A).
 
@@ -239,11 +363,12 @@ class BlocRelationshipInvestmentDecision(BaseModel):
 
 
 Decision: TypeAlias = Annotated[
-    BudgetDecision | BlocRelationshipInvestmentDecision, Field(discriminator="kind")
+    BudgetDecision | BlocRelationshipInvestmentDecision | ConstitutionalAmendmentDecision,
+    Field(discriminator="kind"),
 ]
 """The tagged decision union this module's header anticipated (Phase 3B2A).
 
-Discriminated by the explicit `kind` tag, never by shape. The two members do not structurally
+Discriminated by the explicit `kind` tag, never by shape. The members do not structurally
 overlap — `BudgetDecision` has no `investments`, the investment decision has no rate or spending
 fields, and both are `extra="forbid"` — but tag discrimination means that stays true even if a
 future member does overlap, and it produces an actionable `union_tag_invalid` for an unknown kind
@@ -288,6 +413,13 @@ class DecisionSet(BaseModel):
             None,
         )
 
+    def constitutional_amendment_decision(self) -> ConstitutionalAmendmentDecision | None:
+        """The submitted constitutional-amendment decision, or `None`."""
+        return next(
+            (d for d in self.decisions if isinstance(d, ConstitutionalAmendmentDecision)),
+            None,
+        )
+
     @model_validator(mode="after")
     def _at_most_one_budget_decision(self) -> DecisionSet:
         """(Phase 3B2A) Counts budget-kind members, not tuple length.
@@ -318,8 +450,34 @@ class DecisionSet(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _at_most_one_constitutional_amendment_decision(self) -> DecisionSet:
+        amendments = sum(
+            1 for d in self.decisions if isinstance(d, ConstitutionalAmendmentDecision)
+        )
+        if amendments > 1:
+            raise ValueError(
+                "at most one constitutional-amendment decision may appear in a DecisionSet, "
+                f"got {amendments}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _at_most_one_policy_proposal(self) -> DecisionSet:
+        proposals = sum(
+            1
+            for decision in self.decisions
+            if isinstance(decision, (BudgetDecision, ConstitutionalAmendmentDecision))
+        )
+        if proposals > 1:
+            raise ValueError(
+                "at most one policy proposal (budget or constitutional amendment) may appear "
+                f"in a DecisionSet, got {proposals}"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _decisions_are_in_canonical_kind_order(self) -> DecisionSet:
-        """With two kinds, tuple order becomes free information — and this tuple is serialised into
+        """With multiple kinds, tuple order becomes free information — and this tuple is serialised into
         `decisions_json` and hash-covered. Two semantically identical decision sets listed in
         different orders would otherwise digest differently and produce different `entry_hash`es,
         which is exactly the kind of difference the hash chain is supposed to be able to ignore.
@@ -363,4 +521,9 @@ def bloc_relationship_investment_digest(decision: BlocRelationshipInvestmentDeci
     recomputes it and compares (group 21). The report never computes its own provenance — that is
     the two-code-paths rule, and a report that vouched for itself would prove nothing.
     """
+    return canonical_digest(decision.model_dump(mode="json"))
+
+
+def constitutional_amendment_decision_digest(decision: ConstitutionalAmendmentDecision) -> str:
+    """A deterministic fingerprint over every field of a constitutional amendment decision."""
     return canonical_digest(decision.model_dump(mode="json"))
