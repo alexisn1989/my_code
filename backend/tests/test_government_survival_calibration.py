@@ -191,3 +191,38 @@ class TestDecreeStateNeverSchedulesAnElection:
         assert politics.consecutive_terms_held == 1, (
             "unchanged from genesis -- nothing can increment it without a scheduled election"
         )
+
+
+class TestAStartingDemocracyCannotWinLiberalizationVictory:
+    """The mandate's own explicit stop condition: `tiny_valid` already ships competitive-elected
+    at genesis (parliamentary/legislative_selection), so it never has a qualifying
+    noncompetitive-to-competitive TRANSITION to record. Gate 3C1 has no constitutional-amendment
+    mechanism at all yet (`pending_liberalization` is set only by a `ConstitutionalAmendmentDecision`,
+    Gate 3C3), so this holds structurally and trivially in this gate -- but it is asserted
+    directly, turn by turn through a real, natural win-then-term-limit-exit trajectory, rather
+    than left to be merely implied by the absence of the mechanism."""
+
+    def test_every_election_through_the_real_trajectory_has_no_pending_liberalization(
+        self,
+    ) -> None:
+        save = _run("tiny_valid.yaml", 32)
+        for entry in save.entries[1:]:
+            report = entry.report()
+            assert report is not None
+            election = report.election
+            assert election is not None
+            assert not election.liberalization_completed
+        for entry in save.entries:
+            state = entry.state()
+            politics = state.world.countries["arken"].politics
+            assert politics is not None
+            assert politics.pending_liberalization is None
+
+        final_politics = save.current_state().world.countries["arken"].politics
+        assert final_politics is not None
+        assert final_politics.terminal_outcome is not None
+        assert final_politics.terminal_outcome.bucket.value == "defeat", (
+            "a starting democracy running out its term limit is a DEFEAT (term_limit_exit), "
+            "never a VICTORY -- winning re-election is not the same thing as completing a "
+            "liberalization that never began"
+        )
