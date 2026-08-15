@@ -287,3 +287,159 @@ class TestAStartingDemocracyCannotWinLiberalizationVictory:
             "never a VICTORY -- winning re-election is not the same thing as completing a "
             "liberalization that never began"
         )
+
+
+# --- Phase 3C, Gate 3C2: coup/unrest/impeachment calibration ------------------------------------
+
+
+class TestDecreeStateSeedZeroToNineteenSweepProvesStabilityUnderAddedRisk:
+    """The SAME declared seed range 0-19 the election sweep above uses, now driving `decree_state`
+    (the one scenario with no scheduled election at all -- §11's own choice of which scenario can
+    host a genuine, unmodified 100-turn nonterminal run) through a full 100 turns each, with the
+    coup/unrest/impeachment channels now live for the first time. Every seed was actually run
+    through the real engine (a small verification script, not part of the repository): none
+    terminate early, confirming Gate 3C2's added background risk does not break the non-
+    termination property Gate 3C1 established -- re-verified, not merely assumed unchanged."""
+
+    _SEED_RANGE = range(20)
+
+    def test_no_seed_in_the_declared_range_terminates_within_100_turns(self) -> None:
+        for seed in self._SEED_RANGE:
+            save = _run("decree_state.yaml", 100, seed=seed)
+            politics = save.current_state().world.countries["valdrun"].politics
+            assert politics is not None
+            assert politics.terminal_outcome is None, seed
+            assert save.current_turn() == 100, seed
+
+    def test_no_channel_ever_succeeds_across_any_seed_in_the_declared_range(self) -> None:
+        """`decree_state`'s calibrated background risk (coup 52bps, unrest 15bps attempt;
+        impeachment ineligible at genesis, hereditary selection) genuinely produces occasional
+        low-probability ATTEMPTS over a 100-turn x 20-seed sweep (2,000 independent draws each on
+        the coup/unrest RNG streams; impeachment is skipped entirely, ineligible) -- an attempt is
+        expected background noise at these odds, not itself a finding. What must never happen is
+        a SUCCESS, since that would silently terminate the game this sweep is asserting stays
+        alive for the full 100 turns."""
+        for seed in self._SEED_RANGE:
+            save = _run("decree_state.yaml", 100, seed=seed)
+            for entry in save.entries[1:]:
+                report = entry.report()
+                assert report is not None and report.coup_unrest is not None
+                coup_unrest = report.coup_unrest
+                assert not coup_unrest.coup.succeeded, (seed, entry.turn)
+                assert not coup_unrest.popular_unrest.succeeded, (seed, entry.turn)
+                assert not coup_unrest.impeachment.eligible, (seed, entry.turn)
+
+
+def _run_until_concluded(scenario: str, max_turns: int, *, seed: int):  # type: ignore[no-untyped-def]
+    """Like `_run`, but stops cleanly the moment the game concludes (the same "stop, don't crash"
+    discipline `_cmd_resolve`'s own mid-batch-conclusion handling uses, R10) rather than assuming
+    every seed survives to `max_turns` -- `tiny_valid`'s own turn-16 election can conclude the
+    game immediately via ELECTORAL_DEFEAT on 8 of the declared 20 seeds (already established by
+    `TestTinyValidSeedZeroToNineteenSweepProvesTheElectionIsGenuinelyContested` above), never
+    reaching a term-limit-exit at all."""
+    state = load_scenario_file(SCENARIO_DIR / scenario)
+    state = state.model_copy(update={"seed": seed})
+    save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+    for _ in range(max_turns):
+        current = save.current_state()
+        try:
+            save = advance_game(save, _empty_decisions(current))
+        except GameAlreadyConcludedError:
+            break
+    return save
+
+
+class TestTinyValidAndDeficitDemoSurviveToTheirRealScheduledConclusionUnchanged:
+    """(R9/mandate requirement: "Gate 3C1 election behavior remaining byte-identical where
+    survival does not terminate first") `tiny_valid` (WON turn 16 -> term-limit-exit at turn 32,
+    or LOST turn 16 -> immediate electoral_defeat) and `deficit_demo` (its own real turn-20/40
+    election horizon) both reach their Gate-3C1-established conclusion via the ELECTION channel
+    alone, across the same declared seed 0-19 range -- neither scenario's coup/unrest/impeachment
+    background risk (1bps/turn for both, per §11) is high enough to plausibly preempt these short
+    horizons, and this is verified directly rather than assumed: every seed's real removal_reason
+    is checked, not merely that SOME termination occurred."""
+
+    _SEED_RANGE = range(20)
+
+    def test_tiny_valid_seed_sweep_still_concludes_by_election_alone(self) -> None:
+        for seed in self._SEED_RANGE:
+            save = _run_until_concluded("tiny_valid.yaml", 32, seed=seed)
+            politics = save.current_state().world.countries["arken"].politics
+            assert politics is not None
+            assert politics.terminal_outcome is not None, seed
+            assert politics.terminal_outcome.removal_reason is not None
+            assert politics.terminal_outcome.removal_reason.value in (
+                "term_limit_exit",
+                "electoral_defeat",
+            ), (seed, politics.terminal_outcome.removal_reason)
+            # Never a coup/unrest/impeachment reason -- confirms the added Gate 3C2 channels
+            # stayed silent across this scenario's entire real horizon at every declared seed.
+            assert politics.terminal_outcome.removal_reason.value not in (
+                "coup",
+                "forced_abdication",
+                "assassination",
+                "impeachment",
+            ), seed
+
+    def test_deficit_demo_seed_sweep_still_concludes_by_election_alone(self) -> None:
+        for seed in self._SEED_RANGE:
+            save = _run_until_concluded("deficit_demo.yaml", 40, seed=seed)
+            politics = save.current_state().world.countries["strapped"].politics
+            assert politics is not None
+            assert politics.terminal_outcome is not None, seed
+            assert politics.terminal_outcome.removal_reason is not None
+            assert politics.terminal_outcome.removal_reason.value == "electoral_defeat", (
+                seed,
+                politics.terminal_outcome.removal_reason,
+            )
+
+
+class TestLowLoyaltyCoupSucceedsAgainstTheRealEngine:
+    """§11's own deliberately-low-loyalty test case, driven to an actual coup SUCCESS (not merely
+    the attempt-risk figure, already pinned as a pure-formula literal in
+    `test_government_survival.py`): `tiny_valid`'s military edited to `loyalty_bps=2000` at
+    genesis (everything else unchanged), then resolved turn by turn against the real engine at a
+    declared seed until the coup succeeds -- seed 40, turn 5 (found by a declared, bounded search
+    over the first 60 seeds x 32 turns each, the same "reachable, not cherry-picked" discipline
+    the election sweep above uses). Confirms this is a real, checkable removal, not merely a risk
+    number, and that the closing state faithfully records it."""
+
+    def test_seed_40_turn_5_coup_succeeds_with_the_exact_computed_risk_figures(self) -> None:
+        state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+        player = state.world.countries[state.world.player_country_id]
+        institutions = list(player.institutions)
+        for index, institution_row in enumerate(institutions):
+            if institution_row.id == "military":
+                institutions[index] = institution_row.model_copy(update={"loyalty": 2_000})
+        player.institutions = institutions
+        state = state.model_copy(update={"seed": 40})
+        save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+
+        for _ in range(5):
+            current = save.current_state()
+            save = advance_game(save, _empty_decisions(current))
+
+        assert save.current_turn() == 5
+        report = save.entries[-1].report()
+        assert report is not None and report.coup_unrest is not None
+        coup = report.coup_unrest.coup
+        assert coup.attempt_risk_bps == 623
+        assert coup.attempted is True
+        assert coup.succeeded is True
+        assert report.coup_unrest.removal_triggered is not None
+        assert report.coup_unrest.removal_triggered.value == "coup"
+
+        politics = save.current_state().world.countries["arken"].politics
+        assert politics is not None
+        assert politics.terminal_outcome is not None
+        assert politics.terminal_outcome.bucket.value == "defeat"
+        assert politics.terminal_outcome.removal_reason is not None
+        assert politics.terminal_outcome.removal_reason.value == "coup"
+        assert politics.terminal_outcome.turn == 5
+
+        try:
+            advance_game(save, _empty_decisions(save.current_state()))
+        except GameAlreadyConcludedError:
+            pass
+        else:
+            raise AssertionError("a concluded game must refuse any further resolution")
