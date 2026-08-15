@@ -135,6 +135,17 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "reason": "term_limit_exit",
         "turn": 32,
     },
+    "coup_risk_assessed": {
+        "coup_attempt_risk_bps": 38,
+        "unrest_attempt_risk_bps": 15,
+        "impeachment_eligible": True,
+        "impeachment_attempt_risk_bps": 0,
+    },
+    "coup_attempt_occurred": {"attempt_risk_bps": 38},
+    "coup_succeeded": {"success_probability_bps": 300},
+    "popular_unrest_occurred": {"outcome": "contained"},
+    "impeachment_motion_brought": {"attempt_risk_bps": 200},
+    "impeachment_succeeded": {"success_probability_bps": 700},
 }
 
 

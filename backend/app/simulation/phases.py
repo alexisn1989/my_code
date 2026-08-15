@@ -46,7 +46,14 @@ from app.simulation.accounting import (
     resolve_cash_and_debt,
 )
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
-from app.simulation.constitution import ConstitutionState, DecreeAuthority, constitution_digest
+from app.simulation.constitution import (
+    ConstitutionState,
+    DecreeAuthority,
+    ExecutiveSelection,
+    JudicialReview,
+    Legislature,
+    constitution_digest,
+)
 from app.simulation.decisions import (
     BudgetDecision,
     DecisionSet,
@@ -54,12 +61,21 @@ from app.simulation.decisions import (
     budget_decision_digest,
 )
 from app.simulation.government_survival import (
+    ASSASSINATION_SEVERITY_THRESHOLD_BPS,
     MAX_POLLING_UNCERTAINTY_SWING_BPS,
     REQUIRED_ELECTION_SUPPORT_BPS,
+    coup_attempt_risk_bps,
+    coup_success_probability_bps,
     election_baseline_support_bps,
     final_election_support_bps,
+    impeachment_attempt_risk_bps,
+    impeachment_success_probability_bps,
     legislative_support_bps,
     population_weighted_mean_bps,
+    resolve_transition_pressure_bps,
+    transition_pressure_added_bps,
+    unrest_attempt_risk_bps,
+    unrest_success_probability_bps,
 )
 from app.simulation.labor_allocation import (
     aggregate_labor_market,
@@ -77,6 +93,7 @@ from app.simulation.legislative_voting import (
 )
 from app.simulation.legislature import (
     CapitalExpenditureCategory,
+    GovernmentRole,
     LegislativeChamber,
     LegislativeOutcome,
     ProposalRoute,
@@ -106,9 +123,12 @@ from app.simulation.report import (
     ChamberVoteReport,
     ChangeDirection,
     ConstitutionSummary,
+    CoupChannelReport,
+    CoupUnrestReport,
     EconomicBaselineReport,
     ElectionReport,
     FinanceReport,
+    ImpeachmentChannelReport,
     LaborMarketReport,
     LegislativeReport,
     PartyElectionStanceReport,
@@ -116,6 +136,7 @@ from app.simulation.report import (
     PoliticalCapitalReport,
     PoliticalRelationshipReport,
     PoliticalReport,
+    PopularUnrestChannelReport,
     ProductionReport,
     ResourceDepositReport,
     ResourceExtractionReport,
@@ -354,6 +375,11 @@ class PhaseContext:
     this onto the final `TurnReport`. Unlike the legislative/capital/relationship reports, this one
     has no separate scratch object -- slot 13 both resolves the election and builds its own report
     in one function, since nothing later in the same turn needs the intermediate values."""
+    coup_unrest_report: CoupUnrestReport | None = None
+    """Set directly by `_evaluate_unrest_and_coup_risk` (slot 12, Phase 3C Gate 3C2); `resolver.py`
+    copies this onto the final `TurnReport`. No separate scratch object, for the same reason as
+    `election_report` -- slot 12 both resolves the three channels and builds its own report in one
+    function."""
     finance: FinanceScratch | None = None
     """Set by `apply_legal_and_administrative_changes`; read by the two phases after it."""
     finance_report: FinanceReport | None = None
@@ -1781,6 +1807,315 @@ def _apply_bloc_relationship_investments(ctx: PhaseContext) -> None:
     ctx.mark_implemented()
 
 
+def _opposition_seat_share_bps(legislature: LegislatureState | None) -> int | None:
+    """The share of LOWER-chamber seats held by OPPOSITION-role parties alone -- excludes
+    `CONFIDENCE_AND_SUPPLY` blocs, which are not the coup/impeachment formulas' notion of a
+    genuinely hostile bloc. `None` when no legislature exists at all, the same "nothing to read"
+    treatment `election_baseline_support_bps` gives a missing legislature."""
+    if legislature is None:
+        return None
+    lower_chamber = next(
+        chamber_state
+        for chamber_state in legislature.chambers
+        if chamber_state.chamber == LegislativeChamber.LOWER
+    )
+    opposition_seats = sum(
+        seat_entry.seats
+        for party in legislature.parties
+        if party.government_role == GovernmentRole.OPPOSITION
+        for bloc in party.blocs
+        for seat_entry in bloc.seats
+        if seat_entry.chamber == LegislativeChamber.LOWER
+    )
+    return trunc_div_toward_zero(opposition_seats * BPS_DENOMINATOR, lower_chamber.total_seats)
+
+
+def _evaluate_unrest_and_coup_risk(ctx: PhaseContext) -> None:  # noqa: C901
+    """Phase 3C, Gate 3C2, slot 12 (`evaluate_protests_strikes_insurgency_coups_revolutions`):
+    resolve this turn's coup, popular-unrest, and impeachment risk (§3.1-3.3/§4.1).
+
+    Runs after slots 10/11 (legitimacy, capital, relationship investment/decay) have already
+    mutated `ctx.state` this same turn -- every risk assessment reads the CURRENT (post-slot-11)
+    legitimacy and legislature, per the same R7 ordering rule `_evaluate_elections` documents.
+    `InstitutionState`/`PopulationGroupState` are untouched by every slot before this one, so
+    reading them here is equivalent to reading them from either the turn's opening or closing
+    state.
+
+    `regime_transition_pressure_bps` is resolved here, and ONLY here (R6) -- reading this turn's
+    OPENING pressure value (nothing before this slot ever writes it, so `politics`'s current value
+    IS the opening value) plus whatever a `ConstitutionalAmendmentDecision` added this turn. That
+    mechanism does not exist until Gate 3C3, so `amendment_added_bps` is always 0 here.
+
+    All three channels' full risk assessment and RNG draw sequence always run, regardless of
+    whether an earlier channel (in the fixed coup -> popular_unrest -> impeachment priority order)
+    already produced a removal this turn -- a later channel's draws must never depend on whether
+    an earlier one fired. Only the FIRST channel (in that order) to succeed writes
+    `politics.terminal_outcome`.
+    """
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    politics = player.politics
+    assert politics is not None, "checked by check_invariants before resolve_turn runs"
+    assert politics.terminal_outcome is None, "resolve_turn already refuses a concluded game"
+
+    constitution = politics.constitution
+    legitimacy = politics.legitimacy_bps
+    legislature = politics.legislature
+
+    pressure_resolution = resolve_transition_pressure_bps(
+        opening_pressure_bps=politics.regime_transition_pressure_bps,
+        amendment_added_bps=transition_pressure_added_bps(
+            difficulty=constitution.amendment_difficulty, axes_changed=0
+        ),
+    )
+
+    opposition_seat_share_bps = _opposition_seat_share_bps(legislature)
+    military = next(row for row in player.institutions if row.id == "military")
+
+    # --- Coup channel -------------------------------------------------------------------------
+    coup_risk = coup_attempt_risk_bps(
+        military_loyalty_bps=military.loyalty,
+        military_power_bps=military.power,
+        legitimacy_bps=legitimacy,
+        opposition_seat_share_bps=opposition_seat_share_bps,
+        transition_pressure_bps=pressure_resolution.closing_bps,
+    )
+    coup_attempted = (
+        ctx.rng("coup_attempt").randint(1, BPS_DENOMINATOR) <= coup_risk.attempt_risk_bps
+    )
+    coup_success_probability: int | None = None
+    coup_succeeded: bool | None = None
+    if coup_attempted:
+        coup_success_probability = coup_success_probability_bps(
+            military_power_bps=military.power,
+            military_competence_bps=military.competence,
+            legitimacy_bps=legitimacy,
+        )
+        coup_succeeded = (
+            ctx.rng("coup_outcome").randint(1, BPS_DENOMINATOR) <= coup_success_probability
+        )
+
+    # --- Popular-unrest channel ----------------------------------------------------------------
+    radicalization_bps = population_weighted_mean_bps(
+        shares_and_metrics=tuple(
+            (round(group.population_share * BPS_DENOMINATOR), group.radicalization)
+            for group in player.population_groups
+        )
+    )
+    organization_bps = population_weighted_mean_bps(
+        shares_and_metrics=tuple(
+            (round(group.population_share * BPS_DENOMINATOR), group.organization)
+            for group in player.population_groups
+        )
+    )
+    disapproval_bps = population_weighted_mean_bps(
+        shares_and_metrics=tuple(
+            (round(group.population_share * BPS_DENOMINATOR), BPS_DENOMINATOR - group.approval)
+            for group in player.population_groups
+        )
+    )
+    unrest_risk = unrest_attempt_risk_bps(
+        radicalization_bps=radicalization_bps,
+        organization_bps=organization_bps,
+        disapproval_bps=disapproval_bps,
+    )
+    unrest_attempted = (
+        ctx.rng("unrest_attempt").randint(1, BPS_DENOMINATOR) <= unrest_risk.attempt_risk_bps
+    )
+    unrest_success_probability: int | None = None
+    unrest_succeeded: bool | None = None
+    unrest_outcome: Literal["none", "contained", "forced_abdication", "assassination"] = "none"
+    if unrest_attempted:
+        unrest_success_probability = unrest_success_probability_bps(
+            organization_bps=organization_bps, legitimacy_bps=legitimacy
+        )
+        unrest_succeeded = (
+            ctx.rng("unrest_outcome").randint(1, BPS_DENOMINATOR) <= unrest_success_probability
+        )
+        if unrest_succeeded:
+            severity_draw = ctx.rng("unrest_severity").randint(1, BPS_DENOMINATOR)
+            unrest_outcome = (
+                "assassination"
+                if severity_draw <= ASSASSINATION_SEVERITY_THRESHOLD_BPS
+                else "forced_abdication"
+            )
+        else:
+            unrest_outcome = "contained"
+
+    # --- Impeachment channel -------------------------------------------------------------------
+    impeachment_eligible = (
+        constitution.legislature is not Legislature.NONE
+        and constitution.judicial_review is not JudicialReview.NONE
+        and constitution.executive_selection is not ExecutiveSelection.HEREDITARY
+    )
+    impeachment_legitimacy_contribution: int | None = None
+    impeachment_opposition_contribution: int | None = None
+    impeachment_attempt_risk_value: int | None = None
+    impeachment_attempted: bool | None = None
+    impeachment_success_probability: int | None = None
+    impeachment_succeeded: bool | None = None
+    if impeachment_eligible:
+        assert opposition_seat_share_bps is not None, (
+            "impeachment eligibility requires a legislature, which requires a seat share"
+        )
+        impeachment_risk = impeachment_attempt_risk_bps(
+            opposition_seat_share_bps=opposition_seat_share_bps,
+            legitimacy_bps=legitimacy,
+            judicial_review=constitution.judicial_review,
+        )
+        impeachment_legitimacy_contribution = impeachment_risk.legitimacy_contribution_bps
+        impeachment_opposition_contribution = impeachment_risk.opposition_contribution_bps
+        impeachment_attempt_risk_value = impeachment_risk.attempt_risk_bps
+        impeachment_attempted = (
+            ctx.rng("impeachment_attempt").randint(1, BPS_DENOMINATOR)
+            <= impeachment_attempt_risk_value
+        )
+        if impeachment_attempted:
+            impeachment_success_probability = impeachment_success_probability_bps(
+                opposition_seat_share_bps=opposition_seat_share_bps, legitimacy_bps=legitimacy
+            )
+            impeachment_succeeded = (
+                ctx.rng("impeachment_outcome").randint(1, BPS_DENOMINATOR)
+                <= impeachment_success_probability
+            )
+
+    # --- Fixed priority order: coup, then popular unrest, then impeachment ---------------------
+    removal_reason: RemovalReason | None
+    if coup_succeeded:
+        removal_reason = RemovalReason.COUP
+    elif unrest_succeeded:
+        removal_reason = (
+            RemovalReason.ASSASSINATION
+            if unrest_outcome == "assassination"
+            else RemovalReason.FORCED_ABDICATION
+        )
+    elif impeachment_succeeded:
+        removal_reason = RemovalReason.IMPEACHMENT
+    else:
+        removal_reason = None
+
+    politics_update: dict[str, object] = {
+        "regime_transition_pressure_bps": pressure_resolution.closing_bps
+    }
+    if removal_reason is not None:
+        politics_update["terminal_outcome"] = TerminalOutcomeState(
+            bucket=OutcomeBucket.DEFEAT, removal_reason=removal_reason, turn=ctx.state.turn
+        )
+    player.politics = politics.model_copy(update=politics_update)
+
+    ctx.coup_unrest_report = CoupUnrestReport(
+        coup=CoupChannelReport(
+            military_loyalty_bps=military.loyalty,
+            military_power_bps=military.power,
+            military_competence_bps=military.competence,
+            legitimacy_bps=legitimacy,
+            loyalty_contribution_bps=coup_risk.loyalty_contribution_bps,
+            legitimacy_contribution_bps=coup_risk.legitimacy_contribution_bps,
+            opposition_contribution_bps=coup_risk.opposition_contribution_bps,
+            transition_pressure_contribution_bps=coup_risk.transition_pressure_contribution_bps,
+            attempt_risk_bps=coup_risk.attempt_risk_bps,
+            attempted=coup_attempted,
+            success_probability_bps=coup_success_probability,
+            succeeded=coup_succeeded,
+        ),
+        popular_unrest=PopularUnrestChannelReport(
+            radicalization_bps=radicalization_bps,
+            organization_bps=organization_bps,
+            disapproval_bps=disapproval_bps,
+            legitimacy_bps=legitimacy,
+            radicalization_contribution_bps=unrest_risk.radicalization_contribution_bps,
+            disapproval_contribution_bps=unrest_risk.disapproval_contribution_bps,
+            attempt_risk_bps=unrest_risk.attempt_risk_bps,
+            attempted=unrest_attempted,
+            success_probability_bps=unrest_success_probability,
+            succeeded=unrest_succeeded,
+            outcome=unrest_outcome,
+        ),
+        impeachment=ImpeachmentChannelReport(
+            eligible=impeachment_eligible,
+            legitimacy_bps=legitimacy if impeachment_eligible else None,
+            opposition_seat_share_bps=(opposition_seat_share_bps if impeachment_eligible else None),
+            legitimacy_contribution_bps=impeachment_legitimacy_contribution,
+            opposition_contribution_bps=impeachment_opposition_contribution,
+            attempt_risk_bps=impeachment_attempt_risk_value,
+            attempted=impeachment_attempted,
+            success_probability_bps=impeachment_success_probability,
+            succeeded=impeachment_succeeded,
+        ),
+        removal_triggered=removal_reason,
+        opening_transition_pressure_bps=pressure_resolution.opening_bps,
+        decayed_transition_pressure_bps=pressure_resolution.decayed_bps,
+        added_transition_pressure_bps=pressure_resolution.added_bps,
+        closing_transition_pressure_bps=pressure_resolution.closing_bps,
+    )
+
+    ctx.report_entries.append(
+        TurnReportEntry(
+            category="politics",
+            reason_id="coup_risk_assessed",
+            params={
+                "coup_attempt_risk_bps": coup_risk.attempt_risk_bps,
+                "unrest_attempt_risk_bps": unrest_risk.attempt_risk_bps,
+                "impeachment_eligible": impeachment_eligible,
+                "impeachment_attempt_risk_bps": impeachment_attempt_risk_value or 0,
+            },
+        )
+    )
+    if coup_attempted:
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="politics",
+                reason_id="coup_attempt_occurred",
+                params={"attempt_risk_bps": coup_risk.attempt_risk_bps},
+            )
+        )
+    if coup_succeeded:
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="politics",
+                reason_id="coup_succeeded",
+                params={"success_probability_bps": coup_success_probability or 0},
+            )
+        )
+    if unrest_outcome != "none":
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="politics",
+                reason_id="popular_unrest_occurred",
+                params={"outcome": unrest_outcome},
+            )
+        )
+    if impeachment_attempted:
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="politics",
+                reason_id="impeachment_motion_brought",
+                params={"attempt_risk_bps": impeachment_attempt_risk_value or 0},
+            )
+        )
+    if impeachment_succeeded:
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="politics",
+                reason_id="impeachment_succeeded",
+                params={"success_probability_bps": impeachment_success_probability or 0},
+            )
+        )
+    if removal_reason is not None:
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="administration",
+                reason_id="game_concluded",
+                params={
+                    "bucket": OutcomeBucket.DEFEAT.value,
+                    "reason": removal_reason.value,
+                    "turn": ctx.state.turn,
+                },
+            )
+        )
+
+    ctx.mark_implemented()
+
+
 def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
     """Phase 3C, Gate 3C1, slot 13 (`evaluate_elections_and_constitutional_events`): resolve this
     turn's scheduled election, if any (§4.2/§4.4).
@@ -2335,7 +2670,7 @@ PHASE_ORDER: tuple[tuple[str, PhaseHandler], ...] = (
         "update_institutional_loyalty_competence_corruption_power",
         _apply_bloc_relationship_investments,
     ),
-    ("evaluate_protests_strikes_insurgency_coups_revolutions", _noop),
+    ("evaluate_protests_strikes_insurgency_coups_revolutions", _evaluate_unrest_and_coup_risk),
     ("evaluate_elections_and_constitutional_events", _evaluate_elections),
     ("trigger_narrative_events", _noop),
     ("generate_turn_report", _generate_turn_report),

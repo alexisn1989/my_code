@@ -47,10 +47,12 @@ from app.core.politics import (
     POLICY_REACTION_WEIGHT_BPS,
     RELATIONSHIP_DECAY_DENOMINATOR,
     RELATIONSHIP_DECAY_NUMERATOR,
+    StrictInstitutionMetricBps,
     StrictLegitimacyBps,
     StrictPoliticalCapital,
     StrictPoliticalCapitalCapacity,
     StrictPoliticalCapitalCommitment,
+    StrictPopulationMetricBps,
     StrictPositiveSeatCount,
     StrictPreferenceBps,
     StrictRelationshipBps,
@@ -61,7 +63,9 @@ from app.core.politics import (
     StrictSeatNumerator,
     StrictSignedBps,
     StrictSignedLegitimacyBps,
+    StrictSignedRiskContributionBps,
     StrictTermsHeld,
+    StrictTransitionPressureBps,
     clamp_bps,
     clamp_relationship_bps,
     trunc_div_toward_zero,
@@ -87,8 +91,16 @@ from app.simulation.constitution import (
     TerritorialOrganization,
 )
 from app.simulation.government_survival import (
+    BASE_COUP_ATTEMPT_RISK_BPS,
+    BASE_UNREST_ATTEMPT_RISK_BPS,
+    MAX_COUP_ATTEMPT_RISK_BPS,
+    MAX_IMPEACHMENT_ATTEMPT_RISK_BPS,
     MAX_POLLING_UNCERTAINTY_SWING_BPS,
+    MAX_UNREST_ATTEMPT_RISK_BPS,
     REQUIRED_ELECTION_SUPPORT_BPS,
+    coup_success_probability_bps,
+    impeachment_success_probability_bps,
+    unrest_success_probability_bps,
 )
 from app.simulation.legislative_voting import (
     DECREE_POLITICAL_CAPITAL_COST,
@@ -123,6 +135,7 @@ from app.simulation.relationships import RELATIONSHIP_CEILING_BPS, RELATIONSHIP_
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
+    RemovalReason,
     ResourceCategory,
     SectorCategory,
     SpendingPlanState,
@@ -2663,6 +2676,293 @@ class PoliticalCapitalReport(BaseModel):
         return self
 
 
+class CoupChannelReport(BaseModel):
+    """The coup channel's complete, re-derivable per-turn assessment (Phase 3C, Gate 3C2).
+
+    `legitimacy_bps` is stored (beyond what the plan's own §3.1 formula signature strictly needs
+    for its four named CONTRIBUTIONS) so `success_probability_bps` can be re-derived here from
+    `military_power_bps`/`military_competence_bps`/`legitimacy_bps` alone, independently of
+    whatever RNG draw `succeeded` represents — matching this report family's stated R10 discipline
+    (never merely assumed) rather than leaving that reconstruction possible only at the
+    reconciliation layer.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    military_loyalty_bps: StrictInstitutionMetricBps
+    military_power_bps: StrictInstitutionMetricBps
+    military_competence_bps: StrictInstitutionMetricBps
+    legitimacy_bps: StrictRiskBps
+    loyalty_contribution_bps: StrictSignedRiskContributionBps
+    legitimacy_contribution_bps: StrictSignedRiskContributionBps
+    opposition_contribution_bps: StrictSignedRiskContributionBps
+    transition_pressure_contribution_bps: StrictSignedRiskContributionBps
+    attempt_risk_bps: StrictRiskBps
+    attempted: bool
+    success_probability_bps: StrictRiskBps | None = None
+    succeeded: bool | None = None
+
+    @model_validator(mode="after")
+    def _attempt_risk_matches_the_summed_contributions(self) -> CoupChannelReport:
+        expected = max(
+            0,
+            min(
+                MAX_COUP_ATTEMPT_RISK_BPS,
+                BASE_COUP_ATTEMPT_RISK_BPS
+                + self.loyalty_contribution_bps
+                + self.legitimacy_contribution_bps
+                + self.opposition_contribution_bps
+                + self.transition_pressure_contribution_bps,
+            ),
+        )
+        if self.attempt_risk_bps != expected:
+            raise ValueError(
+                f"attempt_risk_bps={self.attempt_risk_bps} does not match the four named "
+                f"contributions, base, and clamp ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _success_fields_match_attempted_and_are_independently_derivable(
+        self,
+    ) -> CoupChannelReport:
+        if self.attempted:
+            if self.success_probability_bps is None or self.succeeded is None:
+                raise ValueError("attempted=True requires success_probability_bps and succeeded")
+            expected = coup_success_probability_bps(
+                military_power_bps=self.military_power_bps,
+                military_competence_bps=self.military_competence_bps,
+                legitimacy_bps=self.legitimacy_bps,
+            )
+            if self.success_probability_bps != expected:
+                raise ValueError(
+                    f"success_probability_bps={self.success_probability_bps} does not match "
+                    f"the independently re-derived value ({expected})"
+                )
+        elif self.success_probability_bps is not None or self.succeeded is not None:
+            raise ValueError("attempted=False forbids success_probability_bps and succeeded")
+        return self
+
+
+class PopularUnrestChannelReport(BaseModel):
+    """The popular-unrest channel's complete, re-derivable per-turn assessment (Gate 3C2).
+
+    `legitimacy_bps` is stored for the same independent-re-derivation reason as
+    `CoupChannelReport.legitimacy_bps` — `success_probability_bps` reads it directly, alongside
+    the already-present `organization_bps`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    radicalization_bps: StrictPopulationMetricBps
+    organization_bps: StrictPopulationMetricBps
+    disapproval_bps: StrictPopulationMetricBps
+    legitimacy_bps: StrictRiskBps
+    radicalization_contribution_bps: StrictSignedRiskContributionBps
+    disapproval_contribution_bps: StrictSignedRiskContributionBps
+    attempt_risk_bps: StrictRiskBps
+    attempted: bool
+    success_probability_bps: StrictRiskBps | None = None
+    succeeded: bool | None = None
+    outcome: Literal["none", "contained", "forced_abdication", "assassination"]
+
+    @model_validator(mode="after")
+    def _attempt_risk_matches_the_summed_contributions(self) -> PopularUnrestChannelReport:
+        expected = max(
+            0,
+            min(
+                MAX_UNREST_ATTEMPT_RISK_BPS,
+                BASE_UNREST_ATTEMPT_RISK_BPS
+                + self.radicalization_contribution_bps
+                + self.disapproval_contribution_bps,
+            ),
+        )
+        if self.attempt_risk_bps != expected:
+            raise ValueError(
+                f"attempt_risk_bps={self.attempt_risk_bps} does not match the two named "
+                f"contributions, base, and clamp ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _success_fields_match_attempted_and_are_independently_derivable(
+        self,
+    ) -> PopularUnrestChannelReport:
+        if self.attempted:
+            if self.success_probability_bps is None or self.succeeded is None:
+                raise ValueError("attempted=True requires success_probability_bps and succeeded")
+            expected = unrest_success_probability_bps(
+                organization_bps=self.organization_bps, legitimacy_bps=self.legitimacy_bps
+            )
+            if self.success_probability_bps != expected:
+                raise ValueError(
+                    f"success_probability_bps={self.success_probability_bps} does not match "
+                    f"the independently re-derived value ({expected})"
+                )
+        elif self.success_probability_bps is not None or self.succeeded is not None:
+            raise ValueError("attempted=False forbids success_probability_bps and succeeded")
+        return self
+
+    @model_validator(mode="after")
+    def _outcome_matches_attempted_and_succeeded(self) -> PopularUnrestChannelReport:
+        expected_outcomes: tuple[str, ...]
+        if not self.attempted:
+            expected_outcomes = ("none",)
+        elif not self.succeeded:
+            expected_outcomes = ("contained",)
+        else:
+            expected_outcomes = ("forced_abdication", "assassination")
+        if self.outcome not in expected_outcomes:
+            raise ValueError(
+                f"outcome={self.outcome!r} is inconsistent with attempted={self.attempted}/"
+                f"succeeded={self.succeeded} (expected one of {expected_outcomes!r})"
+            )
+        return self
+
+
+class ImpeachmentChannelReport(BaseModel):
+    """The impeachment channel's complete, re-derivable per-turn assessment (Gate 3C2).
+
+    Eligibility is checked by `phases.py`, never by this model — it has no access to the
+    constitution. `legitimacy_bps`/`opposition_seat_share_bps` are stored (beyond the plan's own
+    §3.3 signature) for the same independent-re-derivation reason as the other two channels'
+    reports; both are `None` exactly when `eligible=False`, alongside every other optional field.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    eligible: bool
+    legitimacy_bps: StrictRiskBps | None = None
+    opposition_seat_share_bps: StrictRiskBps | None = None
+    legitimacy_contribution_bps: StrictSignedRiskContributionBps | None = None
+    opposition_contribution_bps: StrictSignedRiskContributionBps | None = None
+    attempt_risk_bps: StrictRiskBps | None = None
+    attempted: bool | None = None
+    success_probability_bps: StrictRiskBps | None = None
+    succeeded: bool | None = None
+
+    @model_validator(mode="after")
+    def _eligibility_gates_every_other_field(self) -> ImpeachmentChannelReport:
+        other_fields = (
+            self.legitimacy_bps,
+            self.opposition_seat_share_bps,
+            self.legitimacy_contribution_bps,
+            self.opposition_contribution_bps,
+            self.attempt_risk_bps,
+            self.attempted,
+        )
+        if self.eligible:
+            if any(field_value is None for field_value in other_fields):
+                raise ValueError("eligible=True requires every attempt-risk field to be present")
+        else:
+            if any(field_value is not None for field_value in other_fields) or (
+                self.success_probability_bps is not None or self.succeeded is not None
+            ):
+                raise ValueError("eligible=False forbids every other field")
+        return self
+
+    @model_validator(mode="after")
+    def _attempt_risk_matches_the_summed_contributions(self) -> ImpeachmentChannelReport:
+        if not self.eligible:
+            return self
+        assert self.legitimacy_contribution_bps is not None
+        assert self.opposition_contribution_bps is not None
+        expected = max(
+            0,
+            min(
+                MAX_IMPEACHMENT_ATTEMPT_RISK_BPS,
+                self.legitimacy_contribution_bps + self.opposition_contribution_bps,
+            ),
+        )
+        if self.attempt_risk_bps != expected:
+            raise ValueError(
+                f"attempt_risk_bps={self.attempt_risk_bps} does not match the two named "
+                f"contributions and clamp ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _success_fields_match_attempted_and_are_independently_derivable(
+        self,
+    ) -> ImpeachmentChannelReport:
+        if not self.eligible:
+            return self
+        if self.attempted:
+            if self.success_probability_bps is None or self.succeeded is None:
+                raise ValueError("attempted=True requires success_probability_bps and succeeded")
+            assert self.opposition_seat_share_bps is not None
+            assert self.legitimacy_bps is not None
+            expected = impeachment_success_probability_bps(
+                opposition_seat_share_bps=self.opposition_seat_share_bps,
+                legitimacy_bps=self.legitimacy_bps,
+            )
+            if self.success_probability_bps != expected:
+                raise ValueError(
+                    f"success_probability_bps={self.success_probability_bps} does not match "
+                    f"the independently re-derived value ({expected})"
+                )
+        elif self.success_probability_bps is not None or self.succeeded is not None:
+            raise ValueError("attempted=False forbids success_probability_bps and succeeded")
+        return self
+
+
+class CoupUnrestReport(BaseModel):
+    """Whether the government survived this turn's coup, popular-unrest, and impeachment risk —
+    `TurnReport`'s 11th report (Phase 3C, Gate 3C2, slot 12).
+
+    Every channel's full risk assessment is always computed and reported, regardless of whether an
+    earlier channel (in the fixed coup -> popular-unrest -> impeachment priority order) already
+    produced a removal this turn — only `removal_triggered` reflects which one (if any) actually
+    ended the game."""
+
+    model_config = _STRICT_CONFIG
+
+    coup: CoupChannelReport
+    popular_unrest: PopularUnrestChannelReport
+    impeachment: ImpeachmentChannelReport
+    removal_triggered: RemovalReason | None
+    opening_transition_pressure_bps: StrictTransitionPressureBps
+    decayed_transition_pressure_bps: StrictTransitionPressureBps
+    added_transition_pressure_bps: StrictTransitionPressureBps
+    closing_transition_pressure_bps: StrictTransitionPressureBps
+
+    @model_validator(mode="after")
+    def _removal_triggered_matches_the_fixed_priority_order(self) -> CoupUnrestReport:
+        if self.coup.succeeded:
+            expected: RemovalReason | None = RemovalReason.COUP
+        elif self.popular_unrest.succeeded:
+            expected = (
+                RemovalReason.ASSASSINATION
+                if self.popular_unrest.outcome == "assassination"
+                else RemovalReason.FORCED_ABDICATION
+            )
+        elif self.impeachment.succeeded:
+            expected = RemovalReason.IMPEACHMENT
+        else:
+            expected = None
+        if self.removal_triggered != expected:
+            raise ValueError(
+                f"removal_triggered={self.removal_triggered!r} does not match the fixed "
+                f"coup -> popular_unrest -> impeachment priority order (expected {expected!r})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _closing_transition_pressure_matches_the_single_identity(self) -> CoupUnrestReport:
+        uncapped = (
+            self.opening_transition_pressure_bps
+            - self.decayed_transition_pressure_bps
+            + self.added_transition_pressure_bps
+        )
+        expected = max(0, min(BPS_DENOMINATOR, uncapped))
+        if self.closing_transition_pressure_bps != expected:
+            raise ValueError(
+                f"closing_transition_pressure_bps={self.closing_transition_pressure_bps} does "
+                f"not match opening - decayed + added, clamped ({expected})"
+            )
+        return self
+
+
 class PartyElectionStanceReport(BaseModel):
     """One party's real seat holding at the moment of a scheduled election, scoped to the LOWER
     chamber alone -- the chamber that actually decides the election (§3.4/§13's worked example;
@@ -2859,16 +3159,22 @@ class TurnReport(BaseModel):
     turn on a valid player state). Built for every resolved turn, including turns with no election
     scheduled at all — an inert `scheduled=False` report is still a valid, complete one. Slot 13;
     see `phases.py`."""
+    coup_unrest: CoupUnrestReport | None = None
+    """`None` only when the coup/unrest/impeachment phase did not run (never for a successful
+    Phase 3C Gate-3C2+ turn on a valid player state). Built for every resolved turn, including
+    turns where none of the three channels attempt anything — a report of all-zero/all-false
+    channels is still a valid, complete one. Slot 12, which runs BEFORE slot 13 (election); see
+    `phases.py`."""
 
     @model_validator(mode="after")
-    def _labor_resources_production_derivation_finance_political_legislative_capital_relationship_and_election_are_all_present_or_all_absent(
+    def _labor_resources_production_derivation_finance_political_legislative_capital_relationship_election_and_coup_unrest_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
         """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1, Phase 3B2A,
-        Phase 3B2B and Phase 3C Gate 3C1): a partial combination of these ten player-economy/
-        politics reports would represent a broken audit chain (e.g. production ran but derivation
-        silently didn't) — reject it outright rather than accepting whatever subset happens to be
-        present.
+        Phase 3B2B, Phase 3C Gate 3C1, and Phase 3C Gate 3C2): a partial combination of these
+        eleven player-economy/politics reports would represent a broken audit chain (e.g.
+        production ran but derivation silently didn't) — reject it outright rather than accepting
+        whatever subset happens to be present.
         """
         present = (
             self.labor_market is not None,
@@ -2881,14 +3187,16 @@ class TurnReport(BaseModel):
             self.political_capital is not None,
             self.political_relationship is not None,
             self.election is not None,
+            self.coup_unrest is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
                 "labor_market, resources, production, tax_base_derivation, finance, political, "
-                "legislative, political_capital, political_relationship, and election must be "
-                f"all present or all absent on a TurnReport — got present={present} "
-                "(labor_market, resources, production, tax_base_derivation, finance, political, "
-                "legislative, political_capital, political_relationship, election)"
+                "legislative, political_capital, political_relationship, election, and "
+                f"coup_unrest must be all present or all absent on a TurnReport — got "
+                f"present={present} (labor_market, resources, production, tax_base_derivation, "
+                "finance, political, legislative, political_capital, political_relationship, "
+                "election, coup_unrest)"
             )
         return self
 
@@ -3326,5 +3634,22 @@ class TurnReport(BaseModel):
                 f"production.sectors[EXTRACTION].constraint={extraction_row.constraint!r} does "
                 f"not match classify_extraction_constraint(potential, actual) (expected "
                 f"{expected!r})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _coup_unrest_removal_implies_election_did_not_run_this_turn(self) -> TurnReport:
+        """(Phase 3C, Gate 3C2) Slot 12 runs before slot 13: if any channel already removed the
+        government this turn, slot 13's own top-of-function guard (§4.2) always builds an inert
+        `not_scheduled` report and never evaluates a real election. This is the report-level
+        expression of that same fixed ordering — genuinely cross-report, since `ElectionReport`
+        alone cannot see whether `coup_unrest` just concluded the game."""
+        if self.coup_unrest is None or self.election is None:
+            return self
+        if self.coup_unrest.removal_triggered is not None and self.election.scheduled:
+            raise ValueError(
+                "coup_unrest.removal_triggered is set, but election.scheduled=True -- slot 13 "
+                "must short-circuit to an inert report once slot 12 has already concluded the "
+                "game this turn"
             )
         return self

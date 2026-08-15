@@ -1016,12 +1016,24 @@ def reconcile_political_legislative_and_survival_report(
             term_limit is not None and opening_politics.consecutive_terms_held >= term_limit
         )
 
+        # Gate 3C2: slot 12 (coup/unrest/impeachment) runs BEFORE slot 13 (election) and, if it
+        # already concludes the game this turn, slot 13 always short-circuits to an inert
+        # not_scheduled report regardless of whether this turn also happened to be a scheduled
+        # election milestone (§4.2). Every group below that reasons about `election.scheduled`/
+        # `.result` against the OPENING schedule needs to know that, or a coup landing on what
+        # would otherwise have been an election turn reads as a reconciliation bug.
+        coup_unrest_concluded = (
+            report.coup_unrest is not None and report.coup_unrest.removal_triggered is not None
+        )
+
         # Group 35: scheduling recompute -- `scheduled` vs the OPENING schedule, and
         # `next_election_turn`'s new-or-unchanged value re-derived per §4.4's table (Gate 3C1's
         # four reachable rows: WIN reschedules by the closing constitution's own interval; a
         # LOSS/TERM_LIMIT_EXIT/non-scheduled turn leaves it frozen -- the two amendment-driven
         # rows are Gate 3C3 scope, unreachable while no amendment mechanism exists).
-        expected_scheduled = opening_politics.next_election_turn == closing_state.turn
+        expected_scheduled = (
+            not coup_unrest_concluded and opening_politics.next_election_turn == closing_state.turn
+        )
         if election.scheduled != expected_scheduled:
             problems.append(
                 f"election.scheduled={election.scheduled} does not match "
@@ -1192,7 +1204,7 @@ def reconcile_political_legislative_and_survival_report(
                         f"terminal_outcome.turn={outcome.turn} does not match "
                         f"closing_state.turn={closing_state.turn}"
                     )
-        elif closing_politics.terminal_outcome is not None:
+        elif closing_politics.terminal_outcome is not None and not coup_unrest_concluded:
             problems.append(
                 f"election.result={election.result!r} does not conclude the game, but "
                 f"closing_state carries a terminal_outcome={closing_politics.terminal_outcome!r}"
@@ -1252,10 +1264,12 @@ def reconcile_political_legislative_and_survival_report(
                         "closing_state's legislature holds lower-chamber seats for"
                     )
 
-    # An election turn that was NOT scheduled must leave consecutive_terms_held and
-    # terminal_outcome exactly as they opened (next_election_turn's own staticness is already
-    # proved by group 35 above) -- a no-op election evaluation must be a genuine no-op, proved
-    # state-to-state.
+    # An election turn that was NOT scheduled must leave consecutive_terms_held exactly as it
+    # opened (next_election_turn's own staticness is already proved by group 35 above) -- a
+    # no-op election evaluation must be a genuine no-op, proved state-to-state. terminal_outcome
+    # is the one exception: slot 12 (coup/unrest/impeachment) can legitimately set it on a turn
+    # where the election never even ran (§4.2's short-circuit) -- that case is reconciled against
+    # `report.coup_unrest` directly (Gate 3C2, groups 24-34), not here.
     if election is not None and not election.scheduled:
         if closing_politics.consecutive_terms_held != opening_politics.consecutive_terms_held:
             problems.append(
@@ -1263,7 +1277,10 @@ def reconcile_political_legislative_and_survival_report(
                 f"{closing_politics.consecutive_terms_held} differs from opening_state's "
                 f"{opening_politics.consecutive_terms_held}"
             )
-        if closing_politics.terminal_outcome != opening_politics.terminal_outcome:
+        if (
+            not coup_unrest_concluded
+            and closing_politics.terminal_outcome != opening_politics.terminal_outcome
+        ):
             problems.append(
                 "election.scheduled=False but closing_state politics.terminal_outcome differs "
                 "from opening_state's"

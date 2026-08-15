@@ -152,6 +152,7 @@ def test_only_the_accounting_and_report_phases_are_implemented_so_far() -> None:
         "update_prices_inflation_employment_debt_reserves",
         "update_group_welfare_approval_trust_radicalization",
         "update_institutional_loyalty_competence_corruption_power",
+        "evaluate_protests_strikes_insurgency_coups_revolutions",
         "evaluate_elections_and_constitutional_events",
         "generate_turn_report",
     }

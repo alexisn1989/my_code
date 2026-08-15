@@ -354,6 +354,50 @@ def _render_game_concluded(params: dict[str, str | int]) -> str:
     return f"Game concluded at turn {turn}: {bucket} ({reason})."
 
 
+def _render_coup_risk_assessed(params: dict[str, str | int]) -> str:
+    coup_bps = int(params["coup_attempt_risk_bps"])
+    unrest_bps = int(params["unrest_attempt_risk_bps"])
+    eligible = bool(params["impeachment_eligible"])
+    impeachment_bps = int(params["impeachment_attempt_risk_bps"])
+    impeachment_note = _bps_to_percent_str(impeachment_bps) if eligible else "ineligible this turn"
+    return (
+        f"Survival risk assessed: coup {_bps_to_percent_str(coup_bps)}, unrest "
+        f"{_bps_to_percent_str(unrest_bps)}, impeachment {impeachment_note}."
+    )
+
+
+def _render_coup_attempt_occurred(params: dict[str, str | int]) -> str:
+    attempt_risk_bps = int(params["attempt_risk_bps"])
+    return f"A coup attempt occurred (attempt risk was {_bps_to_percent_str(attempt_risk_bps)})."
+
+
+def _render_coup_succeeded(params: dict[str, str | int]) -> str:
+    success_bps = int(params["success_probability_bps"])
+    return f"The coup succeeded (success probability was {_bps_to_percent_str(success_bps)})."
+
+
+def _render_popular_unrest_occurred(params: dict[str, str | int]) -> str:
+    outcome = str(params["outcome"])
+    if outcome == "contained":
+        return "Popular unrest broke out but was contained."
+    return f"Popular unrest broke out and succeeded: {outcome.replace('_', ' ')}."
+
+
+def _render_impeachment_motion_brought(params: dict[str, str | int]) -> str:
+    attempt_risk_bps = int(params["attempt_risk_bps"])
+    return (
+        f"An impeachment motion was brought (attempt risk was "
+        f"{_bps_to_percent_str(attempt_risk_bps)})."
+    )
+
+
+def _render_impeachment_succeeded(params: dict[str, str | int]) -> str:
+    success_bps = int(params["success_probability_bps"])
+    return (
+        f"The impeachment succeeded (success probability was {_bps_to_percent_str(success_bps)})."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -377,6 +421,12 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "election_scheduled": _render_election_scheduled,
     "election_result": _render_election_result,
     "game_concluded": _render_game_concluded,
+    "coup_risk_assessed": _render_coup_risk_assessed,
+    "coup_attempt_occurred": _render_coup_attempt_occurred,
+    "coup_succeeded": _render_coup_succeeded,
+    "popular_unrest_occurred": _render_popular_unrest_occurred,
+    "impeachment_motion_brought": _render_impeachment_motion_brought,
+    "impeachment_succeeded": _render_impeachment_succeeded,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
