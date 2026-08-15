@@ -39,7 +39,7 @@
 schema_version: 1
 scenario_id: decree_state
 name: "Decree State Fixture"
-content_version: "0.11.0"
+content_version: "0.12.0"
 seed: 77
 player_country_id: valdrun
 

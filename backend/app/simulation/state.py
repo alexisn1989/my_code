@@ -979,7 +979,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.11.0"
+RULESET_VERSION = "0.12.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -1021,7 +1021,16 @@ does not contain; `TurnReport` gains a ninth report, `political_relationship:
 PoliticalRelationshipReport`, and `PoliticalCapitalReport.relationship_changes` is removed (moved
 onto the new report), so a 0.10.0 turn's relationship-investment ledger no longer round-trips
 through the same field; and turn resolution now writes `government_relationship_bps` on turns with
-no decisions at all (decay), so the same decisions no longer produce the same closing state).
+no decisions at all (decay), so the same decisions no longer produce the same closing state), and
+`docs/adr/0013-government-survival.md` (bumped `"0.11.0" -> "0.12.0"` for Phase 3C Gate 3C1:
+`InstitutionState`/`PopulationGroupState`'s loyalty/power/competence/corruption and political_
+influence/approval/trust/organization/radicalization convert from Phase-1 floats (0.0-100.0) to
+strict basis points, so a 0.11.0 save's float values no longer satisfy the strict-int fields at
+all; `PoliticalState` gains five new fields (`consecutive_terms_held`, `next_election_turn`,
+`regime_transition_pressure_bps`, `pending_liberalization`, `terminal_outcome`) with no authored
+political-survival history in a 0.11.0 save to backfill them from; and `TurnReport` gains a tenth
+report, `election: ElectionReport`, with no data in a 0.11.0 save to reconstruct it from -- a
+0.11.0 turn never evaluated an election at all).
 """
 
 
