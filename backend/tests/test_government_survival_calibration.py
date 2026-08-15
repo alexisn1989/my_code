@@ -11,6 +11,7 @@ from __future__ import annotations
 from app.content.scenarios import load_scenario_file
 from app.core.errors import GameAlreadyConcludedError
 from app.simulation.decisions import DecisionSet
+from app.simulation.government_survival import MAX_POLLING_UNCERTAINTY_SWING_BPS
 from app.simulation.history import advance_game, new_game
 from app.simulation.save_format import SAVE_FORMAT_VERSION
 from tests.conftest import SCENARIO_DIR
@@ -132,35 +133,95 @@ class TestDeficitDemoContestedElections:
         assert politics.terminal_outcome.turn == 40
 
 
-class TestDeficitDemoSeedSweepProvesTheElectionIsGenuinelyContested:
-    """A fixed-seed range sweep against the SAME `tiny_valid` turn-16 election: the baseline is
-    seed-independent (a structural fact about seats/approval/legitimacy), but the polling swing
-    genuinely varies by seed and can flip the result -- proving the election is a real contest,
-    not a foregone conclusion dressed up with cosmetic randomness."""
+class TestTinyValidFixtureSeedElectionResult:
+    """The pinned, authored fixture seed (42, `tiny_valid.yaml`'s own `seed:` line) produces this
+    exact turn-16 election result -- a single, fully specified literal, not folded into the
+    seed-range sweep below (which deliberately does not single out any one seed as special)."""
 
-    _EXPECTED = {
-        42: (5_568, -119, 5_449, "won"),
-        1: (5_568, -459, 5_109, "won"),
-        2: (5_568, 713, 6_281, "won"),
-        3: (5_568, -856, 4_712, "lost"),
-        77: (5_568, -374, 5_194, "won"),
+    def test_fixture_seed_42_result(self) -> None:
+        save = _run("tiny_valid.yaml", 16, seed=42)
+        election = save.entries[-1].report().election
+        assert election is not None
+        assert election.baseline_support_bps == 5_568
+        assert election.polling_uncertainty_bps == -119
+        assert election.final_support_bps == 5_449
+        assert election.result == "won"
+
+
+class TestTinyValidSeedZeroToNineteenSweepProvesTheElectionIsGenuinelyContested:
+    """The declared, fixed seed range 0 through 19 inclusive (20 seeds), chosen as a range rather
+    than hand-picked after observing results, against `tiny_valid`'s real turn-16 election: the
+    baseline is seed-independent (a structural fact about seats/approval/legitimacy), but the
+    polling swing genuinely varies by seed and can flip the result in either direction -- proving
+    the election is a real contest, not a foregone conclusion dressed up with cosmetic
+    randomness. Every figure below was produced by actually resolving each seed through the real
+    engine (a small verification script, not part of the repository), the same discipline this
+    whole file follows."""
+
+    _SEED_RANGE = range(20)
+
+    _EXPECTED_BY_SEED = {
+        0: (910, 6_478, "won"),
+        1: (-459, 5_109, "won"),
+        2: (713, 6_281, "won"),
+        3: (-856, 4_712, "lost"),
+        4: (-757, 4_811, "lost"),
+        5: (-121, 5_447, "won"),
+        6: (628, 6_196, "won"),
+        7: (967, 6_535, "won"),
+        8: (188, 5_756, "won"),
+        9: (-343, 5_225, "won"),
+        10: (-495, 5_073, "won"),
+        11: (331, 5_899, "won"),
+        12: (-829, 4_739, "lost"),
+        13: (-877, 4_691, "lost"),
+        14: (-955, 4_613, "lost"),
+        15: (-698, 4_870, "lost"),
+        16: (59, 5_627, "won"),
+        17: (-743, 4_825, "lost"),
+        18: (-98, 5_470, "won"),
+        19: (-740, 4_828, "lost"),
     }
 
-    def test_seed_sweep_matches_pinned_figures_and_seed_3_flips_the_outcome(self) -> None:
-        for seed, (baseline, swing, final, result) in self._EXPECTED.items():
+    def test_seed_0_through_19_sweep_matches_pinned_figures(self) -> None:
+        assert set(self._EXPECTED_BY_SEED) == set(self._SEED_RANGE)
+        for seed in self._SEED_RANGE:
+            swing, final, result = self._EXPECTED_BY_SEED[seed]
             save = _run("tiny_valid.yaml", 16, seed=seed)
             election = save.entries[-1].report().election
             assert election is not None
-            assert election.baseline_support_bps == baseline, seed
+            assert election.baseline_support_bps == 5_568, seed
             assert election.polling_uncertainty_bps == swing, seed
             assert election.final_support_bps == final, seed
             assert election.result == result, seed
 
-        assert self._EXPECTED[3][3] == "lost", (
-            "seed 3 loses the SAME election every other pinned seed wins, purely from polling "
-            "variance around an identical baseline -- the required proof that this is a genuine "
-            "contest, not a scripted outcome"
-        )
+    def test_seed_0_through_19_won_and_lost_counts(self) -> None:
+        """Exact WON/LOST counts over the declared range -- both outcomes are real and reachable,
+        not a near-certainty in either direction."""
+        results = [result for _, _, result in self._EXPECTED_BY_SEED.values()]
+        assert results.count("won") == 12
+        assert results.count("lost") == 8
+        assert results.count("won") + results.count("lost") == 20
+
+    def test_seed_0_through_19_baseline_is_invariant(self) -> None:
+        """The baseline is a pure function of state (seats, relationships, population approval,
+        legitimacy) at the moment of the election -- never of the seed -- so it must be identical
+        across all 20 seeds despite the final result varying."""
+        baselines = set()
+        for seed in self._SEED_RANGE:
+            save = _run("tiny_valid.yaml", 16, seed=seed)
+            election = save.entries[-1].report().election
+            assert election is not None
+            baselines.add(election.baseline_support_bps)
+        assert baselines == {5_568}
+
+    def test_seed_0_through_19_swing_stays_within_the_declared_bound(self) -> None:
+        swings = [swing for swing, _, _ in self._EXPECTED_BY_SEED.values()]
+        assert min(swings) >= -MAX_POLLING_UNCERTAINTY_SWING_BPS
+        assert max(swings) <= MAX_POLLING_UNCERTAINTY_SWING_BPS
+        # Confirmed genuinely wide, not merely inside the bound by luck.
+        assert min(swings) == -955
+        assert max(swings) == 967
 
     def test_the_same_seed_is_fully_deterministic(self) -> None:
         first = _run("tiny_valid.yaml", 16, seed=3)
