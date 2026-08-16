@@ -68,6 +68,8 @@ individual field within a group, is independently corruptible and independently 
 
 from __future__ import annotations
 
+from enum import StrEnum
+
 from app.core.money import BPS_DENOMINATOR
 from app.core.politics import (
     RELATIONSHIP_DECAY_DENOMINATOR,
@@ -75,7 +77,9 @@ from app.core.politics import (
     trunc_div_toward_zero,
 )
 from app.core.rng import derive_rng
+from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
 from app.simulation.constitution import (
+    DecreeAuthority,
     ExecutiveSelection,
     JudicialReview,
     Legislature,
@@ -83,9 +87,11 @@ from app.simulation.constitution import (
 )
 from app.simulation.decisions import (
     BudgetDecision,
+    ConstitutionalAmendmentDecision,
     DecisionSet,
     bloc_relationship_investment_digest,
     budget_decision_digest,
+    constitutional_amendment_decision_digest,
 )
 from app.simulation.government_survival import (
     ASSASSINATION_SEVERITY_THRESHOLD_BPS,
@@ -95,6 +101,8 @@ from app.simulation.government_survival import (
     election_baseline_support_bps,
     impeachment_attempt_risk_bps,
     impeachment_success_probability_bps,
+    is_competitive_elected_constitution,
+    is_noncompetitive_constitution,
     legislative_support_bps,
     population_weighted_mean_bps,
     resolve_transition_pressure_bps,
@@ -102,17 +110,26 @@ from app.simulation.government_survival import (
     unrest_attempt_risk_bps,
     unrest_success_probability_bps,
 )
+from app.simulation.legislative_voting import (
+    CONSTITUTIONAL_AMENDMENT_DECREE_COST,
+    required_amendment_yes_seats,
+    resolve_amendment_support,
+)
 from app.simulation.legislature import (
+    AmendmentThreshold,
     CapitalExpenditureCategory,
     GovernmentRole,
     LegislativeChamber,
     LegislativeOutcome,
+    ProposalRoute,
 )
-from app.simulation.report import TurnReport
+from app.simulation.report import ConstitutionalAmendmentReport, TurnReport
 from app.simulation.state import (
     GameState,
     LegislatureState,
     OutcomeBucket,
+    PendingLiberalizationState,
+    PoliticalState,
     RemovalReason,
     SpendingCategory,
     VictoryReason,
@@ -141,6 +158,19 @@ _CONSTITUTION_FIELDS = (
     "decree_authority",
     "executive_term_limit_terms",
     "national_election_interval_turns",
+)
+
+_AMENDABLE_CONSTITUTION_AXES = (
+    "decree_authority",
+    "executive_selection",
+    "executive_system",
+    "executive_term_limit_terms",
+    "national_election_interval_turns",
+)
+_NEVER_AMENDABLE_CONSTITUTION_AXES = (
+    "territorial_organization",
+    "judicial_review",
+    "amendment_difficulty",
 )
 
 _TAX_RATE_FIELDS = ("personal_income_rate_bps", "corporate_rate_bps", "consumption_rate_bps")
@@ -197,6 +227,155 @@ def _opposition_seat_share_bps(legislature: LegislatureState | None) -> int | No
         if seat_entry.chamber == LegislativeChamber.LOWER
     )
     return trunc_div_toward_zero(opposition_seats * BPS_DENOMINATOR, lower_chamber.total_seats)
+
+
+def _amendment_value_text(value: object) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, StrEnum):
+        return value.value
+    return str(value)
+
+
+def _reported_amendment_is_enacted(value: object) -> bool:
+    return isinstance(value, ConstitutionalAmendmentReport) and value.outcome in (
+        LegislativeOutcome.PASSED_LEGISLATIVE,
+        LegislativeOutcome.ENACTED_BY_DECREE,
+    )
+
+
+def _expected_amendment_vote(
+    opening_politics: PoliticalState,
+    decision: ConstitutionalAmendmentDecision,
+) -> tuple[tuple[dict[str, object], ...], LegislativeOutcome, tuple[str, ...]]:
+    if decision.route is ProposalRoute.DECREE:
+        if (
+            opening_politics.constitution.legislature is not Legislature.NONE
+            or opening_politics.legislature is not None
+            or opening_politics.constitution.decree_authority is not DecreeAuthority.UNLIMITED
+        ):
+            return (
+                (),
+                LegislativeOutcome.NO_PROPOSAL,
+                (
+                    "group 43 amendment route=decree is illegal for the opening constitution "
+                    "or legislature state",
+                ),
+            )
+        return (), LegislativeOutcome.ENACTED_BY_DECREE, ()
+    legislature = opening_politics.legislature
+    if opening_politics.constitution.legislature is Legislature.NONE or legislature is None:
+        return (
+            (),
+            LegislativeOutcome.NO_PROPOSAL,
+            ("group 43 amendment route=legislative requires an opening legislature",),
+        )
+    blocs_by_key = {
+        (party.id, bloc.id): bloc for party in legislature.parties for bloc in party.blocs
+    }
+    influence_problems: list[str] = []
+    for allocation in decision.influence:
+        bloc = blocs_by_key.get((allocation.party_id, allocation.bloc_id))
+        if bloc is None:
+            influence_problems.append(
+                "group 43 amendment influence targets unknown opening-legislature identity "
+                f"({allocation.party_id!r}, {allocation.bloc_id!r})"
+            )
+        elif sum(row.seats for row in bloc.seats) == 0:
+            influence_problems.append(
+                "group 43 amendment influence targets zero-seat opening-legislature bloc "
+                f"({allocation.party_id!r}, {allocation.bloc_id!r})"
+            )
+    if influence_problems:
+        return (), LegislativeOutcome.NO_PROPOSAL, tuple(influence_problems)
+    allocations = {(row.party_id, row.bloc_id): row.political_capital for row in decision.influence}
+    threshold = AmendmentThreshold(opening_politics.constitution.amendment_difficulty.value)
+    expected: list[dict[str, object]] = []
+    for chamber_state in legislature.chambers:
+        support_rows: list[SeatSupport] = []
+        for party in legislature.parties:
+            for bloc in party.blocs:
+                seats = next(
+                    (row.seats for row in bloc.seats if row.chamber is chamber_state.chamber),
+                    0,
+                )
+                if seats == 0:
+                    continue
+                support = resolve_amendment_support(
+                    role=party.government_role,
+                    relationship_bps=bloc.government_relationship_bps,
+                    discipline_bps=bloc.discipline_bps,
+                    allocated_political_capital=allocations.get((party.id, bloc.id), 0),
+                )
+                support_rows.append(
+                    SeatSupport(
+                        party_id=party.id,
+                        bloc_id=bloc.id,
+                        seats=seats,
+                        effective_support_bps=support.effective_support_bps,
+                    )
+                )
+        apportioned = apportion_supporting_seats(rows=tuple(support_rows))
+        required = required_amendment_yes_seats(
+            total_seats=chamber_state.total_seats, difficulty=threshold
+        )
+        passed = apportioned.supporting_seats >= required
+        expected.append(
+            {
+                "chamber": chamber_state.chamber,
+                "total_seats": chamber_state.total_seats,
+                "supporting_seats": apportioned.supporting_seats,
+                "required_yes_seats": required,
+                "shortfall_seats": max(0, required - apportioned.supporting_seats),
+                "target_total": apportioned.supporting_seats,
+                "extras_awarded": apportioned.supporting_seats
+                - sum(row.base for row in apportioned.rows),
+                "passed": passed,
+            }
+        )
+    outcome = (
+        LegislativeOutcome.PASSED_LEGISLATIVE
+        if all(bool(row["passed"]) for row in expected)
+        else LegislativeOutcome.FAILED_LEGISLATIVE
+    )
+    return tuple(expected), outcome, ()
+
+
+def _pending_after_amendment(
+    *,
+    opening_politics: PoliticalState,
+    closing_politics: PoliticalState,
+    closing_turn: int,
+    amendment_decision: ConstitutionalAmendmentDecision | None,
+    amendment_enacted: bool,
+) -> PendingLiberalizationState | None:
+    expected_pending = opening_politics.pending_liberalization
+    if amendment_decision is not None and amendment_enacted:
+        qualifies = is_noncompetitive_constitution(
+            executive_selection=opening_politics.constitution.executive_selection,
+            decree_authority=opening_politics.constitution.decree_authority,
+        ) and is_competitive_elected_constitution(
+            executive_selection=closing_politics.constitution.executive_selection,
+            decree_authority=closing_politics.constitution.decree_authority,
+            national_election_interval_turns=(
+                closing_politics.constitution.national_election_interval_turns
+            ),
+        )
+        if qualifies:
+            return PendingLiberalizationState(
+                set_at_turn=closing_turn,
+                opening_constitution_digest=constitution_digest(opening_politics.constitution),
+                closing_constitution_digest=constitution_digest(closing_politics.constitution),
+            )
+        if not is_competitive_elected_constitution(
+            executive_selection=closing_politics.constitution.executive_selection,
+            decree_authority=closing_politics.constitution.decree_authority,
+            national_election_interval_turns=(
+                closing_politics.constitution.national_election_interval_turns
+            ),
+        ):
+            return None
+    return expected_pending
 
 
 def reconcile_political_legislative_and_survival_report(
@@ -1432,10 +1611,7 @@ def reconcile_political_legislative_and_survival_report(
             decisions.constitutional_amendment_decision() if decisions is not None else None
         )
         amendment_report = report.constitutional_amendment
-        amendment_enacted = amendment_report is not None and amendment_report.outcome in (
-            LegislativeOutcome.PASSED_LEGISLATIVE,
-            LegislativeOutcome.ENACTED_BY_DECREE,
-        )
+        amendment_enacted = _reported_amendment_is_enacted(amendment_report)
         axes_changed = (
             len(amendment_decision.targets)
             if amendment_decision is not None and amendment_enacted
@@ -1510,10 +1686,7 @@ def reconcile_political_legislative_and_survival_report(
             decisions.constitutional_amendment_decision() if decisions is not None else None
         )
         amendment_report = report.constitutional_amendment
-        amendment_enacted = amendment_report is not None and amendment_report.outcome in (
-            LegislativeOutcome.PASSED_LEGISLATIVE,
-            LegislativeOutcome.ENACTED_BY_DECREE,
-        )
+        amendment_enacted = _reported_amendment_is_enacted(amendment_report)
         interval_target = (
             next(
                 (
@@ -1666,6 +1839,35 @@ def reconcile_political_legislative_and_survival_report(
         # count actually incremented and (Gate 3C1: liberalization does not exist yet) no
         # terminal_outcome was set; `result in ("lost", "term_limit_exit")` implies the closing
         # state's terminal_outcome matches exactly.
+        victory_amendment = (
+            decisions.constitutional_amendment_decision() if decisions is not None else None
+        )
+        victory_amendment_outcome = LegislativeOutcome.NO_PROPOSAL
+        if victory_amendment is not None:
+            _, victory_amendment_outcome, _ = _expected_amendment_vote(
+                opening_politics, victory_amendment
+            )
+        pending_after_slot_2 = _pending_after_amendment(
+            opening_politics=opening_politics,
+            closing_politics=closing_politics,
+            closing_turn=closing_state.turn,
+            amendment_decision=victory_amendment,
+            amendment_enacted=victory_amendment_outcome
+            in (LegislativeOutcome.PASSED_LEGISLATIVE, LegislativeOutcome.ENACTED_BY_DECREE),
+        )
+        opening_pending = opening_politics.pending_liberalization
+        should_complete_liberalization = bool(
+            election.scheduled
+            and election.result == "won"
+            and opening_pending is not None
+            and opening_pending.set_at_turn < closing_state.turn
+            and pending_after_slot_2 is not None
+        )
+        if election.liberalization_completed != should_complete_liberalization:
+            problems.append(
+                "election.liberalization_completed does not match independently derived "
+                f"should_complete={should_complete_liberalization}"
+            )
         expected_terms_held = (
             opening_politics.consecutive_terms_held + 1
             if election.result == "won"
@@ -1710,7 +1912,7 @@ def reconcile_political_legislative_and_survival_report(
                     )
         elif election.result == "won":
             outcome = closing_politics.terminal_outcome
-            if election.liberalization_completed:
+            if should_complete_liberalization:
                 if (
                     outcome is None
                     or outcome.bucket is not OutcomeBucket.VICTORY
@@ -1800,6 +2002,241 @@ def reconcile_political_legislative_and_survival_report(
             problems.append(
                 "election.scheduled=False but closing_state politics.terminal_outcome differs "
                 "from opening_state's"
+            )
+
+    raw_amendment_report: object = report.constitutional_amendment
+    amendment_report = (
+        raw_amendment_report
+        if isinstance(raw_amendment_report, ConstitutionalAmendmentReport)
+        else None
+    )
+    amendment_decision = (
+        decisions.constitutional_amendment_decision() if decisions is not None else None
+    )
+    expected_amendment_chambers: tuple[dict[str, object], ...] = ()
+    expected_amendment_outcome = LegislativeOutcome.NO_PROPOSAL
+    amendment_validation_problems: tuple[str, ...] = ()
+    if amendment_decision is not None:
+        (
+            expected_amendment_chambers,
+            expected_amendment_outcome,
+            amendment_validation_problems,
+        ) = _expected_amendment_vote(opening_politics, amendment_decision)
+        problems.extend(amendment_validation_problems)
+    amendment_enacted = expected_amendment_outcome in (
+        LegislativeOutcome.PASSED_LEGISLATIVE,
+        LegislativeOutcome.ENACTED_BY_DECREE,
+    )
+
+    # Group 41: pending-liberalization state-to-state, in the real slot-2 then slot-13 order.
+    if decisions is not None:
+        expected_pending = _pending_after_amendment(
+            opening_politics=opening_politics,
+            closing_politics=closing_politics,
+            closing_turn=closing_state.turn,
+            amendment_decision=amendment_decision,
+            amendment_enacted=amendment_enacted,
+        )
+        opening_pending = opening_politics.pending_liberalization
+        should_complete = bool(
+            election is not None
+            and election.scheduled
+            and election.result == "won"
+            and opening_pending is not None
+            and opening_pending.set_at_turn < closing_state.turn
+            and expected_pending is not None
+        )
+        if election is not None and election.liberalization_completed != should_complete:
+            problems.append(
+                "group 42 election.liberalization_completed does not match independently "
+                f"derived should_complete={should_complete}"
+            )
+        if (
+            election is not None
+            and election.scheduled
+            and (election.result == "lost" or should_complete)
+        ):
+            expected_pending = None
+        if closing_politics.pending_liberalization != expected_pending:
+            problems.append(
+                "group 41 pending_liberalization does not match slot-2 then slot-13 state "
+                f"transition: closing={closing_politics.pending_liberalization!r}, "
+                f"expected={expected_pending!r}"
+            )
+
+    # Group 42: a liberalization victory consumes provenance that existed in persisted opening
+    # state, never a marker fabricated by this turn's report or slot-2 amendment.
+    if election is not None and election.liberalization_completed:
+        opening_pending = opening_politics.pending_liberalization
+        if opening_pending is None or opening_pending.set_at_turn >= closing_state.turn:
+            problems.append(
+                "group 42 election.liberalization_completed requires persisted "
+                "opening_state pending_liberalization from an earlier turn"
+            )
+
+    # Group 43: amendment report provenance against the real submitted decision and opening vote.
+    if decisions is not None:
+        if political_capital_report is not None:
+            reported_amendment_expenditures = tuple(
+                (
+                    row.party_id,
+                    row.bloc_id,
+                    row.political_capital,
+                    row.decision_digest,
+                )
+                for row in political_capital_report.expenditures
+                if row.category is CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT
+            )
+            if amendment_decision is None:
+                expected_amendment_expenditures: tuple[
+                    tuple[str | None, str | None, int, str], ...
+                ] = ()
+            else:
+                expected_digest = constitutional_amendment_decision_digest(amendment_decision)
+                expected_amendment_expenditures = (
+                    ((None, None, CONSTITUTIONAL_AMENDMENT_DECREE_COST, expected_digest),)
+                    if amendment_decision.route is ProposalRoute.DECREE
+                    else tuple(
+                        (
+                            row.party_id,
+                            row.bloc_id,
+                            row.political_capital,
+                            expected_digest,
+                        )
+                        for row in amendment_decision.influence
+                    )
+                )
+            if reported_amendment_expenditures != expected_amendment_expenditures:
+                problems.append(
+                    "group 43 constitutional-amendment capital ledger rows do not exactly "
+                    "match the real decision identities, amounts, and digest: "
+                    f"report={reported_amendment_expenditures!r}, "
+                    f"expected={expected_amendment_expenditures!r}"
+                )
+        if amendment_report is None:
+            problems.append(
+                "group 43 constitutional_amendment report is missing or has an invalid runtime type"
+            )
+        elif amendment_decision is None:
+            if (
+                amendment_report.proposed
+                or amendment_report.outcome is not LegislativeOutcome.NO_PROPOSAL
+                or amendment_report.route is not None
+                or amendment_report.targets
+                or amendment_report.chambers
+                or amendment_report.influence
+                or amendment_report.political_capital_committed != 0
+                or amendment_report.amendment_decision_digest is not None
+            ):
+                problems.append(
+                    "group 43 no ConstitutionalAmendmentDecision was submitted but the report "
+                    "does not describe exact NO_PROPOSAL"
+                )
+        else:
+            if not amendment_report.proposed:
+                problems.append("group 43 submitted amendment requires proposed=True")
+            if amendment_report.route is not amendment_decision.route:
+                problems.append("group 43 amendment route does not match the submitted decision")
+            expected_digest = constitutional_amendment_decision_digest(amendment_decision)
+            if amendment_report.amendment_decision_digest != expected_digest:
+                problems.append(
+                    "group 43 amendment_decision_digest does not match the submitted decision"
+                )
+            expected_targets = tuple(
+                (
+                    target.axis,
+                    _amendment_value_text(getattr(opening_politics.constitution, target.axis)),
+                    _amendment_value_text(target.value),
+                )
+                for target in amendment_decision.targets
+            )
+            reported_targets = tuple(
+                (row.axis, row.opening_value, row.proposed_value)
+                for row in amendment_report.targets
+            )
+            if reported_targets != expected_targets:
+                problems.append(
+                    "group 43 amendment targets do not match the submitted decision and real "
+                    f"opening constitution: report={reported_targets!r}, expected={expected_targets!r}"
+                )
+            if amendment_report.influence != amendment_decision.influence:
+                problems.append(
+                    "group 43 amendment influence does not match the submitted decision"
+                )
+            expected_commitment = (
+                CONSTITUTIONAL_AMENDMENT_DECREE_COST
+                if amendment_decision.route is ProposalRoute.DECREE
+                else sum(row.political_capital for row in amendment_decision.influence)
+            )
+            if amendment_report.political_capital_committed != expected_commitment:
+                problems.append(
+                    "group 43 amendment political-capital commitment does not match the real "
+                    f"decision ({expected_commitment})"
+                )
+            if amendment_report.outcome is not expected_amendment_outcome:
+                problems.append(
+                    f"group 43 amendment outcome={amendment_report.outcome!r} does not match "
+                    f"the recomputed outcome={expected_amendment_outcome!r}"
+                )
+            if len(amendment_report.chambers) != len(expected_amendment_chambers):
+                problems.append(
+                    "group 43 amendment chamber count does not match the opening legislature"
+                )
+            for index, expected_row in enumerate(expected_amendment_chambers):
+                if index >= len(amendment_report.chambers):
+                    break
+                reported_row = amendment_report.chambers[index]
+                for field_name, expected_chamber_value in expected_row.items():
+                    if getattr(reported_row, field_name) != expected_chamber_value:
+                        problems.append(
+                            f"group 43 amendment chamber[{index}].{field_name}="
+                            f"{getattr(reported_row, field_name)!r} does not match recomputed "
+                            f"value {expected_chamber_value!r}"
+                        )
+        if amendment_report is not None:
+            for axis in (*_AMENDABLE_CONSTITUTION_AXES, "amendment_difficulty"):
+                if getattr(amendment_report.opening_constitution, axis) != getattr(
+                    opening_politics.constitution, axis
+                ):
+                    problems.append(
+                        f"group 43 amendment opening snapshot axis {axis!r} does not match "
+                        "opening_state"
+                    )
+                if getattr(amendment_report.closing_constitution, axis) != getattr(
+                    closing_politics.constitution, axis
+                ):
+                    problems.append(
+                        f"group 43 amendment closing snapshot axis {axis!r} does not match "
+                        "closing_state"
+                    )
+            if amendment_report.opening_constitution_digest != constitution_digest(
+                opening_politics.constitution
+            ):
+                problems.append("group 43 opening_constitution_digest does not match opening_state")
+            if amendment_report.closing_constitution_digest != constitution_digest(
+                closing_politics.constitution
+            ):
+                problems.append("group 43 closing_constitution_digest does not match closing_state")
+
+    # Group 44: only the five authored targets may change; three axes are never amendable.
+    for axis in _NEVER_AMENDABLE_CONSTITUTION_AXES:
+        if getattr(opening_politics.constitution, axis) != getattr(
+            closing_politics.constitution, axis
+        ):
+            problems.append(f"group 44 never-amendable constitution axis {axis!r} changed")
+    targets_by_axis: dict[str, object] = (
+        {target.axis: target.value for target in amendment_decision.targets}
+        if amendment_decision is not None and amendment_enacted
+        else {}
+    )
+    for axis in _AMENDABLE_CONSTITUTION_AXES:
+        opening_value = getattr(opening_politics.constitution, axis)
+        closing_value = getattr(closing_politics.constitution, axis)
+        expected_axis_value = targets_by_axis.get(axis, opening_value)
+        if closing_value != expected_axis_value:
+            problems.append(
+                f"group 44 constitution axis {axis!r} closed at {closing_value!r}; "
+                f"expected {expected_axis_value!r} from the real submitted amendment"
             )
 
     # Group 18: decision provenance -- located from the REAL DecisionSet, never inferred.
