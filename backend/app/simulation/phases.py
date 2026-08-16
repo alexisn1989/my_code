@@ -53,12 +53,15 @@ from app.simulation.constitution import (
     JudicialReview,
     Legislature,
     constitution_digest,
+    first_constitutional_violation,
 )
 from app.simulation.decisions import (
     BudgetDecision,
+    ConstitutionalAmendmentDecision,
     DecisionSet,
     bloc_relationship_investment_digest,
     budget_decision_digest,
+    constitutional_amendment_decision_digest,
 )
 from app.simulation.government_survival import (
     ASSASSINATION_SEVERITY_THRESHOLD_BPS,
@@ -70,6 +73,8 @@ from app.simulation.government_survival import (
     final_election_support_bps,
     impeachment_attempt_risk_bps,
     impeachment_success_probability_bps,
+    is_competitive_elected_constitution,
+    is_noncompetitive_constitution,
     legislative_support_bps,
     population_weighted_mean_bps,
     resolve_transition_pressure_bps,
@@ -84,14 +89,18 @@ from app.simulation.labor_allocation import (
     compute_required_workers,
 )
 from app.simulation.legislative_voting import (
+    CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
     chamber_carries,
+    required_amendment_yes_seats,
     required_yes_seats,
+    resolve_amendment_support,
     resolve_bloc_support,
     spending_policy_change,
     tax_policy_change,
 )
 from app.simulation.legislature import (
+    AmendmentThreshold,
     CapitalExpenditureCategory,
     GovernmentRole,
     LegislativeChamber,
@@ -168,8 +177,10 @@ from app.simulation.resource_output import (
 from app.simulation.state import (
     EconomicBaselineState,
     GameState,
+    LegislativeBlocState,
     LegislatureState,
     OutcomeBucket,
+    PendingLiberalizationState,
     RemovalReason,
     SectorCategory,
     SpendingPlanState,
@@ -286,6 +297,36 @@ class LegislativeScratch:
     `None` for `NO_PROPOSAL` — see `LegislativeReport.budget_decision_digest`'s docstring."""
 
 
+@dataclass(frozen=True, slots=True)
+class AmendmentChamberTally:
+    """One slot-1 amendment tally, kept report-agnostic until Gate 3C3 commit 20."""
+
+    chamber: LegislativeChamber
+    total_seats: int
+    supporting_seats: int
+    required_yes_seats: int
+    shortfall_seats: int
+    target_total: int
+    extras_awarded: int
+    passed: bool
+
+
+@dataclass
+class ConstitutionalAmendmentScratch:
+    """Turn-local result of validating and resolving the amendment proposal in slot 1."""
+
+    opening_constitution: ConstitutionState
+    proposed_constitution: ConstitutionState
+    outcome: LegislativeOutcome
+    route: ProposalRoute | None
+    chambers: tuple[AmendmentChamberTally, ...]
+    political_capital_committed: int
+    amendment_decision_digest: str | None
+    axes_changed: int
+    transition_pressure_added_bps: int
+    qualifies_as_liberalization_transition: bool
+
+
 @dataclass
 class CapitalLedgerScratch:
     """Mutable, turn-local political-capital ledger threaded through the Phase 3B2A phases via
@@ -354,6 +395,9 @@ class PhaseContext:
     legislative_report: LegislativeReport | None = None
     """Set by `generate_turn_report` (slot 15) from `legislative_scratch`; `resolver.py` copies
     this onto the final `TurnReport`."""
+    constitutional_amendment_scratch: ConstitutionalAmendmentScratch | None = None
+    """Set by slot 1 for every turn, committed by slot 2 on passage, and read by slot 12 for
+    transition-pressure addition. Gate 3C3 commit 20 will assemble its dedicated report."""
     capital_ledger: CapitalLedgerScratch | None = None
     """Set by `_validate_and_reserve_actions` (slot 1); read by slot 10 (total commitment), slot
     11 (relationship application) and slot 15 (report assembly). Phase 3B2A."""
@@ -457,6 +501,219 @@ def _compute_proposed_spending_plan(
     return proposed
 
 
+def _resolve_constitutional_amendment(
+    ctx: PhaseContext,
+    *,
+    opening: OpeningLegislativeSnapshot,
+    decision: ConstitutionalAmendmentDecision | None,
+    party_ids: set[str],
+    blocs_by_key: dict[tuple[str, str], LegislativeBlocState],
+) -> tuple[tuple[CapitalExpenditureReport, ...], int]:
+    """Resolve an amendment from opening state without mutating state (Gate 3C3, slot 1)."""
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    politics = player.politics
+    assert politics is not None, "checked by the caller"
+    opening_constitution = politics.constitution.model_copy()
+
+    if decision is None:
+        ctx.constitutional_amendment_scratch = ConstitutionalAmendmentScratch(
+            opening_constitution=opening_constitution,
+            proposed_constitution=opening_constitution.model_copy(),
+            outcome=LegislativeOutcome.NO_PROPOSAL,
+            route=None,
+            chambers=(),
+            political_capital_committed=0,
+            amendment_decision_digest=None,
+            axes_changed=0,
+            transition_pressure_added_bps=0,
+            qualifies_as_liberalization_transition=False,
+        )
+        return (), 0
+
+    updates: dict[str, object] = {}
+    for target in decision.targets:
+        opening_value = getattr(opening_constitution, target.axis)
+        if target.value == opening_value:
+            raise DecisionSetError(
+                f"constitutional amendment target {target.axis!r} changes nothing "
+                f"(opening value is {opening_value!r})"
+            )
+        updates[target.axis] = target.value
+
+    trial_payload = opening_constitution.model_dump(mode="python")
+    trial_payload.update(updates)
+    unvalidated_trial = ConstitutionState.model_construct(**trial_payload)
+    violation = first_constitutional_violation(unvalidated_trial)
+    if violation is not None:
+        code, message = violation
+        raise DecisionSetError(
+            f"constitutional amendment final constitution violates {code}: {message}"
+        )
+    proposed_constitution = ConstitutionState.model_validate(trial_payload)
+
+    digest = constitutional_amendment_decision_digest(decision)
+    expenditure_rows: list[CapitalExpenditureReport] = []
+    chamber_tallies: tuple[AmendmentChamberTally, ...]
+    commitment: int
+    if decision.route is ProposalRoute.DECREE:
+        if (
+            opening_constitution.legislature is not Legislature.NONE
+            or opening.legislature is not None
+            or opening_constitution.decree_authority is not DecreeAuthority.UNLIMITED
+        ):
+            raise DecisionSetError(
+                "constitutional amendment route=decree requires legislature='none', no "
+                "LegislatureState, and decree_authority='unlimited'"
+            )
+        commitment = CONSTITUTIONAL_AMENDMENT_DECREE_COST
+        expenditure_rows.append(
+            CapitalExpenditureReport(
+                category=CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT,
+                party_id=None,
+                bloc_id=None,
+                political_capital=commitment,
+                decision_digest=digest,
+            )
+        )
+        chamber_tallies = ()
+        outcome = LegislativeOutcome.ENACTED_BY_DECREE
+    else:
+        legislature = opening.legislature
+        if opening_constitution.legislature is Legislature.NONE or legislature is None:
+            raise DecisionSetError(
+                "constitutional amendment route=legislative requires a legislature"
+            )
+
+        allocation_by_key: dict[tuple[str, str], int] = {}
+        for allocation in decision.influence:
+            if allocation.party_id not in party_ids:
+                raise DecisionSetError(
+                    f"constitutional amendment influence targets unknown party "
+                    f"{allocation.party_id!r}"
+                )
+            bloc = blocs_by_key.get((allocation.party_id, allocation.bloc_id))
+            if bloc is None:
+                raise DecisionSetError(
+                    "constitutional amendment influence targets unknown bloc "
+                    f"({allocation.party_id!r}, {allocation.bloc_id!r})"
+                )
+            if sum(entry.seats for entry in bloc.seats) == 0:
+                raise DecisionSetError(
+                    "constitutional amendment influence targets bloc "
+                    f"({allocation.party_id!r}, {allocation.bloc_id!r}) which holds zero seats"
+                )
+            allocation_by_key[(allocation.party_id, allocation.bloc_id)] = (
+                allocation.political_capital
+            )
+
+        commitment = sum(allocation_by_key.values())
+        for (party_id, bloc_id), allocated in allocation_by_key.items():
+            expenditure_rows.append(
+                CapitalExpenditureReport(
+                    category=CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT,
+                    party_id=party_id,
+                    bloc_id=bloc_id,
+                    political_capital=allocated,
+                    decision_digest=digest,
+                )
+            )
+
+        threshold = AmendmentThreshold(opening_constitution.amendment_difficulty.value)
+        tallies: list[AmendmentChamberTally] = []
+        for chamber_state in legislature.chambers:
+            support_rows: list[SeatSupport] = []
+            for party in legislature.parties:
+                for bloc in party.blocs:
+                    seats = next(
+                        (
+                            entry.seats
+                            for entry in bloc.seats
+                            if entry.chamber is chamber_state.chamber
+                        ),
+                        0,
+                    )
+                    if seats == 0:
+                        continue
+                    support = resolve_amendment_support(
+                        role=party.government_role,
+                        relationship_bps=bloc.government_relationship_bps,
+                        discipline_bps=bloc.discipline_bps,
+                        allocated_political_capital=allocation_by_key.get((party.id, bloc.id), 0),
+                    )
+                    support_rows.append(
+                        SeatSupport(
+                            party_id=party.id,
+                            bloc_id=bloc.id,
+                            seats=seats,
+                            effective_support_bps=support.effective_support_bps,
+                        )
+                    )
+            apportionment = apportion_supporting_seats(rows=tuple(support_rows))
+            required = required_amendment_yes_seats(
+                total_seats=chamber_state.total_seats, difficulty=threshold
+            )
+            passed = apportionment.supporting_seats >= required
+            tallies.append(
+                AmendmentChamberTally(
+                    chamber=chamber_state.chamber,
+                    total_seats=chamber_state.total_seats,
+                    supporting_seats=apportionment.supporting_seats,
+                    required_yes_seats=required,
+                    shortfall_seats=max(0, required - apportionment.supporting_seats),
+                    target_total=apportionment.supporting_seats,
+                    extras_awarded=apportionment.supporting_seats
+                    - sum(row.base for row in apportionment.rows),
+                    passed=passed,
+                )
+            )
+        chamber_tallies = tuple(tallies)
+        outcome = (
+            LegislativeOutcome.PASSED_LEGISLATIVE
+            if all(tally.passed for tally in chamber_tallies)
+            else LegislativeOutcome.FAILED_LEGISLATIVE
+        )
+
+    enacted = outcome in (
+        LegislativeOutcome.PASSED_LEGISLATIVE,
+        LegislativeOutcome.ENACTED_BY_DECREE,
+    )
+    qualifies = (
+        enacted
+        and is_noncompetitive_constitution(
+            executive_selection=opening_constitution.executive_selection,
+            decree_authority=opening_constitution.decree_authority,
+        )
+        and is_competitive_elected_constitution(
+            executive_selection=proposed_constitution.executive_selection,
+            decree_authority=proposed_constitution.decree_authority,
+            national_election_interval_turns=(
+                proposed_constitution.national_election_interval_turns
+            ),
+        )
+    )
+    added_pressure = (
+        transition_pressure_added_bps(
+            difficulty=opening_constitution.amendment_difficulty,
+            axes_changed=len(decision.targets),
+        )
+        if enacted
+        else 0
+    )
+    ctx.constitutional_amendment_scratch = ConstitutionalAmendmentScratch(
+        opening_constitution=opening_constitution,
+        proposed_constitution=proposed_constitution,
+        outcome=outcome,
+        route=decision.route,
+        chambers=chamber_tallies,
+        political_capital_committed=commitment,
+        amendment_decision_digest=digest,
+        axes_changed=len(decision.targets),
+        transition_pressure_added_bps=added_pressure,
+        qualifies_as_liberalization_transition=qualifies,
+    )
+    return tuple(expenditure_rows), commitment
+
+
 def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
     """Phase 3B1, slot 1: resolve this turn's budget proposal against the legislature (or decree
     authority) BEFORE anything is mutated (§9 of the plan). Computes the vote (or decree, or
@@ -495,6 +752,7 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
     # object, silently.
     budget_decision = ctx.decisions.budget_decision()
     investment_decision = ctx.decisions.relationship_investment_decision()
+    amendment_decision = ctx.decisions.constitutional_amendment_decision()
 
     legislature = opening.legislature
     party_ids = {party.id for party in legislature.parties} if legislature is not None else set()
@@ -552,6 +810,14 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
             )
             investment_total += investment.political_capital
 
+    amendment_expenditure_rows, amendment_total = _resolve_constitutional_amendment(
+        ctx,
+        opening=opening,
+        decision=amendment_decision,
+        party_ids=party_ids,
+        blocs_by_key=blocs_by_key,
+    )
+
     if budget_decision is None:
         ctx.legislative_scratch = LegislativeScratch(
             opening=opening,
@@ -576,6 +842,8 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
             legislative_expenditure_rows=(),
             investment_expenditure_rows=tuple(investment_expenditure_rows),
             investment_total=investment_total,
+            amendment_expenditure_rows=amendment_expenditure_rows,
+            amendment_total=amendment_total,
         )
         return
 
@@ -801,6 +1069,8 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
         legislative_expenditure_rows=tuple(legislative_expenditure_rows),
         investment_expenditure_rows=tuple(investment_expenditure_rows),
         investment_total=investment_total,
+        amendment_expenditure_rows=amendment_expenditure_rows,
+        amendment_total=amendment_total,
     )
 
 
@@ -811,6 +1081,8 @@ def _finish_validate_and_reserve_actions(
     legislative_expenditure_rows: tuple[CapitalExpenditureReport, ...],
     investment_expenditure_rows: tuple[CapitalExpenditureReport, ...],
     investment_total: int,
+    amendment_expenditure_rows: tuple[CapitalExpenditureReport, ...] = (),
+    amendment_total: int = 0,
 ) -> None:
     """The shared tail of slot 1 (Phase 3B2A): combine the legislative/decree commitment
     `ctx.legislative_scratch` already recorded with this turn's relationship investment into one
@@ -822,17 +1094,22 @@ def _finish_validate_and_reserve_actions(
     """
     assert ctx.legislative_scratch is not None, "the caller always sets this first"
     legislative_commitment = ctx.legislative_scratch.political_capital_committed
-    total_committed = legislative_commitment + investment_total
+    total_committed = legislative_commitment + investment_total + amendment_total
     if total_committed > opening.political_capital:
         raise DecisionSetError(
             f"total political capital commitment {total_committed} (route commitment "
-            f"{legislative_commitment} + relationship investment {investment_total}) exceeds "
+            f"{legislative_commitment} + relationship investment {investment_total} + "
+            f"constitutional amendment {amendment_total}) exceeds "
             f"opening political capital {opening.political_capital}"
         )
 
     expenditures = tuple(
         sorted(
-            (*legislative_expenditure_rows, *investment_expenditure_rows),
+            (
+                *legislative_expenditure_rows,
+                *investment_expenditure_rows,
+                *amendment_expenditure_rows,
+            ),
             key=lambda row: (row.category.value, row.party_id or "", row.bloc_id or ""),
         )
     )
@@ -841,6 +1118,55 @@ def _finish_validate_and_reserve_actions(
         total_committed=total_committed,
     )
     ctx.mark_implemented()
+
+
+def _commit_constitutional_amendment(ctx: PhaseContext) -> None:
+    """Commit slot 1's successful amendment atomically in slot 2."""
+    scratch = ctx.constitutional_amendment_scratch
+    assert scratch is not None, "validate_and_reserve_actions always sets amendment scratch"
+    if scratch.outcome not in (
+        LegislativeOutcome.PASSED_LEGISLATIVE,
+        LegislativeOutcome.ENACTED_BY_DECREE,
+    ):
+        return
+
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    politics = player.politics
+    assert politics is not None, "checked by check_invariants before phase execution"
+    decision = ctx.decisions.constitutional_amendment_decision()
+    assert decision is not None, "an enacted amendment always has a real submitted decision"
+
+    updates: dict[str, object] = {"constitution": scratch.proposed_constitution}
+    interval_target = next(
+        (
+            target
+            for target in decision.targets
+            if target.axis == "national_election_interval_turns"
+        ),
+        None,
+    )
+    if interval_target is not None:
+        updates["next_election_turn"] = (
+            None if interval_target.value is None else ctx.state.turn + interval_target.value
+        )
+
+    if scratch.qualifies_as_liberalization_transition:
+        updates["pending_liberalization"] = PendingLiberalizationState(
+            set_at_turn=ctx.state.turn,
+            opening_constitution_digest=constitution_digest(scratch.opening_constitution),
+            closing_constitution_digest=constitution_digest(scratch.proposed_constitution),
+        )
+    elif politics.pending_liberalization is not None and not is_competitive_elected_constitution(
+        executive_selection=scratch.proposed_constitution.executive_selection,
+        decree_authority=scratch.proposed_constitution.decree_authority,
+        national_election_interval_turns=(
+            scratch.proposed_constitution.national_election_interval_turns
+        ),
+    ):
+        updates["pending_liberalization"] = None
+
+    candidate = politics.model_copy(update=updates)
+    player.politics = type(politics).model_validate(candidate.model_dump(mode="python"))
 
 
 def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
@@ -946,6 +1272,10 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
     player.finance = finance.model_copy(
         update={"tax_policy": active_tax_policy, "spending_plan": active_spending_plan}
     )
+
+    # Gate 3C3: the constitution/schedule/pending-provenance write is one validated state update.
+    # Transition pressure is deliberately NOT written here; slot 12 is its sole writer.
+    _commit_constitutional_amendment(ctx)
 
     if budget_decision is None:
         ctx.report_entries.append(
@@ -1843,8 +2173,8 @@ def _evaluate_unrest_and_coup_risk(ctx: PhaseContext) -> None:  # noqa: C901
 
     `regime_transition_pressure_bps` is resolved here, and ONLY here (R6) -- reading this turn's
     OPENING pressure value (nothing before this slot ever writes it, so `politics`'s current value
-    IS the opening value) plus whatever a `ConstitutionalAmendmentDecision` added this turn. That
-    mechanism does not exist until Gate 3C3, so `amendment_added_bps` is always 0 here.
+    IS the opening value) plus whatever a successfully enacted `ConstitutionalAmendmentDecision`
+    added this turn, carried from slot 1 without any earlier phase writing the pressure field.
 
     All three channels' full risk assessment and RNG draw sequence always run, regardless of
     whether an earlier channel (in the fixed coup -> popular_unrest -> impeachment priority order)
@@ -1861,11 +2191,11 @@ def _evaluate_unrest_and_coup_risk(ctx: PhaseContext) -> None:  # noqa: C901
     legitimacy = politics.legitimacy_bps
     legislature = politics.legislature
 
+    amendment_scratch = ctx.constitutional_amendment_scratch
+    assert amendment_scratch is not None, "slot 1 always sets amendment scratch"
     pressure_resolution = resolve_transition_pressure_bps(
         opening_pressure_bps=politics.regime_transition_pressure_bps,
-        amendment_added_bps=transition_pressure_added_bps(
-            difficulty=constitution.amendment_difficulty, axes_changed=0
-        ),
+        amendment_added_bps=amendment_scratch.transition_pressure_added_bps,
     )
 
     opposition_seat_share_bps = _opposition_seat_share_bps(legislature)

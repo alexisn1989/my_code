@@ -24,7 +24,12 @@ from dataclasses import dataclass
 
 from app.core.money import BPS_DENOMINATOR
 from app.core.politics import clamp_bps, trunc_div_toward_zero
-from app.simulation.constitution import AmendmentDifficulty, JudicialReview
+from app.simulation.constitution import (
+    AmendmentDifficulty,
+    DecreeAuthority,
+    ExecutiveSelection,
+    JudicialReview,
+)
 
 REQUIRED_ELECTION_SUPPORT_BPS = 5_000
 LEGISLATIVE_SUPPORT_WEIGHT_BPS = 5_000
@@ -33,6 +38,35 @@ LEGITIMACY_WEIGHT_BPS = 1_000
 MAX_POLLING_UNCERTAINTY_SWING_BPS = 1_000
 """+/- 10 percentage points -- the widest a single seeded polling-uncertainty draw can move the
 baseline support figure in either direction."""
+
+
+def is_noncompetitive_constitution(
+    *, executive_selection: ExecutiveSelection, decree_authority: DecreeAuthority
+) -> bool:
+    """Whether the constitution fails Phase 3C's minimum competitive-origin test."""
+    return (
+        executive_selection
+        in (
+            ExecutiveSelection.HEREDITARY,
+            ExecutiveSelection.APPOINTED,
+        )
+        or decree_authority is not DecreeAuthority.NONE
+    )
+
+
+def is_competitive_elected_constitution(
+    *,
+    executive_selection: ExecutiveSelection,
+    decree_authority: DecreeAuthority,
+    national_election_interval_turns: int | None,
+) -> bool:
+    """Whether elections, executive selection, and decree power meet §5's victory shape."""
+    return (
+        executive_selection
+        in (ExecutiveSelection.DIRECT_ELECTION, ExecutiveSelection.LEGISLATIVE_SELECTION)
+        and decree_authority is DecreeAuthority.NONE
+        and national_election_interval_turns is not None
+    )
 
 
 @dataclass(frozen=True, slots=True)

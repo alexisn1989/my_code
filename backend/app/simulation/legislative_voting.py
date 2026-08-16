@@ -104,6 +104,9 @@ Fixed rather than scaled by the size of the change: a size-scaled cost would nee
 calibration axis, and would make "split the change across two turns" a dominant exploit.
 """
 
+CONSTITUTIONAL_AMENDMENT_DECREE_COST = 400
+"""Flat political-capital cost for the legislature-absent amendment route (Phase 3C)."""
+
 
 @dataclass(frozen=True, slots=True)
 class PolicyChange:
