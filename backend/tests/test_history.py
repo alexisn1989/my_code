@@ -10,6 +10,7 @@ import pytest
 from app.content.scenarios import load_scenario_file
 from app.core.canonical_json import canonical_dumps
 from app.core.errors import HistoryValidationError, SnapshotNotFoundError, TurnResolutionError
+from app.simulation.constitution import DecreeAuthority, ExecutiveSelection, ExecutiveSystem
 from app.simulation.decisions import (
     BlocInvestment,
     BlocRelationshipInvestmentDecision,
@@ -19,7 +20,7 @@ from app.simulation.decisions import (
     SpendingUpdate,
     bloc_relationship_investment_digest,
 )
-from app.simulation.history import GameSave, advance_game, new_game, validate_history
+from app.simulation.history import GameSave, _make_entry, advance_game, new_game, validate_history
 from app.simulation.legislature import ChangeDirection, LegislativeOutcome, ProposalRoute
 from app.simulation.political_memory import (
     combine_relationship_components,
@@ -33,7 +34,13 @@ from app.simulation.report import (
     TurnReportEntry,
 )
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json
-from app.simulation.state import RemovalReason, SpendingCategory
+from app.simulation.state import (
+    OutcomeBucket,
+    RemovalReason,
+    SpendingCategory,
+    TerminalOutcomeState,
+    VictoryReason,
+)
 from tests.conftest import SCENARIO_DIR, make_game_state
 
 _SFV = SAVE_FORMAT_VERSION
@@ -2065,3 +2072,171 @@ def test_case_23_transition_pressure_left_unchanged_still_fails_reconciliation()
     problems = validate_history(tampered)
     assert not any("entry_hash does not match" in p for p in problems)
     assert any("does not match the recomputed R6 identity" in p for p in problems)
+
+
+# --- Phase 3C, Gate 3C3: election/amendment history tamper matrix, cases 24-29 ---------------
+
+
+def test_case_24_election_schedule_tamper_still_fails_reconciliation() -> None:
+    save = _advance_quietly(_new_edited_save())
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.election is not None
+    assert not report.election.scheduled and report.election.next_election_turn == 16
+
+    tampered_election = report.election.model_copy(update={"next_election_turn": 17})
+    tampered_report = report.model_copy(update={"election": tampered_election})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in problem for problem in problems)
+    assert any("election.next_election_turn=17 does not match" in problem for problem in problems)
+
+
+def _tiny_valid_turn_16_save() -> GameSave:
+    save = _advance_quietly(_new_edited_save(), turns=16)
+    report = save.entries[-1].report()
+    assert report is not None and report.election is not None
+    assert report.election.scheduled and report.election.result == "won"
+    return save
+
+
+def test_case_25_won_election_without_term_increment_still_fails_reconciliation() -> None:
+    save = _tiny_valid_turn_16_save()
+    index = len(save.entries) - 1
+    state = save.entries[index].state()
+    opening_state = save.entries[index - 1].state()
+    politics = state.world.countries[state.world.player_country_id].politics
+    opening_politics = opening_state.world.countries[opening_state.world.player_country_id].politics
+    assert politics is not None and opening_politics is not None
+    assert politics.consecutive_terms_held == opening_politics.consecutive_terms_held + 1
+    tampered_json = _tamper_player_politics(
+        state, consecutive_terms_held=opening_politics.consecutive_terms_held
+    )
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, state_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in problem for problem in problems)
+    assert any(
+        "closing_state politics.consecutive_terms_held=" in problem
+        and "does not match the election" in problem
+        for problem in problems
+    )
+
+
+def test_case_26_election_party_seat_tamper_still_fails_reconciliation() -> None:
+    save = _tiny_valid_turn_16_save()
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    assert report is not None and report.election is not None
+    parties = list(report.election.parties)
+    assert len(parties) >= 2 and parties[1].seats > 0
+    first_party_id = parties[0].party_id
+    parties[0] = parties[0].model_copy(update={"seats": parties[0].seats + 1})
+    parties[1] = parties[1].model_copy(update={"seats": parties[1].seats - 1})
+    tampered_election = report.election.model_copy(update={"parties": tuple(parties)})
+    tampered_report = report.model_copy(update={"election": tampered_election})
+    tampered_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, report_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in problem for problem in problems)
+    assert any(f"election.parties[{first_party_id!r}].seats=" in problem for problem in problems)
+
+
+def test_case_27_starting_democracy_liberalization_exploit_is_rejected() -> None:
+    save = _tiny_valid_turn_16_save()
+    index = len(save.entries) - 1
+    original = save.entries[index]
+    report = original.report()
+    state = original.state()
+    assert report is not None and report.election is not None
+    opening_politics = save.entries[index - 1].state().world.countries["arken"].politics
+    assert opening_politics is not None and opening_politics.pending_liberalization is None
+
+    tampered_election = report.election.model_copy(
+        update={"liberalization_completed": True, "next_election_turn": 16}
+    )
+    tampered_report = report.model_copy(update={"election": tampered_election})
+    tampered_report_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    victory = TerminalOutcomeState(
+        bucket=OutcomeBucket.VICTORY,
+        victory_reason=VictoryReason.PEACEFUL_LIBERALIZATION_COMPLETED,
+        turn=16,
+    )
+    tampered_state_json = _tamper_player_politics(
+        state, terminal_outcome=victory, next_election_turn=16
+    )
+    tampered = _retamper_entry_with_consistent_hash(
+        save,
+        index=index,
+        state_json=tampered_state_json,
+        report_json=tampered_report_json,
+    )
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in problem for problem in problems)
+    assert any("group 42" in problem for problem in problems)
+
+
+@pytest.mark.parametrize(
+    ("scenario", "axis", "value"),
+    [
+        ("tiny_valid", "decree_authority", DecreeAuthority.NONE),
+        ("deficit_demo", "executive_selection", ExecutiveSelection.APPOINTED),
+        ("deficit_demo", "executive_system", ExecutiveSystem.SEMI_PRESIDENTIAL),
+        ("tiny_valid", "executive_term_limit_terms", 3),
+        ("tiny_valid", "national_election_interval_turns", 12),
+    ],
+)
+def test_case_28_unexplained_constitution_axis_tamper_still_fails_reconciliation(
+    scenario: str, axis: str, value: object
+) -> None:
+    save = _advance_quietly(_new_edited_save(scenario=scenario))
+    index = len(save.entries) - 1
+    state = save.entries[index].state()
+    country_id = state.world.player_country_id
+    politics = state.world.countries[country_id].politics
+    assert politics is not None
+    constitution = politics.constitution.model_copy(update={axis: value})
+    tampered_json = _tamper_player_politics(state, constitution=constitution)
+    tampered = _retamper_entry_with_consistent_hash(save, index=index, state_json=tampered_json)
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in problem for problem in problems)
+    assert not any("stored state fails schema validation" in problem for problem in problems)
+    assert any(f"group 44 constitution axis {axis!r}" in problem for problem in problems)
+
+
+def test_case_29_hand_assembled_post_terminal_entry_is_rejected() -> None:
+    save = _advance_quietly(_new_edited_save(), turns=32)
+    assert validate_history(save) == []
+    last_report = save.entries[-1].report()
+    assert last_report is not None
+    concluded_state = save.current_state()
+    politics = concluded_state.world.countries["arken"].politics
+    assert politics is not None and politics.terminal_outcome is not None
+
+    smuggled_state = concluded_state.model_copy(update={"turn": 33, "state_version": 33})
+    smuggled_decisions = DecisionSet(expected_turn=33, expected_state_version=33)
+    smuggled_entry = _make_entry(
+        turn=33,
+        previous_entry_hash=save.head_entry_hash,
+        state=smuggled_state,
+        decisions=smuggled_decisions,
+        report=last_report,
+        ruleset_version=save.ruleset_version,
+        content_version=save.content_version,
+    )
+    tampered = dataclasses.replace(
+        save,
+        entry_count=save.entry_count + 1,
+        head_entry_hash=smuggled_entry.entry_hash,
+        entries=(*save.entries, smuggled_entry),
+    )
+
+    problems = validate_history(tampered)
+    assert any("entry exists after the game concluded at turn 32" in p for p in problems), problems
