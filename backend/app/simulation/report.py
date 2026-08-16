@@ -3009,10 +3009,9 @@ class ElectionReport(BaseModel):
     """Whether an election was scheduled this turn, and — if so — its complete, re-derivable
     result (Phase 3C, `TurnReport`'s 10th report, added in Gate 3C1).
 
-    `liberalization_completed` is always `False` in this gate: nothing can set
-    `PoliticalState.pending_liberalization` until constitutional amendments exist (Gate 3C3), and
-    §5's provenance rule means a `True` value here can only ever be produced by a real, resolved
-    qualifying transition — never merely asserted.
+    `liberalization_completed` records a scheduled win that consumed a pending liberalization
+    marker persisted before the resolving turn. Provenance against real state is reconciliation's
+    responsibility; this model independently requires the claimed completion to be a win.
     """
 
     model_config = _STRICT_CONFIG

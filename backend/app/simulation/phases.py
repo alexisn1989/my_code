@@ -191,6 +191,7 @@ from app.simulation.state import (
     TaxBaseState,
     TaxPolicyState,
     TerminalOutcomeState,
+    VictoryReason,
 )
 from app.simulation.tax_base_derivation import (
     aggregate_tax_base_contributions,
@@ -2463,10 +2464,8 @@ def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
     in this slot can retroactively cheapen itself using this turn's own legitimacy/relationship
     resolution.
 
-    `pending_liberalization`/constitutional amendments do not exist until Gate 3C3, so
-    `liberalization_completed` is always `False` in this gate; `politics.terminal_outcome` is
-    always `None` entering this slot in this gate too (coup/unrest/impeachment, slot 12, are still
-    a no-op) -- the defensive check below is kept anyway, matching every later gate's shape.
+    A liberalization victory requires a pending marker persisted before this resolving turn; a
+    qualifying amendment committed by slot 2 on the same turn cannot immediately certify itself.
     """
     player = ctx.state.world.countries[ctx.state.world.player_country_id]
     politics = player.politics
@@ -2574,6 +2573,7 @@ def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
         new_next_election_turn = politics.next_election_turn  # frozen -- never read again
         new_terms_held = politics.consecutive_terms_held
         liberalization_completed = False
+        new_pending_liberalization = politics.pending_liberalization
     else:
         eligible_to_stand = True
         polling_swing = ctx.rng("election").randint(
@@ -2584,7 +2584,7 @@ def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
         )
         won = final_support >= REQUIRED_ELECTION_SUPPORT_BPS
         result = "won" if won else "lost"
-        liberalization_completed = False  # Gate 3C3 wires this live once amendments exist
+        liberalization_completed = False
         party_rows = []
         if legislature is not None:
             lower_total_seats = next(
@@ -2627,10 +2627,22 @@ def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
 
         if won:
             new_terms_held = politics.consecutive_terms_held + 1
-            interval = politics.constitution.national_election_interval_turns
-            assert interval is not None, "a scheduled election requires an authored interval"
-            new_next_election_turn = ctx.state.turn + interval
-            new_terminal_outcome = None
+            pending = politics.pending_liberalization
+            liberalization_completed = pending is not None and pending.set_at_turn < ctx.state.turn
+            if liberalization_completed:
+                new_next_election_turn = politics.next_election_turn
+                new_terminal_outcome = TerminalOutcomeState(
+                    bucket=OutcomeBucket.VICTORY,
+                    victory_reason=VictoryReason.PEACEFUL_LIBERALIZATION_COMPLETED,
+                    turn=ctx.state.turn,
+                )
+                new_pending_liberalization = None
+            else:
+                interval = politics.constitution.national_election_interval_turns
+                assert interval is not None, "a scheduled election requires an authored interval"
+                new_next_election_turn = ctx.state.turn + interval
+                new_terminal_outcome = None
+                new_pending_liberalization = pending
         else:
             new_terms_held = politics.consecutive_terms_held
             new_next_election_turn = politics.next_election_turn  # frozen -- never read again
@@ -2639,12 +2651,14 @@ def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
                 removal_reason=RemovalReason.ELECTORAL_DEFEAT,
                 turn=ctx.state.turn,
             )
+            new_pending_liberalization = None
 
     player.politics = politics.model_copy(
         update={
             "consecutive_terms_held": new_terms_held,
             "next_election_turn": new_next_election_turn,
             "terminal_outcome": new_terminal_outcome,
+            "pending_liberalization": new_pending_liberalization,
         }
     )
 
@@ -2685,7 +2699,7 @@ def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
         )
     )
     if new_terminal_outcome is not None:
-        reason = new_terminal_outcome.removal_reason
+        reason = new_terminal_outcome.victory_reason or new_terminal_outcome.removal_reason
         assert reason is not None
         ctx.report_entries.append(
             TurnReportEntry(

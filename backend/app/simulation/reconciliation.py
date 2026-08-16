@@ -109,7 +109,14 @@ from app.simulation.legislature import (
     LegislativeOutcome,
 )
 from app.simulation.report import TurnReport
-from app.simulation.state import GameState, LegislatureState, RemovalReason, SpendingCategory
+from app.simulation.state import (
+    GameState,
+    LegislatureState,
+    OutcomeBucket,
+    RemovalReason,
+    SpendingCategory,
+    VictoryReason,
+)
 
 _COUP_UNREST_OWNED_REMOVAL_REASONS = frozenset(
     {
@@ -333,32 +340,18 @@ def reconcile_political_legislative_and_survival_report(
                 f"{state_closing_baseline.unemployment_rate_bps}"
             )
 
-    # Groups 7/8: each of the nine ConstitutionSummary fields vs opening AND closing
-    # ConstitutionState, independently -- (R7) not just the digest.
+    # Groups 7-9: PoliticalReport is assembled after slot 2, so its constitution is the closing
+    # constitution. Commit 22's group 44 owns state-to-state five-axis staticness/provenance.
     for field_name in _CONSTITUTION_FIELDS:
         report_value = getattr(political.constitution, field_name)
-        opening_value = getattr(opening_politics.constitution, field_name)
         closing_value = getattr(closing_politics.constitution, field_name)
-        if report_value != opening_value:
-            problems.append(
-                f"political.constitution.{field_name}={report_value!r} does not match "
-                f"opening_state constitution.{field_name}={opening_value!r}"
-            )
         if report_value != closing_value:
             problems.append(
                 f"political.constitution.{field_name}={report_value!r} does not match "
                 f"closing_state constitution.{field_name}={closing_value!r}"
             )
 
-    # Group 9: constitution_digest vs constitution_digest(opening) and (closing) -- (R7) digest
-    # equality is checked IN ADDITION TO, never instead of, groups 7/8's field-by-field checks.
-    expected_opening_digest = constitution_digest(opening_politics.constitution)
-    if political.constitution.constitution_digest != expected_opening_digest:
-        problems.append(
-            "political.constitution.constitution_digest="
-            f"{political.constitution.constitution_digest!r} does not match "
-            f"constitution_digest(opening_state.constitution)={expected_opening_digest!r}"
-        )
+    # Group 9: digest vs the same closing constitution.
     expected_closing_digest = constitution_digest(closing_politics.constitution)
     if political.constitution.constitution_digest != expected_closing_digest:
         problems.append(
@@ -1435,8 +1428,22 @@ def reconcile_political_legislative_and_survival_report(
         # Group 34 (R6): transition-pressure identity recompute -- the ONE combining formula,
         # applied once, reading the turn's OPENING pressure and (Gate 3C3 scope; always 0 here,
         # since ConstitutionalAmendmentDecision does not exist yet) the amendment-added amount.
+        amendment_decision = (
+            decisions.constitutional_amendment_decision() if decisions is not None else None
+        )
+        amendment_report = report.constitutional_amendment
+        amendment_enacted = amendment_report is not None and amendment_report.outcome in (
+            LegislativeOutcome.PASSED_LEGISLATIVE,
+            LegislativeOutcome.ENACTED_BY_DECREE,
+        )
+        axes_changed = (
+            len(amendment_decision.targets)
+            if amendment_decision is not None and amendment_enacted
+            else 0
+        )
         expected_added = transition_pressure_added_bps(
-            difficulty=opening_politics.constitution.amendment_difficulty, axes_changed=0
+            difficulty=opening_politics.constitution.amendment_difficulty,
+            axes_changed=axes_changed,
         )
         expected_pressure = resolve_transition_pressure_bps(
             opening_pressure_bps=opening_politics.regime_transition_pressure_bps,
@@ -1481,7 +1488,7 @@ def reconcile_political_legislative_and_survival_report(
     # report's own self-validated story.
     election = report.election
     if election is not None:
-        term_limit = opening_politics.constitution.executive_term_limit_terms
+        term_limit = closing_politics.constitution.executive_term_limit_terms
         term_limited = (
             term_limit is not None and opening_politics.consecutive_terms_held >= term_limit
         )
@@ -1499,20 +1506,50 @@ def reconcile_political_legislative_and_survival_report(
         # four reachable rows: WIN reschedules by the closing constitution's own interval; a
         # LOSS/TERM_LIMIT_EXIT/non-scheduled turn leaves it frozen -- the two amendment-driven
         # rows are Gate 3C3 scope, unreachable while no amendment mechanism exists).
-        expected_scheduled = (
-            not coup_unrest_concluded and opening_politics.next_election_turn == closing_state.turn
+        amendment_decision = (
+            decisions.constitutional_amendment_decision() if decisions is not None else None
         )
+        amendment_report = report.constitutional_amendment
+        amendment_enacted = amendment_report is not None and amendment_report.outcome in (
+            LegislativeOutcome.PASSED_LEGISLATIVE,
+            LegislativeOutcome.ENACTED_BY_DECREE,
+        )
+        interval_target = (
+            next(
+                (
+                    target
+                    for target in amendment_decision.targets
+                    if target.axis == "national_election_interval_turns"
+                ),
+                None,
+            )
+            if amendment_decision is not None and amendment_enacted
+            else None
+        )
+        post_slot_2_next = (
+            (closing_state.turn + interval_target.value)
+            if interval_target is not None and interval_target.value is not None
+            else None
+            if interval_target is not None
+            else opening_politics.next_election_turn
+        )
+        expected_scheduled = not coup_unrest_concluded and post_slot_2_next == closing_state.turn
         if election.scheduled != expected_scheduled:
             problems.append(
                 f"election.scheduled={election.scheduled} does not match "
                 f"opening_state politics.next_election_turn == closing_state.turn "
                 f"({expected_scheduled})"
             )
-        if election.scheduled and not term_limited and election.result == "won":
+        if (
+            election.scheduled
+            and not term_limited
+            and election.result == "won"
+            and not election.liberalization_completed
+        ):
             interval = closing_politics.constitution.national_election_interval_turns
             expected_next = (closing_state.turn + interval) if interval is not None else None
         else:
-            expected_next = opening_politics.next_election_turn
+            expected_next = post_slot_2_next
         if election.next_election_turn != expected_next:
             problems.append(
                 f"election.next_election_turn={election.next_election_turn} does not match the "
@@ -1525,8 +1562,7 @@ def reconcile_political_legislative_and_survival_report(
             )
 
         # Group 36: term-limit recompute -- `eligible_to_stand`/`result == "term_limit_exit"`
-        # against the OPENING `consecutive_terms_held`/`executive_term_limit_terms`, the values
-        # the check was actually run against, never a post-election value.
+        # against opening terms-held and the post-slot-2 constitution's term limit.
         if election.scheduled:
             if election.executive_term_limit_terms != term_limit:
                 problems.append(
@@ -1672,11 +1708,23 @@ def reconcile_political_legislative_and_survival_report(
                         f"terminal_outcome.turn={outcome.turn} does not match "
                         f"closing_state.turn={closing_state.turn}"
                     )
-        elif closing_politics.terminal_outcome is not None and not coup_unrest_concluded:
-            problems.append(
-                f"election.result={election.result!r} does not conclude the game, but "
-                f"closing_state carries a terminal_outcome={closing_politics.terminal_outcome!r}"
-            )
+        elif election.result == "won":
+            outcome = closing_politics.terminal_outcome
+            if election.liberalization_completed:
+                if (
+                    outcome is None
+                    or outcome.bucket is not OutcomeBucket.VICTORY
+                    or outcome.victory_reason is not VictoryReason.PEACEFUL_LIBERALIZATION_COMPLETED
+                    or outcome.turn != closing_state.turn
+                ):
+                    problems.append(
+                        "election.liberalization_completed=True requires the exact peaceful "
+                        f"liberalization VICTORY terminal outcome, got {outcome!r}"
+                    )
+            elif outcome is not None and not coup_unrest_concluded:
+                problems.append(
+                    f"an ordinary won election must leave terminal_outcome=None, got {outcome!r}"
+                )
 
         # Group 40: `election.parties` vs `closing_state.politics.legislature`, by `party_id`
         # identity -- exact seats/total_seats match, read from state DIRECTLY, never through

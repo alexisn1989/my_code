@@ -207,7 +207,8 @@ def test_each_closing_baseline_field_is_independently_rejected() -> None:
 def test_each_of_the_nine_constitutional_fields_is_independently_rejected() -> None:
     """(R7) Field-by-field, not just the digest -- each of the nine `ConstitutionSummary` fields
     is corrupted alone, keeping the (now-inconsistent) digest untouched, and each must be caught
-    against BOTH opening and closing state."""
+    against the closing state snapshot that `PoliticalReport` now records. Commit 22's group 44
+    owns opening-to-closing amendment staticness."""
     state, first, _ = _resolve_twice()
     corruptions = {
         "executive_system": ExecutiveSystem.PARLIAMENTARY
@@ -229,9 +230,8 @@ def test_each_of_the_nine_constitutional_fields_is_independently_rejected() -> N
             opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
         )
         assert any(f"constitution.{field_name}" in p for p in problems), field_name
-        # Both opening and closing comparisons fire -- two problems, not one.
         matching = [p for p in problems if f"constitution.{field_name}" in p]
-        assert len(matching) == 2, field_name
+        assert len(matching) == 1, field_name
 
 
 def test_digest_alone_corrupted_with_fields_intact_is_rejected() -> None:

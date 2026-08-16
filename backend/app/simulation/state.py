@@ -866,13 +866,14 @@ class PoliticalState(BaseModel):
     """
     consecutive_terms_held: StrictTermsHeld = 1
     """(Phase 3C) How many elections in a row (including the one already underway at genesis) the
-    incumbent has won. Incremented on every electoral WIN that is not itself a liberalization
-    victory (slot 13). No "reset to 0" path exists: a loss or a term-limit exit both end the game."""
+    incumbent has won. Incremented on every electoral WIN, including the win that completes a
+    liberalization victory (slot 13). No "reset to 0" path exists: a loss or term-limit exit ends
+    the game."""
     next_election_turn: int | None = None
     """(Phase 3C) The exact turn the next scheduled election falls on, replacing
     `turn % interval == 0` arithmetic, which breaks the moment the interval changes mid-game.
     `None` if and only if `constitution.national_election_interval_turns is None`. The sole writer
-    after genesis is slot 13."""
+    after genesis is slot 2 (interval amendments) or slot 13 (scheduled-election outcomes)."""
     regime_transition_pressure_bps: StrictTransitionPressureBps = 0
     """(Phase 3C) Elevated coup risk from a recent constitutional amendment, direction-blind by
     construction. Written in exactly one place, slot 12, from one combining formula."""
