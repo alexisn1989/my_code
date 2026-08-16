@@ -59,6 +59,7 @@ from app.simulation.decisions import (
     BudgetDecision,
     ConstitutionalAmendmentDecision,
     DecisionSet,
+    InfluenceAllocation,
     bloc_relationship_investment_digest,
     budget_decision_digest,
     constitutional_amendment_decision_digest,
@@ -131,6 +132,9 @@ from app.simulation.report import (
     CapitalExpenditureReport,
     ChamberVoteReport,
     ChangeDirection,
+    ConstitutionalAmendmentConstitutionSnapshot,
+    ConstitutionalAmendmentReport,
+    ConstitutionalAmendmentTargetReport,
     ConstitutionSummary,
     CoupChannelReport,
     CoupUnrestReport,
@@ -396,8 +400,9 @@ class PhaseContext:
     """Set by `generate_turn_report` (slot 15) from `legislative_scratch`; `resolver.py` copies
     this onto the final `TurnReport`."""
     constitutional_amendment_scratch: ConstitutionalAmendmentScratch | None = None
-    """Set by slot 1 for every turn, committed by slot 2 on passage, and read by slot 12 for
-    transition-pressure addition. Gate 3C3 commit 20 will assemble its dedicated report."""
+    """Set by slot 1 for every turn, committed by slot 2 on passage, and read by slot 12."""
+    constitutional_amendment_report: ConstitutionalAmendmentReport | None = None
+    """Assembled in slot 15 from the exact amendment scratch and submitted decision."""
     capital_ledger: CapitalLedgerScratch | None = None
     """Set by `_validate_and_reserve_actions` (slot 1); read by slot 10 (total commitment), slot
     11 (relationship application) and slot 15 (report assembly). Phase 3B2A."""
@@ -2747,6 +2752,83 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
         budget_decision_digest=legislative_scratch.budget_decision_digest,
     )
     _append_legislative_report_entries(ctx, ctx.legislative_report)
+
+    amendment_scratch = ctx.constitutional_amendment_scratch
+    assert amendment_scratch is not None, "validate_and_reserve_actions always runs first"
+    amendment_decision = ctx.decisions.constitutional_amendment_decision()
+    enacted_amendment = amendment_scratch.outcome in (
+        LegislativeOutcome.PASSED_LEGISLATIVE,
+        LegislativeOutcome.ENACTED_BY_DECREE,
+    )
+    closing_constitution = (
+        amendment_scratch.proposed_constitution
+        if enacted_amendment
+        else amendment_scratch.opening_constitution
+    )
+
+    def amendment_snapshot(
+        constitution: ConstitutionState,
+    ) -> ConstitutionalAmendmentConstitutionSnapshot:
+        return ConstitutionalAmendmentConstitutionSnapshot(
+            decree_authority=constitution.decree_authority,
+            executive_selection=constitution.executive_selection,
+            executive_system=constitution.executive_system,
+            executive_term_limit_terms=constitution.executive_term_limit_terms,
+            national_election_interval_turns=constitution.national_election_interval_turns,
+            amendment_difficulty=constitution.amendment_difficulty,
+        )
+
+    target_rows: tuple[ConstitutionalAmendmentTargetReport, ...] = ()
+    influence: tuple[InfluenceAllocation, ...] = ()
+    if amendment_decision is not None:
+
+        def json_value(value: object) -> str:
+            if value is None:
+                return "null"
+            enum_value = getattr(value, "value", None)
+            return str(enum_value if enum_value is not None else value)
+
+        target_rows = tuple(
+            ConstitutionalAmendmentTargetReport(
+                axis=target.axis,
+                opening_value=json_value(
+                    getattr(amendment_scratch.opening_constitution, target.axis)
+                ),
+                proposed_value=json_value(target.value),
+            )
+            for target in amendment_decision.targets
+        )
+        influence = amendment_decision.influence
+    ctx.constitutional_amendment_report = ConstitutionalAmendmentReport(
+        proposed=amendment_decision is not None,
+        outcome=amendment_scratch.outcome,
+        route=amendment_scratch.route,
+        targets=target_rows,
+        chambers=tuple(
+            ChamberVoteReport(
+                chamber=row.chamber,
+                total_seats=row.total_seats,
+                supporting_seats=row.supporting_seats,
+                required_yes_seats=row.required_yes_seats,
+                shortfall_seats=row.shortfall_seats,
+                target_total=row.target_total,
+                extras_awarded=row.extras_awarded,
+                passed=row.passed,
+            )
+            for row in amendment_scratch.chambers
+        ),
+        influence=influence,
+        political_capital_committed=amendment_scratch.political_capital_committed,
+        amendment_decision_digest=amendment_scratch.amendment_decision_digest,
+        opening_constitution=amendment_snapshot(amendment_scratch.opening_constitution),
+        closing_constitution=amendment_snapshot(closing_constitution),
+        opening_constitution_digest=constitution_digest(amendment_scratch.opening_constitution),
+        closing_constitution_digest=constitution_digest(closing_constitution),
+        transition_pressure_added_bps=amendment_scratch.transition_pressure_added_bps,
+        qualifies_as_liberalization_transition=(
+            amendment_scratch.qualifies_as_liberalization_transition
+        ),
+    )
 
     capital_ledger = ctx.capital_ledger
     assert capital_ledger is not None, "validate_and_reserve_actions always runs first"

@@ -88,9 +88,12 @@ from app.simulation.constitution import (
     JudicialReview,
     Legislature,
     StrictTermCount,
+    StrictTurnInterval,
     TerritorialOrganization,
 )
+from app.simulation.decisions import InfluenceAllocation
 from app.simulation.government_survival import (
+    AMENDMENT_PRESSURE_PER_AXIS_BY_DIFFICULTY_BPS,
     BASE_COUP_ATTEMPT_RISK_BPS,
     BASE_UNREST_ATTEMPT_RISK_BPS,
     MAX_COUP_ATTEMPT_RISK_BPS,
@@ -103,6 +106,7 @@ from app.simulation.government_survival import (
     unrest_success_probability_bps,
 )
 from app.simulation.legislative_voting import (
+    CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
     INFLUENCE_BPS_PER_CAPITAL,
     MAX_INFLUENCE_BPS,
@@ -114,6 +118,7 @@ from app.simulation.legislative_voting import (
 )
 from app.simulation.legislative_voting import SPENDING_WEIGHT_BPS as SPENDING_WEIGHT_BPS
 from app.simulation.legislature import (
+    AmendmentThreshold,
     CapitalExpenditureCategory,
     GovernmentRole,
     LegislativeChamber,
@@ -1865,8 +1870,7 @@ class BlocVoteReport(BaseModel):
 
 
 class ChamberVoteReport(BaseModel):
-    """One chamber's vote: its size, how many seats support the proposal, the strict majority it
-    needed, and the (R4) chamber-level largest-remainder apportionment totals."""
+    """One chamber's threshold-agnostic vote and largest-remainder totals."""
 
     model_config = _STRICT_CONFIG
 
@@ -1880,17 +1884,9 @@ class ChamberVoteReport(BaseModel):
     passed: bool
 
     @model_validator(mode="after")
-    def _required_yes_seats_is_strict_majority(self) -> ChamberVoteReport:
-        expected = self.total_seats // 2 + 1
-        if self.required_yes_seats != expected:
-            raise ValueError(
-                f"required_yes_seats={self.required_yes_seats} does not match "
-                f"total_seats // 2 + 1 ({expected})"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def _passed_and_shortfall_match_strict_majority(self) -> ChamberVoteReport:
+    def _passed_and_shortfall_match_threshold(self) -> ChamberVoteReport:
+        if self.required_yes_seats > self.total_seats:
+            raise ValueError("required_yes_seats cannot exceed total_seats")
         if self.supporting_seats > self.total_seats:
             raise ValueError(
                 f"supporting_seats={self.supporting_seats} exceeds total_seats={self.total_seats}"
@@ -1967,6 +1963,17 @@ class LegislativeReport(BaseModel):
     opening_political_capital: StrictPoliticalCapital
     political_capital_committed: StrictPoliticalCapital
     budget_decision_digest: str | None
+
+    @model_validator(mode="after")
+    def _chambers_use_simple_majority(self) -> LegislativeReport:
+        for chamber in self.chambers:
+            expected = chamber.total_seats // 2 + 1
+            if chamber.required_yes_seats != expected:
+                raise ValueError(
+                    f"budget chamber {chamber.chamber.value!r} required_yes_seats="
+                    f"{chamber.required_yes_seats} does not match simple majority ({expected})"
+                )
+        return self
 
     @model_validator(mode="after")
     def _budget_decision_digest_matches_proposal_presence(self) -> LegislativeReport:
@@ -3111,6 +3118,205 @@ class ElectionReport(BaseModel):
         return self
 
 
+AmendmentAxisName = Literal[
+    "decree_authority",
+    "executive_selection",
+    "executive_system",
+    "executive_term_limit_terms",
+    "national_election_interval_turns",
+]
+AMENDMENT_AXIS_ORDER: tuple[AmendmentAxisName, ...] = (
+    "decree_authority",
+    "executive_selection",
+    "executive_system",
+    "executive_term_limit_terms",
+    "national_election_interval_turns",
+)
+
+
+class ConstitutionalAmendmentTargetReport(BaseModel):
+    """One requested axis transition; values use the constitution's canonical JSON spelling."""
+
+    model_config = _STRICT_CONFIG
+
+    axis: AmendmentAxisName
+    opening_value: str
+    proposed_value: str
+
+    @model_validator(mode="after")
+    def _target_changes_value(self) -> ConstitutionalAmendmentTargetReport:
+        if self.opening_value == self.proposed_value:
+            raise ValueError(f"amendment target {self.axis!r} must change its opening value")
+        return self
+
+
+class ConstitutionalAmendmentConstitutionSnapshot(BaseModel):
+    """The five relevant axes plus the opening procedural difficulty."""
+
+    model_config = _STRICT_CONFIG
+
+    decree_authority: DecreeAuthority
+    executive_selection: ExecutiveSelection
+    executive_system: ExecutiveSystem
+    executive_term_limit_terms: StrictTermCount | None
+    national_election_interval_turns: StrictTurnInterval | None
+    amendment_difficulty: AmendmentDifficulty
+
+
+def _amendment_axis_json_value(
+    snapshot: ConstitutionalAmendmentConstitutionSnapshot, axis: AmendmentAxisName
+) -> str:
+    value = getattr(snapshot, axis)
+    if value is None:
+        return "null"
+    if isinstance(value, StrEnum):
+        return value.value
+    return str(value)
+
+
+class ConstitutionalAmendmentReport(BaseModel):
+    """Self-validating Gate 3C3 amendment route, vote, cost, and state transition."""
+
+    model_config = _STRICT_CONFIG
+
+    proposed: bool
+    outcome: LegislativeOutcome
+    route: ProposalRoute | None
+    targets: tuple[ConstitutionalAmendmentTargetReport, ...] = Field(default_factory=tuple)
+    chambers: tuple[ChamberVoteReport, ...] = Field(default_factory=tuple)
+    influence: tuple[InfluenceAllocation, ...] = Field(default_factory=tuple)
+    political_capital_committed: StrictPoliticalCapital
+    amendment_decision_digest: str | None
+    opening_constitution: ConstitutionalAmendmentConstitutionSnapshot
+    closing_constitution: ConstitutionalAmendmentConstitutionSnapshot
+    opening_constitution_digest: str
+    closing_constitution_digest: str
+    transition_pressure_added_bps: StrictTransitionPressureBps
+    qualifies_as_liberalization_transition: bool
+
+    @model_validator(mode="after")
+    def _shape_route_and_cost_are_consistent(self) -> ConstitutionalAmendmentReport:
+        proposed = self.outcome is not LegislativeOutcome.NO_PROPOSAL
+        if self.proposed != proposed:
+            raise ValueError("proposed flag does not match amendment outcome")
+        if not proposed:
+            if self.route is not None or self.targets or self.chambers or self.influence:
+                raise ValueError("NO_PROPOSAL amendment report must contain no proposal detail")
+            if self.political_capital_committed != 0 or self.amendment_decision_digest is not None:
+                raise ValueError("NO_PROPOSAL amendment report must have zero cost and no digest")
+            return self
+        if self.route is None or not self.targets or self.amendment_decision_digest is None:
+            raise ValueError("a proposed amendment requires route, targets, and decision digest")
+        if not _HEX_DIGEST_PATTERN.fullmatch(self.amendment_decision_digest):
+            raise ValueError("amendment_decision_digest must be lowercase 64-character hex")
+        if self.route is ProposalRoute.DECREE:
+            if self.outcome is not LegislativeOutcome.ENACTED_BY_DECREE:
+                raise ValueError("amendment decree route requires ENACTED_BY_DECREE")
+            if self.chambers or self.influence:
+                raise ValueError("amendment decree route has no chamber vote or influence")
+            if self.political_capital_committed != CONSTITUTIONAL_AMENDMENT_DECREE_COST:
+                raise ValueError("amendment decree commitment does not match calibrated cost")
+        else:
+            if not self.chambers:
+                raise ValueError("legislative amendment requires chamber rows")
+            if self.political_capital_committed != sum(
+                allocation.political_capital for allocation in self.influence
+            ):
+                raise ValueError("legislative amendment commitment does not equal influence sum")
+            all_passed = all(chamber.passed for chamber in self.chambers)
+            expected = (
+                LegislativeOutcome.PASSED_LEGISLATIVE
+                if all_passed
+                else LegislativeOutcome.FAILED_LEGISLATIVE
+            )
+            if self.outcome is not expected:
+                raise ValueError("legislative amendment outcome does not match chamber results")
+        return self
+
+    @model_validator(mode="after")
+    def _canonical_targets_influence_and_thresholds(self) -> ConstitutionalAmendmentReport:
+        axes = [target.axis for target in self.targets]
+        if axes != sorted(axes) or len(axes) != len(set(axes)):
+            raise ValueError("amendment targets must be unique and in canonical axis order")
+        identities = [(row.party_id, row.bloc_id) for row in self.influence]
+        if identities != sorted(identities) or len(identities) != len(set(identities)):
+            raise ValueError("amendment influence must be unique and in canonical identity order")
+        threshold = AmendmentThreshold(self.opening_constitution.amendment_difficulty.value)
+        for chamber in self.chambers:
+            if threshold is AmendmentThreshold.SIMPLE_MAJORITY:
+                required = chamber.total_seats // 2 + 1
+            elif threshold is AmendmentThreshold.SUPERMAJORITY:
+                required = (2 * chamber.total_seats + 2) // 3
+            else:
+                required = (3 * chamber.total_seats + 3) // 4
+            if chamber.required_yes_seats != required:
+                raise ValueError(
+                    f"amendment chamber threshold is {chamber.required_yes_seats}, expected {required}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _snapshots_pressure_and_liberalization_are_consistent(
+        self,
+    ) -> ConstitutionalAmendmentReport:
+        for digest in (self.opening_constitution_digest, self.closing_constitution_digest):
+            if not _HEX_DIGEST_PATTERN.fullmatch(digest):
+                raise ValueError("constitution digests must be lowercase 64-character hex")
+        enacted = self.outcome in (
+            LegislativeOutcome.PASSED_LEGISLATIVE,
+            LegislativeOutcome.ENACTED_BY_DECREE,
+        )
+        if (
+            self.closing_constitution.amendment_difficulty
+            is not self.opening_constitution.amendment_difficulty
+        ):
+            raise ValueError("non-targetable amendment_difficulty changed across amendment")
+        target_by_axis = {row.axis: row for row in self.targets}
+        for axis in AMENDMENT_AXIS_ORDER:
+            opening = _amendment_axis_json_value(self.opening_constitution, axis)
+            closing = _amendment_axis_json_value(self.closing_constitution, axis)
+            row = target_by_axis.get(axis)
+            if row is None:
+                if closing != opening:
+                    raise ValueError(f"untargeted amendment axis {axis!r} changed")
+            else:
+                if row.opening_value != opening:
+                    raise ValueError(f"target {axis!r} opening value does not match snapshot")
+                expected_closing = row.proposed_value if enacted else opening
+                if closing != expected_closing:
+                    raise ValueError(f"target {axis!r} closing value does not match outcome")
+        if not enacted and self.opening_constitution_digest != self.closing_constitution_digest:
+            raise ValueError("failed/no-proposal amendment must preserve constitution digest")
+        expected_pressure = (
+            min(
+                BPS_DENOMINATOR,
+                AMENDMENT_PRESSURE_PER_AXIS_BY_DIFFICULTY_BPS[
+                    self.opening_constitution.amendment_difficulty
+                ]
+                * len(self.targets),
+            )
+            if enacted
+            else 0
+        )
+        if self.transition_pressure_added_bps != expected_pressure:
+            raise ValueError("transition pressure does not match difficulty and changed axes")
+        opening_noncompetitive = (
+            self.opening_constitution.executive_selection
+            in (ExecutiveSelection.HEREDITARY, ExecutiveSelection.APPOINTED)
+            or self.opening_constitution.decree_authority is not DecreeAuthority.NONE
+        )
+        closing_competitive = (
+            self.closing_constitution.executive_selection
+            in (ExecutiveSelection.DIRECT_ELECTION, ExecutiveSelection.LEGISLATIVE_SELECTION)
+            and self.closing_constitution.decree_authority is DecreeAuthority.NONE
+            and self.closing_constitution.national_election_interval_turns is not None
+        )
+        expected_qualifies = enacted and opening_noncompetitive and closing_competitive
+        if self.qualifies_as_liberalization_transition != expected_qualifies:
+            raise ValueError("liberalization flag does not match opening and closing snapshots")
+        return self
+
+
 class TurnReport(BaseModel):
     """The full report produced by one `resolve_turn` call."""
 
@@ -3173,14 +3379,16 @@ class TurnReport(BaseModel):
     turns where none of the three channels attempt anything — a report of all-zero/all-false
     channels is still a valid, complete one. Slot 12, which runs BEFORE slot 13 (election); see
     `phases.py`."""
+    constitutional_amendment: ConstitutionalAmendmentReport | None = None
+    """The Gate 3C3 amendment report, including explicit `NO_PROPOSAL` turns."""
 
     @model_validator(mode="after")
-    def _labor_resources_production_derivation_finance_political_legislative_capital_relationship_election_and_coup_unrest_are_all_present_or_all_absent(
+    def _all_twelve_domain_reports_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
         """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1, Phase 3B2A,
-        Phase 3B2B, Phase 3C Gate 3C1, and Phase 3C Gate 3C2): a partial combination of these
-        eleven player-economy/politics reports would represent a broken audit chain (e.g.
+        Phase 3B2B, Phase 3C Gate 3C1, Gate 3C2, and Gate 3C3): a partial combination of these
+        twelve player-economy/politics reports would represent a broken audit chain (e.g.
         production ran but derivation silently didn't) — reject it outright rather than accepting
         whatever subset happens to be present.
         """
@@ -3196,15 +3404,17 @@ class TurnReport(BaseModel):
             self.political_relationship is not None,
             self.election is not None,
             self.coup_unrest is not None,
+            self.constitutional_amendment is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
                 "labor_market, resources, production, tax_base_derivation, finance, political, "
-                "legislative, political_capital, political_relationship, election, and "
-                f"coup_unrest must be all present or all absent on a TurnReport — got "
+                "legislative, political_capital, political_relationship, election, coup_unrest, "
+                "and constitutional_amendment must be all present or all absent on a TurnReport "
+                "— got "
                 f"present={present} (labor_market, resources, production, tax_base_derivation, "
                 "finance, political, legislative, political_capital, political_relationship, "
-                "election, coup_unrest)"
+                "election, coup_unrest, constitutional_amendment)"
             )
         return self
 
@@ -3238,6 +3448,22 @@ class TurnReport(BaseModel):
                 "legislative.political_capital_committed="
                 f"{self.legislative.political_capital_committed} does not match the "
                 f"LEGISLATIVE_INFLUENCE/DECREE share of the ledger ({legislative_share})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _amendment_commitment_matches_capital_ledger(self) -> TurnReport:
+        if self.constitutional_amendment is None or self.political_capital is None:
+            return self
+        amendment_share = sum(
+            row.political_capital
+            for row in self.political_capital.expenditures
+            if row.category is CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT
+        )
+        if self.constitutional_amendment.political_capital_committed != amendment_share:
+            raise ValueError(
+                "constitutional_amendment.political_capital_committed does not match the "
+                f"CONSTITUTIONAL_AMENDMENT ledger share ({amendment_share})"
             )
         return self
 

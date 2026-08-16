@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from app.content.scenarios import load_scenario_file
 from app.core.canonical_json import canonical_dumps
@@ -32,6 +33,8 @@ from app.simulation.phases import (
     _evaluate_elections,
     _validate_and_reserve_actions,
 )
+from app.simulation.report import TurnReport
+from app.simulation.resolver import resolve_turn
 from app.simulation.state import GameState
 from tests.conftest import SCENARIO_DIR
 
@@ -321,3 +324,34 @@ def test_non_reversing_enacted_amendment_preserves_pending_provenance() -> None:
     assert closing is not None
     assert closing.constitution.executive_term_limit_terms == 2
     assert closing.pending_liberalization == opening_pending
+
+
+def test_real_no_proposal_amendment_report_round_trips_and_rejects_corruption() -> None:
+    state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+    decisions = DecisionSet(
+        expected_turn=state.turn,
+        expected_state_version=state.state_version,
+        decisions=(),
+    )
+    report = resolve_turn(state, decisions).report
+    amendment = report.constitutional_amendment
+    assert amendment is not None
+    assert amendment.outcome is LegislativeOutcome.NO_PROPOSAL
+    assert amendment.opening_constitution == amendment.closing_constitution
+
+    payload = report.model_dump(mode="json")
+    TurnReport.model_validate(payload)
+    TurnReport.model_validate_json(report.model_dump_json())
+
+    corrupted = report.model_dump(mode="json")
+    assert corrupted["constitutional_amendment"] is not None
+    corrupted["constitutional_amendment"]["closing_constitution"]["executive_selection"] = (
+        "appointed"
+    )
+    with pytest.raises(ValidationError, match="untargeted amendment axis"):
+        TurnReport.model_validate(corrupted)
+
+    corrupted = report.model_dump(mode="json")
+    corrupted["constitutional_amendment"]["qualifies_as_liberalization_transition"] = True
+    with pytest.raises(ValidationError, match="liberalization flag"):
+        TurnReport.model_validate(corrupted)
