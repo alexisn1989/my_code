@@ -358,6 +358,48 @@ fabricated pair), and whether `legislature_present` truthfully describes the ope
 the calibration evidence (including two real bugs the calibration work caught before release), and
 what remains explicitly deferred to Phase 3C.
 
+### Phase 3C government survival
+
+No new `PHASE_ORDER` slots across all three gates. Elections and constitutional-amendment
+resolution reuse slot 13 (`evaluate_elections_and_constitutional_events`, previously a no-op); coup,
+unrest, and impeachment risk reuse slot 12 (`evaluate_protests_strikes_insurgency_coups_revolutions`,
+also previously a no-op); constitutional-amendment gating and commitment extend slots 1
+(`validate_and_reserve_actions`) and 2 (`apply_legal_and_administrative_changes`), the same two
+slots that already validate and commit a `BudgetDecision`. `PoliticalState` gains five fields:
+`consecutive_terms_held`, `next_election_turn`, `regime_transition_pressure_bps`,
+`pending_liberalization` (`PendingLiberalizationState`), and `terminal_outcome`
+(`TerminalOutcomeState`) — set exactly once, by slot 12 or slot 13, and never cleared or altered
+afterward; `resolve_turn` refuses to resolve any further turn once it is set.
+
+`TurnReport` grows from nine reports to twelve: `election: ElectionReport` (Gate 3C1),
+`coup_unrest: CoupUnrestReport` (Gate 3C2), and `constitutional_amendment:
+ConstitutionalAmendmentReport` (Gate 3C3) — the completeness rule stays exhaustive over all twelve.
+`ConstitutionalAmendmentReport` stores full six-axis opening/closing constitution snapshots (the
+five amendable axes plus `amendment_difficulty`) so its own arithmetic — per-axis change
+correspondence, transition-pressure, and liberalization-qualification — can be self-validated from
+those two snapshots alone, without consulting `BlocVoteReport`, which does not exist on
+`ENACTED_BY_DECREE`/`NO_PROPOSAL` turns (the same "store what a report needs directly" discipline
+ADR 0012 established for `PoliticalRelationshipReport`'s proposal metadata).
+
+`reconcile_political_and_legislative_report` gains roughly twenty new groups across the three gates
+(24 through 44): election-schedule and outcome re-derivation against the opening state; coup/unrest/
+impeachment attempt and outcome re-derivation against the same seeded RNG streams the resolver used
+(`derive_rng(seed, turn, stream)`, always keyed on the OPENING/resolving turn — group 38 pins this
+convention independently); and, for amendments, group 41 (`pending_liberalization` provenance
+matches slot-2-then-slot-13 state), group 42 (`election.liberalization_completed` requires a
+persisted, strictly-earlier-turn `pending_liberalization` — `opening_pending.set_at_turn <
+closing_state.turn` — the structural guarantee that a starting democracy, or any tampered save,
+cannot fabricate a same-turn transition-and-win as a liberalization victory), group 43 (a full
+re-derivation of the amendment's chamber tally, cost, route, and constitution snapshots from the
+real opening legislature and the submitted decision), and group 44 (every amendable axis's
+provenance, plus the non-amendable `amendment_difficulty` axis's staticness). `ChamberVoteReport`
+additionally self-validates `supporting_seats == target_total` against the real apportionment DP —
+tampering the tally alone fails schema validation before reconciliation ever runs; only a tamper
+that moves both fields together reaches group 43. See `docs/adr/0013-government-survival.md` for
+the full rationale, the calibration evidence (including the load-bearing correction of a
+scratch-script RNG-indexing error in the phase's own planning walkthrough), and what remains
+explicitly deferred beyond Phase 3C.
+
 ### Government accounting phases (Phase 2A, extended in Phase 2B2)
 
 `apply_legal_and_administrative_changes` captures a frozen `OpeningFinanceSnapshot`
