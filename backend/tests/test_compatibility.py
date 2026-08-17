@@ -406,6 +406,27 @@ def test_phase3b2b_save_compatibility_is_checked_before_any_entry_payload_is_par
         load_save_json(json.dumps(raw), source="corrupted-and-incompatible-3b2b")
 
 
+def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
+    """Gate 3C3: `RULESET_VERSION` was bumped exactly once, at Gate 3C1, for the whole of Phase
+    3C -- not once per gate. This proves that single bump's rationale actually covers what Gate
+    3C3 added too: a real `resolve_turn` call produces all twelve top-level reports, including
+    `constitutional_amendment`, under the SAME `"0.12.0"` `RULESET_VERSION` Gate 3C1 shipped, with
+    no further bump required."""
+    from app.simulation.decisions import DecisionSet
+    from app.simulation.resolver import resolve_turn
+
+    state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
+    assert state.ruleset_version == RULESET_VERSION == "0.12.0"
+    decisions = DecisionSet(
+        expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
+    )
+    report = resolve_turn(state, decisions).report
+    assert report.election is not None
+    assert report.coup_unrest is not None
+    assert report.constitutional_amendment is not None
+    assert report.constitutional_amendment.proposed is False
+
+
 def test_no_migration_is_fabricated_for_a_0_9_0_save() -> None:
     """A 0.9.0 save has no expenditure ledger and no relationship-investment decisions to have
     ever carried. Nothing here invents an empty `PoliticalCapitalReport` to let the save through
