@@ -231,8 +231,12 @@ class TestTinyValidSeedZeroToNineteenSweepProvesTheElectionIsGenuinelyContested:
 
 class TestDecreeStateNeverSchedulesAnElection:
     """`decree_state` authors no `national_election_interval_turns` -- Gate 3C1's election
-    channel can therefore never fire for it, across any horizon, and the scenario can never
-    conclude via this mechanic (a real, structural absence, not an oversight)."""
+    channel can therefore never fire for it, across any horizon, ABSENT a constitutional
+    amendment. Gate 3C3 gives `decree_state` exactly one way past this: a
+    `ConstitutionalAmendmentDecision` targeting `national_election_interval_turns` (see
+    `test_liberalization_campaign.py`'s real 85/118/300 campaign, which does exactly that and
+    schedules `next_election_turn == 11`). This test drives an unmodified `decree_state` with NO
+    decisions at all, so the absence remains real and structural for that specific path."""
 
     def test_no_election_is_ever_scheduled_across_a_long_horizon(self) -> None:
         save = _run("decree_state.yaml", 60)
@@ -257,11 +261,14 @@ class TestDecreeStateNeverSchedulesAnElection:
 class TestAStartingDemocracyCannotWinLiberalizationVictory:
     """The mandate's own explicit stop condition: `tiny_valid` already ships competitive-elected
     at genesis (parliamentary/legislative_selection), so it never has a qualifying
-    noncompetitive-to-competitive TRANSITION to record. Gate 3C1 has no constitutional-amendment
-    mechanism at all yet (`pending_liberalization` is set only by a `ConstitutionalAmendmentDecision`,
-    Gate 3C3), so this holds structurally and trivially in this gate -- but it is asserted
-    directly, turn by turn through a real, natural win-then-term-limit-exit trajectory, rather
-    than left to be merely implied by the absence of the mechanism."""
+    noncompetitive-to-competitive TRANSITION to record. As of Gate 3C3, a
+    `ConstitutionalAmendmentDecision` is exactly what sets `pending_liberalization` -- this test
+    drives `tiny_valid` with NO decisions at all, so the mechanism is simply never invoked, and
+    reconciliation group 42 (`opening_pending.set_at_turn < closing_state.turn`) additionally
+    makes the exploit structurally unreachable even for a tampered save that tries to fabricate a
+    same-turn win as a liberalization victory (`test_history.py`, case 27). Asserted directly,
+    turn by turn, through a real, natural win-then-term-limit-exit trajectory, rather than left to
+    be merely implied by the absence of a submitted amendment."""
 
     def test_every_election_through_the_real_trajectory_has_no_pending_liberalization(
         self,

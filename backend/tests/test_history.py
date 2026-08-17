@@ -15,9 +15,15 @@ from app.simulation.decisions import (
     BlocInvestment,
     BlocRelationshipInvestmentDecision,
     BudgetDecision,
+    ConstitutionalAmendmentDecision,
     DecisionSet,
+    DecreeAuthorityTarget,
+    ElectionIntervalTarget,
+    ExecutiveSelectionTarget,
+    ExecutiveSystemTarget,
     InfluenceAllocation,
     SpendingUpdate,
+    TermLimitTarget,
     bloc_relationship_investment_digest,
 )
 from app.simulation.history import GameSave, _make_entry, advance_game, new_game, validate_history
@@ -2240,3 +2246,88 @@ def test_case_29_hand_assembled_post_terminal_entry_is_rejected() -> None:
 
     problems = validate_history(tampered)
     assert any("entry exists after the game concluded at turn 32" in p for p in problems), problems
+
+
+def test_case_30_real_campaign_amendment_chamber_tally_tamper_still_fails_reconciliation() -> None:
+    """Gate 3C3 commit 26: the real 85/118/300 `decree_state` campaign
+    (`test_liberalization_campaign.py`), driven through `advance_game` and then tampered at the
+    turn-3 amendment entry -- inflating `supporting_seats` AND `target_total` together from the
+    real 67 to 68, with a consistently recomputed hash. Both fields must move together because
+    `ChamberVoteReport` self-validates `supporting_seats == target_total` (P1); a tamper that
+    only bumped `supporting_seats` is rejected at schema validation before reconciliation ever
+    runs. Moved together, the row is internally coherent and passes every self-validator -- only
+    group 43, which re-derives the real apportionment from the OPENING legislature and the
+    submitted decision's own influence allocation, can prove 68 was never the real tally."""
+    save = new_game(
+        load_scenario_file(SCENARIO_DIR / "decree_state.yaml"), save_format_version=_SFV
+    )
+    invest_85 = DecisionSet(
+        expected_turn=save.current_state().turn,
+        expected_state_version=save.current_state().state_version,
+        decisions=(
+            BlocRelationshipInvestmentDecision(
+                investments=(
+                    BlocInvestment(
+                        party_id="opposition_party", bloc_id="main", political_capital=85
+                    ),
+                )
+            ),
+        ),
+    )
+    save = advance_game(save, invest_85)
+    invest_118 = DecisionSet(
+        expected_turn=save.current_state().turn,
+        expected_state_version=save.current_state().state_version,
+        decisions=(
+            BlocRelationshipInvestmentDecision(
+                investments=(
+                    BlocInvestment(
+                        party_id="opposition_party", bloc_id="main", political_capital=118
+                    ),
+                )
+            ),
+        ),
+    )
+    save = advance_game(save, invest_118)
+    amendment_decisions = DecisionSet(
+        expected_turn=save.current_state().turn,
+        expected_state_version=save.current_state().state_version,
+        decisions=(
+            ConstitutionalAmendmentDecision(
+                targets=(
+                    DecreeAuthorityTarget(value=DecreeAuthority.NONE),
+                    ExecutiveSelectionTarget(value=ExecutiveSelection.DIRECT_ELECTION),
+                    ExecutiveSystemTarget(value=ExecutiveSystem.PRESIDENTIAL),
+                    TermLimitTarget(value=2),
+                    ElectionIntervalTarget(value=8),
+                ),
+                influence=(
+                    InfluenceAllocation(
+                        party_id="opposition_party", bloc_id="main", political_capital=300
+                    ),
+                ),
+            ),
+        ),
+    )
+    save = advance_game(save, amendment_decisions)
+    assert validate_history(save) == []
+
+    index = len(save.entries) - 1
+    report = save.entries[index].report()
+    assert report is not None and report.constitutional_amendment is not None
+    amendment = report.constitutional_amendment
+    assert len(amendment.chambers) == 1
+    real_chamber = amendment.chambers[0]
+    assert real_chamber.supporting_seats == 67
+
+    tampered_chamber = real_chamber.model_copy(update={"supporting_seats": 68, "target_total": 68})
+    tampered_amendment = amendment.model_copy(update={"chambers": (tampered_chamber,)})
+    tampered_report = report.model_copy(update={"constitutional_amendment": tampered_amendment})
+    tampered_report_json = canonical_dumps(tampered_report.model_dump(mode="json"))
+    tampered = _retamper_entry_with_consistent_hash(
+        save, index=index, report_json=tampered_report_json
+    )
+
+    problems = validate_history(tampered)
+    assert not any("entry_hash does not match" in p for p in problems)
+    assert any("group 43" in p and "supporting_seats" in p for p in problems), problems
