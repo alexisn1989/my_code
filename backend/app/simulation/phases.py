@@ -1283,6 +1283,36 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
     # Transition pressure is deliberately NOT written here; slot 12 is its sole writer.
     _commit_constitutional_amendment(ctx)
 
+    amendment_scratch = ctx.constitutional_amendment_scratch
+    assert amendment_scratch is not None, "validate_and_reserve_actions always runs first"
+    amendment_decision = ctx.decisions.constitutional_amendment_decision()
+
+    def _amendment_axis_text(value: object) -> str:
+        if value is None:
+            return "null"
+        enum_value = getattr(value, "value", None)
+        return str(enum_value if enum_value is not None else value)
+
+    if amendment_decision is not None and amendment_scratch.outcome in (
+        LegislativeOutcome.PASSED_LEGISLATIVE,
+        LegislativeOutcome.ENACTED_BY_DECREE,
+    ):
+        assert amendment_scratch.route is not None, "an enacted amendment always has a route"
+        for target in amendment_decision.targets:
+            opening_value = getattr(amendment_scratch.opening_constitution, target.axis)
+            ctx.report_entries.append(
+                TurnReportEntry(
+                    category="politics",
+                    reason_id="constitutional_amendment_enacted",
+                    params={
+                        "axis": target.axis,
+                        "opening_value": _amendment_axis_text(opening_value),
+                        "closing_value": _amendment_axis_text(target.value),
+                        "route": amendment_scratch.route.value,
+                    },
+                )
+            )
+
     if budget_decision is None:
         ctx.report_entries.append(
             TurnReportEntry(category="budget", reason_id="no_budget_changes_submitted")
@@ -2698,6 +2728,14 @@ def _evaluate_elections(ctx: PhaseContext) -> None:  # noqa: C901
             },
         )
     )
+    if liberalization_completed:
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="politics",
+                reason_id="peaceful_liberalization_completed",
+                params={"turn": ctx.state.turn},
+            )
+        )
     if new_terminal_outcome is not None:
         reason = new_terminal_outcome.victory_reason or new_terminal_outcome.removal_reason
         assert reason is not None

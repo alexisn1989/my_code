@@ -61,9 +61,15 @@ from app.saves import read_save_file, write_save_atomic
 from app.simulation.decisions import DecisionSet
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
 from app.simulation.legislative_voting import required_yes_seats
-from app.simulation.legislature import GovernmentRole, LegislativeChamber, LegislativeOutcome
+from app.simulation.legislature import (
+    GovernmentRole,
+    LegislativeChamber,
+    LegislativeOutcome,
+    ProposalRoute,
+)
 from app.simulation.report import (
     BlocVoteReport,
+    ConstitutionalAmendmentReport,
     CoupUnrestReport,
     ElectionReport,
     FinanceReport,
@@ -399,6 +405,22 @@ def _render_impeachment_succeeded(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_constitutional_amendment_enacted(params: dict[str, str | int]) -> str:
+    axis = str(params["axis"])
+    opening_value = str(params["opening_value"])
+    closing_value = str(params["closing_value"])
+    route = str(params["route"])
+    return (
+        f"Constitutional amendment enacted ({route}): {axis} changed from "
+        f"{opening_value} to {closing_value}."
+    )
+
+
+def _render_peaceful_liberalization_completed(params: dict[str, str | int]) -> str:
+    turn = int(params["turn"])
+    return f"Peaceful liberalization completed at turn {turn}: the incumbent won its first free election."
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -428,6 +450,8 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "popular_unrest_occurred": _render_popular_unrest_occurred,
     "impeachment_motion_brought": _render_impeachment_motion_brought,
     "impeachment_succeeded": _render_impeachment_succeeded,
+    "constitutional_amendment_enacted": _render_constitutional_amendment_enacted,
+    "peaceful_liberalization_completed": _render_peaceful_liberalization_completed,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -768,6 +792,12 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                 "regime_transition_pressure="
                 f"{_bps_to_percent_str(politics.regime_transition_pressure_bps)}"
             )
+            if politics.pending_liberalization is not None:
+                pending = politics.pending_liberalization
+                print(
+                    f"  pending_liberalization: set at turn {pending.set_at_turn}  "
+                    f"awaiting the next scheduled election"
+                )
             if politics.terminal_outcome is not None:
                 outcome = politics.terminal_outcome
                 reason = outcome.victory_reason or outcome.removal_reason
@@ -1187,6 +1217,55 @@ def _print_election_report(election: ElectionReport) -> None:
         )
 
 
+def _print_constitutional_amendment_report(amendment: ConstitutionalAmendmentReport) -> None:
+    """(Phase 3C, Gate 3C3) The ONE constitutional-amendment renderer -- same
+    `_print_election_report`/`_print_coup_unrest_report` discipline: both live `resolve` output
+    and historical `history --turn N` output call this one function. Every value is read straight
+    off the already-self-validated `ConstitutionalAmendmentReport` -- presentation only, the vote
+    is never recomputed here."""
+    if not amendment.proposed:
+        return
+    assert amendment.route is not None, "a proposed amendment always carries a route"
+    print(f"    constitutional amendment: route={amendment.route.value}")
+    for target in amendment.targets:
+        print(f"      {target.axis}: {target.opening_value} -> {target.proposed_value}")
+    if amendment.route is ProposalRoute.DECREE:
+        print(
+            f"      enacted through executive decree authority -- "
+            f"political capital committed {amendment.political_capital_committed:,}"
+        )
+    else:
+        for chamber in amendment.chambers:
+            status = "PASSED" if chamber.passed else "FAILED"
+            detail = (
+                f"margin +{chamber.supporting_seats - chamber.required_yes_seats}"
+                if chamber.passed
+                else f"short {chamber.shortfall_seats}"
+            )
+            print(
+                f"      {chamber.chamber.value}: {chamber.supporting_seats}/"
+                f"{chamber.total_seats} seats  required {chamber.required_yes_seats}  "
+                f"{status} ({detail})"
+            )
+        print(f"      political capital committed: {amendment.political_capital_committed:,}")
+    verb = {
+        LegislativeOutcome.PASSED_LEGISLATIVE: "PASSED",
+        LegislativeOutcome.ENACTED_BY_DECREE: "PASSED",
+        LegislativeOutcome.FAILED_LEGISLATIVE: "FAILED",
+    }[amendment.outcome]
+    print(f"      outcome: {verb}")
+    print(
+        f"      constitution digest: {amendment.opening_constitution_digest[:12]}... -> "
+        f"{amendment.closing_constitution_digest[:12]}..."
+    )
+    print(
+        f"      transition pressure added: "
+        f"{_bps_to_percent_str(amendment.transition_pressure_added_bps)}"
+    )
+    if amendment.qualifies_as_liberalization_transition:
+        print("      qualifies as a liberalization transition: pending_liberalization set")
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
@@ -1213,6 +1292,8 @@ def _print_report(report: TurnReport) -> None:
         _print_coup_unrest_report(report.coup_unrest)
     if report.election is not None:
         _print_election_report(report.election)
+    if report.constitutional_amendment is not None:
+        _print_constitutional_amendment_report(report.constitutional_amendment)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -1346,6 +1427,10 @@ def _cmd_history(args: argparse.Namespace) -> int:
             # Same discipline again (Phase 3C, Gate 3C1): the SAME shared helper `_print_report`
             # uses.
             _print_election_report(report.election)
+        if report.constitutional_amendment is not None:
+            # Same discipline again (Phase 3C, Gate 3C3): the SAME shared helper `_print_report`
+            # uses.
+            _print_constitutional_amendment_report(report.constitutional_amendment)
     return 0
 
 

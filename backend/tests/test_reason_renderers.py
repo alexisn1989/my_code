@@ -146,6 +146,13 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
     "popular_unrest_occurred": {"outcome": "contained"},
     "impeachment_motion_brought": {"attempt_risk_bps": 200},
     "impeachment_succeeded": {"success_probability_bps": 700},
+    "constitutional_amendment_enacted": {
+        "axis": "decree_authority",
+        "opening_value": "unlimited",
+        "closing_value": "none",
+        "route": "legislative",
+    },
+    "peaceful_liberalization_completed": {"turn": 11},
 }
 
 
@@ -157,6 +164,21 @@ def test_every_registered_reason_id_has_a_sample_and_renders_cleanly() -> None:
         assert "unrendered reason_id" not in rendered
         assert "error rendering reason_id" not in rendered
         assert rendered  # non-empty
+
+
+def test_game_concluded_renders_a_victory_bucket_cleanly() -> None:
+    """The one `_SAMPLE_PARAMS["game_concluded"]` entry pins a `defeat` bucket; this pins the
+    other reachable shape (Phase 3C, Gate 3C3) through the same generic renderer."""
+    entry = TurnReportEntry(
+        category="administration",
+        reason_id="game_concluded",
+        params={"bucket": "victory", "reason": "peaceful_liberalization_completed", "turn": 11},
+    )
+    rendered = render_entry(entry)
+    assert "unrendered reason_id" not in rendered
+    assert "error rendering reason_id" not in rendered
+    assert "victory" in rendered
+    assert "peaceful_liberalization_completed" in rendered
 
 
 def test_unknown_reason_id_falls_back_safely_instead_of_crashing() -> None:

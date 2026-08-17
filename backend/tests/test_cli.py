@@ -658,6 +658,140 @@ def test_resolve_and_history_render_the_same_survival_risk_block(
         assert fragment in history_out, fragment
 
 
+def test_resolve_and_history_render_the_same_amendment_block(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """(Gate 3C3) `_cmd_resolve` and `_cmd_history` must agree on the constitutional-amendment
+    block too, the same M10 discipline `_print_constitutional_amendment_report` follows. Drives
+    `decree_state`'s real turn-3 amendment through the CLI's own `--decisions-file` path (two
+    relationship-investment turns, then the five-axis amendment) -- the same real campaign the
+    calibration suite pins numerically, exercised here through the CLI surface specifically."""
+    save0 = _new_save(tmp_path, DECREE_SCENARIO_PATH)
+
+    def _investment_file(pc: int, name: str, expected_turn: int) -> Path:
+        path = tmp_path / name
+        path.write_text(
+            json.dumps(
+                {
+                    "expected_turn": expected_turn,
+                    "expected_state_version": expected_turn,
+                    "decisions": [
+                        {
+                            "kind": "bloc_relationship_investment",
+                            "investments": [
+                                {
+                                    "party_id": "opposition_party",
+                                    "bloc_id": "main",
+                                    "political_capital": pc,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    save1 = tmp_path / "save1.json"
+    assert (
+        main(
+            [
+                "resolve",
+                "--state",
+                str(save0),
+                "--turns",
+                "1",
+                "--decisions-file",
+                str(_investment_file(85, "invest1.json", expected_turn=0)),
+                "--out",
+                str(save1),
+            ]
+        )
+        == 0
+    )
+    save2 = tmp_path / "save2.json"
+    assert (
+        main(
+            [
+                "resolve",
+                "--state",
+                str(save1),
+                "--turns",
+                "1",
+                "--decisions-file",
+                str(_investment_file(118, "invest2.json", expected_turn=1)),
+                "--out",
+                str(save2),
+            ]
+        )
+        == 0
+    )
+
+    amend_file = tmp_path / "amend.json"
+    amend_file.write_text(
+        json.dumps(
+            {
+                "expected_turn": 2,
+                "expected_state_version": 2,
+                "decisions": [
+                    {
+                        "kind": "constitutional_amendment",
+                        "targets": [
+                            {"axis": "decree_authority", "value": "none"},
+                            {"axis": "executive_selection", "value": "direct_election"},
+                            {"axis": "executive_system", "value": "presidential"},
+                            {"axis": "executive_term_limit_terms", "value": 2},
+                            {"axis": "national_election_interval_turns", "value": 8},
+                        ],
+                        "route": "legislative",
+                        "influence": [
+                            {
+                                "party_id": "opposition_party",
+                                "bloc_id": "main",
+                                "political_capital": 300,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    save3 = tmp_path / "save3.json"
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "resolve",
+                "--state",
+                str(save2),
+                "--turns",
+                "1",
+                "--decisions-file",
+                str(amend_file),
+                "--out",
+                str(save3),
+            ]
+        )
+        == 0
+    )
+    resolve_out = capsys.readouterr().out
+
+    assert main(["history", "--state", str(save3), "--turn", "3"]) == 0
+    history_out = capsys.readouterr().out
+
+    for fragment in (
+        "constitutional amendment: route=legislative",
+        "decree_authority: unlimited -> none",
+        "67/100 seats",
+        "outcome: PASSED",
+        "qualifies as a liberalization transition",
+    ):
+        assert fragment in resolve_out, fragment
+        assert fragment in history_out, fragment
+
+
 def test_inspect_institutions_shows_real_bps_metrics(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
