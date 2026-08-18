@@ -1,0 +1,877 @@
+# =============================================================================
+# PHASE 4A API CONTRACT — ARCHITECTURAL SKETCH. NOT A RUNNING API.
+# =============================================================================
+#
+# THIS DOCUMENT IS HAND-WRITTEN. It was NOT generated from a FastAPI
+# application, because no such application exists: Gate 4A0 adds no API code,
+# no dependency, and no `backend/app/api/` package. Nothing in this repository
+# serves these paths today, and no client may rely on them.
+#
+# Its only purpose is to validate, before any implementation, that the planned
+# endpoint and projection SHAPES can express every screen in the Gate 4A0
+# greybox WITHOUT any simulation arithmetic in the client. It is a design
+# artifact reviewed as documentation, not an interface contract under test.
+#
+# Authority: docs/plans/phase-4a-graphical-vertical-slice-implementation-plan.md
+#            (Phase 4A Revision 2, frozen verbatim; SHA-256
+#             78747b7b8c6a31f1e4c458570b94f5459bda6f0542381dd825f1698075c2189c)
+#            docs/adr/0014-graphical-vertical-slice-architecture.md
+#
+# When Gate 4A1 implements the API, FastAPI's own generated /openapi.json
+# becomes the authority and THIS FILE IS SUPERSEDED. It is not the input to
+# type generation and must never be treated as one.
+#
+# Field values shown in examples are illustrative display values, not computed
+# results. Every quantity is produced server-side by the Python engine.
+# =============================================================================
+
+openapi: 3.1.0
+
+info:
+  title: MANDATE local game API — Phase 4A architectural sketch (NOT IMPLEMENTED)
+  version: 0.0.0-sketch
+  summary: Hand-written shape sketch. No implementation exists.
+  description: |
+    Non-running architectural sketch for the Phase 4A graphical vertical slice.
+
+    **Nothing here is implemented.** Gate 4A0 deliberately ships zero API code.
+
+    Binding architectural properties this sketch encodes:
+
+    * The Python engine is the only simulation authority. Responses carry
+      purpose-built projections, never raw `state_json` / `report_json`.
+    * `revision` is an **opaque** token. The client echoes it verbatim on
+      `/api/game/resolve` and never parses or constructs one. The server never
+      stamps `expected_turn` / `expected_state_version` from its own save.
+    * Decision ordering is **rejected, never normalized**. The API performs no
+      sorting; noncanonical payloads receive 422 from the engine's own
+      validators.
+    * `TurnResultProjection` is defined **once** and referenced by both the
+      live-resolution response and the historical-detail response.
+    * Saves are addressed by **server-generated UUID4 `save_id`** only. No
+      request anywhere accepts a filesystem path.
+    * The four mutating operations (`new`, `load`, `resolve`, `save-as`) share
+      one process-wide mutation lock; a concurrent second mutation is refused
+      with `resolution_in_progress`, never queued.
+
+servers:
+  - url: http://127.0.0.1:8420
+    description: |
+      Loopback only. NOT LISTENING — no server implements this document in
+      Gate 4A0. Recorded to pin the intended local, same-origin deployment.
+
+tags:
+  - name: scenarios
+    description: Read-only scenario metadata.
+  - name: game
+    description: The single process-wide game session.
+  - name: saves
+    description: Server-managed save listing, addressed by UUID4 ID.
+
+paths:
+
+  /api/scenarios:
+    get:
+      tags: [scenarios]
+      operationId: listScenarios
+      summary: List selectable scenarios (all three load; one is polished).
+      responses:
+        "200":
+          description: Scenario cards for the Title screen.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ScenarioSummary" }
+
+  /api/game/new:
+    post:
+      tags: [game]
+      operationId: newGame
+      summary: Start a campaign. MUTATING — takes the mutation lock.
+      description: |
+        `load_scenario_file` -> `new_game` -> allocate UUID4 `save_id` ->
+        `dump_save_json` -> atomic write -> swap session -> respond.
+        The optional `seed` overrides the scenario's authored seed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewGameRequest" }
+      responses:
+        "200":
+          description: The new campaign's opening condition.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardProjection" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "415": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+
+  /api/game/state:
+    get:
+      tags: [game]
+      operationId: getGameState
+      summary: >-
+        The country's CURRENT condition. Deliberately NOT a narrative about
+        what changed — that is TurnResultProjection's job.
+      responses:
+        "200":
+          description: A bare DashboardProjection, and nothing else.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardProjection" }
+        "404":
+          description: No active session (e.g. after a server restart).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+              example:
+                type: no_active_session
+                title: No active game
+                status: 404
+                detail: Start a new campaign or load a save.
+
+  /api/game/decision-options:
+    get:
+      tags: [game]
+      operationId: getDecisionOptions
+      summary: The legal-move envelope the decision workspace needs.
+      description: |
+        Everything required to construct a legal decision: which routes the
+        constitution permits, the real engine bounds, which axes are amendable,
+        and the seated blocs. The client renders these; it never derives them.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DecisionOptionsProjection" }
+          description: Legal-move envelope.
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /api/game/preview:
+    post:
+      tags: [game]
+      operationId: previewProposal
+      summary: >-
+        Projected chamber tally for a drafted proposal. READ-ONLY — does NOT
+        take the mutation lock and writes nothing.
+      description: |
+        Composes the same engine primitives `phases.py` uses
+        (`resolve_bloc_support` -> `apportion_supporting_seats` ->
+        `required_yes_seats`). Never calls `advance_game`. **Never touches an
+        RNG stream**, so seeded channels — election swing, coup, unrest,
+        impeachment — are never previewed. Protected by a mandatory
+        preview-versus-resolution parity suite in Gate 4A1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PreviewRequest" }
+      responses:
+        "200":
+          description: Projected tally, per chamber.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PreviewProjection" }
+        "422": { $ref: "#/components/responses/Problem" }
+
+  /api/game/resolve:
+    post:
+      tags: [game]
+      operationId: resolveTurn
+      summary: Resolve one turn. MUTATING — takes the mutation lock.
+      description: |
+        Order: acquire lock immediately or reject `resolution_in_progress` ->
+        parse the echoed `revision` -> compare against live state and reject
+        `stale_revision` -> construct `DecisionSet` WITHOUT normalization and
+        call `advance_game` -> serialize and atomically persist -> swap
+        `session.current_save` only after persistence succeeds -> release the
+        lock -> return projections built from the persisted save.
+
+        Every error path releases the lock. A failed resolution or persistence
+        leaves both the in-memory save and the on-disk save unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveRequest" }
+      responses:
+        "200":
+          description: >-
+            The turn's result AND the resulting country condition. Note this
+            shape differs from /api/game/state (bare dashboard) and from
+            /api/game/history/{turn} (dashboardAsOfTurn).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResolveResponse" }
+        "409":
+          description: >-
+            `stale_revision` (the game moved on — draft preserved),
+            `resolution_in_progress` (another mutation is running), or
+            `game_concluded` (terminal outcome reached).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "415": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "500": { $ref: "#/components/responses/Problem" }
+
+  /api/game/history:
+    get:
+      tags: [game]
+      operationId: listHistory
+      summary: Turn index — numbers plus a one-line outcome each.
+      responses:
+        "200":
+          description: Timeline entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/HistoryListEntry" }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /api/game/history/{turn}:
+    get:
+      tags: [game]
+      operationId: getHistoryDetail
+      summary: One historical turn, rendered from the SAME projection type.
+      description: |
+        Built by calling the identical projection function over the identical
+        stored `TurnReport` via `HistoryEntry.report()` — never a second,
+        parallel implementation. This is what makes live and historical views
+        render the same component.
+      parameters:
+        - name: turn
+          in: path
+          required: true
+          schema: { type: integer, minimum: 0 }
+      responses:
+        "200":
+          description: >-
+            The turn's result AND the condition as of that turn. Note
+            `dashboardAsOfTurn`, distinct from /api/game/resolve's `dashboard`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HistoryDetailResponse" }
+        "404":
+          description: No such turn; the available range is reported.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /api/saves:
+    get:
+      tags: [saves]
+      operationId: listSaves
+      summary: Safe save metadata. No filesystem paths are ever returned.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SaveSummary" }
+          description: Saves, addressed by UUID4 ID.
+
+  /api/game/save-as:
+    post:
+      tags: [game]
+      operationId: saveAs
+      summary: >-
+        Checkpoint the current state under a NEW save_id. MUTATING — takes the
+        mutation lock.
+      description: |
+        A branch/checkpoint operation, not a rename: the running session keeps
+        autosaving under its ORIGINAL `save_id`, which is unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveAsRequest" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SaveSummary" }
+          description: The newly created checkpoint.
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+
+  /api/game/load:
+    post:
+      tags: [game]
+      operationId: loadGame
+      summary: Load a save by ID. MUTATING — takes the mutation lock.
+      description: |
+        `save_id` is validated against a strict UUID4 pattern BEFORE any path
+        is constructed, so traversal is impossible by construction rather than
+        by blocklist. Then: read -> `load_save_json` -> `validate_history` ->
+        and only after successful validation, replace the active session. A
+        registry entry is never treated as proof of integrity.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoadRequest" }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardProjection" }
+          description: The loaded campaign's condition.
+        "400":
+          description: >-
+            Invalid save_id shape, or unreadable save. The attempted value is
+            never echoed back.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: >-
+            Version-incompatible save, or a failed `validate_history`. No
+            migration is ever offered.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+components:
+
+  responses:
+    Problem:
+      description: A single problem shape for every error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+
+    Revision:
+      type: string
+      title: Opaque revision token
+      description: |
+        OPAQUE. The client echoes it verbatim on `/api/game/resolve` and MUST
+        NOT parse, construct, compare, or derive one. The server passes the
+        echoed values unchanged into `DecisionSet.expected_turn` /
+        `.expected_state_version`, so the engine's own staleness check does
+        real work rather than being satisfied by construction.
+      example: "3.3"
+
+    SaveId:
+      type: string
+      format: uuid
+      title: Server-generated UUID4 save ID
+      description: >-
+        The ONLY filesystem-touching input in the entire API, and it contains
+        no path syntax at all. Never a path, never client-chosen.
+      pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          description: Stable machine-readable error identifier.
+          enum:
+            - decision_rejected
+            - game_concluded
+            - save_incompatible
+            - save_unreadable
+            - history_invalid
+            - stale_revision
+            - resolution_in_progress
+            - no_active_session
+            - snapshot_not_found
+            - scenario_invalid
+            - unsupported_media_type
+            - forbidden_origin
+            - internal_error
+        title: { type: string }
+        detail:
+          type: string
+          description: The engine's own message, verbatim where one exists.
+        status: { type: integer }
+        fields:
+          type: array
+          description: Field-level errors, attached to the control that produced them.
+          items:
+            type: object
+            required: [path, message]
+            properties:
+              path: { type: string, example: "decisions[0].influence[1].political_capital" }
+              message: { type: string }
+        extra:
+          type: object
+          additionalProperties: true
+          description: >-
+            Typed per error — e.g. {expected, actual} for stale_revision,
+            {bucket, reason, turn} for game_concluded, {available_turns} for
+            snapshot_not_found.
+
+    ScenarioSummary:
+      type: object
+      required: [scenario_id, display_name, government_form, election_interval_label, pitch]
+      properties:
+        scenario_id: { type: string, example: decree_state }
+        display_name: { type: string }
+        government_form:
+          type: string
+          description: Rendered plain-language form, e.g. "Hereditary monarchy".
+        election_interval_label:
+          type: string
+          description: >-
+            Server-rendered, e.g. "No election scheduled" or "Every 8 turns".
+            The client never decides this wording from a number.
+        starting_legitimacy_text: { type: string, example: "60.00%" }
+        pitch: { type: string }
+        is_showcase: { type: boolean }
+
+    NewGameRequest:
+      type: object
+      required: [scenario_id]
+      additionalProperties: false
+      properties:
+        scenario_id: { type: string }
+        seed:
+          type: integer
+          description: Optional override of the scenario's authored seed.
+
+    LoadRequest:
+      type: object
+      required: [save_id]
+      additionalProperties: false
+      properties:
+        save_id: { $ref: "#/components/schemas/SaveId" }
+
+    SaveAsRequest:
+      type: object
+      required: [display_name]
+      additionalProperties: false
+      properties:
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: >-
+            Stored in the sidecar index only. NEVER used to construct a
+            filesystem path.
+
+    SaveSummary:
+      type: object
+      required: [save_id, display_name, scenario_id, current_turn, updated_at, loadable]
+      properties:
+        save_id: { $ref: "#/components/schemas/SaveId" }
+        display_name: { type: string }
+        scenario_id: { type: string }
+        current_turn: { type: integer }
+        updated_at: { type: string, format: date-time }
+        terminal_outcome_summary:
+          type: [string, "null"]
+          description: Server-rendered, e.g. "Defeat — electoral defeat, turn 11".
+        loadable:
+          type: boolean
+          description: >-
+            False when integrity or version checks fail. The save is still
+            LISTED, with the specific problem shown, rather than hidden.
+        integrity_problem: { type: [string, "null"] }
+
+    # ---- Dashboard -----------------------------------------------------------
+
+    DashboardProjection:
+      type: object
+      description: >-
+        The country's CURRENT condition. Twelve engine reports collapse into
+        five player-facing concerns. Every displayed value is present as an
+        explicit field; the client computes none of them.
+      required:
+        [revision, turn, country_name, government_form, concerns, alerts, goal, map]
+      properties:
+        revision: { $ref: "#/components/schemas/Revision" }
+        turn: { type: integer }
+        country_name: { type: string }
+        government_form: { type: string }
+        next_election_label:
+          type: string
+          description: Server-rendered, e.g. "Turn 11" or "None scheduled".
+        concerns:
+          type: object
+          description: Money, Legitimacy, Legislature, Constitution, Survival.
+          required: [money, legitimacy, legislature, constitution, survival]
+          properties:
+            money: { $ref: "#/components/schemas/ConcernCard" }
+            legitimacy: { $ref: "#/components/schemas/ConcernCard" }
+            legislature: { $ref: "#/components/schemas/ConcernCard" }
+            constitution: { $ref: "#/components/schemas/ConcernCard" }
+            survival: { $ref: "#/components/schemas/ConcernCard" }
+        political_capital: { $ref: "#/components/schemas/CapitalSummary" }
+        alerts:
+          type: array
+          description: Pre-ranked server-side. The client renders in order given.
+          items: { $ref: "#/components/schemas/Alert" }
+        goal:
+          $ref: "#/components/schemas/GoalCard"
+        map:
+          $ref: "#/components/schemas/MapProjection"
+        terminal:
+          oneOf:
+            - { $ref: "#/components/schemas/TerminalSummary" }
+            - { type: "null" }
+
+    ConcernCard:
+      type: object
+      required: [label, headline, tone]
+      properties:
+        label: { type: string }
+        headline:
+          type: string
+          description: Already-formatted, e.g. "60.00%" or "-1,240,000".
+        delta_text:
+          type: [string, "null"]
+          description: >-
+            Server-computed turn-over-turn change, already signed and
+            formatted. The client never subtracts two values to obtain it.
+        direction:
+          type: string
+          enum: [up, down, unchanged]
+        tone:
+          type: string
+          enum: [positive, negative, caution, neutral]
+        detail_screen: { type: string }
+
+    CapitalSummary:
+      type: object
+      required: [current, capacity, committed_this_turn, display]
+      properties:
+        current: { type: integer }
+        capacity: { type: integer }
+        committed_this_turn: { type: integer }
+        display:
+          type: string
+          description: e.g. "500 / 1,000". Pre-formatted server-side.
+
+    Alert:
+      type: object
+      required: [id, severity, headline]
+      properties:
+        id: { type: string }
+        severity: { type: string, enum: [critical, warning, info] }
+        headline: { type: string }
+        detail: { type: [string, "null"] }
+        screen: { type: [string, "null"] }
+
+    GoalCard:
+      type: object
+      description: >-
+        One current-priority sentence derived server-side from the SAME alert
+        ranking. Not a fabricated narrative — every word traces to a real
+        projection field.
+      required: [headline]
+      properties:
+        headline: { type: string }
+        detail: { type: [string, "null"] }
+
+    MapProjection:
+      type: object
+      description: |
+        PRESENTATION-ONLY. The engine is country-level; there is no province,
+        region, or spatial state anywhere in `GameState`. Only `tint_value_bps`
+        is data-driven, and only from ONE country-level metric.
+      required: [presentation_only, tint_metric_label, tint_value_bps, note]
+      properties:
+        presentation_only:
+          type: boolean
+          const: true
+        tint_metric_label: { type: string, example: Legitimacy }
+        tint_value_bps: { type: integer }
+        note:
+          type: string
+          example: >-
+            This map shows national identity only. No province-level mechanics
+            exist.
+
+    # ---- Decision options and preview ---------------------------------------
+
+    DecisionOptionsProjection:
+      type: object
+      description: >-
+        Real engine constraints, sent as data. The client enforces none of them
+        authoritatively; the backend rejects every illegal submission.
+      required: [revision, policy_slot, relationship_investment, opening_capital]
+      properties:
+        revision: { $ref: "#/components/schemas/Revision" }
+        opening_capital: { type: integer }
+        policy_slot:
+          type: object
+          description: >-
+            Budget and amendment are ONE mutually exclusive slot
+            (`_at_most_one_policy_proposal`), presented as two tabs of one slot
+            so the exclusion is structural in the interface.
+            `relationship_investment` is a SEPARATE, non-exclusive slot.
+            The chosen option is echoed back as `selected` when a draft exists.
+          required: [options]
+          properties:
+            selected:
+              type: [string, "null"]
+              enum: [budget, amendment, null]
+            options:
+              type: array
+              items:
+                type: object
+                required: [kind, available]
+                properties:
+                  kind: { type: string, enum: [budget, amendment] }
+                  available: { type: boolean }
+                  unavailable_reason: { type: [string, "null"] }
+                  routes:
+                    type: array
+                    description: >-
+                      Decree appears only where the constitution grants it —
+                      hidden, not disabled-with-mystery.
+                    items:
+                      type: object
+                      required: [route, available, capital_cost]
+                      properties:
+                        route: { type: string, enum: [legislative, decree] }
+                        available: { type: boolean }
+                        capital_cost:
+                          type: integer
+                          description: Flat decree cost, or 0 for the legislative route.
+        relationship_investment:
+          type: object
+          required: [per_bloc_min, per_bloc_max, blocs]
+          properties:
+            per_bloc_min: { type: integer, example: 1 }
+            per_bloc_max: { type: integer, example: 200 }
+            blocs:
+              type: array
+              items: { $ref: "#/components/schemas/BlocOption" }
+        amendable_axes:
+          type: array
+          items:
+            type: object
+            required: [axis, current_label, amendable, choices]
+            properties:
+              axis: { type: string }
+              current_label: { type: string }
+              amendable: { type: boolean }
+              choices:
+                type: array
+                items:
+                  type: object
+                  required: [value, label]
+                  properties:
+                    value: { type: string }
+                    label: { type: string }
+
+    BlocOption:
+      type: object
+      required: [party_id, bloc_id, display_name, relationship_text]
+      properties:
+        party_id: { type: string }
+        bloc_id: { type: string }
+        display_name: { type: string }
+        seats: { type: integer }
+        relationship_text: { type: string, example: "-80.00%" }
+        baseline_text: { type: string }
+
+    PreviewRequest:
+      type: object
+      required: [decisions]
+      additionalProperties: false
+      properties:
+        decisions:
+          type: array
+          description: >-
+            Assembled in canonical order BY CONSTRUCTION by the client's single
+            `buildDecisionSet()` helper. The server does not reorder it.
+          items: { type: object, additionalProperties: true }
+
+    PreviewProjection:
+      type: object
+      description: >-
+        Projected tally only. Seeded channels are NEVER previewed. Chambers are
+        reported separately, never pooled.
+      required: [chambers, would_pass]
+      properties:
+        chambers:
+          type: array
+          items:
+            type: object
+            required: [chamber_id, display_name, supporting_seats, required_seats, total_seats, carries]
+            properties:
+              chamber_id: { type: string }
+              display_name: { type: string }
+              supporting_seats: { type: integer, example: 67 }
+              required_seats: { type: integer, example: 67 }
+              total_seats: { type: integer, example: 100 }
+              carries: { type: boolean }
+        would_pass:
+          type: boolean
+          description: Server's verdict. The client does not compare the seat counts itself.
+        committed_capital: { type: integer }
+        affordable:
+          type: boolean
+          description: >-
+            Server-computed affordability verdict against opening capital. The
+            client displays it; it does not sum costs to decide legality.
+
+    # ---- The ONE shared turn-result type ------------------------------------
+
+    TurnResultProjection:
+      type: object
+      description: |
+        DEFINED EXACTLY ONCE. The only type that ever describes "what happened
+        on turn N and why". Referenced by BOTH `/api/game/resolve` (live) and
+        `/api/game/history/{turn}` (historical), built by the identical
+        projection function over the identical stored `TurnReport`. The UI
+        renders both through the SAME component; presentation logic is not
+        duplicated.
+
+        Three disclosure layers: `outcome_headline` (what happened) ->
+        `drivers` (why) -> `trace` (exact values and their source fields).
+      required: [revision, turn, outcome_headline, drivers, ledger, unchanged, trace]
+      properties:
+        revision: { $ref: "#/components/schemas/Revision" }
+        turn: { type: integer }
+        outcome_headline:
+          type: string
+          description: Layer 1 — one sentence, already rendered.
+        outcome_tone:
+          type: string
+          enum: [positive, negative, caution, neutral]
+        drivers:
+          type: array
+          description: >-
+            Layer 2 — each from the 30 stable reason IDs already emitted by the
+            engine, with their stored params. Payloads are stable IDs, enum
+            values, identities and integers — never prose.
+          items: { $ref: "#/components/schemas/DriverItem" }
+        ledger:
+          type: array
+          description: >-
+            What was committed, to whom, and to what effect. Capital committed
+            to a FAILED proposal is consumed, and the result says so explicitly.
+          items: { $ref: "#/components/schemas/LedgerEntry" }
+        unchanged:
+          type: array
+          description: Explicit "what did NOT change" statements.
+          items: { type: string }
+        next_turn_pointers:
+          type: object
+          properties:
+            next_election_turn: { type: [integer, "null"] }
+            pending_liberalization: { type: boolean }
+            transition_pressure_bps: { type: [integer, "null"] }
+        trace:
+          type: array
+          description: Layer 3 — exact values, thresholds, and their source report fields.
+          items: { $ref: "#/components/schemas/TraceField" }
+        terminal:
+          oneOf:
+            - { $ref: "#/components/schemas/TerminalSummary" }
+            - { type: "null" }
+
+    DriverItem:
+      type: object
+      required: [reason_id, label]
+      properties:
+        reason_id:
+          type: string
+          description: One of the 30 stable IDs already in `REASON_RENDERERS`.
+        label: { type: string }
+        params:
+          type: object
+          additionalProperties: { type: [string, integer] }
+
+    LedgerEntry:
+      type: object
+      required: [label, amount_text]
+      properties:
+        label: { type: string }
+        target: { type: [string, "null"] }
+        amount_text: { type: string }
+        effect_text: { type: [string, "null"] }
+
+    TraceField:
+      type: object
+      required: [label, value_text, source_field]
+      properties:
+        label: { type: string }
+        value_text: { type: string }
+        source_field:
+          type: string
+          description: The report field this value came from, e.g. `ElectionReport.final_support_bps`.
+
+    TerminalSummary:
+      type: object
+      description: >-
+        Present only once `TerminalOutcomeState` is set. The terminal screen
+        offers New Campaign / Review History only — never "resolve another
+        turn"; further resolution is refused with 409 `game_concluded`.
+      required: [bucket, reason_label, turn, headline]
+      properties:
+        bucket: { type: string, enum: [victory, defeat] }
+        reason_label: { type: string, example: electoral_defeat }
+        turn: { type: integer }
+        headline: { type: string }
+        retrospective:
+          type: array
+          items: { type: string }
+
+    # ---- Response envelopes: three DISTINCT shapes ---------------------------
+
+    ResolveRequest:
+      type: object
+      required: [revision, decisions]
+      additionalProperties: false
+      properties:
+        revision:
+          $ref: "#/components/schemas/Revision"
+          description: >-
+            The token most recently received, echoed VERBATIM. The server
+            parses this — not its own current save — into
+            `DecisionSet.expected_turn` / `.expected_state_version`.
+        decisions:
+          type: array
+          description: >-
+            Canonically ordered by construction on the client. The server does
+            NOT sort: noncanonical order is REJECTED with 422 by the engine's
+            own validators.
+          items: { type: object, additionalProperties: true }
+
+    ResolveResponse:
+      type: object
+      description: >-
+        Shape A — live resolution. Distinct from /api/game/state (bare
+        dashboard) and from HistoryDetailResponse (dashboardAsOfTurn).
+      required: [turnResult, dashboard]
+      additionalProperties: false
+      properties:
+        turnResult: { $ref: "#/components/schemas/TurnResultProjection" }
+        dashboard: { $ref: "#/components/schemas/DashboardProjection" }
+
+    HistoryDetailResponse:
+      type: object
+      description: >-
+        Shape B — historical detail. Carries the SAME TurnResultProjection type
+        as ResolveResponse, alongside the condition AS OF that turn.
+      required: [turnResult, dashboardAsOfTurn]
+      additionalProperties: false
+      properties:
+        turnResult: { $ref: "#/components/schemas/TurnResultProjection" }
+        dashboardAsOfTurn: { $ref: "#/components/schemas/DashboardProjection" }
+
+    HistoryListEntry:
+      type: object
+      required: [turn, outcome_line]
+      properties:
+        turn: { type: integer }
+        outcome_line:
+          type: string
+          description: One rendered line. The timeline holds nothing heavier.
+        tone:
+          type: string
+          enum: [positive, negative, caution, neutral]
