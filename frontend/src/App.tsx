@@ -1,19 +1,11 @@
 /**
- * Phase 0/1 placeholder shell. There is no API to call yet (Phase 4) and no
- * gameplay screens yet (Phase 5) — this page says so rather than presenting
- * any UI element that looks functional but isn't (product spec §5.7,
- * "no placeholder feature claims").
+ * Phase 4A Gate 4A0. This was an eleven-line placeholder saying no gameplay
+ * screens existed; it now renders the navigable greybox.
+ *
+ * The greybox is STATIC: it renders one frozen fixture, calls no API, imports no
+ * backend module, and performs no simulation arithmetic. It exists to validate
+ * the planned API contract (docs/contracts/phase4a-api-contract.yaml) before any
+ * of it is implemented. Gate 4A2 onward replaces the fixture with real
+ * projections from the local FastAPI process.
  */
-export function App() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
-      <h1 className="font-[family-name:var(--font-display)] text-4xl tracking-wide text-parchment-100">
-        MANDATE
-      </h1>
-      <p className="max-w-md text-sm text-parchment-200/80">
-        Frontend scaffold only — no gameplay screens exist yet. See{" "}
-        <code>docs/roadmap.md</code> for current phase status.
-      </p>
-    </main>
-  );
-}
+export { GreyboxApp as App } from "./greybox/GreyboxApp";
