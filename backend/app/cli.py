@@ -50,15 +50,28 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from app.content.scenarios import load_scenario_file
-from app.core.errors import DecisionSetError, HistoryValidationError, MandateError
+from app.core.errors import (
+    DecisionSetError,
+    GameAlreadyConcludedError,
+    HistoryValidationError,
+    MandateError,
+)
 from app.core.money import format_money
 from app.saves import read_save_file, write_save_atomic
 from app.simulation.decisions import DecisionSet
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
 from app.simulation.legislative_voting import required_yes_seats
-from app.simulation.legislature import GovernmentRole, LegislativeChamber, LegislativeOutcome
+from app.simulation.legislature import (
+    GovernmentRole,
+    LegislativeChamber,
+    LegislativeOutcome,
+    ProposalRoute,
+)
 from app.simulation.report import (
     BlocVoteReport,
+    ConstitutionalAmendmentReport,
+    CoupUnrestReport,
+    ElectionReport,
     FinanceReport,
     LaborMarketReport,
     LegislativeReport,
@@ -72,7 +85,7 @@ from app.simulation.report import (
     TurnReportEntry,
 )
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json, load_save_json
-from app.simulation.state import RESOURCE_UNITS, PoliticalState
+from app.simulation.state import RESOURCE_UNITS, InstitutionState, PoliticalState
 
 # --- reason_id -> English rendering (presentation layer only; never stored) --
 
@@ -322,6 +335,92 @@ def _render_bloc_relationship_resolved(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_election_scheduled(params: dict[str, str | int]) -> str:
+    turn = int(params["turn"])
+    eligible = bool(params["eligible_to_stand"])
+    return f"Election scheduled at turn {turn} (eligible to stand: {eligible})."
+
+
+def _render_election_result(params: dict[str, str | int]) -> str:
+    result = str(params["result"])
+    final_bps = int(params["final_support_bps"])
+    required_bps = int(params["required_support_bps"])
+    if result == "term_limit_exit":
+        return "Election result: term limit reached; the incumbent may not stand again."
+    verb = "won" if result == "won" else "lost"
+    return (
+        f"Election result: {verb} with {_bps_to_percent_str(final_bps)} support "
+        f"(required {_bps_to_percent_str(required_bps)})."
+    )
+
+
+def _render_game_concluded(params: dict[str, str | int]) -> str:
+    bucket = str(params["bucket"])
+    reason = str(params["reason"])
+    turn = int(params["turn"])
+    return f"Game concluded at turn {turn}: {bucket} ({reason})."
+
+
+def _render_coup_risk_assessed(params: dict[str, str | int]) -> str:
+    coup_bps = int(params["coup_attempt_risk_bps"])
+    unrest_bps = int(params["unrest_attempt_risk_bps"])
+    eligible = bool(params["impeachment_eligible"])
+    impeachment_bps = int(params["impeachment_attempt_risk_bps"])
+    impeachment_note = _bps_to_percent_str(impeachment_bps) if eligible else "ineligible this turn"
+    return (
+        f"Survival risk assessed: coup {_bps_to_percent_str(coup_bps)}, unrest "
+        f"{_bps_to_percent_str(unrest_bps)}, impeachment {impeachment_note}."
+    )
+
+
+def _render_coup_attempt_occurred(params: dict[str, str | int]) -> str:
+    attempt_risk_bps = int(params["attempt_risk_bps"])
+    return f"A coup attempt occurred (attempt risk was {_bps_to_percent_str(attempt_risk_bps)})."
+
+
+def _render_coup_succeeded(params: dict[str, str | int]) -> str:
+    success_bps = int(params["success_probability_bps"])
+    return f"The coup succeeded (success probability was {_bps_to_percent_str(success_bps)})."
+
+
+def _render_popular_unrest_occurred(params: dict[str, str | int]) -> str:
+    outcome = str(params["outcome"])
+    if outcome == "contained":
+        return "Popular unrest broke out but was contained."
+    return f"Popular unrest broke out and succeeded: {outcome.replace('_', ' ')}."
+
+
+def _render_impeachment_motion_brought(params: dict[str, str | int]) -> str:
+    attempt_risk_bps = int(params["attempt_risk_bps"])
+    return (
+        f"An impeachment motion was brought (attempt risk was "
+        f"{_bps_to_percent_str(attempt_risk_bps)})."
+    )
+
+
+def _render_impeachment_succeeded(params: dict[str, str | int]) -> str:
+    success_bps = int(params["success_probability_bps"])
+    return (
+        f"The impeachment succeeded (success probability was {_bps_to_percent_str(success_bps)})."
+    )
+
+
+def _render_constitutional_amendment_enacted(params: dict[str, str | int]) -> str:
+    axis = str(params["axis"])
+    opening_value = str(params["opening_value"])
+    closing_value = str(params["closing_value"])
+    route = str(params["route"])
+    return (
+        f"Constitutional amendment enacted ({route}): {axis} changed from "
+        f"{opening_value} to {closing_value}."
+    )
+
+
+def _render_peaceful_liberalization_completed(params: dict[str, str | int]) -> str:
+    turn = int(params["turn"])
+    return f"Peaceful liberalization completed at turn {turn}: the incumbent won its first free election."
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -342,6 +441,17 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "enacted_policy_relationship_reaction": _render_enacted_policy_relationship_reaction,
     "decree_bypass_relationship_reaction": _render_decree_bypass_relationship_reaction,
     "bloc_relationship_resolved": _render_bloc_relationship_resolved,
+    "election_scheduled": _render_election_scheduled,
+    "election_result": _render_election_result,
+    "game_concluded": _render_game_concluded,
+    "coup_risk_assessed": _render_coup_risk_assessed,
+    "coup_attempt_occurred": _render_coup_attempt_occurred,
+    "coup_succeeded": _render_coup_succeeded,
+    "popular_unrest_occurred": _render_popular_unrest_occurred,
+    "impeachment_motion_brought": _render_impeachment_motion_brought,
+    "impeachment_succeeded": _render_impeachment_succeeded,
+    "constitutional_amendment_enacted": _render_constitutional_amendment_enacted,
+    "peaceful_liberalization_completed": _render_peaceful_liberalization_completed,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -476,6 +586,21 @@ def _print_legislature_composition(politics: PoliticalState) -> None:
                 f"tax_pref={_bps_to_percent_str(bloc.tax_preference_bps)} "
                 f"spending_pref={_bps_to_percent_str(bloc.spending_preference_bps)}"
             )
+
+
+def _print_institutions(institutions: list[InstitutionState]) -> None:
+    """(Phase 3C, Gate 3C2) `inspect --institutions`: every authored institution row's strict-bps
+    metrics, read directly from state -- the coup-formula's own inputs, shown for the record
+    rather than only implied by the printed risk figures inside a resolved turn's report."""
+    print("  institutions:")
+    for institution in institutions:
+        print(
+            f"    {institution.id} ({institution.name}): "
+            f"loyalty={_bps_to_percent_str(institution.loyalty)} "
+            f"power={_bps_to_percent_str(institution.power)} "
+            f"competence={_bps_to_percent_str(institution.competence)} "
+            f"corruption={_bps_to_percent_str(institution.corruption)}"
+        )
 
 
 def _print_capital_relationships(politics: PoliticalState) -> None:
@@ -655,12 +780,40 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
                     f"output={baseline.total_gross_output:,}  "
                     f"unemployment={_bps_to_percent_str(baseline.unemployment_rate_bps)}"
                 )
+            next_election = (
+                f"turn {politics.next_election_turn}"
+                if politics.next_election_turn is not None
+                else "none scheduled"
+            )
+            print(
+                "  government survival: "
+                f"consecutive_terms_held={politics.consecutive_terms_held}  "
+                f"next_election={next_election}  "
+                "regime_transition_pressure="
+                f"{_bps_to_percent_str(politics.regime_transition_pressure_bps)}"
+            )
+            if politics.pending_liberalization is not None:
+                pending = politics.pending_liberalization
+                print(
+                    f"  pending_liberalization: set at turn {pending.set_at_turn}  "
+                    f"awaiting the next scheduled election"
+                )
+            if politics.terminal_outcome is not None:
+                outcome = politics.terminal_outcome
+                reason = outcome.victory_reason or outcome.removal_reason
+                assert reason is not None
+                print(
+                    f"  game concluded:      turn {outcome.turn}  "
+                    f"{outcome.bucket.value} ({reason.value})"
+                )
         if args.legislature:
             _print_legislature_composition(politics)
         if args.capital:
             _print_capital_relationships(politics)
         if args.relationships:
             _print_baseline_relationships(politics)
+        if args.institutions:
+            _print_institutions(player.institutions)
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -997,6 +1150,122 @@ def _print_political_relationship_memory(
         )
 
 
+def _print_coup_unrest_report(coup_unrest: CoupUnrestReport) -> None:
+    """(Phase 3C, Gate 3C2) The ONE coup/unrest/impeachment renderer -- same
+    `_print_political_capital_ledger`/`_print_election_report` discipline: both live `resolve`
+    output and historical `history --turn N` output call this one function. Every value is read
+    straight off the already-self-validated `CoupUnrestReport` -- presentation only, nothing
+    recomputed. Prints unconditionally (unlike election, there is no "not scheduled" inert case:
+    every turn assesses all three channels), but stays terse when nothing happened."""
+    coup = coup_unrest.coup
+    unrest = coup_unrest.popular_unrest
+    impeachment = coup_unrest.impeachment
+    print(
+        "    survival risk: "
+        f"coup {_bps_to_percent_str(coup.attempt_risk_bps)}"
+        f"{'/' + _bps_to_percent_str(coup.success_probability_bps) if coup.attempted else ''}"
+        f"   unrest {_bps_to_percent_str(unrest.attempt_risk_bps)}"
+        f"{'/' + _bps_to_percent_str(unrest.success_probability_bps) if unrest.attempted else ''}"
+        "   impeachment "
+        f"{(_bps_to_percent_str(impeachment.attempt_risk_bps) if impeachment.eligible else 'ineligible')}"
+        f"{'/' + _bps_to_percent_str(impeachment.success_probability_bps) if impeachment.attempted else ''}"
+    )
+    if coup.attempted:
+        outcome = "SUCCEEDED" if coup.succeeded else "failed"
+        print(f"      coup attempt {outcome}")
+    if unrest.outcome != "none":
+        label = {"contained": "contained", "forced_abdication": "SUCCEEDED (forced abdication)"}
+        print(f"      popular unrest: {label.get(unrest.outcome, unrest.outcome.upper())}")
+    if impeachment.attempted:
+        outcome = "SUCCEEDED" if impeachment.succeeded else "failed"
+        print(f"      impeachment motion {outcome}")
+    if coup_unrest.removal_triggered is not None:
+        print(f"      REMOVAL: {coup_unrest.removal_triggered.value}")
+
+
+def _print_election_report(election: ElectionReport) -> None:
+    """(Phase 3C, Gate 3C1) The ONE election renderer -- same `_print_political_capital_ledger`
+    discipline: both live `resolve` output and historical `history --turn N` output call this one
+    function (M10). Every value is read straight off the already-self-validated `ElectionReport`
+    -- presentation only, nothing recomputed."""
+    if not election.scheduled:
+        return
+    if election.result == "term_limit_exit":
+        print("    election: term limit reached; the incumbent may not stand again")
+        return
+    verb = "WON" if election.result == "won" else "LOST"
+    print(
+        f"    election: {verb}  "
+        f"{_bps_to_percent_str(election.final_support_bps)} support "
+        f"(required {_bps_to_percent_str(election.required_support_bps)})"
+    )
+    print(
+        "      legislative "
+        f"{_bps_to_percent_str(election.legislative_support_contribution_bps) if election.legislative_support_contribution_bps is not None else 'n/a'}"
+        f"   population {_bps_to_percent_str(election.population_approval_contribution_bps)}"
+        f"   legitimacy {_bps_to_percent_str(election.legitimacy_contribution_bps)}"
+        f"   baseline {_bps_to_percent_str(election.baseline_support_bps)}"
+        f"   polling swing {_format_bps_delta(election.polling_uncertainty_bps)}"
+    )
+    if election.liberalization_completed:
+        print("      liberalization campaign completed: VICTORY")
+    for party in election.parties:
+        print(
+            f"      {party.party_id} ({party.government_role.value}): "
+            f"{party.seats}/{party.total_seats} seats  "
+            f"relationship {_bps_to_percent_str(party.relationship_weighted_support_bps)}"
+        )
+
+
+def _print_constitutional_amendment_report(amendment: ConstitutionalAmendmentReport) -> None:
+    """(Phase 3C, Gate 3C3) The ONE constitutional-amendment renderer -- same
+    `_print_election_report`/`_print_coup_unrest_report` discipline: both live `resolve` output
+    and historical `history --turn N` output call this one function. Every value is read straight
+    off the already-self-validated `ConstitutionalAmendmentReport` -- presentation only, the vote
+    is never recomputed here."""
+    if not amendment.proposed:
+        return
+    assert amendment.route is not None, "a proposed amendment always carries a route"
+    print(f"    constitutional amendment: route={amendment.route.value}")
+    for target in amendment.targets:
+        print(f"      {target.axis}: {target.opening_value} -> {target.proposed_value}")
+    if amendment.route is ProposalRoute.DECREE:
+        print(
+            f"      enacted through executive decree authority -- "
+            f"political capital committed {amendment.political_capital_committed:,}"
+        )
+    else:
+        for chamber in amendment.chambers:
+            status = "PASSED" if chamber.passed else "FAILED"
+            detail = (
+                f"margin +{chamber.supporting_seats - chamber.required_yes_seats}"
+                if chamber.passed
+                else f"short {chamber.shortfall_seats}"
+            )
+            print(
+                f"      {chamber.chamber.value}: {chamber.supporting_seats}/"
+                f"{chamber.total_seats} seats  required {chamber.required_yes_seats}  "
+                f"{status} ({detail})"
+            )
+        print(f"      political capital committed: {amendment.political_capital_committed:,}")
+    verb = {
+        LegislativeOutcome.PASSED_LEGISLATIVE: "PASSED",
+        LegislativeOutcome.ENACTED_BY_DECREE: "PASSED",
+        LegislativeOutcome.FAILED_LEGISLATIVE: "FAILED",
+    }[amendment.outcome]
+    print(f"      outcome: {verb}")
+    print(
+        f"      constitution digest: {amendment.opening_constitution_digest[:12]}... -> "
+        f"{amendment.closing_constitution_digest[:12]}..."
+    )
+    print(
+        f"      transition pressure added: "
+        f"{_bps_to_percent_str(amendment.transition_pressure_added_bps)}"
+    )
+    if amendment.qualifies_as_liberalization_transition:
+        print("      qualifies as a liberalization transition: pending_liberalization set")
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
@@ -1019,6 +1288,12 @@ def _print_report(report: TurnReport) -> None:
         _print_political_capital_ledger(report.political_capital)
     if report.political_relationship is not None:
         _print_political_relationship_memory(report.political_relationship)
+    if report.coup_unrest is not None:
+        _print_coup_unrest_report(report.coup_unrest)
+    if report.election is not None:
+        _print_election_report(report.election)
+    if report.constitutional_amendment is not None:
+        _print_constitutional_amendment_report(report.constitutional_amendment)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -1044,6 +1319,14 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
     save = _read_save(state_path)
     print(f"resolving {args.turns} turn(s) from turn {save.current_turn()}")
 
+    # A stop-vs-refusal split (R10): GameAlreadyConcludedError on turn N of a requested batch
+    # means turns 1..N-1 in THIS loop genuinely, successfully resolved -- it is not a failure of
+    # the batch, only a signal that the game reached its natural end partway through it. Every
+    # OTHER exception (an invalid decision, an invariant violation) still leaves `save` pointing
+    # at the last good save and propagates uncaught, matching "no partial output file" -- but a
+    # concluded game's already-resolved turns must still be written, not discarded along with the
+    # refused (N+1)th call.
+    concluded = False
     for _ in range(args.turns):
         if args.decisions_file is not None:
             decisions = _read_decisions_file(Path(args.decisions_file))
@@ -1054,12 +1337,12 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
                 expected_state_version=current.state_version,
                 decisions=(),
             )
-        # advance_game validates history + the decision set + the resolved
-        # state, in that order, and raises before appending anything on any
-        # failure — so a mid-batch failure here leaves `save` (this local
-        # variable) pointing at the last good save and never reaches the
-        # write below, matching "no partial output file."
-        save = advance_game(save, decisions)
+        try:
+            save = advance_game(save, decisions)
+        except GameAlreadyConcludedError as exc:
+            print(f"game concluded: {exc}")
+            concluded = True
+            break
         report = save.entries[-1].report()
         assert report is not None, "a just-appended, non-genesis entry always has a report"
         _print_report(report)
@@ -1070,6 +1353,8 @@ def _cmd_resolve(args: argparse.Namespace) -> int:
         f"final: turn={final.turn} state_version={final.state_version} "
         f"entries={len(save.entries)} -> wrote {out_path}"
     )
+    if concluded:
+        print("(fewer turns were resolved than requested: the game concluded)")
     return 0
 
 
@@ -1134,6 +1419,18 @@ def _cmd_history(args: argparse.Namespace) -> int:
         if report.political_relationship is not None:
             # Same discipline again (Phase 3B2B): the SAME shared helper `_print_report` uses.
             _print_political_relationship_memory(report.political_relationship)
+        if report.coup_unrest is not None:
+            # Same discipline again (Phase 3C, Gate 3C2): the SAME shared helper `_print_report`
+            # uses.
+            _print_coup_unrest_report(report.coup_unrest)
+        if report.election is not None:
+            # Same discipline again (Phase 3C, Gate 3C1): the SAME shared helper `_print_report`
+            # uses.
+            _print_election_report(report.election)
+        if report.constitutional_amendment is not None:
+            # Same discipline again (Phase 3C, Gate 3C3): the SAME shared helper `_print_report`
+            # uses.
+            _print_constitutional_amendment_report(report.constitutional_amendment)
     return 0
 
 
@@ -1184,6 +1481,13 @@ def build_parser() -> argparse.ArgumentParser:
         "the deviation between them (Phase 3B2B), read directly from state. Distinguishes a "
         "structural opponent (large deviation from a hostile baseline) from a bloc merely "
         "resting at a hostile baseline (zero deviation)",
+    )
+    p_inspect.add_argument(
+        "--institutions",
+        action="store_true",
+        help="also show every authored institution's strict-bps metrics (loyalty, power, "
+        "competence, corruption), read directly from state (Phase 3C, Gate 3C2) -- the coup "
+        "channel's own inputs",
     )
     p_inspect.set_defaults(func=_cmd_inspect)
 

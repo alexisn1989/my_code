@@ -193,6 +193,33 @@ def test_resolve_refuses_to_overwrite_its_input(tmp_path: Path) -> None:
     assert exit_code == 2
 
 
+def test_resolve_stops_cleanly_at_a_mid_batch_conclusion_and_persists_what_ran(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Phase 3C (R10): `tiny_valid` concludes via `TERM_LIMIT_EXIT` at its real, natural turn 32
+    -- requesting 40 turns must stop cleanly at 32, still write the save (every genuinely
+    resolved turn persisted, not discarded because the batch as a whole didn't reach 40), exit
+    successfully, and say so -- never a bare "error:" for turns that actually completed."""
+    save0 = tmp_path / "save0.json"
+    save1 = tmp_path / "save1.json"
+    assert main(["new", "--scenario", SCENARIO_PATH, "--out", str(save0)]) == 0
+    capsys.readouterr()
+
+    exit_code = main(["resolve", "--state", str(save0), "--turns", "40", "--out", str(save1)])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "game concluded" in out
+    assert "fewer turns were resolved than requested" in out
+    assert save1.exists()
+
+    exit_code = main(["inspect", "--state", str(save1), "--politics"])
+    out = capsys.readouterr().out
+    assert exit_code == 0
+    assert "current_turn:        32" in out
+    assert "integrity:           OK" in out
+    assert "game concluded:      turn 32  defeat (term_limit_exit)" in out
+
+
 def test_history_shows_a_deficit_scenarios_borrowing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -581,6 +608,201 @@ def test_resolve_and_history_render_the_same_legislative_numbers(
     ):
         assert fragment in resolve_out, fragment
         assert fragment in history_out, fragment
+
+
+def test_resolve_and_history_render_the_same_election_block(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """(Gate 3C1) `_cmd_resolve` and `_cmd_history` must agree on the election block too, the
+    same M10 discipline `_print_election_report` follows for every other shared renderer --
+    `tiny_valid`'s real turn-16 election (WON, unaided, real party rows) is the natural real-data
+    case, not a synthetic one."""
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    save1 = tmp_path / "save1.json"
+    capsys.readouterr()
+    assert main(["resolve", "--state", str(save0), "--turns", "16", "--out", str(save1)]) == 0
+    resolve_out = capsys.readouterr().out
+
+    assert main(["history", "--state", str(save1), "--turn", "16"]) == 0
+    history_out = capsys.readouterr().out
+
+    for fragment in (
+        "election: WON",
+        "required 50%",
+        "civic_union (coalition):",
+        "national_front (opposition):",
+        "rural_alliance (confidence_and_supply):",
+    ):
+        assert fragment in resolve_out, fragment
+        assert fragment in history_out, fragment
+
+
+def test_resolve_and_history_render_the_same_survival_risk_block(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """(Gate 3C2) `_cmd_resolve` and `_cmd_history` must agree on the coup/unrest/impeachment
+    block too, the same M10 discipline `_print_coup_unrest_report` follows -- a quiet turn-1
+    resolution against `tiny_valid`'s real genesis data (no decisions), read from the real,
+    unmodified engine."""
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    save1 = tmp_path / "save1.json"
+    capsys.readouterr()
+    assert main(["resolve", "--state", str(save0), "--turns", "1", "--out", str(save1)]) == 0
+    resolve_out = capsys.readouterr().out
+
+    assert main(["history", "--state", str(save1), "--turn", "1"]) == 0
+    history_out = capsys.readouterr().out
+
+    for fragment in ("survival risk: coup", "unrest", "impeachment"):
+        assert fragment in resolve_out, fragment
+        assert fragment in history_out, fragment
+
+
+def test_resolve_and_history_render_the_same_amendment_block(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """(Gate 3C3) `_cmd_resolve` and `_cmd_history` must agree on the constitutional-amendment
+    block too, the same M10 discipline `_print_constitutional_amendment_report` follows. Drives
+    `decree_state`'s real turn-3 amendment through the CLI's own `--decisions-file` path (two
+    relationship-investment turns, then the five-axis amendment) -- the same real campaign the
+    calibration suite pins numerically, exercised here through the CLI surface specifically."""
+    save0 = _new_save(tmp_path, DECREE_SCENARIO_PATH)
+
+    def _investment_file(pc: int, name: str, expected_turn: int) -> Path:
+        path = tmp_path / name
+        path.write_text(
+            json.dumps(
+                {
+                    "expected_turn": expected_turn,
+                    "expected_state_version": expected_turn,
+                    "decisions": [
+                        {
+                            "kind": "bloc_relationship_investment",
+                            "investments": [
+                                {
+                                    "party_id": "opposition_party",
+                                    "bloc_id": "main",
+                                    "political_capital": pc,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    save1 = tmp_path / "save1.json"
+    assert (
+        main(
+            [
+                "resolve",
+                "--state",
+                str(save0),
+                "--turns",
+                "1",
+                "--decisions-file",
+                str(_investment_file(85, "invest1.json", expected_turn=0)),
+                "--out",
+                str(save1),
+            ]
+        )
+        == 0
+    )
+    save2 = tmp_path / "save2.json"
+    assert (
+        main(
+            [
+                "resolve",
+                "--state",
+                str(save1),
+                "--turns",
+                "1",
+                "--decisions-file",
+                str(_investment_file(118, "invest2.json", expected_turn=1)),
+                "--out",
+                str(save2),
+            ]
+        )
+        == 0
+    )
+
+    amend_file = tmp_path / "amend.json"
+    amend_file.write_text(
+        json.dumps(
+            {
+                "expected_turn": 2,
+                "expected_state_version": 2,
+                "decisions": [
+                    {
+                        "kind": "constitutional_amendment",
+                        "targets": [
+                            {"axis": "decree_authority", "value": "none"},
+                            {"axis": "executive_selection", "value": "direct_election"},
+                            {"axis": "executive_system", "value": "presidential"},
+                            {"axis": "executive_term_limit_terms", "value": 2},
+                            {"axis": "national_election_interval_turns", "value": 8},
+                        ],
+                        "route": "legislative",
+                        "influence": [
+                            {
+                                "party_id": "opposition_party",
+                                "bloc_id": "main",
+                                "political_capital": 300,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    save3 = tmp_path / "save3.json"
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "resolve",
+                "--state",
+                str(save2),
+                "--turns",
+                "1",
+                "--decisions-file",
+                str(amend_file),
+                "--out",
+                str(save3),
+            ]
+        )
+        == 0
+    )
+    resolve_out = capsys.readouterr().out
+
+    assert main(["history", "--state", str(save3), "--turn", "3"]) == 0
+    history_out = capsys.readouterr().out
+
+    for fragment in (
+        "constitutional amendment: route=legislative",
+        "decree_authority: unlimited -> none",
+        "67/100 seats",
+        "outcome: PASSED",
+        "qualifies as a liberalization transition",
+    ):
+        assert fragment in resolve_out, fragment
+        assert fragment in history_out, fragment
+
+
+def test_inspect_institutions_shows_real_bps_metrics(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """(Gate 3C2) `inspect --institutions` reads the coup formula's own inputs directly from
+    state, in strict bps."""
+    save0 = _new_save(tmp_path, SCENARIO_PATH)
+    capsys.readouterr()
+    assert main(["inspect", "--state", str(save0), "--institutions"]) == 0
+    out = capsys.readouterr().out
+    assert "institutions:" in out
+    assert "military (Military): loyalty=75% power=65% competence=60% corruption=10%" in out
 
 
 # --- 5. no proposal ---------------------------------------------------------------------------

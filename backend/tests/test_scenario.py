@@ -28,7 +28,7 @@ def test_tiny_valid_scenario_loads_successfully(tiny_valid_scenario_path: Path) 
         "rural_farmers",
         "business_owners",
     }
-    assert {i.id for i in arken.institutions} == {"executive", "legislature", "military"}
+    assert {i.id for i in arken.institutions} == {"executive", "military"}
 
     assert arken.economy is not None
     assert {d.category for d in arken.economy.resource_deposits} == set(ResourceCategory)

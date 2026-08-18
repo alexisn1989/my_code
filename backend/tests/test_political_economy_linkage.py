@@ -10,6 +10,7 @@ baseline. This test is the proof that chain actually holds at the two turns wher
 from __future__ import annotations
 
 from app.content.scenarios import load_scenario_file
+from app.core.errors import GameAlreadyConcludedError
 from app.simulation.decisions import DecisionSet
 from app.simulation.resolver import resolve_turn
 from tests.conftest import SCENARIO_DIR
@@ -47,17 +48,30 @@ def test_turn_26_iron_ore_depletion_shock_matches_the_hand_worked_figures_exactl
     assert political.closing_legitimacy_bps == 6_213
 
 
-def test_turn_41_timber_steady_state_truncation_matches_the_hand_worked_figures_exactly() -> None:
-    reports = _resolve_to_turn(41)
-    turn_40, turn_41 = reports[39], reports[40]
+def test_turn_40_electoral_defeat_concludes_the_game_before_timber_steady_state() -> None:
+    """Phase 3C: `deficit_demo` concludes via `ELECTORAL_DEFEAT` at turn 40 -- the same turn as
+    the timber `STOCK_CONSTRAINED` boundary (`test_soak.py`, 2C2/T31) -- so the turn-41 timber
+    steady-state truncation this test pinned pre-3C is no longer reachable through ordinary play;
+    `resolve_turn` refuses the 41st call instead (`docs.adr` 0013). Turn 40's own closing
+    legitimacy, 6,431, is unchanged from the pre-3C figure -- the trajectory is identical up to
+    this point, simply observed at its new, real conclusion."""
+    reports = _resolve_to_turn(40)
+    turn_40 = reports[39]
     assert turn_40.political is not None
-    assert turn_41.political is not None
-
     assert turn_40.political.closing_legitimacy_bps == 6_431
-    political = turn_41.political
-    assert political.opening_legitimacy_bps == 6_431
-    assert political.output_change_bps == -138, "truncation toward zero, not floor's -139"
-    assert political.output_contribution_bps == -34
-    assert political.order_support_contribution_bps == 6
-    assert political.total_legitimacy_change_bps == -28
-    assert political.closing_legitimacy_bps == 6_403
+
+    state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
+    for _ in range(40):
+        decisions = DecisionSet(
+            expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
+        )
+        state = resolve_turn(state, decisions).state
+
+    stale_decisions = DecisionSet(
+        expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
+    )
+    try:
+        resolve_turn(state, stale_decisions)
+        raise AssertionError("expected GameAlreadyConcludedError")
+    except GameAlreadyConcludedError:
+        pass

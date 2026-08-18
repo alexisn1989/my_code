@@ -1,4 +1,4 @@
-"""Tests for `simulation.reconciliation.reconcile_political_and_legislative_report`
+"""Tests for `simulation.reconciliation.reconcile_political_legislative_and_survival_report`
 (Phase 3A groups 1-11, T-R5/T-R6; Phase 3B1 groups 12-18, R8).
 
 Every corruption below is built with `model_copy(update=...)`, which does NOT re-run
@@ -41,13 +41,14 @@ from app.simulation.constitution import (
 from app.simulation.decisions import BudgetDecision, DecisionSet, InfluenceAllocation
 from app.simulation.legislature import LegislativeChamber
 from app.simulation.political_memory import SPENDING_REACTION_WEIGHT_BPS, TAX_REACTION_WEIGHT_BPS
-from app.simulation.reconciliation import reconcile_political_and_legislative_report
+from app.simulation.reconciliation import reconcile_political_legislative_and_survival_report
 from app.simulation.report import (
     EconomicBaselineReport,
     TurnReport,
     _legislative_axis_component_bps,
 )
 from app.simulation.resolver import resolve_turn
+from app.simulation.state import OutcomeBucket, RemovalReason, TerminalOutcomeState
 from tests.conftest import SCENARIO_DIR, make_country, make_game_state, make_politics
 
 
@@ -71,13 +72,13 @@ def test_a_clean_resolution_reconciles_with_no_problems() -> None:
     everything below corrupts a `model_copy`, never the resolver's real output."""
     state, first, second = _resolve_twice()
     assert (
-        reconcile_political_and_legislative_report(
+        reconcile_political_legislative_and_survival_report(
             opening_state=state, closing_state=first.state, report=first.report, decisions=None
         )
         == []
     )
     assert (
-        reconcile_political_and_legislative_report(
+        reconcile_political_legislative_and_survival_report(
             opening_state=first.state,
             closing_state=second.state,
             report=second.report,
@@ -93,7 +94,7 @@ def test_corrupted_opening_legitimacy_is_rejected() -> None:
         update={"opening_legitimacy_bps": first.report.political.opening_legitimacy_bps + 1}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("opening_legitimacy_bps" in p for p in problems)
@@ -105,7 +106,7 @@ def test_corrupted_closing_legitimacy_is_rejected() -> None:
         update={"closing_legitimacy_bps": first.report.political.closing_legitimacy_bps + 1}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("closing_legitimacy_bps" in p for p in problems)
@@ -117,7 +118,7 @@ def test_corrupted_opening_political_capital_is_rejected() -> None:
         update={"opening_political_capital": first.report.political.opening_political_capital + 1}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("opening_political_capital" in p for p in problems)
@@ -129,7 +130,7 @@ def test_corrupted_closing_political_capital_is_rejected() -> None:
         update={"closing_political_capital": first.report.political.closing_political_capital + 1}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("closing_political_capital" in p for p in problems)
@@ -147,7 +148,7 @@ def test_opening_baseline_presence_mismatch_is_rejected() -> None:
         update={"opening_economic_baseline": fabricated_baseline}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("opening_economic_baseline presence" in p for p in problems)
@@ -172,7 +173,7 @@ def test_each_opening_baseline_field_is_independently_rejected() -> None:
             update={"opening_economic_baseline": corrupted_baseline}
         )
         corrupted_report = second.report.model_copy(update={"political": corrupted_political})
-        problems = reconcile_political_and_legislative_report(
+        problems = reconcile_political_legislative_and_survival_report(
             opening_state=first.state,
             closing_state=second.state,
             report=corrupted_report,
@@ -197,7 +198,7 @@ def test_each_closing_baseline_field_is_independently_rejected() -> None:
             update={"closing_economic_baseline": corrupted_baseline}
         )
         corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-        problems = reconcile_political_and_legislative_report(
+        problems = reconcile_political_legislative_and_survival_report(
             opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
         )
         assert any(f"closing_economic_baseline.{field_name}" in p for p in problems), field_name
@@ -206,7 +207,8 @@ def test_each_closing_baseline_field_is_independently_rejected() -> None:
 def test_each_of_the_nine_constitutional_fields_is_independently_rejected() -> None:
     """(R7) Field-by-field, not just the digest -- each of the nine `ConstitutionSummary` fields
     is corrupted alone, keeping the (now-inconsistent) digest untouched, and each must be caught
-    against BOTH opening and closing state."""
+    against the closing state snapshot that `PoliticalReport` now records. Commit 22's group 44
+    owns opening-to-closing amendment staticness."""
     state, first, _ = _resolve_twice()
     corruptions = {
         "executive_system": ExecutiveSystem.PARLIAMENTARY
@@ -224,13 +226,12 @@ def test_each_of_the_nine_constitutional_fields_is_independently_rejected() -> N
             update={"constitution": corrupted_constitution}
         )
         corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-        problems = reconcile_political_and_legislative_report(
+        problems = reconcile_political_legislative_and_survival_report(
             opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
         )
         assert any(f"constitution.{field_name}" in p for p in problems), field_name
-        # Both opening and closing comparisons fire -- two problems, not one.
         matching = [p for p in problems if f"constitution.{field_name}" in p]
-        assert len(matching) == 2, field_name
+        assert len(matching) == 1, field_name
 
 
 def test_digest_alone_corrupted_with_fields_intact_is_rejected() -> None:
@@ -244,7 +245,7 @@ def test_digest_alone_corrupted_with_fields_intact_is_rejected() -> None:
         update={"constitution": corrupted_constitution}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("constitution_digest" in p for p in problems)
@@ -260,7 +261,7 @@ def test_corrupted_constitutional_order_support_is_rejected() -> None:
         }
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("constitutional_order_support_bps" in p for p in problems)
@@ -272,7 +273,7 @@ def test_corrupted_political_capital_capacity_is_rejected() -> None:
         update={"political_capital_capacity": first.report.political.political_capital_capacity + 1}
     )
     corrupted_report = first.report.model_copy(update={"political": corrupted_political})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=first.state, report=corrupted_report, decisions=None
     )
     assert any("political_capital_capacity" in p for p in problems)
@@ -284,7 +285,7 @@ def test_no_political_report_produces_no_problems() -> None:
     state, first, _ = _resolve_twice()
     report_without_political = first.report.model_copy(update={"political": None})
     assert (
-        reconcile_political_and_legislative_report(
+        reconcile_political_legislative_and_survival_report(
             opening_state=state,
             closing_state=first.state,
             report=report_without_political,
@@ -325,7 +326,7 @@ def test_a_working_copy_mutation_of_a_constitutional_field_is_caught() -> None:
             )
         }
     )
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=mutated_state, report=first.report, decisions=None
     )
     assert any("judicial_review" in p for p in problems)
@@ -351,7 +352,7 @@ def test_a_working_copy_mutation_of_support_or_capacity_is_caught() -> None:
             )
         }
     )
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=mutated_state, report=first.report, decisions=None
     )
     assert any("political_capital_capacity" in p for p in problems)
@@ -469,7 +470,7 @@ _RECONCILE_PATHS = pytest.mark.parametrize(
 def test_a_clean_legislative_resolution_reconciles_with_no_problems() -> None:
     state, resolution, decisions = _tiny_valid_passing_turn()
     assert (
-        reconcile_political_and_legislative_report(
+        reconcile_political_legislative_and_survival_report(
             opening_state=state,
             closing_state=resolution.state,
             report=resolution.report,
@@ -488,7 +489,7 @@ def test_chamber_identity_missing_row_is_rejected() -> None:
     lower_only = tuple(c for c in legislative.chambers if c.chamber is LegislativeChamber.LOWER)
     corrupted_legislative = legislative.model_copy(update={"chambers": lower_only})
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -510,7 +511,7 @@ def test_party_identity_mismatch_is_rejected() -> None:
         party_id="not_a_real_party",
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -531,7 +532,7 @@ def test_bloc_identity_mismatch_is_rejected() -> None:
         bloc_id="not_a_real_bloc",
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -549,7 +550,7 @@ def test_seats_mismatch_is_rejected() -> None:
         legislative, match_party_id="civic_union", match_bloc_id="mainstream", seats=1
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -577,7 +578,7 @@ def test_discipline_mismatch_is_rejected() -> None:
         discipline_bps=row.discipline_bps ^ 1,
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -605,7 +606,7 @@ def test_baseline_support_input_relationship_mismatch_is_rejected() -> None:
         government_relationship_bps=row.government_relationship_bps - 1000,
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -690,7 +691,7 @@ def test_legislature_mutation_is_rejected() -> None:
     )
     mutated_politics = player.politics.model_copy(update={"legislature": mutated_legislature})
     mutated_state = _with_player_politics(resolution.state, mutated_politics)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -712,7 +713,7 @@ def test_opening_capital_mismatch_is_rejected() -> None:
         update={"opening_political_capital": legislative.opening_political_capital + 1}
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -730,7 +731,7 @@ def test_committed_capital_mismatch_is_rejected_directly() -> None:
         update={"political_capital_committed": legislative.political_capital_committed + 1}
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -768,7 +769,7 @@ def test_closing_capital_mismatch_is_rejected() -> None:
         update={"political_capital": player.politics.political_capital + 1}
     )
     mutated_state = _with_player_politics(resolution.state, mutated_politics)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -791,7 +792,7 @@ def test_route_mismatch_with_submitted_decision_is_rejected_directly() -> None:
 
     corrupted_legislative = legislative.model_copy(update={"route": ProposalRoute.DECREE})
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -829,7 +830,7 @@ def test_influence_allocation_mismatch_with_submitted_decision_is_rejected() -> 
         influence_bps=600,
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=corrupted_report,
@@ -853,7 +854,7 @@ def test_decision_digest_mismatch_is_rejected(load) -> None:  # type: ignore[no-
     )
     corrupted_report = resolution.report.model_copy(update={"legislative": corrupted_legislative})
     reloaded_report = load(corrupted_report)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=reloaded_report,
@@ -884,7 +885,7 @@ def test_applied_policy_after_a_failed_vote_is_rejected() -> None:
         }
     )
     mutated_state = _with_player_finance(resolution.state, mutated_finance)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -914,7 +915,7 @@ def test_missing_policy_application_after_a_passed_vote_is_rejected() -> None:
         }
     )
     mutated_state = _with_player_finance(resolution.state, mutated_finance)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -937,7 +938,7 @@ def test_mutation_of_an_untargeted_spending_category_is_rejected() -> None:
         }
     )
     mutated_state = _with_player_finance(resolution.state, mutated_finance)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -954,7 +955,7 @@ def test_no_legislative_report_produces_no_new_problems() -> None:
     # (report_without_legislative is not itself a valid TurnReport -- completeness is a
     # construction-time rule -- but reconciliation takes an already-built Python object and must
     # not crash on this shape either way.)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=report_without_legislative,
@@ -988,7 +989,7 @@ def test_closing_baseline_mutation_is_rejected() -> None:
     )
     mutated_politics = player.politics.model_copy(update={"legislature": mutated_legislature})
     mutated_state = _with_player_politics(resolution.state, mutated_politics)
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=mutated_state,
         report=resolution.report,
@@ -1010,7 +1011,7 @@ def test_relationship_memory_row_missing_for_a_bloc_that_needs_one_is_rejected()
     assert relationship is not None and len(relationship.blocs) > 1
     thinned = relationship.model_copy(update={"blocs": relationship.blocs[1:]})
     thinned_report = resolution.report.model_copy(update={"political_relationship": thinned})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=thinned_report,
@@ -1035,7 +1036,7 @@ def test_relationship_memory_row_naming_a_nonexistent_bloc_is_rejected() -> None
         }
     )
     widened_report = resolution.report.model_copy(update={"political_relationship": widened})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=widened_report,
@@ -1103,7 +1104,7 @@ def test_relationship_memory_preference_fabrication_is_rejected() -> None:
     fabricated_report = resolution.report.model_copy(
         update={"political_relationship": fabricated_relationship}
     )
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=fabricated_report,
@@ -1132,7 +1133,7 @@ def test_legislature_present_fabrication_on_a_no_legislature_country_is_rejected
     assert relationship.legislature_present is False
     fabricated = relationship.model_copy(update={"legislature_present": True})
     fabricated_report = resolution.report.model_copy(update={"political_relationship": fabricated})
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=fabricated_report,
@@ -1141,3 +1142,575 @@ def test_legislature_present_fabrication_on_a_no_legislature_country_is_rejected
     assert any(
         "political_relationship.legislature_present=True does not match" in p for p in problems
     )
+
+
+# --- Phase 3C, Gate 3C2: coup/unrest/impeachment reconciliation, groups 24-34 ------------------
+
+
+def _resolve_with_edits(
+    *,
+    scenario: str = "tiny_valid",
+    seed: int | None = None,
+    military_loyalty: int | None = None,
+    legitimacy_bps: int | None = None,
+    unrest_boost: bool = False,
+):  # type: ignore[no-untyped-def]
+    """Same methodology as `test_coup_unrest_report.py`'s own helper: a real `resolve_turn` call
+    against `scenario`'s genesis state, with an optional edited seed/military-loyalty/legitimacy/
+    population-unrest-boost, returning `(opening_state, resolution, decisions)`."""
+    state = load_scenario_file(SCENARIO_DIR / f"{scenario}.yaml")
+    if seed is not None:
+        state = state.model_copy(update={"seed": seed})
+    player = state.world.countries[state.world.player_country_id]
+    if military_loyalty is not None:
+        institutions = list(player.institutions)
+        for index, institution_row in enumerate(institutions):
+            if institution_row.id == "military":
+                institutions[index] = institution_row.model_copy(
+                    update={"loyalty": military_loyalty, "power": 10_000, "competence": 10_000}
+                )
+        player.institutions = institutions
+    if unrest_boost:
+        groups = list(player.population_groups)
+        for index, group_row in enumerate(groups):
+            groups[index] = group_row.model_copy(
+                update={"approval": 0, "radicalization": 10_000, "organization": 10_000}
+            )
+        player.population_groups = groups
+    if legitimacy_bps is not None:
+        assert player.politics is not None
+        player.politics = player.politics.model_copy(update={"legitimacy_bps": legitimacy_bps})
+    decisions = _empty_decisions_for(state)
+    resolution = resolve_turn(state, decisions)
+    return state, resolution, decisions
+
+
+def _quiet_turn():  # type: ignore[no-untyped-def]
+    """A real, quiet turn: no channel attempts anything (`tiny_valid` genesis, seed 42)."""
+    return _resolve_with_edits()
+
+
+def _coup_attempted_turn():  # type: ignore[no-untyped-def]
+    return _resolve_with_edits(military_loyalty=0, seed=0)
+
+
+def _unrest_attempted_turn():  # type: ignore[no-untyped-def]
+    return _resolve_with_edits(unrest_boost=True, seed=1)
+
+
+def _impeachment_attempted_turn():  # type: ignore[no-untyped-def]
+    return _resolve_with_edits(legitimacy_bps=0, seed=40)
+
+
+def test_group_24_coup_attempt_risk_field_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    fabricated_coup = coup_unrest.coup.model_copy(
+        update={
+            "opposition_contribution_bps": coup_unrest.coup.opposition_contribution_bps + 1,
+            "attempt_risk_bps": coup_unrest.coup.attempt_risk_bps + 1,
+        }
+    )
+    fabricated = coup_unrest.model_copy(update={"coup": fabricated_coup})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.coup.opposition_contribution_bps=" in p for p in problems)
+
+
+def test_group_25_coup_success_probability_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _coup_attempted_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert coup_unrest.coup.attempted
+    assert coup_unrest.coup.success_probability_bps is not None
+    fabricated_coup = coup_unrest.coup.model_copy(
+        update={"success_probability_bps": coup_unrest.coup.success_probability_bps + 1}
+    )
+    fabricated = coup_unrest.model_copy(update={"coup": fabricated_coup})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.coup.success_probability_bps=" in p for p in problems)
+
+
+def test_group_26_coup_attempted_flag_flipped_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert not coup_unrest.coup.attempted
+    fabricated_coup = coup_unrest.coup.model_copy(
+        update={"attempted": True, "success_probability_bps": 300, "succeeded": False}
+    )
+    fabricated = coup_unrest.model_copy(update={"coup": fabricated_coup})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.coup.attempted=True does not match the redrawn" in p for p in problems)
+
+
+def test_group_27_unrest_attempt_risk_field_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    fabricated_unrest = coup_unrest.popular_unrest.model_copy(
+        update={"radicalization_bps": coup_unrest.popular_unrest.radicalization_bps + 1}
+    )
+    fabricated = coup_unrest.model_copy(update={"popular_unrest": fabricated_unrest})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.popular_unrest.radicalization_bps=" in p for p in problems)
+
+
+def test_group_28_unrest_success_probability_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _unrest_attempted_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert coup_unrest.popular_unrest.attempted
+    assert coup_unrest.popular_unrest.success_probability_bps is not None
+    fabricated_unrest = coup_unrest.popular_unrest.model_copy(
+        update={"success_probability_bps": coup_unrest.popular_unrest.success_probability_bps + 1}
+    )
+    fabricated = coup_unrest.model_copy(update={"popular_unrest": fabricated_unrest})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.popular_unrest.success_probability_bps=" in p for p in problems)
+
+
+def test_group_29_unrest_attempted_flag_flipped_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert not coup_unrest.popular_unrest.attempted
+    fabricated_unrest = coup_unrest.popular_unrest.model_copy(
+        update={
+            "attempted": True,
+            "success_probability_bps": 0,
+            "succeeded": False,
+            "outcome": "contained",
+        }
+    )
+    fabricated = coup_unrest.model_copy(update={"popular_unrest": fabricated_unrest})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any(
+        "coup_unrest.popular_unrest.attempted=True does not match the redrawn" in p
+        for p in problems
+    )
+
+
+def test_group_30_impeachment_eligibility_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert coup_unrest.impeachment.eligible
+    fabricated_impeachment = coup_unrest.impeachment.model_copy(
+        update={
+            "eligible": False,
+            "legitimacy_bps": None,
+            "opposition_seat_share_bps": None,
+            "legitimacy_contribution_bps": None,
+            "opposition_contribution_bps": None,
+            "attempt_risk_bps": None,
+            "attempted": None,
+            "success_probability_bps": None,
+            "succeeded": None,
+        }
+    )
+    fabricated = coup_unrest.model_copy(update={"impeachment": fabricated_impeachment})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.impeachment.eligible=False does not match" in p for p in problems)
+
+
+def test_group_31_impeachment_success_probability_fabricated_is_rejected() -> None:
+    opening_state, resolution, decisions = _impeachment_attempted_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert coup_unrest.impeachment.attempted
+    assert coup_unrest.impeachment.success_probability_bps is not None
+    fabricated_impeachment = coup_unrest.impeachment.model_copy(
+        update={"success_probability_bps": coup_unrest.impeachment.success_probability_bps + 1}
+    )
+    fabricated = coup_unrest.model_copy(update={"impeachment": fabricated_impeachment})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.impeachment.success_probability_bps=" in p for p in problems)
+
+
+def test_group_32_impeachment_attempted_flag_flipped_is_rejected() -> None:
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert not coup_unrest.impeachment.attempted
+    fabricated_impeachment = coup_unrest.impeachment.model_copy(
+        update={"attempted": True, "success_probability_bps": 0, "succeeded": False}
+    )
+    fabricated = coup_unrest.model_copy(update={"impeachment": fabricated_impeachment})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any(
+        "coup_unrest.impeachment.attempted=True does not match the redrawn" in p for p in problems
+    )
+
+
+def test_group_33_removal_triggered_claimed_absent_while_state_carries_a_coup_is_rejected() -> None:
+    """Group 33 (also case 22 of the tamper matrix): `removal_triggered=None` while
+    `closing_state.terminal_outcome` is actually set, from a real coup-succeeded turn."""
+    opening_state, resolution, decisions = _resolve_with_edits(
+        military_loyalty=0, legitimacy_bps=0, seed=6
+    )
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    assert coup_unrest.removal_triggered == RemovalReason.COUP
+    fabricated_coup = coup_unrest.coup.model_copy(update={"succeeded": False})
+    fabricated = coup_unrest.model_copy(update={"coup": fabricated_coup, "removal_triggered": None})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any(
+        "coup_unrest.removal_triggered=None does not match closing_state" in p for p in problems
+    )
+
+
+def test_group_34_transition_pressure_left_unchanged_is_rejected() -> None:
+    """Group 34 (also case 23 of the tamper matrix): a nonzero opening pressure's decay is
+    fabricated to leave the closing figure unchanged rather than actually decaying it."""
+    opening_state, resolution, decisions = _quiet_turn()
+    player_id = opening_state.world.player_country_id
+    edited_opening_politics = opening_state.world.countries[player_id].politics.model_copy(
+        update={"regime_transition_pressure_bps": 6_000}
+    )
+    edited_opening_state = opening_state.model_copy(deep=True)
+    edited_opening_state.world.countries[player_id].politics = edited_opening_politics
+
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    fabricated = coup_unrest.model_copy(
+        update={
+            "opening_transition_pressure_bps": 6_000,
+            "decayed_transition_pressure_bps": 0,
+            "closing_transition_pressure_bps": 6_000,
+        }
+    )
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=edited_opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("does not match the recomputed R6 identity" in p for p in problems)
+
+
+# --- Phase 3C, Gate 3C1: election reconciliation, groups 35-40 and 45 --------------------------
+
+
+def _tiny_valid_first_election_turn():  # type: ignore[no-untyped-def]
+    """Resolves `tiny_valid` up to and including its real, scheduled turn-16 election (a WON
+    result with party rows) with no decisions on any turn, returning
+    `(opening_state, resolution, decisions)` for the final (16th) call."""
+    state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+    for _ in range(15):
+        decisions = _empty_decisions_for(state)
+        state = resolve_turn(state, decisions).state
+    opening_state = state
+    decisions = _empty_decisions_for(opening_state)
+    resolution = resolve_turn(opening_state, decisions)
+    assert resolution.report.election is not None
+    assert resolution.report.election.scheduled
+    assert resolution.report.election.result == "won"
+    return opening_state, resolution, decisions
+
+
+def test_group_35_scheduled_flag_fabricated_true_is_rejected() -> None:
+    """Group 35: `scheduled` fabricated inconsistent with the real prior schedule (a turn NOT
+    actually due for election)."""
+    state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+    decisions = _empty_decisions_for(state)
+    resolution = resolve_turn(state, decisions)
+    election = resolution.report.election
+    assert election is not None
+    assert not election.scheduled
+    fabricated = election.model_copy(update={"scheduled": True, "result": "lost"})
+    fabricated_report = resolution.report.model_copy(update={"election": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("election.scheduled=True does not match" in p for p in problems)
+
+
+def test_group_35_next_election_turn_fabricated_is_rejected() -> None:
+    """Group 35: the rescheduled `next_election_turn` disagrees with §4.4's rule (interval added
+    to the WRONG turn)."""
+    opening_state, resolution, decisions = _tiny_valid_first_election_turn()
+    election = resolution.report.election
+    assert election is not None
+    fabricated = election.model_copy(update={"next_election_turn": election.next_election_turn + 1})
+    fabricated_report = resolution.report.model_copy(update={"election": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("election.next_election_turn=" in p and "does not match" in p for p in problems)
+
+
+def test_group_36_term_limit_exit_result_fabricated_is_rejected() -> None:
+    """Group 36: `result` claims `term_limit_exit` on a turn whose OPENING
+    `consecutive_terms_held` has not actually reached the term limit."""
+    opening_state, resolution, decisions = _tiny_valid_first_election_turn()
+    election = resolution.report.election
+    assert election is not None
+    fabricated = election.model_copy(
+        update={
+            "result": "term_limit_exit",
+            "required_support_bps": 0,
+            "polling_uncertainty_bps": 0,
+            "eligible_to_stand": False,
+            "parties": (),
+        }
+    )
+    fabricated_report = resolution.report.model_copy(update={"election": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("term_limited=False" in p for p in problems)
+
+
+def test_group_37_legislative_support_contribution_fabricated_is_rejected() -> None:
+    """Group 37: the legislative-support contribution disagrees with the real recomputed
+    lower-chamber figure."""
+    opening_state, resolution, decisions = _tiny_valid_first_election_turn()
+    election = resolution.report.election
+    assert election is not None
+    assert election.legislative_support_contribution_bps is not None
+    fabricated = election.model_copy(
+        update={
+            "legislative_support_contribution_bps": (
+                election.legislative_support_contribution_bps + 1
+            )
+        }
+    )
+    fabricated_report = resolution.report.model_copy(update={"election": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("legislative_support_contribution_bps=" in p for p in problems)
+
+
+def test_group_37_population_approval_contribution_fabricated_is_rejected() -> None:
+    """Group 37: the population-approval contribution disagrees with the real recomputed
+    weighted mean."""
+    opening_state, resolution, decisions = _tiny_valid_first_election_turn()
+    election = resolution.report.election
+    assert election is not None
+    fabricated = election.model_copy(
+        update={
+            "population_approval_contribution_bps": (
+                election.population_approval_contribution_bps + 1
+            )
+        }
+    )
+    fabricated_report = resolution.report.model_copy(update={"election": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("population_approval_contribution_bps=" in p for p in problems)
+
+
+def test_group_37_legitimacy_contribution_fabricated_is_rejected() -> None:
+    """Group 37: the legitimacy contribution disagrees with `closing_state`'s own
+    `legitimacy_bps`."""
+    opening_state, resolution, decisions = _tiny_valid_first_election_turn()
+    election = resolution.report.election
+    assert election is not None
+    fabricated = election.model_copy(
+        update={"legitimacy_contribution_bps": election.legitimacy_contribution_bps + 1}
+    )
+    fabricated_report = resolution.report.model_copy(update={"election": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("legitimacy_contribution_bps=" in p for p in problems)
+
+
+def test_group_38_polling_swing_fabricated_is_rejected() -> None:
+    """Group 38: the stored polling swing disagrees with the real, redrawn
+    `derive_rng(seed, turn, "election")` stream -- a report can be internally self-consistent
+    (the clamp identity still holds against a fabricated baseline) while lying about what the
+    seeded RNG actually produced."""
+    opening_state, resolution, decisions = _tiny_valid_first_election_turn()
+    election = resolution.report.election
+    assert election is not None
+    fabricated_swing = election.polling_uncertainty_bps + 1
+    fabricated = election.model_copy(
+        update={
+            "polling_uncertainty_bps": fabricated_swing,
+            "final_support_bps": election.baseline_support_bps + fabricated_swing,
+        }
+    )
+    fabricated_report = resolution.report.model_copy(update={"election": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("does not match the redrawn derive_rng" in p for p in problems)
+
+
+def test_group_39_won_result_without_the_term_increment_is_rejected() -> None:
+    """Group 39: `result == "won"` but `closing_state.consecutive_terms_held` was never actually
+    incremented."""
+    opening_state, resolution, decisions = _tiny_valid_first_election_turn()
+    player_id = resolution.state.world.player_country_id
+    politics = resolution.state.world.countries[player_id].politics
+    assert politics is not None
+    unincremented_politics = politics.model_copy(
+        update={"consecutive_terms_held": politics.consecutive_terms_held - 1}
+    )
+    unincremented_player = resolution.state.world.countries[player_id].model_copy(
+        update={"politics": unincremented_politics}
+    )
+    corrupted_countries = dict(resolution.state.world.countries)
+    corrupted_countries[player_id] = unincremented_player
+    corrupted_state = resolution.state.model_copy(
+        update={
+            "world": resolution.state.world.model_copy(update={"countries": corrupted_countries})
+        }
+    )
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=corrupted_state,
+        report=resolution.report,
+        decisions=decisions,
+    )
+    assert any(
+        "consecutive_terms_held=" in p and "does not match the election" in p for p in problems
+    )
+
+
+def test_group_40_party_seats_diverging_from_the_real_legislature_is_rejected() -> None:
+    """Group 40: `election.parties` seat counts diverging from the real, untouched legislature --
+    read from state directly, never through `LegislativeReport`."""
+    opening_state, resolution, decisions = _tiny_valid_first_election_turn()
+    election = resolution.report.election
+    assert election is not None
+    assert election.parties
+    first_party = election.parties[0]
+    other_parties = election.parties[1:]
+    fabricated_first = first_party.model_copy(update={"seats": first_party.seats + 1})
+    fabricated = election.model_copy(update={"parties": (fabricated_first, *other_parties)})
+    fabricated_report = resolution.report.model_copy(update={"election": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any(
+        f"election.parties[{first_party.party_id!r}].seats=" in p
+        and "does not match closing_state's lower-chamber seats" in p
+        for p in problems
+    )
+
+
+def test_group_45_terminal_outcome_non_retroactivity_backstop() -> None:
+    """Group 45: `opening_state.politics.terminal_outcome` already set is rejected on its own,
+    independent of `resolve_turn`'s own top-of-function refusal -- this backstop runs inside
+    reconciliation itself, so a caller that reaches reconciliation by some path other than a real
+    `resolve_turn` call (e.g. history replay) is still covered."""
+    state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+    decisions = _empty_decisions_for(state)
+    resolution = resolve_turn(state, decisions)
+
+    player_id = state.world.player_country_id
+    politics = state.world.countries[player_id].politics
+    assert politics is not None
+    concluded_politics = politics.model_copy(
+        update={
+            "terminal_outcome": TerminalOutcomeState(
+                bucket=OutcomeBucket.DEFEAT, removal_reason=RemovalReason.TERM_LIMIT_EXIT, turn=0
+            )
+        }
+    )
+    concluded_player = state.world.countries[player_id].model_copy(
+        update={"politics": concluded_politics}
+    )
+    concluded_countries = dict(state.world.countries)
+    concluded_countries[player_id] = concluded_player
+    concluded_opening_state = state.model_copy(
+        update={"world": state.world.model_copy(update={"countries": concluded_countries})}
+    )
+
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=concluded_opening_state,
+        closing_state=resolution.state,
+        report=resolution.report,
+        decisions=decisions,
+    )
+    assert any("opening_state politics.terminal_outcome is already set" in p for p in problems)

@@ -69,17 +69,30 @@ def test_100_turn_soak_completes_without_invariant_violations() -> None:
     )
 
 
+TINY_VALID_NATURAL_CONCLUSION_TURN = 32
+"""Phase 3C: `tiny_valid`'s real, deterministic horizon under ordinary play with no decisions
+submitted -- a 2-term limit and a 16-turn election interval reach `consecutive_terms_held == 2`
+exactly at turn 32, firing `TERM_LIMIT_EXIT` (the incumbent wins its turn-16 election, then hits
+the limit at its second). Not a bug in the soak or the election formula: this is the intended new
+behavior (`docs.adr` 0013) -- a government can now genuinely run out its term, and once it does,
+`GameAlreadyConcludedError` refuses any further resolution (proven below). The pre-3C 100-turn
+horizon this test used is no longer reachable through ordinary play for THIS scenario; the
+soak now runs to the real, natural conclusion instead."""
+
+
 def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustainable() -> None:
     """The Phase 2A counterpart to the test above: a real scenario, government
     accounting resolving every turn, and an explicit check that the
     deliberately-sustainable budget behaves as documented over a long run —
-    cash grows, debt never does, and every turn still reconciles."""
+    cash grows, debt never does, and every turn still reconciles, through
+    tiny_valid's real, natural conclusion (Phase 3C: a term-limit exit)."""
     state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
     save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
     opening_debt = state.world.countries["arken"].treasury.debt
+    turns = TINY_VALID_NATURAL_CONCLUSION_TURN
 
     started = time.monotonic()
-    for _ in range(TURNS):
+    for _ in range(turns):
         current = save.current_state()
         decisions = DecisionSet(
             expected_turn=current.turn,
@@ -89,9 +102,30 @@ def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustai
         save = advance_game(save, decisions)
     elapsed = time.monotonic() - started
 
-    assert save.current_turn() == TURNS
-    assert len(save.entries) == TURNS + 1
+    assert save.current_turn() == turns
+    assert len(save.entries) == turns + 1
     assert validate_history(save) == []
+
+    concluded_politics = save.current_state().world.countries["arken"].politics
+    assert concluded_politics is not None
+    assert concluded_politics.terminal_outcome is not None
+    assert concluded_politics.terminal_outcome.bucket.value == "defeat"
+    assert concluded_politics.terminal_outcome.removal_reason is not None
+    assert concluded_politics.terminal_outcome.removal_reason.value == "term_limit_exit"
+    assert concluded_politics.terminal_outcome.turn == turns
+
+    from app.core.errors import GameAlreadyConcludedError
+
+    stale_decisions = DecisionSet(
+        expected_turn=save.current_turn(),
+        expected_state_version=save.current_state().state_version,
+        decisions=(),
+    )
+    try:
+        advance_game(save, stale_decisions)
+        raise AssertionError("expected GameAlreadyConcludedError")
+    except GameAlreadyConcludedError:
+        pass
 
     final_country = save.current_state().world.countries["arken"]
     assert final_country.treasury.debt == opening_debt, (
@@ -99,10 +133,13 @@ def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustai
     )
     assert final_country.treasury.cash_on_hand > 0
 
-    # Phase 3A, T-S1: legitimacy trajectory is monotone toward 7,991 (order-support drift only,
-    # since tiny_valid's economy is flat) and never leaves its declared bounds.
+    # Phase 3A, T-S1 (Phase 3C: re-verified at the new, real 32-turn horizon): legitimacy
+    # trajectory is monotone toward the authored order support (order-support drift only, since
+    # tiny_valid's economy is flat) and never leaves its declared bounds. 7,961, not the pre-3C
+    # 100-turn figure of 7,991 -- the trajectory is identical up to this point, simply observed
+    # over a shorter, now-real horizon.
     assert final_country.politics is not None
-    assert final_country.politics.legitimacy_bps == 7_991
+    assert final_country.politics.legitimacy_bps == 7_961
     legitimacy_by_turn = []
 
     for entry in save.entries[1:]:
@@ -159,25 +196,41 @@ def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustai
     )
 
     print(
-        f"\n{TURNS}-turn soak (real scenario, labor+resources+production+derivation+finance "
-        f"every turn): {elapsed:.3f}s total, {elapsed / TURNS * 1000:.2f}ms/turn"
+        f"\n{turns}-turn soak (real scenario, labor+resources+production+derivation+finance "
+        f"every turn, through its real natural conclusion): {elapsed:.3f}s total, "
+        f"{elapsed / turns * 1000:.2f}ms/turn"
     )
+
+
+DEFICIT_DEMO_NATURAL_CONCLUSION_TURN = 40
+"""Phase 3C: `deficit_demo`'s real, deterministic horizon under ordinary play with no decisions
+submitted -- it wins its turn-20 election, then loses its turn-40 election via `ELECTORAL_DEFEAT`
+(its baseline election support is genuinely below the required 5,000 bps threshold). Not a bug in
+the soak or the election formula: this is the intended new behavior (`docs.adr` 0013) -- a
+government can now genuinely lose an election, and once it does, `GameAlreadyConcludedError`
+refuses any further resolution (proven below). The pre-3C 100-turn horizon this test used is no
+longer reachable through ordinary play for THIS scenario; the soak now runs to the real, natural
+conclusion instead. This truncates the timber trajectory's own hand-worked steady-state regime
+(turns 41+), which is now unreachable under ordinary play and is no longer asserted here."""
 
 
 def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() -> None:
     """The Phase 2C1 counterpart to the soak test above, using `deficit_demo.yaml` specifically
-    because its timber deposit passes through all three regimes of its hand-worked trajectory
-    (R4/R8) within a 100-turn horizon — resolutions 1-39 capacity-bound, resolution 40 the
-    `STOCK_CONSTRAINED` boundary, resolutions 41-100 the steady state — none of which
-    `tiny_valid.yaml`'s own calibration reaches (its own boundary sits around resolution 250).
-    Also proves conservation/no-negative-reserves/labor-resource-agreement hold for the full 100
-    turns of a scenario that (unlike `tiny_valid`) deliberately borrows every turn.
+    because its timber deposit passes through the first two regimes of its hand-worked trajectory
+    (R4/R8) within its real, Phase-3C-natural horizon — resolutions 1-39 capacity-bound, resolution
+    40 the `STOCK_CONSTRAINED` boundary (the game concludes via `ELECTORAL_DEFEAT` at turn 40
+    itself, so the steady-state regime, resolutions 41+, is no longer reachable through ordinary
+    play and is not asserted). None of this is within `tiny_valid.yaml`'s own calibration, whose
+    boundary sits around resolution 250. Also proves conservation/no-negative-reserves/
+    labor-resource-agreement hold for the full real horizon of a scenario that (unlike
+    `tiny_valid`) deliberately borrows every turn.
     """
     state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
     save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+    turns = DEFICIT_DEMO_NATURAL_CONCLUSION_TURN
 
     started = time.monotonic()
-    for _ in range(TURNS):
+    for _ in range(turns):
         current = save.current_state()
         decisions = DecisionSet(
             expected_turn=current.turn,
@@ -187,8 +240,30 @@ def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() 
         save = advance_game(save, decisions)
     elapsed = time.monotonic() - started
 
-    assert save.current_turn() == TURNS
+    assert save.current_turn() == turns
+    assert len(save.entries) == turns + 1
     assert validate_history(save) == []
+
+    concluded_politics = save.current_state().world.countries["strapped"].politics
+    assert concluded_politics is not None
+    assert concluded_politics.terminal_outcome is not None
+    assert concluded_politics.terminal_outcome.bucket.value == "defeat"
+    assert concluded_politics.terminal_outcome.removal_reason is not None
+    assert concluded_politics.terminal_outcome.removal_reason.value == "electoral_defeat"
+    assert concluded_politics.terminal_outcome.turn == turns
+
+    from app.core.errors import GameAlreadyConcludedError
+
+    stale_decisions = DecisionSet(
+        expected_turn=save.current_turn(),
+        expected_state_version=save.current_state().state_version,
+        decisions=(),
+    )
+    try:
+        advance_game(save, stale_decisions)
+        raise AssertionError("expected GameAlreadyConcludedError")
+    except GameAlreadyConcludedError:
+        pass
 
     timber_by_turn = []
     extraction_output_by_turn = []
@@ -235,24 +310,24 @@ def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() 
     boundary = timber_by_turn[39]
     assert boundary.status == DepositStatus.STOCK_CONSTRAINED
     assert boundary.closing_stock == 0
-    for i, row in enumerate(timber_by_turn[40:], start=41):
-        assert row.status == DepositStatus.STOCK_CONSTRAINED, f"resolution {i}"
-        assert row.extracted == 5_000, f"resolution {i}"
-        assert row.closing_stock == 0, f"resolution {i}"
+    # Phase 3C: the game concludes via ELECTORAL_DEFEAT at turn 40 itself, the same turn as the
+    # STOCK_CONSTRAINED boundary above -- the steady-state regime (resolutions 41+) that the
+    # pre-3C 100-turn soak asserted here is no longer reachable through ordinary play and is not
+    # asserted.
 
-    # Phase 2C2, T31: the exact three-regime extraction-sector output trajectory (§8), held
-    # through the full 100-turn soak horizon — 500,000,000 through turn 25, 100,000,000 for
-    # turns 26-40 (iron_ore depleted), 50,000,000 from turn 41 onward (timber's steady state).
+    # Phase 2C2, T31: the exact extraction-sector output trajectory (§8), held through this
+    # scenario's real, Phase-3C-natural 40-turn horizon — 500,000,000 through turn 25,
+    # 100,000,000 for turns 26-40 (iron_ore depleted). Turn 41's steady-state figure
+    # (50,000,000, timber's steady state) is no longer reachable and is not asserted.
     for i, output in enumerate(extraction_output_by_turn[:25], start=1):
         assert output == 500_000_000, f"turn {i}"
     for i, output in enumerate(extraction_output_by_turn[25:40], start=26):
         assert output == 100_000_000, f"turn {i}"
-    for i, output in enumerate(extraction_output_by_turn[40:], start=41):
-        assert output == 50_000_000, f"turn {i}"
 
-    # Phase 3A, T-S1: legitimacy dips at exactly the two resource-depletion shocks (turns 26 and
-    # 41, matching the extraction-output regime boundaries above) and nowhere else — every other
-    # turn's order-support drift is non-negative on its own.
+    # Phase 3A, T-S1 (Phase 3C: re-verified at the new, real 40-turn horizon): legitimacy dips at
+    # exactly the one resource-depletion shock reachable within this horizon (turn 26, matching
+    # the extraction-output regime boundary above) and nowhere else -- the turn-41 dip the pre-3C
+    # soak asserted here is no longer reachable through ordinary play.
     dip_turns = [
         turn
         for turn, (previous, current) in enumerate(
@@ -260,12 +335,12 @@ def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() 
         )
         if current < previous
     ]
-    assert dip_turns == [26, 41]
-    assert legitimacy_by_turn[99] == 6_491
+    assert dip_turns == [26]
+    assert legitimacy_by_turn[-1] == 6_431
 
     print(
-        f"\n{TURNS}-turn soak (deficit_demo, full three-regime timber trajectory): "
-        f"{elapsed:.3f}s total, {elapsed / TURNS * 1000:.2f}ms/turn"
+        f"\n{turns}-turn soak (deficit_demo, timber trajectory through its real natural "
+        f"conclusion): {elapsed:.3f}s total, {elapsed / turns * 1000:.2f}ms/turn"
     )
 
 
@@ -435,6 +510,15 @@ def test_100_turn_soak_with_a_proposal_every_turn_on_decree_state() -> None:
     assert validate_history(save) == []
     assert save.current_turn() == TURNS
 
+    # Phase 3C, Gate 3C1: decree_state authors no national_election_interval_turns, so it is the
+    # natural control for a GENUINE 100-turn soak -- the election channel can never conclude it,
+    # unlike tiny_valid/deficit_demo's own soaks (test_soak.py, above), which now stop at their
+    # real natural conclusions. Asserted directly, not merely assumed from the scenario's authored
+    # shape.
+    final_politics = save.current_state().world.countries["valdrun"].politics
+    assert final_politics is not None
+    assert final_politics.terminal_outcome is None
+
     # The sequence genuinely exercised every route, rather than silently degenerating into one.
     assert outcomes[LegislativeOutcome.PASSED_LEGISLATIVE] > 0
     assert outcomes[LegislativeOutcome.FAILED_LEGISLATIVE] > 0
@@ -591,6 +675,14 @@ def test_100_turn_soak_with_mixed_expenditure_on_decree_state() -> None:
 
     assert validate_history(save) == []
     assert save.current_turn() == TURNS
+
+    # Phase 3C, Gate 3C1: decree_state authors no national_election_interval_turns, so it is a
+    # genuine, unaffected 100-turn soak -- unlike tiny_valid/deficit_demo's, which now stop at
+    # their real natural conclusions (above).
+    final_politics = save.current_state().world.countries["valdrun"].politics
+    assert final_politics is not None
+    assert final_politics.terminal_outcome is None
+
     assert outcomes[LegislativeOutcome.PASSED_LEGISLATIVE] > 0
     assert outcomes[LegislativeOutcome.ENACTED_BY_DECREE] > 0
     assert sum(outcomes.values()) == TURNS

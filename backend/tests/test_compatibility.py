@@ -11,7 +11,6 @@ onto new games.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import pytest
@@ -35,6 +34,11 @@ PHASE2B3_SAVE_PATH = FIXTURES_DIR / "phase2b3_save_ruleset_0.5.0.json"
 PHASE2C1_SAVE_PATH = FIXTURES_DIR / "phase2c1_save_ruleset_0.6.0.json"
 PHASE2C2_SAVE_PATH = FIXTURES_DIR / "phase2c2_save_ruleset_0.7.0.json"
 PHASE3B1_SAVE_PATH = FIXTURES_DIR / "phase3b1_save_ruleset_0.9.0.json"
+PHASE3B2B_SAVE_PATH = FIXTURES_DIR / "phase3b2b_save_ruleset_0.11.0.json"
+"""Phase 3A's (`"0.8.0"`) and Phase 3B2A's (`"0.10.0"`) frozen fixtures exist on disk but were
+never wired into a rejection test here -- a pre-existing gap, not a Phase 3C defect, left flagged
+rather than silently bundled into this fix (the same "note, don't bundle" discipline
+`test_legislative_neutrality.py`'s TEST-1 note already documents elsewhere in this codebase)."""
 
 SCENARIOS_DIR = Path(__file__).resolve().parents[2] / "data" / "scenarios"
 
@@ -370,6 +374,59 @@ def test_phase3b1_save_compatibility_is_checked_before_any_entry_payload_is_pars
         load_save_json(json.dumps(raw), source="corrupted-and-incompatible-3b1")
 
 
+def test_frozen_phase3b2b_save_fixture_declares_the_old_ruleset_version() -> None:
+    raw = json.loads(PHASE3B2B_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.11.0"
+    assert raw["ruleset_version"] != RULESET_VERSION
+
+
+def test_phase3b2b_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
+    """Gate 3C1: rejected specifically via the ruleset-version gate. Before the bump to `0.12.0`
+    that this test proves, the fixture's genuinely stale schema (float institution/population
+    metrics, no `election` report) silently loaded as if current and only failed deep inside
+    `GameState` validation with a raw `ValidationError` on first access -- exactly the "ugly crash
+    instead of a clean rejection" this gate exists to prevent."""
+    raw_text = read_save_file(PHASE3B2B_SAVE_PATH)
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(raw_text, source=str(PHASE3B2B_SAVE_PATH))
+
+    message = str(exc_info.value)
+    assert "0.11.0" in message
+    assert RULESET_VERSION in message
+    assert "not loaded" in message
+
+
+def test_phase3b2b_save_compatibility_is_checked_before_any_entry_payload_is_parsed() -> None:
+    """Even a corrupted entry payload does not change which error fires -- the version gate runs
+    first, regardless of what garbage the payload contains."""
+    raw = json.loads(read_save_file(PHASE3B2B_SAVE_PATH))
+    raw["entries"][0]["state_json"] = "{not even valid json"
+
+    with pytest.raises(UnsupportedRulesetVersionError):
+        load_save_json(json.dumps(raw), source="corrupted-and-incompatible-3b2b")
+
+
+def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
+    """Gate 3C3: `RULESET_VERSION` was bumped exactly once, at Gate 3C1, for the whole of Phase
+    3C -- not once per gate. This proves that single bump's rationale actually covers what Gate
+    3C3 added too: a real `resolve_turn` call produces all twelve top-level reports, including
+    `constitutional_amendment`, under the SAME `"0.12.0"` `RULESET_VERSION` Gate 3C1 shipped, with
+    no further bump required."""
+    from app.simulation.decisions import DecisionSet
+    from app.simulation.resolver import resolve_turn
+
+    state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
+    assert state.ruleset_version == RULESET_VERSION == "0.12.0"
+    decisions = DecisionSet(
+        expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
+    )
+    report = resolve_turn(state, decisions).report
+    assert report.election is not None
+    assert report.coup_unrest is not None
+    assert report.constitutional_amendment is not None
+    assert report.constitutional_amendment.proposed is False
+
+
 def test_no_migration_is_fabricated_for_a_0_9_0_save() -> None:
     """A 0.9.0 save has no expenditure ledger and no relationship-investment decisions to have
     ever carried. Nothing here invents an empty `PoliticalCapitalReport` to let the save through
@@ -381,68 +438,101 @@ def test_no_migration_is_fabricated_for_a_0_9_0_save() -> None:
         load_save_json(read_save_file(PHASE3B1_SAVE_PATH), source=str(PHASE3B1_SAVE_PATH))
 
 
-# --- T25: the scenario content-version bump changed exactly one line ----------
+# --- T25: the scenario content-version bump changed exactly one line (historical, 0.10.0 ->
+# --- 0.11.0 only; retired below in favor of the Gate 3C1 bump's own semantic proof) -----------
 
 
 @pytest.mark.parametrize(
     "scenario_name", ["tiny_valid.yaml", "deficit_demo.yaml", "decree_state.yaml"]
 )
-def test_scenario_content_version_bump_is_the_only_change(
-    scenario_name: str, tmp_path: Path
+def test_scenario_content_version_is_current(scenario_name: str) -> None:
+    """Every shipped scenario declares the current content version -- the load-bearing half of
+    the byte-for-byte reproduction proof this test used to run for the 0.10.0 -> 0.11.0 bump
+    (Phase 3B2B, still true of that historical transition, but no longer reproducible against the
+    NOW-current file without fabricating the intermediate 0.11.0 text). Gate 3C1's own bump
+    (0.11.0 -> 0.12.0) gets its own semantic proof below instead of a text-diff reproduction,
+    since it changes field TYPES (float -> strict bps) as well as adding/removing whole rows --
+    not a case a line-level text rebuild can express cleanly."""
+    state = load_scenario_file(SCENARIOS_DIR / scenario_name)
+    assert state.content_version == "0.12.0"
+
+
+@pytest.mark.parametrize(
+    "scenario_name", ["tiny_valid.yaml", "deficit_demo.yaml", "decree_state.yaml"]
+)
+def test_gate_3c1_bps_conversion_covers_every_metric(scenario_name: str) -> None:
+    """Every `InstitutionState`/`PopulationGroupState` metric is a genuine basis-points value in
+    `[0, 10_000]` -- Pydantic's strict-int validation already guarantees the TYPE (a 0.11.0 float
+    like `80.0` is rejected outright, proven by `test_phase3b2b_save_is_rejected_...` above), but
+    this proves the CONVERSION was actually applied uniformly across every field and every row,
+    not merely that the schema now demands it. `population_share` is deliberately excluded (it
+    stays a `[0, 1]` float proportion, never a metric -- §2.1)."""
+    state = load_scenario_file(SCENARIOS_DIR / scenario_name)
+    for country in state.world.countries.values():
+        for institution in country.institutions:
+            for metric in (
+                institution.loyalty,
+                institution.power,
+                institution.competence,
+                institution.corruption,
+            ):
+                assert 0 <= metric <= 10_000
+                assert metric % 100 == 0, (
+                    f"{scenario_name}/{country.id}/{institution.id}: {metric} is not a clean "
+                    "hundred-bps value (a real ×100 conversion should never produce one)"
+                )
+        for group in country.population_groups:
+            for metric in (
+                group.political_influence,
+                group.approval,
+                group.trust,
+                group.organization,
+                group.radicalization,
+            ):
+                assert 0 <= metric <= 10_000
+                assert metric % 100 == 0, (
+                    f"{scenario_name}/{country.id}/{group.id}: {metric} is not a clean "
+                    "hundred-bps value"
+                )
+
+
+def test_gate_3c1_redundant_legislature_institution_row_is_gone() -> None:
+    """POL-2's exact complaint: an `id: legislature` institution row duplicated
+    `LegislatureState`, which already carries this country's real legislative composition.
+    Removed from `tiny_valid`/`decree_state` (the two scenarios that authored it); `deficit_demo`
+    never had one."""
+    for scenario_name in ("tiny_valid.yaml", "deficit_demo.yaml", "decree_state.yaml"):
+        state = load_scenario_file(SCENARIOS_DIR / scenario_name)
+        player = state.world.countries[state.world.player_country_id]
+        institution_ids = {institution.id for institution in player.institutions}
+        assert "legislature" not in institution_ids, scenario_name
+
+
+@pytest.mark.parametrize(
+    "scenario_name", ["tiny_valid.yaml", "deficit_demo.yaml", "decree_state.yaml"]
+)
+def test_gate_3c1_every_scenario_authors_exactly_one_military_institution(
+    scenario_name: str,
 ) -> None:
-    """Proves "each scenario file is modified only for its content-version bump" as a test, not a
-    claim, for every bump through Phase 3B2A -- reverting only `content_version` and reparsing
-    produced a `GameState` identical to the real file's, because none of those bumps changed any
-    scenario field's shape or value.
-
-    Phase 3B2B's bump is different in kind: every bloc gains one new authored line,
-    `baseline_government_relationship_bps`, so a 0.10.0-shaped file (no such field at all) can no
-    longer even be parsed by this build's required-field schema -- there is nothing to "revert to
-    and reload" without fabricating data the file never had. This test is adapted accordingly:
-    it strips every `baseline_government_relationship_bps` line via the *same* mechanical rule
-    used to author them (equal to that line's own `government_relationship_bps`, inserted
-    immediately after it) and reverts `content_version`, then re-applies that exact rule and
-    proves it reproduces the real, current file byte-for-byte. That is a genuine regression check:
-    it fails if a baseline value is ever hand-edited to differ from its bloc's current
-    relationship, or if any other line moves.
-    """
-    current_path = SCENARIOS_DIR / scenario_name
-    current_text = current_path.read_text(encoding="utf-8")
-    current_state = load_scenario_file(current_path)
-    assert current_state.content_version == "0.11.0"
-
-    baseline_pattern = re.compile(r"^(\s*)baseline_government_relationship_bps:\s*-?\d+\s*$")
-    stripped_lines = [line for line in current_text.split("\n") if not baseline_pattern.match(line)]
-    stripped_text = "\n".join(stripped_lines).replace(
-        'content_version: "0.11.0"', 'content_version: "0.10.0"'
-    )
-    assert "baseline_government_relationship_bps" not in stripped_text
-
-    relationship_pattern = re.compile(r"^(\s*)government_relationship_bps:\s*(-?\d+)\s*$")
-    rebuilt_lines: list[str] = []
-    for line in stripped_text.split("\n"):
-        rebuilt_lines.append(line)
-        match = relationship_pattern.match(line)
-        if match:
-            indent, value = match.groups()
-            rebuilt_lines.append(f"{indent}baseline_government_relationship_bps: {value}")
-    rebuilt_text = "\n".join(rebuilt_lines).replace(
-        'content_version: "0.10.0"', 'content_version: "0.11.0"'
-    )
-    assert rebuilt_text == current_text
-
-    rebuilt_path = tmp_path / scenario_name
-    rebuilt_path.write_text(rebuilt_text, encoding="utf-8")
-    rebuilt_state = load_scenario_file(rebuilt_path)
-    assert rebuilt_state == current_state
+    """The coup channel's guaranteed input (`player_military_institution_required`,
+    `simulation.invariants`): every scenario's player country authors exactly one `id: military`
+    row. `deficit_demo` gained this row new in Gate 3C1 -- it previously authored only
+    `executive`."""
+    state = load_scenario_file(SCENARIOS_DIR / scenario_name)
+    player = state.world.countries[state.world.player_country_id]
+    military_rows = [
+        institution for institution in player.institutions if institution.id == "military"
+    ]
+    assert len(military_rows) == 1, scenario_name
 
 
 @pytest.mark.parametrize(
     "scenario_name", ["tiny_valid.yaml", "deficit_demo.yaml", "decree_state.yaml"]
 )
 def test_every_bloc_baseline_equals_its_opening_relationship(scenario_name: str) -> None:
-    """The design rule every scenario author must follow at 0.11.0: initially authored equal, so
-    turn 1 opens at zero deviation and decay is a no-op until something moves the relationship.
+    """The design rule every scenario author must follow, established at 0.11.0 and unchanged
+    since: initially authored equal, so turn 1 opens at zero deviation and decay is a no-op until
+    something moves the relationship.
     Reject-not-normalize -- the loader never defaults one field from the other -- so this is a
     genuine content fact about the three shipped files, not something the schema enforces."""
     state = load_scenario_file(SCENARIOS_DIR / scenario_name)

@@ -403,7 +403,10 @@ def make_country(
         name=country_id.title(),
         population=population,
         population_groups=groups,
-        institutions=[InstitutionState(id="executive", name="Executive Government")],
+        institutions=[
+            InstitutionState(id="executive", name="Executive Government"),
+            InstitutionState(id="military", name="Military"),
+        ],
         treasury=TreasuryState(cash_on_hand=1_000_00, debt=100_00),
         finance=resolved_finance,
         economy=resolved_economy,
@@ -441,7 +444,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id, politics=politics)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.11.0",
+        content_version="0.12.0",
         seed=seed,
         turn=turn,
         state_version=state_version,

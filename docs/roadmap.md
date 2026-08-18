@@ -657,22 +657,49 @@ this phase and explicitly deferred to Phase 3C instead — none of them are need
 improve-only ratchet, and bundling them would have widened this phase well past `POL-3`'s own
 scope.
 
-### Phase 3C — Government survival
+### Phase 3C — Government survival — **complete**
 
-Scope: §19 (coups/revolutions — risk surfacing), §20 (elections — scheduling/polling), §21
-(leaders/cabinet). The first sub-phase that can remove the player from power — by construction,
-not by omission, in 3A/3B.
+Scope: §19 (coups/revolutions — risk surfacing), §20 (elections — scheduling/polling). The first
+sub-phase that can remove the player from power — by construction, not by omission, in 3A/3B — and
+the first that can end the game as a genuine victory. Delivered across three gates, one ADR
+(`docs/adr/0013-government-survival.md`), one `RULESET_VERSION` bump (`0.9.0 → 0.12.0`, held across
+all three gates):
 
-Acceptance criteria: institution loyalty/power/competence tracked; coup/unrest risk indicators
-visible with named contributing factors; election scheduling and polling with uncertainty; ~20–40
-cabinet-relevant characters for the first scenario. Also the named unblockers for two Phase 3B1
-limitations: an **emergency system** (which is what would give `decree_authority: emergency_only`
-any meaning), and **courts / judicial review / constitutional-crisis mechanics** (which is what
-illegal or extra-constitutional decrees would need — `judicial_review` already exists as a
-constitutional axis read by nothing), plus a **non-stock cost for decree use**. Also now carries
-the items deferred out of 3B2B above: a second proposal kind, confidence votes and coalition
-collapse, conference committees/override procedures, per-proposal supermajorities, seat
-realignment and defections, and AI-country politics.
+- [x] **Gate 3C1 — elections.** `next_election_turn`, `consecutive_terms_held`, term limits, and a
+      deterministic support formula (legislative support 5,000 bps + population approval 4,000 bps
+      + legitimacy 1,000 bps, plus a seeded ±1,000 bps polling swing) resolved against a
+      `REQUIRED_ELECTION_SUPPORT_BPS = 5,000` threshold. `TerminalOutcomeState` (set exactly once,
+      `resolve_turn` refuses any further turn once set): `ELECTORAL_DEFEAT` and `TERM_LIMIT_EXIT`.
+- [x] **Gate 3C2 — coup, unrest, and impeachment risk.** Three independent attempt-risk/success-
+      probability channels (`simulation/government_survival.py`), each seeded and government-form-
+      neutral, driven by institutional loyalty/power/competence, population radicalization/approval,
+      opposition strength, and legitimacy. `regime_transition_pressure_bps` added to `PoliticalState`,
+      decaying 1/6 per turn absent a fresh amendment. Terminal outcomes: `COUP`, `IMPEACHMENT`,
+      `FORCED_ABDICATION`, `ASSASSINATION`.
+- [x] **Gate 3C3 — constitutional amendments and peaceful liberalization.** A five-axis
+      `ConstitutionalAmendmentDecision` (decree authority, executive selection, executive system,
+      executive term limit, national election interval), routed through the same legislative-vote-
+      or-decree choice as a budget, threshold-scaled by `amendment_difficulty`. A qualifying
+      noncompetitive-to-competitive transition sets `pending_liberalization`; winning the next
+      scheduled election under it completes `peaceful_liberalization_completed` — the first, and
+      only, `VICTORY` terminal outcome. Verified end-to-end through the real, hash-chained history
+      layer at the exact 85/118/300-political-capital campaign named by the phase's own working
+      plan, including the load-bearing correction of a scratch-script RNG-indexing error in that
+      plan's original walkthrough (see the ADR's Calibration section).
+
+Two of Phase 3B1's named limitations were resolved as part of this phase rather than carried
+forward: `judicial_review` remains read by nothing (still deferred, see below), but
+`decree_authority: emergency_only` gained no unblocker either — an emergency system was **not**
+built in Phase 3C, and stays explicitly deferred (see below), so `EMERGENCY_ONLY` remains
+unreachable through the end of this phase.
+
+Deferred out of this phase, unchanged from 3B2B's own deferred list plus what this phase's own
+scope narrowed away from its earlier draft: an **emergency system** (the unblocker
+`decree_authority: emergency_only` still needs) and **courts / judicial review /
+constitutional-crisis mechanics** (`judicial_review` remains a constitutional axis read by no
+formula); characters, cabinet ministers, and named actors (every Gate 3C removal reason is a fact
+about the office, never about a person, by design); confidence votes, coalition collapse, conference
+committees/override procedures, seat realignment, defections, and AI-country politics.
 
 ### Named follow-up tickets
 
@@ -681,13 +708,13 @@ so each lands as its own reviewable change rather than riding along inside an un
 
 | Ticket | Scope | Status |
 |---|---|---|
-| `POL-2` | Resolve the `InstitutionState` / `LegislatureState` overlap. Both shipped scenarios author an inert institution whose id is literally `legislature`, with float approval/trust/loyalty metrics no formula reads. **Re-scoped** from "convert the floats to strict bps" to "resolve the overlap" — converting eight floats would not address the duplication. Migrating the remaining inert float fields to strict bps rides along with it. | open |
+| `POL-2` | Resolve the `InstitutionState` / `LegislatureState` overlap. Both shipped scenarios authored an inert institution whose id was literally `legislature`, with float approval/trust/loyalty metrics no formula read. **Closed by Phase 3C**: the redundant `id: legislature` institution row is removed from every scenario that had one, and `InstitutionState`'s `loyalty`/`power`/`competence`/`corruption` convert from Phase-1 floats to strict basis points in the same commit — Gate 3C2's coup channel is the first real formula to read any of them. | closed |
 | `POL-3` | Competing political-capital expenditures within a turn, plus relationship consequences for how blocs are treated. The specific unblocker for ADR 0010's retracted opportunity-cost claim. **First half (competing expenditures + mutable, improve-only relationships) closed by Phase 3B2A. Second half (decay, automatic reactions, decree-bypass penalty) closed by Phase 3B2B.** | closed |
 | `POL-4` | A tagged expenditure-target model. `CapitalExpenditureReport` addresses a legislative bloc by `(party_id, bloc_id)` and nothing else; a future expenditure with a different target kind (character, population group, constitutional axis) needs a tagged `target` union. Deliberately not built in 3B2A, where it would be a union of one. | open |
 | `FIN-1` | Reconcile `FinanceReport` closing balances against `TreasuryState`. Deliberately **not** absorbed into 3B1: it would not have caught a gating bug, since a failed vote produces perfectly self-consistent finance numbers for the *wrong* budget — reconciliation group 16 is what catches that. | open |
 | `FE-1` | Clear the dev-only transitive `nanoid` advisory by regenerating the frontend lockfile so `postcss` resolves `nanoid >= 3.3.17`. Dev-only, transitive, fix available, not a regression (the advisory database changed). Kept separate from every gameplay phase. | open |
 | `HIST-1` | An unreachable duplicate `return` in `history.py`. **Closed** — its removal was forced during Phase 3B1 when `_validate_entry_payload`'s return type changed from a 3-tuple to a 4-tuple. | closed |
-| `TEST-1` | `test_legislative_neutrality.py`'s float/true-division/`random`/clock AST determinism scans cover `relationships.py` and (as of Phase 3B2B) `political_memory.py` only, even though `NEUTRAL_MODULES` names `apportionment.py`/`legislative_voting.py` too — a real, pre-existing gap in a determinism guard, noticed but deliberately not fixed during Phase 3B2B (generalizing the scan was rejected as an undiscussed bundled fix; see `docs/adr/0012-...md`). | open |
+| `TEST-1` | `test_legislative_neutrality.py`'s float/true-division/`random`/clock AST determinism scans cover `relationships.py` and (as of Phase 3B2B) `political_memory.py` only, even though `NEUTRAL_MODULES` names `apportionment.py`/`legislative_voting.py` too — a real, pre-existing gap in a determinism guard, noticed but deliberately not fixed during Phase 3B2B (generalizing the scan was rejected as an undiscussed bundled fix; see `docs/adr/0012-...md`) or during Phase 3C (same reasoning; see `docs/adr/0013-...md`). | open |
 
 ## Phase 4 — Persistence and API
 

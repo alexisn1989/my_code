@@ -18,12 +18,14 @@ from app.simulation.legislative_voting import (
     chamber_carries,
     influence_bps,
     policy_compatibility_bps,
+    required_amendment_yes_seats,
     required_yes_seats,
+    resolve_amendment_support,
     resolve_bloc_support,
     spending_policy_change,
     tax_policy_change,
 )
-from app.simulation.legislature import ChangeDirection, GovernmentRole
+from app.simulation.legislature import AmendmentThreshold, ChangeDirection, GovernmentRole
 
 UNCHANGED = PolicyChange(direction=ChangeDirection.UNCHANGED, intensity_bps=0)
 
@@ -446,6 +448,54 @@ def test_the_required_majority_is_strict(total_seats: int, expected: int) -> Non
 def test_a_chamber_with_no_seats_is_rejected() -> None:
     with pytest.raises(ValueError, match="at least one seat"):
         required_yes_seats(total_seats=0)
+
+
+@pytest.mark.parametrize(
+    ("difficulty", "total_seats", "expected"),
+    [
+        pytest.param(AmendmentThreshold.SIMPLE_MAJORITY, 100, 51, id="simple-even"),
+        pytest.param(AmendmentThreshold.SIMPLE_MAJORITY, 99, 50, id="simple-odd"),
+        pytest.param(AmendmentThreshold.SUPERMAJORITY, 100, 67, id="two-thirds-even"),
+        pytest.param(AmendmentThreshold.SUPERMAJORITY, 101, 68, id="two-thirds-ceiling"),
+        pytest.param(AmendmentThreshold.ENTRENCHED, 100, 75, id="three-quarters-even"),
+        pytest.param(AmendmentThreshold.ENTRENCHED, 101, 76, id="three-quarters-ceiling"),
+    ],
+)
+def test_amendment_threshold_depends_on_the_authored_difficulty(
+    difficulty: AmendmentThreshold, total_seats: int, expected: int
+) -> None:
+    assert required_amendment_yes_seats(total_seats=total_seats, difficulty=difficulty) == expected
+
+
+def test_amendment_threshold_rejects_an_empty_chamber() -> None:
+    with pytest.raises(ValueError, match="at least one seat"):
+        required_amendment_yes_seats(total_seats=0, difficulty=AmendmentThreshold.SUPERMAJORITY)
+
+
+def test_amendment_support_omits_policy_content_but_keeps_influence_and_discipline() -> None:
+    support = resolve_amendment_support(
+        role=GovernmentRole.OPPOSITION,
+        relationship_bps=10_000,
+        allocated_political_capital=100,
+        discipline_bps=5_000,
+    )
+    # Baseline 4,000; influence +1,000 reaches the midpoint; discipline therefore adds zero.
+    assert support.baseline_support_bps == 4_000
+    assert support.policy_compatibility_bps == 0
+    assert support.raw_support_bps == 4_000
+    assert support.influence_bps == 1_000
+    assert support.final_support_bps == 5_000
+    assert support.effective_support_bps == 5_000
+
+
+def test_amendment_support_matches_the_decree_state_calibration_ceiling() -> None:
+    unaided = resolve_amendment_support(
+        role=GovernmentRole.OPPOSITION,
+        relationship_bps=10_000,
+        allocated_political_capital=0,
+        discipline_bps=8_000,
+    )
+    assert unaided.effective_support_bps == 3_200
 
 
 @pytest.mark.parametrize(

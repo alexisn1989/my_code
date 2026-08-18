@@ -23,13 +23,17 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.money import Money, StrictBps, StrictMoney
 from app.core.politics import (
+    StrictInstitutionMetricBps,
     StrictLegitimacyBps,
     StrictPoliticalCapital,
     StrictPoliticalCapitalCapacity,
+    StrictPopulationMetricBps,
     StrictPositiveSeatCount,
     StrictPreferenceBps,
     StrictRelationshipBps,
     StrictSeatCount,
+    StrictTermsHeld,
+    StrictTransitionPressureBps,
 )
 from app.core.quantity import (
     StrictRealOutput,
@@ -50,6 +54,12 @@ class PopulationGroupState(BaseModel):
     Segments are exclusive in this initial implementation (§3.3): every
     resident belongs to exactly one group, so `population_share` values
     across a country's groups must sum to 1.0 within `invariants.GROUP_SHARE_TOLERANCE`.
+
+    **Phase 3C (R8):** `political_influence`/`approval`/`trust`/`organization`/`radicalization`
+    convert from Phase-1 floats (0.0-100.0) to strict basis points (0-10,000) in this phase —
+    the first phase to read any of them by a real formula
+    (`simulation.government_survival`'s popular-unrest channel). `population_share` stays a plain
+    float in `[0, 1]`: it is a proportion, not one of the five converted metrics.
     """
 
     model_config = _STRICT_CONFIG
@@ -57,24 +67,32 @@ class PopulationGroupState(BaseModel):
     id: str
     name: str
     population_share: float = Field(ge=0.0, le=1.0)
-    political_influence: float = Field(ge=0.0, le=100.0, default=50.0)
-    approval: float = Field(ge=0.0, le=100.0, default=50.0)
-    trust: float = Field(ge=0.0, le=100.0, default=50.0)
-    organization: float = Field(ge=0.0, le=100.0, default=20.0)
-    radicalization: float = Field(ge=0.0, le=100.0, default=0.0)
+    political_influence: StrictPopulationMetricBps = 5_000
+    approval: StrictPopulationMetricBps = 5_000
+    trust: StrictPopulationMetricBps = 5_000
+    organization: StrictPopulationMetricBps = 2_000
+    radicalization: StrictPopulationMetricBps = 0
 
 
 class InstitutionState(BaseModel):
-    """An independent power center distinct from population groups (§3.4)."""
+    """An independent power center distinct from population groups (§3.4).
+
+    **Phase 3C (R8):** `loyalty`/`power`/`competence`/`corruption` convert from Phase-1 floats
+    (0.0-100.0) to strict basis points (0-10,000) in this phase — the first phase to read any of
+    them by a real formula (`simulation.government_survival`'s coup channel). Converted in the same
+    commit as `PopulationGroupState`'s metrics, not bridged from floats: this phase is the first
+    real formula consumer of both models, and a permanent float-to-bps bridge would be exactly the
+    kind of unconverted-precision debt this codebase's discipline forbids building on top of.
+    """
 
     model_config = _STRICT_CONFIG
 
     id: str
     name: str
-    loyalty: float = Field(ge=0.0, le=100.0, default=50.0)
-    power: float = Field(ge=0.0, le=100.0, default=50.0)
-    competence: float = Field(ge=0.0, le=100.0, default=50.0)
-    corruption: float = Field(ge=0.0, le=100.0, default=10.0)
+    loyalty: StrictInstitutionMetricBps = 5_000
+    power: StrictInstitutionMetricBps = 5_000
+    competence: StrictInstitutionMetricBps = 5_000
+    corruption: StrictInstitutionMetricBps = 1_000
 
 
 class TreasuryState(BaseModel):
@@ -748,6 +766,71 @@ class LegislatureState(BaseModel):
         return self
 
 
+class OutcomeBucket(StrEnum):
+    """Which of the two terminal buckets a concluded game landed in (Phase 3C)."""
+
+    VICTORY = "victory"
+    DEFEAT = "defeat"
+
+
+class RemovalReason(StrEnum):
+    """Why a government's DEFEAT terminal outcome occurred (Phase 3C).
+
+    A fact about what happened to *the office*, never about a named person — see §0 item 1 of the
+    Phase 3C plan: this engine has no character/actor layer.
+    """
+
+    COUP = "coup"
+    FORCED_ABDICATION = "forced_abdication"
+    ASSASSINATION = "assassination"
+    IMPEACHMENT = "impeachment"
+    ELECTORAL_DEFEAT = "electoral_defeat"
+    TERM_LIMIT_EXIT = "term_limit_exit"
+
+
+class VictoryReason(StrEnum):
+    """Why a government's VICTORY terminal outcome occurred (Phase 3C)."""
+
+    PEACEFUL_LIBERALIZATION_COMPLETED = "peaceful_liberalization_completed"
+
+
+class TerminalOutcomeState(BaseModel):
+    """Set exactly once, by slot 12 or slot 13, and never cleared or altered afterward. `None` on
+    `PoliticalState.terminal_outcome` means the game is still being played; `resolve_turn` refuses
+    to resolve any further turn once this is set (Phase 3C, §6)."""
+
+    model_config = _STRICT_CONFIG
+
+    bucket: OutcomeBucket
+    removal_reason: RemovalReason | None = None
+    victory_reason: VictoryReason | None = None
+    turn: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _reason_matches_bucket(self) -> TerminalOutcomeState:
+        if self.bucket is OutcomeBucket.VICTORY:
+            if self.victory_reason is None or self.removal_reason is not None:
+                raise ValueError("VICTORY requires victory_reason and forbids removal_reason")
+        else:
+            if self.removal_reason is None or self.victory_reason is not None:
+                raise ValueError("DEFEAT requires removal_reason and forbids victory_reason")
+        return self
+
+
+class PendingLiberalizationState(BaseModel):
+    """Explicit provenance for the liberalization-victory check (Phase 3C, §5). Set only when a
+    `ConstitutionalAmendmentDecision` transitions the constitution from a qualifying noncompetitive
+    shape to a qualifying competitive-elected shape. Both digests are stored
+    (`constitution.constitution_digest`) so reconciliation can prove the transition really
+    happened, not merely that the field is set."""
+
+    model_config = _STRICT_CONFIG
+
+    set_at_turn: int = Field(ge=0)
+    opening_constitution_digest: str
+    closing_constitution_digest: str
+
+
 class PoliticalState(BaseModel):
     """A country's constitutional order, its current legitimacy, and its political capital
     (Phase 3A, §4.3).
@@ -781,6 +864,42 @@ class PoliticalState(BaseModel):
     constitution declaring a legislature with no chambers to show for it, or chambers sitting under
     a constitution that says no legislature exists.
     """
+    consecutive_terms_held: StrictTermsHeld = 1
+    """(Phase 3C) How many elections in a row (including the one already underway at genesis) the
+    incumbent has won. Incremented on every electoral WIN, including the win that completes a
+    liberalization victory (slot 13). No "reset to 0" path exists: a loss or term-limit exit ends
+    the game."""
+    next_election_turn: int | None = None
+    """(Phase 3C) The exact turn the next scheduled election falls on, replacing
+    `turn % interval == 0` arithmetic, which breaks the moment the interval changes mid-game.
+    `None` if and only if `constitution.national_election_interval_turns is None`. The sole writer
+    after genesis is slot 2 (interval amendments) or slot 13 (scheduled-election outcomes)."""
+    regime_transition_pressure_bps: StrictTransitionPressureBps = 0
+    """(Phase 3C) Elevated coup risk from a recent constitutional amendment, direction-blind by
+    construction. Written in exactly one place, slot 12, from one combining formula."""
+    pending_liberalization: PendingLiberalizationState | None = None
+    """(Phase 3C) Explicit provenance for the liberalization-victory check — see
+    `PendingLiberalizationState`'s docstring."""
+    terminal_outcome: TerminalOutcomeState | None = None
+    """(Phase 3C) Set exactly once, by slot 12 or slot 13, and never cleared or altered afterward.
+    `None` means the game is still being played."""
+
+    @model_validator(mode="after")
+    def _next_election_turn_nullness_matches_the_constitution(self) -> PoliticalState:
+        """`next_election_turn` is authored directly at genesis (not derived from
+        `national_election_interval_turns` at load time), so a future scenario is free to schedule
+        a first election sooner or later than a full interval after genesis. The two fields are
+        required to agree on nullness, but not on value."""
+        has_interval = self.constitution.national_election_interval_turns is not None
+        has_next_election = self.next_election_turn is not None
+        if has_interval != has_next_election:
+            raise ValueError(
+                "next_election_turn must be set if and only if "
+                "constitution.national_election_interval_turns is set: "
+                f"national_election_interval_turns={self.constitution.national_election_interval_turns!r} "
+                f"next_election_turn={self.next_election_turn!r}"
+            )
+        return self
 
     @model_validator(mode="after")
     def _legislature_presence_matches_the_constitution(self) -> PoliticalState:
@@ -861,7 +980,7 @@ class WorldState(BaseModel):
     player_country_id: str
 
 
-RULESET_VERSION = "0.11.0"
+RULESET_VERSION = "0.12.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -903,7 +1022,19 @@ does not contain; `TurnReport` gains a ninth report, `political_relationship:
 PoliticalRelationshipReport`, and `PoliticalCapitalReport.relationship_changes` is removed (moved
 onto the new report), so a 0.10.0 turn's relationship-investment ledger no longer round-trips
 through the same field; and turn resolution now writes `government_relationship_bps` on turns with
-no decisions at all (decay), so the same decisions no longer produce the same closing state).
+no decisions at all (decay), so the same decisions no longer produce the same closing state), and
+`docs/adr/0013-government-survival.md` (bumped `"0.11.0" -> "0.12.0"` for the whole of Phase 3C
+(Gates 3C1-3C3, one bump for the phase, not one per gate):
+`InstitutionState`/`PopulationGroupState`'s loyalty/power/competence/corruption and political_
+influence/approval/trust/organization/radicalization convert from Phase-1 floats (0.0-100.0) to
+strict basis points, so a 0.11.0 save's float values no longer satisfy the strict-int fields at
+all; `PoliticalState` gains five new fields (`consecutive_terms_held`, `next_election_turn`,
+`regime_transition_pressure_bps`, `pending_liberalization`, `terminal_outcome`) with no authored
+political-survival history in a 0.11.0 save to backfill them from; and `TurnReport` grows from
+nine reports to twelve -- `election: ElectionReport` (Gate 3C1), `coup_unrest: CoupUnrestReport`
+(Gate 3C2), and `constitutional_amendment: ConstitutionalAmendmentReport` (Gate 3C3) -- with no
+data in a 0.11.0 save to reconstruct any of the three from: a 0.11.0 turn never evaluated an
+election, assessed coup/unrest/impeachment risk, or resolved a constitutional amendment at all).
 """
 
 

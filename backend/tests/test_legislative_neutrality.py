@@ -352,3 +352,15 @@ def test_apportionment_and_legislative_voting_remain_unscanned_for_floats_test1_
     assert scanned_by_name.isdisjoint(unscanned_by_name)
     for module in (apportionment_module, voting_module):
         assert Path(inspect.getfile(module)).name in unscanned_by_name
+
+
+def test_government_survival_is_deliberately_excluded_from_neutral_modules() -> None:
+    """Phase 3C: `government_survival.py` is the opposite case from this module's discipline by
+    design -- a scheduled election exists because of `national_election_interval_turns`,
+    impeachment eligibility genuinely depends on `judicial_review`/`executive_selection`. It is
+    read in `phases.py`'s slot handlers, the same split `legislature.py`'s own routing check
+    already uses, and is never added to `NEUTRAL_MODULES` above."""
+    import app.simulation.government_survival as government_survival_module
+
+    assert government_survival_module not in NEUTRAL_MODULES
+    assert government_survival_module.__name__ not in {m.__name__ for m in NEUTRAL_MODULES}

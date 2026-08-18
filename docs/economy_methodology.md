@@ -1439,3 +1439,11 @@ general laws. There are no competing political-capital uses within a turn, which
 opportunity cost above is notional at capacity. `EMERGENCY_ONLY` decree authority confers no decree
 power (no emergency system exists to read). Elections, coups and removal from power remain Phase
 3C, as do courts, judicial review and any consequence for habitual decree use.
+
+**Phase 3B2A/3B2B have since closed the competing-uses and relationship-evolution gaps, and Phase
+3C has since closed elections, coups/unrest/impeachment, and removal from power** — see
+`docs/adr/0011-...md`, `docs/adr/0012-...md`, and `docs/adr/0013-government-survival.md`. Legislature
+composition remains otherwise static (no realignment, defections, confidence votes, or coalition
+collapse); `EMERGENCY_ONLY` decree authority, courts, and judicial review remain unbuilt, as does
+any character/cabinet layer — none of these are economic formulas, so none are covered by this
+document; see `docs/roadmap.md` for their status.

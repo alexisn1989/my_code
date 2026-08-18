@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -46,19 +47,25 @@ from app.core.politics import (
     POLICY_REACTION_WEIGHT_BPS,
     RELATIONSHIP_DECAY_DENOMINATOR,
     RELATIONSHIP_DECAY_NUMERATOR,
+    StrictInstitutionMetricBps,
     StrictLegitimacyBps,
     StrictPoliticalCapital,
     StrictPoliticalCapitalCapacity,
     StrictPoliticalCapitalCommitment,
+    StrictPopulationMetricBps,
     StrictPositiveSeatCount,
     StrictPreferenceBps,
     StrictRelationshipBps,
     StrictRelationshipChangeBps,
     StrictRelationshipGainBps,
+    StrictRiskBps,
     StrictSeatCount,
     StrictSeatNumerator,
     StrictSignedBps,
     StrictSignedLegitimacyBps,
+    StrictSignedRiskContributionBps,
+    StrictTermsHeld,
+    StrictTransitionPressureBps,
     clamp_bps,
     clamp_relationship_bps,
     trunc_div_toward_zero,
@@ -80,9 +87,26 @@ from app.simulation.constitution import (
     ExecutiveSystem,
     JudicialReview,
     Legislature,
+    StrictTermCount,
+    StrictTurnInterval,
     TerritorialOrganization,
 )
+from app.simulation.decisions import InfluenceAllocation
+from app.simulation.government_survival import (
+    AMENDMENT_PRESSURE_PER_AXIS_BY_DIFFICULTY_BPS,
+    BASE_COUP_ATTEMPT_RISK_BPS,
+    BASE_UNREST_ATTEMPT_RISK_BPS,
+    MAX_COUP_ATTEMPT_RISK_BPS,
+    MAX_IMPEACHMENT_ATTEMPT_RISK_BPS,
+    MAX_POLLING_UNCERTAINTY_SWING_BPS,
+    MAX_UNREST_ATTEMPT_RISK_BPS,
+    REQUIRED_ELECTION_SUPPORT_BPS,
+    coup_success_probability_bps,
+    impeachment_success_probability_bps,
+    unrest_success_probability_bps,
+)
 from app.simulation.legislative_voting import (
+    CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
     INFLUENCE_BPS_PER_CAPITAL,
     MAX_INFLUENCE_BPS,
@@ -94,6 +118,7 @@ from app.simulation.legislative_voting import (
 )
 from app.simulation.legislative_voting import SPENDING_WEIGHT_BPS as SPENDING_WEIGHT_BPS
 from app.simulation.legislature import (
+    AmendmentThreshold,
     CapitalExpenditureCategory,
     GovernmentRole,
     LegislativeChamber,
@@ -115,6 +140,7 @@ from app.simulation.relationships import RELATIONSHIP_CEILING_BPS, RELATIONSHIP_
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
+    RemovalReason,
     ResourceCategory,
     SectorCategory,
     SpendingPlanState,
@@ -1844,8 +1870,7 @@ class BlocVoteReport(BaseModel):
 
 
 class ChamberVoteReport(BaseModel):
-    """One chamber's vote: its size, how many seats support the proposal, the strict majority it
-    needed, and the (R4) chamber-level largest-remainder apportionment totals."""
+    """One chamber's threshold-agnostic vote and largest-remainder totals."""
 
     model_config = _STRICT_CONFIG
 
@@ -1859,17 +1884,9 @@ class ChamberVoteReport(BaseModel):
     passed: bool
 
     @model_validator(mode="after")
-    def _required_yes_seats_is_strict_majority(self) -> ChamberVoteReport:
-        expected = self.total_seats // 2 + 1
-        if self.required_yes_seats != expected:
-            raise ValueError(
-                f"required_yes_seats={self.required_yes_seats} does not match "
-                f"total_seats // 2 + 1 ({expected})"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def _passed_and_shortfall_match_strict_majority(self) -> ChamberVoteReport:
+    def _passed_and_shortfall_match_threshold(self) -> ChamberVoteReport:
+        if self.required_yes_seats > self.total_seats:
+            raise ValueError("required_yes_seats cannot exceed total_seats")
         if self.supporting_seats > self.total_seats:
             raise ValueError(
                 f"supporting_seats={self.supporting_seats} exceeds total_seats={self.total_seats}"
@@ -1946,6 +1963,17 @@ class LegislativeReport(BaseModel):
     opening_political_capital: StrictPoliticalCapital
     political_capital_committed: StrictPoliticalCapital
     budget_decision_digest: str | None
+
+    @model_validator(mode="after")
+    def _chambers_use_simple_majority(self) -> LegislativeReport:
+        for chamber in self.chambers:
+            expected = chamber.total_seats // 2 + 1
+            if chamber.required_yes_seats != expected:
+                raise ValueError(
+                    f"budget chamber {chamber.chamber.value!r} required_yes_seats="
+                    f"{chamber.required_yes_seats} does not match simple majority ({expected})"
+                )
+        return self
 
     @model_validator(mode="after")
     def _budget_decision_digest_matches_proposal_presence(self) -> LegislativeReport:
@@ -2245,10 +2273,10 @@ class CapitalExpenditureReport(BaseModel):
     detail fields it would never use.
 
     R8, stated precisely: the total-spending identity `PoliticalCapitalReport` enforces is
-    extensible to any future category. This *row* is not — it addresses a legislative bloc by
-    `(party_id, bloc_id)` and nothing else. A future expenditure with a different kind of target
-    (a character, a population group, a constitutional axis) needs a tagged target model or a
-    report-schema extension, tracked as POL-4, not claimed as free here.
+    extensible to any future category. This row addresses either a legislative bloc or no target.
+    Constitutional amendments deliberately use both forms: bloc-targeted legislative influence
+    and the untargeted flat decree cost. A future expenditure with a different target vocabulary
+    (a character or population group) still needs a tagged target model or schema extension.
     """
 
     model_config = _STRICT_CONFIG
@@ -2258,11 +2286,10 @@ class CapitalExpenditureReport(BaseModel):
     bloc_id: str | None
     political_capital: StrictPoliticalCapitalCommitment
     decision_digest: str
-    """The digest of the decision that produced this row — `budget_decision_digest` for
-    `LEGISLATIVE_INFLUENCE`/`DECREE` rows, `bloc_relationship_investment_digest` for
-    `BLOC_RELATIONSHIP_INVESTMENT` rows. Only its *syntax* is checked here (the two-code-paths
-    rule, mirroring `LegislativeReport.budget_decision_digest`); semantic correctness against the
-    real submitted `DecisionSet` is `simulation.reconciliation`'s job (groups 19/21)."""
+    """The digest of the decision that produced this row — `budget_decision_digest`,
+    `bloc_relationship_investment_digest`, or `constitutional_amendment_decision_digest` according
+    to category. Only syntax is checked here; reconciliation proves semantic correctness against
+    the real submitted `DecisionSet` (including amendment group 43)."""
 
     @model_validator(mode="after")
     def _decision_digest_is_a_well_formed_hex_digest(self) -> CapitalExpenditureReport:
@@ -2275,14 +2302,23 @@ class CapitalExpenditureReport(BaseModel):
 
     @model_validator(mode="after")
     def _target_identity_matches_category_shape(self) -> CapitalExpenditureReport:
-        """A decree is an act of the executive with no bloc on the other side of it; every other
-        category names the bloc whose support or relationship was bought. The cross-row half of
-        this rule — that at most one `DECREE` row exists at all — is
+        """A budget decree is untargeted; ordinary categories target one bloc. Constitutional
+        amendments permit either shape because legislative influence targets blocs while the flat
+        amendment-decree cost does not. The cross-row half of the decree rule is
         `PoliticalCapitalReport._at_most_one_decree_expenditure_row`'s job; a single row cannot
         see its siblings."""
         is_decree = self.category is CapitalExpenditureCategory.DECREE
-        has_target = self.party_id is not None or self.bloc_id is not None
-        if is_decree and has_target:
+        is_amendment = self.category is CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT
+        has_either_target = self.party_id is not None or self.bloc_id is not None
+        has_both_targets = self.party_id is not None and self.bloc_id is not None
+        if is_amendment:
+            if has_either_target and not has_both_targets:
+                raise ValueError(
+                    "category=CONSTITUTIONAL_AMENDMENT must carry either both party_id/bloc_id "
+                    f"or neither, got ({self.party_id!r}, {self.bloc_id!r})"
+                )
+            return self
+        if is_decree and has_either_target:
             raise ValueError(
                 f"category=DECREE must carry no party_id/bloc_id target, got "
                 f"({self.party_id!r}, {self.bloc_id!r})"
@@ -2655,6 +2691,631 @@ class PoliticalCapitalReport(BaseModel):
         return self
 
 
+class CoupChannelReport(BaseModel):
+    """The coup channel's complete, re-derivable per-turn assessment (Phase 3C, Gate 3C2).
+
+    `legitimacy_bps` is stored (beyond what the plan's own §3.1 formula signature strictly needs
+    for its four named CONTRIBUTIONS) so `success_probability_bps` can be re-derived here from
+    `military_power_bps`/`military_competence_bps`/`legitimacy_bps` alone, independently of
+    whatever RNG draw `succeeded` represents — matching this report family's stated R10 discipline
+    (never merely assumed) rather than leaving that reconstruction possible only at the
+    reconciliation layer.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    military_loyalty_bps: StrictInstitutionMetricBps
+    military_power_bps: StrictInstitutionMetricBps
+    military_competence_bps: StrictInstitutionMetricBps
+    legitimacy_bps: StrictRiskBps
+    loyalty_contribution_bps: StrictSignedRiskContributionBps
+    legitimacy_contribution_bps: StrictSignedRiskContributionBps
+    opposition_contribution_bps: StrictSignedRiskContributionBps
+    transition_pressure_contribution_bps: StrictSignedRiskContributionBps
+    attempt_risk_bps: StrictRiskBps
+    attempted: bool
+    success_probability_bps: StrictRiskBps | None = None
+    succeeded: bool | None = None
+
+    @model_validator(mode="after")
+    def _attempt_risk_matches_the_summed_contributions(self) -> CoupChannelReport:
+        expected = max(
+            0,
+            min(
+                MAX_COUP_ATTEMPT_RISK_BPS,
+                BASE_COUP_ATTEMPT_RISK_BPS
+                + self.loyalty_contribution_bps
+                + self.legitimacy_contribution_bps
+                + self.opposition_contribution_bps
+                + self.transition_pressure_contribution_bps,
+            ),
+        )
+        if self.attempt_risk_bps != expected:
+            raise ValueError(
+                f"attempt_risk_bps={self.attempt_risk_bps} does not match the four named "
+                f"contributions, base, and clamp ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _success_fields_match_attempted_and_are_independently_derivable(
+        self,
+    ) -> CoupChannelReport:
+        if self.attempted:
+            if self.success_probability_bps is None or self.succeeded is None:
+                raise ValueError("attempted=True requires success_probability_bps and succeeded")
+            expected = coup_success_probability_bps(
+                military_power_bps=self.military_power_bps,
+                military_competence_bps=self.military_competence_bps,
+                legitimacy_bps=self.legitimacy_bps,
+            )
+            if self.success_probability_bps != expected:
+                raise ValueError(
+                    f"success_probability_bps={self.success_probability_bps} does not match "
+                    f"the independently re-derived value ({expected})"
+                )
+        elif self.success_probability_bps is not None or self.succeeded is not None:
+            raise ValueError("attempted=False forbids success_probability_bps and succeeded")
+        return self
+
+
+class PopularUnrestChannelReport(BaseModel):
+    """The popular-unrest channel's complete, re-derivable per-turn assessment (Gate 3C2).
+
+    `legitimacy_bps` is stored for the same independent-re-derivation reason as
+    `CoupChannelReport.legitimacy_bps` — `success_probability_bps` reads it directly, alongside
+    the already-present `organization_bps`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    radicalization_bps: StrictPopulationMetricBps
+    organization_bps: StrictPopulationMetricBps
+    disapproval_bps: StrictPopulationMetricBps
+    legitimacy_bps: StrictRiskBps
+    radicalization_contribution_bps: StrictSignedRiskContributionBps
+    disapproval_contribution_bps: StrictSignedRiskContributionBps
+    attempt_risk_bps: StrictRiskBps
+    attempted: bool
+    success_probability_bps: StrictRiskBps | None = None
+    succeeded: bool | None = None
+    outcome: Literal["none", "contained", "forced_abdication", "assassination"]
+
+    @model_validator(mode="after")
+    def _attempt_risk_matches_the_summed_contributions(self) -> PopularUnrestChannelReport:
+        expected = max(
+            0,
+            min(
+                MAX_UNREST_ATTEMPT_RISK_BPS,
+                BASE_UNREST_ATTEMPT_RISK_BPS
+                + self.radicalization_contribution_bps
+                + self.disapproval_contribution_bps,
+            ),
+        )
+        if self.attempt_risk_bps != expected:
+            raise ValueError(
+                f"attempt_risk_bps={self.attempt_risk_bps} does not match the two named "
+                f"contributions, base, and clamp ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _success_fields_match_attempted_and_are_independently_derivable(
+        self,
+    ) -> PopularUnrestChannelReport:
+        if self.attempted:
+            if self.success_probability_bps is None or self.succeeded is None:
+                raise ValueError("attempted=True requires success_probability_bps and succeeded")
+            expected = unrest_success_probability_bps(
+                organization_bps=self.organization_bps, legitimacy_bps=self.legitimacy_bps
+            )
+            if self.success_probability_bps != expected:
+                raise ValueError(
+                    f"success_probability_bps={self.success_probability_bps} does not match "
+                    f"the independently re-derived value ({expected})"
+                )
+        elif self.success_probability_bps is not None or self.succeeded is not None:
+            raise ValueError("attempted=False forbids success_probability_bps and succeeded")
+        return self
+
+    @model_validator(mode="after")
+    def _outcome_matches_attempted_and_succeeded(self) -> PopularUnrestChannelReport:
+        expected_outcomes: tuple[str, ...]
+        if not self.attempted:
+            expected_outcomes = ("none",)
+        elif not self.succeeded:
+            expected_outcomes = ("contained",)
+        else:
+            expected_outcomes = ("forced_abdication", "assassination")
+        if self.outcome not in expected_outcomes:
+            raise ValueError(
+                f"outcome={self.outcome!r} is inconsistent with attempted={self.attempted}/"
+                f"succeeded={self.succeeded} (expected one of {expected_outcomes!r})"
+            )
+        return self
+
+
+class ImpeachmentChannelReport(BaseModel):
+    """The impeachment channel's complete, re-derivable per-turn assessment (Gate 3C2).
+
+    Eligibility is checked by `phases.py`, never by this model — it has no access to the
+    constitution. `legitimacy_bps`/`opposition_seat_share_bps` are stored (beyond the plan's own
+    §3.3 signature) for the same independent-re-derivation reason as the other two channels'
+    reports; both are `None` exactly when `eligible=False`, alongside every other optional field.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    eligible: bool
+    legitimacy_bps: StrictRiskBps | None = None
+    opposition_seat_share_bps: StrictRiskBps | None = None
+    legitimacy_contribution_bps: StrictSignedRiskContributionBps | None = None
+    opposition_contribution_bps: StrictSignedRiskContributionBps | None = None
+    attempt_risk_bps: StrictRiskBps | None = None
+    attempted: bool | None = None
+    success_probability_bps: StrictRiskBps | None = None
+    succeeded: bool | None = None
+
+    @model_validator(mode="after")
+    def _eligibility_gates_every_other_field(self) -> ImpeachmentChannelReport:
+        other_fields = (
+            self.legitimacy_bps,
+            self.opposition_seat_share_bps,
+            self.legitimacy_contribution_bps,
+            self.opposition_contribution_bps,
+            self.attempt_risk_bps,
+            self.attempted,
+        )
+        if self.eligible:
+            if any(field_value is None for field_value in other_fields):
+                raise ValueError("eligible=True requires every attempt-risk field to be present")
+        else:
+            if any(field_value is not None for field_value in other_fields) or (
+                self.success_probability_bps is not None or self.succeeded is not None
+            ):
+                raise ValueError("eligible=False forbids every other field")
+        return self
+
+    @model_validator(mode="after")
+    def _attempt_risk_matches_the_summed_contributions(self) -> ImpeachmentChannelReport:
+        if not self.eligible:
+            return self
+        assert self.legitimacy_contribution_bps is not None
+        assert self.opposition_contribution_bps is not None
+        expected = max(
+            0,
+            min(
+                MAX_IMPEACHMENT_ATTEMPT_RISK_BPS,
+                self.legitimacy_contribution_bps + self.opposition_contribution_bps,
+            ),
+        )
+        if self.attempt_risk_bps != expected:
+            raise ValueError(
+                f"attempt_risk_bps={self.attempt_risk_bps} does not match the two named "
+                f"contributions and clamp ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _success_fields_match_attempted_and_are_independently_derivable(
+        self,
+    ) -> ImpeachmentChannelReport:
+        if not self.eligible:
+            return self
+        if self.attempted:
+            if self.success_probability_bps is None or self.succeeded is None:
+                raise ValueError("attempted=True requires success_probability_bps and succeeded")
+            assert self.opposition_seat_share_bps is not None
+            assert self.legitimacy_bps is not None
+            expected = impeachment_success_probability_bps(
+                opposition_seat_share_bps=self.opposition_seat_share_bps,
+                legitimacy_bps=self.legitimacy_bps,
+            )
+            if self.success_probability_bps != expected:
+                raise ValueError(
+                    f"success_probability_bps={self.success_probability_bps} does not match "
+                    f"the independently re-derived value ({expected})"
+                )
+        elif self.success_probability_bps is not None or self.succeeded is not None:
+            raise ValueError("attempted=False forbids success_probability_bps and succeeded")
+        return self
+
+
+class CoupUnrestReport(BaseModel):
+    """Whether the government survived this turn's coup, popular-unrest, and impeachment risk —
+    `TurnReport`'s 11th report (Phase 3C, Gate 3C2, slot 12).
+
+    Every channel's full risk assessment is always computed and reported, regardless of whether an
+    earlier channel (in the fixed coup -> popular-unrest -> impeachment priority order) already
+    produced a removal this turn — only `removal_triggered` reflects which one (if any) actually
+    ended the game."""
+
+    model_config = _STRICT_CONFIG
+
+    coup: CoupChannelReport
+    popular_unrest: PopularUnrestChannelReport
+    impeachment: ImpeachmentChannelReport
+    removal_triggered: RemovalReason | None
+    opening_transition_pressure_bps: StrictTransitionPressureBps
+    decayed_transition_pressure_bps: StrictTransitionPressureBps
+    added_transition_pressure_bps: StrictTransitionPressureBps
+    closing_transition_pressure_bps: StrictTransitionPressureBps
+
+    @model_validator(mode="after")
+    def _removal_triggered_matches_the_fixed_priority_order(self) -> CoupUnrestReport:
+        if self.coup.succeeded:
+            expected: RemovalReason | None = RemovalReason.COUP
+        elif self.popular_unrest.succeeded:
+            expected = (
+                RemovalReason.ASSASSINATION
+                if self.popular_unrest.outcome == "assassination"
+                else RemovalReason.FORCED_ABDICATION
+            )
+        elif self.impeachment.succeeded:
+            expected = RemovalReason.IMPEACHMENT
+        else:
+            expected = None
+        if self.removal_triggered != expected:
+            raise ValueError(
+                f"removal_triggered={self.removal_triggered!r} does not match the fixed "
+                f"coup -> popular_unrest -> impeachment priority order (expected {expected!r})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _closing_transition_pressure_matches_the_single_identity(self) -> CoupUnrestReport:
+        uncapped = (
+            self.opening_transition_pressure_bps
+            - self.decayed_transition_pressure_bps
+            + self.added_transition_pressure_bps
+        )
+        expected = max(0, min(BPS_DENOMINATOR, uncapped))
+        if self.closing_transition_pressure_bps != expected:
+            raise ValueError(
+                f"closing_transition_pressure_bps={self.closing_transition_pressure_bps} does "
+                f"not match opening - decayed + added, clamped ({expected})"
+            )
+        return self
+
+
+class PartyElectionStanceReport(BaseModel):
+    """One party's real seat holding at the moment of a scheduled election, scoped to the LOWER
+    chamber alone -- the chamber that actually decides the election (§3.4/§13's worked example;
+    `LegislativeChamber.LOWER` is, by its own enum convention, also the sole chamber of a
+    unicameral legislature, so this scoping is uniform across both shapes). R10: exact seat
+    counts, never an independently-rounded seat-share.
+
+    `relationship_weighted_support_bps` lives in SUPPORT space, `[0, 10_000]`, not raw signed
+    relationship space -- the same `(relationship_bps + 10_000) // 2` rescale
+    `legislative_support_bps` applies per bloc before seat-weighting, so a maximally hostile bloc
+    contributes 0, not a negative number."""
+
+    model_config = _STRICT_CONFIG
+
+    party_id: str
+    government_role: GovernmentRole
+    seats: int = Field(ge=0)
+    total_seats: int = Field(gt=0)
+    relationship_weighted_support_bps: StrictRiskBps
+
+    @model_validator(mode="after")
+    def _seats_do_not_exceed_total(self) -> PartyElectionStanceReport:
+        if self.seats > self.total_seats:
+            raise ValueError(f"seats={self.seats} exceeds total_seats={self.total_seats}")
+        return self
+
+
+class ElectionReport(BaseModel):
+    """Whether an election was scheduled this turn, and — if so — its complete, re-derivable
+    result (Phase 3C, `TurnReport`'s 10th report, added in Gate 3C1).
+
+    `liberalization_completed` records a scheduled win that consumed a pending liberalization
+    marker persisted before the resolving turn. Provenance against real state is reconciliation's
+    responsibility; this model independently requires the claimed completion to be a win.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    scheduled: bool
+    eligible_to_stand: bool
+    consecutive_terms_held: StrictTermsHeld
+    executive_term_limit_terms: StrictTermCount | None
+    legislative_support_contribution_bps: StrictRiskBps | None
+    population_approval_contribution_bps: StrictRiskBps
+    legitimacy_contribution_bps: StrictRiskBps
+    baseline_support_bps: StrictRiskBps
+    polling_uncertainty_bps: int = Field(
+        ge=-MAX_POLLING_UNCERTAINTY_SWING_BPS, le=MAX_POLLING_UNCERTAINTY_SWING_BPS
+    )
+    final_support_bps: StrictRiskBps
+    required_support_bps: StrictRiskBps
+    result: Literal["not_scheduled", "term_limit_exit", "won", "lost"]
+    liberalization_completed: bool
+    next_election_turn: int | None
+    parties: tuple[PartyElectionStanceReport, ...] = ()
+
+    @model_validator(mode="after")
+    def _not_scheduled_implies_no_result_content(self) -> ElectionReport:
+        if not self.scheduled and (self.result != "not_scheduled" or self.parties):
+            raise ValueError(
+                "scheduled=False requires result='not_scheduled' and an empty parties tuple"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _final_support_matches_the_clamp_identity(self) -> ElectionReport:
+        if not self.scheduled or self.result == "term_limit_exit":
+            return self
+        expected = clamp_bps(self.baseline_support_bps + self.polling_uncertainty_bps)
+        if self.final_support_bps != expected:
+            raise ValueError(
+                f"final_support_bps={self.final_support_bps} does not match "
+                f"clamp(baseline_support_bps + polling_uncertainty_bps) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _required_support_is_the_scale_constant(self) -> ElectionReport:
+        if (
+            self.scheduled
+            and self.result in ("won", "lost")
+            and self.required_support_bps != REQUIRED_ELECTION_SUPPORT_BPS
+        ):
+            raise ValueError(
+                f"required_support_bps={self.required_support_bps} does not match "
+                f"REQUIRED_ELECTION_SUPPORT_BPS ({REQUIRED_ELECTION_SUPPORT_BPS})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _result_matches_support_and_term_limit(self) -> ElectionReport:
+        if not self.scheduled:
+            return self
+        term_limited = (
+            self.executive_term_limit_terms is not None
+            and self.consecutive_terms_held >= self.executive_term_limit_terms
+        )
+        if term_limited:
+            if self.result != "term_limit_exit":
+                raise ValueError(
+                    f"consecutive_terms_held={self.consecutive_terms_held} >= "
+                    f"executive_term_limit_terms={self.executive_term_limit_terms} requires "
+                    f"result='term_limit_exit', got {self.result!r}"
+                )
+        else:
+            expected = "won" if self.final_support_bps >= self.required_support_bps else "lost"
+            if self.result != expected:
+                raise ValueError(f"result={self.result!r} does not match expected {expected!r}")
+        return self
+
+    @model_validator(mode="after")
+    def _liberalization_completed_implies_won(self) -> ElectionReport:
+        if self.liberalization_completed and self.result != "won":
+            raise ValueError("liberalization_completed=True requires result='won'")
+        return self
+
+    @model_validator(mode="after")
+    def _parties_nonempty_only_when_scheduled_and_eligible(self) -> ElectionReport:
+        if self.parties and not (self.scheduled and self.eligible_to_stand):
+            raise ValueError(
+                "parties must be empty unless scheduled=True and eligible_to_stand=True"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _party_seat_totals_are_internally_consistent(self) -> ElectionReport:
+        """Every party row reports the SAME chamber total (a single scalar `total_seats` field
+        would be ambiguous across a bicameral legislature's two chambers, so this is a per-row
+        field instead — but the rows still describe one election, so their totals must agree)."""
+        if not self.parties:
+            return self
+        totals = {row.total_seats for row in self.parties}
+        if len(totals) != 1:
+            raise ValueError(f"parties disagree on total_seats: {sorted(totals)}")
+        if sum(row.seats for row in self.parties) != next(iter(totals)):
+            raise ValueError("sum(parties.seats) does not match parties[0].total_seats")
+        return self
+
+
+AmendmentAxisName = Literal[
+    "decree_authority",
+    "executive_selection",
+    "executive_system",
+    "executive_term_limit_terms",
+    "national_election_interval_turns",
+]
+AMENDMENT_AXIS_ORDER: tuple[AmendmentAxisName, ...] = (
+    "decree_authority",
+    "executive_selection",
+    "executive_system",
+    "executive_term_limit_terms",
+    "national_election_interval_turns",
+)
+
+
+class ConstitutionalAmendmentTargetReport(BaseModel):
+    """One requested axis transition; values use the constitution's canonical JSON spelling."""
+
+    model_config = _STRICT_CONFIG
+
+    axis: AmendmentAxisName
+    opening_value: str
+    proposed_value: str
+
+    @model_validator(mode="after")
+    def _target_changes_value(self) -> ConstitutionalAmendmentTargetReport:
+        if self.opening_value == self.proposed_value:
+            raise ValueError(f"amendment target {self.axis!r} must change its opening value")
+        return self
+
+
+class ConstitutionalAmendmentConstitutionSnapshot(BaseModel):
+    """The five relevant axes plus the opening procedural difficulty."""
+
+    model_config = _STRICT_CONFIG
+
+    decree_authority: DecreeAuthority
+    executive_selection: ExecutiveSelection
+    executive_system: ExecutiveSystem
+    executive_term_limit_terms: StrictTermCount | None
+    national_election_interval_turns: StrictTurnInterval | None
+    amendment_difficulty: AmendmentDifficulty
+
+
+def _amendment_axis_json_value(
+    snapshot: ConstitutionalAmendmentConstitutionSnapshot, axis: AmendmentAxisName
+) -> str:
+    value = getattr(snapshot, axis)
+    if value is None:
+        return "null"
+    if isinstance(value, StrEnum):
+        return value.value
+    return str(value)
+
+
+class ConstitutionalAmendmentReport(BaseModel):
+    """Self-validating Gate 3C3 amendment route, vote, cost, and state transition."""
+
+    model_config = _STRICT_CONFIG
+
+    proposed: bool
+    outcome: LegislativeOutcome
+    route: ProposalRoute | None
+    targets: tuple[ConstitutionalAmendmentTargetReport, ...] = Field(default_factory=tuple)
+    chambers: tuple[ChamberVoteReport, ...] = Field(default_factory=tuple)
+    influence: tuple[InfluenceAllocation, ...] = Field(default_factory=tuple)
+    political_capital_committed: StrictPoliticalCapital
+    amendment_decision_digest: str | None
+    opening_constitution: ConstitutionalAmendmentConstitutionSnapshot
+    closing_constitution: ConstitutionalAmendmentConstitutionSnapshot
+    opening_constitution_digest: str
+    closing_constitution_digest: str
+    transition_pressure_added_bps: StrictTransitionPressureBps
+    qualifies_as_liberalization_transition: bool
+
+    @model_validator(mode="after")
+    def _shape_route_and_cost_are_consistent(self) -> ConstitutionalAmendmentReport:
+        proposed = self.outcome is not LegislativeOutcome.NO_PROPOSAL
+        if self.proposed != proposed:
+            raise ValueError("proposed flag does not match amendment outcome")
+        if not proposed:
+            if self.route is not None or self.targets or self.chambers or self.influence:
+                raise ValueError("NO_PROPOSAL amendment report must contain no proposal detail")
+            if self.political_capital_committed != 0 or self.amendment_decision_digest is not None:
+                raise ValueError("NO_PROPOSAL amendment report must have zero cost and no digest")
+            return self
+        if self.route is None or not self.targets or self.amendment_decision_digest is None:
+            raise ValueError("a proposed amendment requires route, targets, and decision digest")
+        if not _HEX_DIGEST_PATTERN.fullmatch(self.amendment_decision_digest):
+            raise ValueError("amendment_decision_digest must be lowercase 64-character hex")
+        if self.route is ProposalRoute.DECREE:
+            if self.outcome is not LegislativeOutcome.ENACTED_BY_DECREE:
+                raise ValueError("amendment decree route requires ENACTED_BY_DECREE")
+            if self.chambers or self.influence:
+                raise ValueError("amendment decree route has no chamber vote or influence")
+            if self.political_capital_committed != CONSTITUTIONAL_AMENDMENT_DECREE_COST:
+                raise ValueError("amendment decree commitment does not match calibrated cost")
+        else:
+            if not self.chambers:
+                raise ValueError("legislative amendment requires chamber rows")
+            if self.political_capital_committed != sum(
+                allocation.political_capital for allocation in self.influence
+            ):
+                raise ValueError("legislative amendment commitment does not equal influence sum")
+            all_passed = all(chamber.passed for chamber in self.chambers)
+            expected = (
+                LegislativeOutcome.PASSED_LEGISLATIVE
+                if all_passed
+                else LegislativeOutcome.FAILED_LEGISLATIVE
+            )
+            if self.outcome is not expected:
+                raise ValueError("legislative amendment outcome does not match chamber results")
+        return self
+
+    @model_validator(mode="after")
+    def _canonical_targets_influence_and_thresholds(self) -> ConstitutionalAmendmentReport:
+        axes = [target.axis for target in self.targets]
+        if axes != sorted(axes) or len(axes) != len(set(axes)):
+            raise ValueError("amendment targets must be unique and in canonical axis order")
+        identities = [(row.party_id, row.bloc_id) for row in self.influence]
+        if identities != sorted(identities) or len(identities) != len(set(identities)):
+            raise ValueError("amendment influence must be unique and in canonical identity order")
+        threshold = AmendmentThreshold(self.opening_constitution.amendment_difficulty.value)
+        for chamber in self.chambers:
+            if threshold is AmendmentThreshold.SIMPLE_MAJORITY:
+                required = chamber.total_seats // 2 + 1
+            elif threshold is AmendmentThreshold.SUPERMAJORITY:
+                required = (2 * chamber.total_seats + 2) // 3
+            else:
+                required = (3 * chamber.total_seats + 3) // 4
+            if chamber.required_yes_seats != required:
+                raise ValueError(
+                    f"amendment chamber threshold is {chamber.required_yes_seats}, expected {required}"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _snapshots_pressure_and_liberalization_are_consistent(
+        self,
+    ) -> ConstitutionalAmendmentReport:
+        for digest in (self.opening_constitution_digest, self.closing_constitution_digest):
+            if not _HEX_DIGEST_PATTERN.fullmatch(digest):
+                raise ValueError("constitution digests must be lowercase 64-character hex")
+        enacted = self.outcome in (
+            LegislativeOutcome.PASSED_LEGISLATIVE,
+            LegislativeOutcome.ENACTED_BY_DECREE,
+        )
+        if (
+            self.closing_constitution.amendment_difficulty
+            is not self.opening_constitution.amendment_difficulty
+        ):
+            raise ValueError("non-targetable amendment_difficulty changed across amendment")
+        target_by_axis = {row.axis: row for row in self.targets}
+        for axis in AMENDMENT_AXIS_ORDER:
+            opening = _amendment_axis_json_value(self.opening_constitution, axis)
+            closing = _amendment_axis_json_value(self.closing_constitution, axis)
+            row = target_by_axis.get(axis)
+            if row is None:
+                if closing != opening:
+                    raise ValueError(f"untargeted amendment axis {axis!r} changed")
+            else:
+                if row.opening_value != opening:
+                    raise ValueError(f"target {axis!r} opening value does not match snapshot")
+                expected_closing = row.proposed_value if enacted else opening
+                if closing != expected_closing:
+                    raise ValueError(f"target {axis!r} closing value does not match outcome")
+        if not enacted and self.opening_constitution_digest != self.closing_constitution_digest:
+            raise ValueError("failed/no-proposal amendment must preserve constitution digest")
+        expected_pressure = (
+            min(
+                BPS_DENOMINATOR,
+                AMENDMENT_PRESSURE_PER_AXIS_BY_DIFFICULTY_BPS[
+                    self.opening_constitution.amendment_difficulty
+                ]
+                * len(self.targets),
+            )
+            if enacted
+            else 0
+        )
+        if self.transition_pressure_added_bps != expected_pressure:
+            raise ValueError("transition pressure does not match difficulty and changed axes")
+        opening_noncompetitive = (
+            self.opening_constitution.executive_selection
+            in (ExecutiveSelection.HEREDITARY, ExecutiveSelection.APPOINTED)
+            or self.opening_constitution.decree_authority is not DecreeAuthority.NONE
+        )
+        closing_competitive = (
+            self.closing_constitution.executive_selection
+            in (ExecutiveSelection.DIRECT_ELECTION, ExecutiveSelection.LEGISLATIVE_SELECTION)
+            and self.closing_constitution.decree_authority is DecreeAuthority.NONE
+            and self.closing_constitution.national_election_interval_turns is not None
+        )
+        expected_qualifies = enacted and opening_noncompetitive and closing_competitive
+        if self.qualifies_as_liberalization_transition != expected_qualifies:
+            raise ValueError("liberalization flag does not match opening and closing snapshots")
+        return self
+
+
 class TurnReport(BaseModel):
     """The full report produced by one `resolve_turn` call."""
 
@@ -2706,15 +3367,29 @@ class TurnReport(BaseModel):
     memory rows at all (every bloc already at baseline, no investment, no enacted proposal, no
     decree) — an empty `blocs` tuple is still a valid, complete report. Assembled at slot 15 from
     slot 11's already-validated rows (§6.2); see `phases.py`."""
+    election: ElectionReport | None = None
+    """`None` only when the election phase did not run (never for a successful Phase 3C Gate-3C1+
+    turn on a valid player state). Built for every resolved turn, including turns with no election
+    scheduled at all — an inert `scheduled=False` report is still a valid, complete one. Slot 13;
+    see `phases.py`."""
+    coup_unrest: CoupUnrestReport | None = None
+    """`None` only when the coup/unrest/impeachment phase did not run (never for a successful
+    Phase 3C Gate-3C2+ turn on a valid player state). Built for every resolved turn, including
+    turns where none of the three channels attempt anything — a report of all-zero/all-false
+    channels is still a valid, complete one. Slot 12, which runs BEFORE slot 13 (election); see
+    `phases.py`."""
+    constitutional_amendment: ConstitutionalAmendmentReport | None = None
+    """The Gate 3C3 amendment report, including explicit `NO_PROPOSAL` turns."""
 
     @model_validator(mode="after")
-    def _labor_resources_production_derivation_finance_political_legislative_capital_and_relationship_are_all_present_or_all_absent(
+    def _all_twelve_domain_reports_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
-        """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1, Phase 3B2A
-        and Phase 3B2B): a partial combination of these nine player-economy/politics reports
-        would represent a broken audit chain (e.g. production ran but derivation silently didn't)
-        — reject it outright rather than accepting whatever subset happens to be present.
+        """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1, Phase 3B2A,
+        Phase 3B2B, Phase 3C Gate 3C1, Gate 3C2, and Gate 3C3): a partial combination of these
+        twelve player-economy/politics reports would represent a broken audit chain (e.g.
+        production ran but derivation silently didn't) — reject it outright rather than accepting
+        whatever subset happens to be present.
         """
         present = (
             self.labor_market is not None,
@@ -2726,14 +3401,19 @@ class TurnReport(BaseModel):
             self.legislative is not None,
             self.political_capital is not None,
             self.political_relationship is not None,
+            self.election is not None,
+            self.coup_unrest is not None,
+            self.constitutional_amendment is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
                 "labor_market, resources, production, tax_base_derivation, finance, political, "
-                "legislative, political_capital, and political_relationship must be all present "
-                f"or all absent on a TurnReport — got present={present} (labor_market, "
-                "resources, production, tax_base_derivation, finance, political, legislative, "
-                "political_capital, political_relationship)"
+                "legislative, political_capital, political_relationship, election, coup_unrest, "
+                "and constitutional_amendment must be all present or all absent on a TurnReport "
+                "— got "
+                f"present={present} (labor_market, resources, production, tax_base_derivation, "
+                "finance, political, legislative, political_capital, political_relationship, "
+                "election, coup_unrest, constitutional_amendment)"
             )
         return self
 
@@ -2767,6 +3447,22 @@ class TurnReport(BaseModel):
                 "legislative.political_capital_committed="
                 f"{self.legislative.political_capital_committed} does not match the "
                 f"LEGISLATIVE_INFLUENCE/DECREE share of the ledger ({legislative_share})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _amendment_commitment_matches_capital_ledger(self) -> TurnReport:
+        if self.constitutional_amendment is None or self.political_capital is None:
+            return self
+        amendment_share = sum(
+            row.political_capital
+            for row in self.political_capital.expenditures
+            if row.category is CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT
+        )
+        if self.constitutional_amendment.political_capital_committed != amendment_share:
+            raise ValueError(
+                "constitutional_amendment.political_capital_committed does not match the "
+                f"CONSTITUTIONAL_AMENDMENT ledger share ({amendment_share})"
             )
         return self
 
@@ -3171,5 +3867,22 @@ class TurnReport(BaseModel):
                 f"production.sectors[EXTRACTION].constraint={extraction_row.constraint!r} does "
                 f"not match classify_extraction_constraint(potential, actual) (expected "
                 f"{expected!r})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _coup_unrest_removal_implies_election_did_not_run_this_turn(self) -> TurnReport:
+        """(Phase 3C, Gate 3C2) Slot 12 runs before slot 13: if any channel already removed the
+        government this turn, slot 13's own top-of-function guard (§4.2) always builds an inert
+        `not_scheduled` report and never evaluates a real election. This is the report-level
+        expression of that same fixed ordering — genuinely cross-report, since `ElectionReport`
+        alone cannot see whether `coup_unrest` just concluded the game."""
+        if self.coup_unrest is None or self.election is None:
+            return self
+        if self.coup_unrest.removal_triggered is not None and self.election.scheduled:
+            raise ValueError(
+                "coup_unrest.removal_triggered is set, but election.scheduled=True -- slot 13 "
+                "must short-circuit to an inert report once slot 12 has already concluded the "
+                "game this turn"
             )
         return self

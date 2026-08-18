@@ -19,7 +19,8 @@ every decision.
   [`docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md`](docs/adr/0009-constitutional-foundation-legitimacy-political-capital.md),
   [`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`](docs/adr/0010-legislature-parties-and-political-capital-bargaining.md),
   [`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`](docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md),
-  [`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`](docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md)
+  [`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`](docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md),
+  [`docs/adr/0013-government-survival.md`](docs/adr/0013-government-survival.md)
 - **Economy formulas:** [`docs/economy_methodology.md`](docs/economy_methodology.md)
 
 ## Current status
@@ -30,8 +31,9 @@ bases), Phase 2B3 (labor allocation and unemployment at fixed prices), Phase 2C1
 endowments and extraction), Phase 2C2 (physical extraction drives extraction-sector output), and
 Phase 3A (constitutional foundation, legitimacy and political capital), Phase 3B1
 (legislature, parties, blocs and political-capital bargaining), Phase 3B2A (competing
-political-capital uses and bloc relationships), and Phase 3B2B (political memory, policy
-reactions and relationship decay) are complete and
+political-capital uses and bloc relationships), Phase 3B2B (political memory, policy
+reactions and relationship decay), and Phase 3C (government survival — elections, coup/unrest/
+impeachment risk, and constitutional amendments) are complete and
 verified.** The player can propose tax rates and spending — and, as of Phase 3B1, must get that
 budget **through a legislature** to make it stick; eleven aggregate economic sectors
 resolve deterministic quarterly output at fixed base-year prices, staffed every turn by a
@@ -64,7 +66,16 @@ baseline when unmaintained, **reacts automatically** to policy the government ac
 (never to a vote it merely influenced), and pays a separate, procedural cost for being bypassed
 by decree — so sustained investment converges to a genuine equilibrium instead of climbing to the
 ceiling forever, and governing by decree as a habit has a visible, bounded relationship cost
-distinct from whatever the decreed content itself did. The relationship is otherwise still
+distinct from whatever the decreed content itself did. As of Phase 3C, the game finally has an end:
+elections resolve against a deterministic support formula (legislative support, population
+approval, and legitimacy, plus a seeded, bounded polling swing) with term limits; coup, popular-
+unrest, and impeachment risk accrue every turn from institutional and population metrics, never
+from the constitution's form; and a five-axis constitutional amendment — the second proposal kind,
+routed through the same legislative-vote-or-decree choice a budget uses — can transition a
+noncompetitive government to a competitive one and, by winning the resulting election, complete the
+game's first genuine **victory** (peaceful liberalization) rather than only ever a defeat. Every
+terminal outcome is set exactly once; `resolve_turn` refuses to resolve any further turn afterward.
+The relationship between systems is otherwise still
 one-directional: population/labor supply affects
 allocation and production; resource endowments affect extraction, which affects the extraction
 sector's production, which (like every sector) affects tax bases and revenue; economic performance
@@ -73,8 +84,11 @@ production, or extraction. Revenue, spending, interest, and
 debt resolve deterministically and reconcile exactly every turn, with a self-validating report
 chain proving labor allocation, resource extraction, production, tax-base derivation, finance, and
 politics agree with each other, not just internally. All of it is wrapped in the same hash-chained,
-immutable history from Phase 1. There is no API and no database yet; no elections, coups or removal
-from power; non-budget laws still do not exist; and no prices,
+immutable history from Phase 1. There is no API and no database yet; no characters, cabinet
+ministers, or named-actor layer (every removal reason describes the office, never a person); no
+emergency system (`decree_authority: emergency_only` remains unreachable) or courts/judicial
+review; no seat realignment, defections, confidence votes, or coalition collapse; no AI-country
+politics; and no prices,
 inflation, wages, hiring friction, resource trade, or
 resource-to-industry linkage for the other ten sectors — see `docs/roadmap.md` for what's
 implemented per phase and `docs/economy_methodology.md` for exactly what's simulated and what

@@ -131,6 +131,26 @@ class HistoryValidationError(MandateError):
         super().__init__(f"{len(problems)} history integrity problem(s): " + "; ".join(problems))
 
 
+class GameAlreadyConcludedError(MandateError):
+    """`resolve_turn` refuses to resolve any further turn once
+    `PoliticalState.terminal_outcome` is set (Phase 3C, §6).
+
+    A **separate, atomic refusal** from a normal `TurnResolutionError`: the game genuinely ended
+    (victory or defeat), not merely failed to resolve this attempt. Exit code and CLI framing are
+    distinct too (see `app.cli`) — this is not an error in the player's command, it is a fact about
+    the game's state.
+    """
+
+    def __init__(self, *, bucket: str, reason: str, turn: int) -> None:
+        self.bucket = bucket
+        self.reason = reason
+        self.turn = turn
+        super().__init__(
+            f"the game concluded at turn {turn} ({bucket}: {reason}); no further turn can be "
+            "resolved. Nothing was modified."
+        )
+
+
 class SnapshotNotFoundError(MandateError):
     """A requested turn number has no corresponding history entry."""
 

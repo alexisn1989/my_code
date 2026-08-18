@@ -51,7 +51,7 @@ from dataclasses import dataclass
 
 from app.core.money import BPS_DENOMINATOR
 from app.core.politics import clamp_bps, trunc_div_toward_zero
-from app.simulation.legislature import ChangeDirection, GovernmentRole
+from app.simulation.legislature import AmendmentThreshold, ChangeDirection, GovernmentRole
 
 ROLE_ANCHOR_BPS: dict[GovernmentRole, int] = {
     GovernmentRole.COALITION: 8_000,
@@ -103,6 +103,9 @@ DECREE_POLITICAL_CAPITAL_COST = 250
 Fixed rather than scaled by the size of the change: a size-scaled cost would need a second
 calibration axis, and would make "split the change across two turns" a dominant exploit.
 """
+
+CONSTITUTIONAL_AMENDMENT_DECREE_COST = 400
+"""Flat political-capital cost for the legislature-absent amendment route (Phase 3C)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,6 +288,38 @@ def resolve_bloc_support(
     )
 
 
+def resolve_amendment_support(
+    *,
+    role: GovernmentRole,
+    relationship_bps: int,
+    discipline_bps: int,
+    allocated_political_capital: int,
+) -> BlocSupport:
+    """Resolve support for a constitutional amendment without inventing policy content.
+
+    The chain is the budget-vote chain with the tax/spending compatibility step fixed at zero:
+    role plus relationship establishes the baseline, influence moves it, and discipline amplifies
+    the resulting lean away from the midpoint.
+    """
+    _reject_out_of_range(discipline_bps, name="discipline_bps", signed=False)
+
+    baseline = baseline_support_bps(role=role, relationship_bps=relationship_bps)
+    influence = influence_bps(political_capital=allocated_political_capital)
+    final = clamp_bps(baseline + influence)
+    midpoint = BPS_DENOMINATOR // 2
+    effective = clamp_bps(
+        final + trunc_div_toward_zero((final - midpoint) * discipline_bps, BPS_DENOMINATOR)
+    )
+    return BlocSupport(
+        baseline_support_bps=baseline,
+        policy_compatibility_bps=0,
+        influence_bps=influence,
+        raw_support_bps=baseline,
+        final_support_bps=final,
+        effective_support_bps=effective,
+    )
+
+
 def required_yes_seats(*, total_seats: int) -> int:
     """The strict majority of a chamber: `total_seats // 2 + 1`.
 
@@ -294,6 +329,17 @@ def required_yes_seats(*, total_seats: int) -> int:
     if total_seats <= 0:
         raise ValueError(f"a chamber must have at least one seat, got {total_seats}")
     return total_seats // 2 + 1
+
+
+def required_amendment_yes_seats(*, total_seats: int, difficulty: AmendmentThreshold) -> int:
+    """The constitutional passage threshold for one chamber."""
+    if total_seats <= 0:
+        raise ValueError(f"a chamber must have at least one seat, got {total_seats}")
+    if difficulty is AmendmentThreshold.SIMPLE_MAJORITY:
+        return required_yes_seats(total_seats=total_seats)
+    if difficulty is AmendmentThreshold.SUPERMAJORITY:
+        return (total_seats * 2 + 2) // 3
+    return (total_seats * 3 + 3) // 4
 
 
 def chamber_carries(*, supporting_seats: int, total_seats: int) -> bool:

@@ -26,7 +26,7 @@ from app.simulation.decisions import (
     InfluenceAllocation,
 )
 from app.simulation.legislature import CapitalExpenditureCategory, LegislativeOutcome, ProposalRoute
-from app.simulation.reconciliation import reconcile_political_and_legislative_report
+from app.simulation.reconciliation import reconcile_political_legislative_and_survival_report
 from app.simulation.resolver import resolve_turn
 from tests.conftest import SCENARIO_DIR
 
@@ -194,7 +194,7 @@ def test_a_turn_with_both_a_legislative_vote_and_an_investment_reconciles_clean(
     assert closing_bloc.government_relationship_bps == -50
     assert closing_bloc.government_relationship_bps != vote_row.government_relationship_bps
 
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=resolution.report,
@@ -240,7 +240,7 @@ def test_a_report_scoring_the_vote_against_the_closing_relationship_is_rejected(
     tampered_legislative = legislative.model_copy(update={"blocs": tampered_blocs})
     tampered_report = resolution.report.model_copy(update={"legislative": tampered_legislative})
 
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=tampered_report,
@@ -303,7 +303,7 @@ def test_group_12_state_to_state_check_catches_corruption_on_a_no_proposal_inves
         }
     )
 
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=corrupted_state,
         report=resolution.report,
@@ -358,7 +358,7 @@ def test_a_relationship_only_turn_is_a_valid_no_proposal_with_a_nonempty_ledger(
     assert relationship_report is not None
     assert len(relationship_report.blocs) == 1
 
-    problems = reconcile_political_and_legislative_report(
+    problems = reconcile_political_legislative_and_survival_report(
         opening_state=state,
         closing_state=resolution.state,
         report=resolution.report,

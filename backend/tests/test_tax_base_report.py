@@ -191,7 +191,7 @@ class TestTaxBaseDerivationReportSelfValidation:
 # --- R1: cross-report validation on TurnReport ------------------------------
 
 
-_NINE_REPORT_FIELDS = (
+_TWELVE_REPORT_FIELDS = (
     "labor_market",
     "resources",
     "production",
@@ -201,6 +201,9 @@ _NINE_REPORT_FIELDS = (
     "legislative",
     "political_capital",
     "political_relationship",
+    "election",
+    "coup_unrest",
+    "constitutional_amendment",
 )
 
 
@@ -276,22 +279,25 @@ class TestR1CrossReportValidation:
         "present_fields",
         [
             sorted(combo)
-            for r in range(1, 9)
-            for combo in itertools.combinations(_NINE_REPORT_FIELDS, r)
+            for r in range(1, 12)
+            for combo in itertools.combinations(_TWELVE_REPORT_FIELDS, r)
         ],
     )
-    def test_all_partial_combinations_of_nine_reports_are_rejected(
+    def test_all_partial_combinations_of_twelve_reports_are_rejected(
         self, present_fields: list[str]
     ) -> None:
         """Phase 2B3 extended the completeness rule from three reports to four; Phase 2C1 extends
         it again to five; Phase 3A extends it again to six; Phase 3B1 extends it again to seven;
-        Phase 3B2A extends it again to eight; Phase 3B2B extends it again to nine — every proper
-        nonempty subset of {labor_market, resources, production, tax_base_derivation, finance,
-        political, legislative, political_capital, political_relationship} (510 of them, up from
-        254) must be rejected.
+        Phase 3B2A extends it again to eight; Phase 3B2B extends it again to nine; and Phase 3C
+        completes the twelve-report set with `election`, `coup_unrest`, and
+        `constitutional_amendment`. Every proper nonempty subset of {labor_market, resources,
+        production,
+        tax_base_derivation, finance, political, legislative, political_capital,
+        political_relationship, election, coup_unrest, constitutional_amendment} (4,094 of them)
+        must be rejected.
         """
         data, _ = _valid_turn_report_dict()
-        for field in _NINE_REPORT_FIELDS:
+        for field in _TWELVE_REPORT_FIELDS:
             if field not in present_fields:
                 data[field] = None
         with pytest.raises(ValidationError, match="all present or all absent"):
@@ -345,24 +351,18 @@ class TestR1CrossReportValidation:
         with pytest.raises(ValidationError, match="does not match"):
             TurnReport.model_validate(data)
 
-    def test_all_five_absent_is_valid(self) -> None:
+    def test_all_twelve_absent_is_valid(self) -> None:
         """`_valid_turn_report_dict()` now comes from the real resolver, so `labor_market` and
         `resources` are also present by default (Phase 2B3 extended the completeness rule to
         four reports; Phase 2C1 extended it again to five; Phase 3A extended it again to six;
-        Phase 3B1 extended it again to seven) — all must be nulled out here too, or this becomes
-        a partial (rejected) combination rather than the "all absent" case this test means to
-        exercise.
+        Phase 3B1 extended it again to seven; Phase 3B2 completed nine; and Phase 3C completes
+        twelve) — all must be nulled out here too, or this
+        becomes a partial (rejected) combination rather than the "all absent" case this test
+        means to exercise.
         """
         data, _ = _valid_turn_report_dict()
-        data["labor_market"] = None
-        data["resources"] = None
-        data["production"] = None
-        data["tax_base_derivation"] = None
-        data["finance"] = None
-        data["political"] = None
-        data["legislative"] = None
-        data["political_capital"] = None
-        data["political_relationship"] = None
+        for field in _TWELVE_REPORT_FIELDS:
+            data[field] = None
         report = TurnReport.model_validate(data)
         assert report.labor_market is None
         assert report.resources is None
@@ -373,8 +373,11 @@ class TestR1CrossReportValidation:
         assert report.legislative is None
         assert report.political_capital is None
         assert report.political_relationship is None
+        assert report.election is None
+        assert report.coup_unrest is None
+        assert report.constitutional_amendment is None
 
-    def test_all_five_present_and_consistent_is_valid(self) -> None:
+    def test_all_twelve_present_and_consistent_is_valid(self) -> None:
         data, report = _valid_turn_report_dict()
         # Sanity: the fixture itself is genuinely all-present before any corruption.
         assert report.labor_market is not None

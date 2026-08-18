@@ -24,11 +24,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.core.errors import DecisionSetError, StateValidationError, TurnResolutionError
+from app.core.errors import (
+    DecisionSetError,
+    GameAlreadyConcludedError,
+    StateValidationError,
+    TurnResolutionError,
+)
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
 from app.simulation.phases import PhaseContext, run_phases
-from app.simulation.reconciliation import reconcile_political_and_legislative_report
+from app.simulation.reconciliation import reconcile_political_legislative_and_survival_report
 from app.simulation.report import TurnReport, TurnReportDevMeta
 from app.simulation.state import GameState
 
@@ -67,6 +72,15 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
     canonical JSON before calling `resolve_turn` and asserts it is byte-
     identical afterward whenever an error is raised.
     """
+    player = state.world.countries.get(state.world.player_country_id)
+    if player is not None and player.politics is not None and player.politics.terminal_outcome:
+        outcome = player.politics.terminal_outcome
+        reason = outcome.victory_reason or outcome.removal_reason
+        assert reason is not None, "TerminalOutcomeState guarantees exactly one reason is set"
+        raise GameAlreadyConcludedError(
+            bucket=outcome.bucket.value, reason=reason.value, turn=outcome.turn
+        )
+
     try:
         _validate_decision_set(state, decisions)
     except DecisionSetError as exc:
@@ -114,9 +128,12 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
         legislative=ctx.legislative_report,
         political_capital=ctx.political_capital_report,
         political_relationship=ctx.political_relationship_report,
+        election=ctx.election_report,
+        coup_unrest=ctx.coup_unrest_report,
+        constitutional_amendment=ctx.constitutional_amendment_report,
     )
 
-    reconciliation_problems = reconcile_political_and_legislative_report(
+    reconciliation_problems = reconcile_political_legislative_and_survival_report(
         opening_state=state, closing_state=working, report=report, decisions=decisions
     )
     if reconciliation_problems:

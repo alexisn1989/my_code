@@ -153,14 +153,28 @@ generalizes the spend identity to any number of sinks, still bounded by opening 
 and calibration proving a decree's opportunity cost is now real and binding, even under full
 regeneration.
 
-Still deferred, and **not** implied by that foundation existing: relationships can only
-**improve** — there is no decay and no automatic reaction to how a bloc is treated (being bypassed
-by decree, repeatedly ignored), so the ratchet Phase 3B2A opens is left open by design, closed only
-in **Phase 3B2B**; seat composition beyond `government_relationship_bps` is still **static** — no
-realignment, defections, confidence votes or coalition collapse; the budget is the **only**
-proposal kind, so there are no general laws yet; and government survival — elections, coups,
-removal from power (§19, §20, §21) — remains Phase 3C. §3.1's "removal from office" claim is still
-not mechanically possible in any form.
+Still deferred at that point, and **not** implied by that foundation existing: relationships can
+only **improve** — there is no decay and no automatic reaction to how a bloc is treated (being
+bypassed by decree, repeatedly ignored), so the ratchet Phase 3B2A opens is left open by design,
+closed only in **Phase 3B2B**; seat composition beyond `government_relationship_bps` is still
+**static** — no realignment, defections, confidence votes or coalition collapse; and the budget is
+the **only** proposal kind, so there are no general laws yet.
+
+**Phase 3C makes §3.1's "removal from office" claim mechanically real, and adds the game's first
+victory condition** (see `docs/adr/0013-government-survival.md`): elections with a deterministic,
+seeded-uncertainty support formula and term limits (Gate 3C1); coup, popular-unrest, and
+impeachment risk channels, each with an independent attempt/success formula driven by
+institutional and population metrics, never by constitutional form (Gate 3C2); and a five-axis
+`ConstitutionalAmendmentDecision` — the second proposal kind §41's earlier paragraph named as still
+missing — routed through the same legislative-vote-or-decree choice a budget uses, which can
+transition a noncompetitive government to a competitive one and, on winning the resulting election,
+end the game in the first genuine **VICTORY** (`peaceful_liberalization_completed`), rather than
+only ever a defeat (Gate 3C3). Every terminal outcome is set exactly once and `resolve_turn` refuses
+any further turn afterward. Still deferred, unchanged by Phase 3C: seat realignment, defections,
+confidence votes and coalition collapse; characters, cabinet ministers, and any named-actor layer
+(every Gate 3C removal reason describes the office, never a person); an emergency system (so
+`decree_authority: emergency_only` remains unreachable); and courts/judicial review
+(`judicial_review` remains a constitutional axis read by no formula).
 
 ## 42. Final product standard
 

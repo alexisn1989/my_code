@@ -291,6 +291,40 @@ isolated, content-free decree trajectory settles in the band `floor(|deviation| 
 sustained, genuinely adversarial policy campaign on top of the penalty, not the penalty alone."""
 
 
+# --- Phase 3C: government survival -- institutions, population groups, terminal outcomes -------
+
+StrictInstitutionMetricBps: TypeAlias = Annotated[int, Field(strict=True, ge=0, le=BPS_DENOMINATOR)]
+"""An institution's loyalty/power/competence/corruption, in basis points. Replaces the Phase-1
+float (0.0-100.0) fields on `InstitutionState` -- Phase 3C is the first phase to read these by any
+formula (`simulation.government_survival`)."""
+
+StrictPopulationMetricBps: TypeAlias = Annotated[int, Field(strict=True, ge=0, le=BPS_DENOMINATOR)]
+"""A population group's approval/trust/organization/radicalization/political_influence, in basis
+points. Replaces the Phase-1 float (0.0-100.0) fields on `PopulationGroupState` -- converted in the
+same commit as `InstitutionState`'s metrics, not bridged from floats, since this phase is the first
+real formula consumer of both."""
+
+StrictTermsHeld: TypeAlias = Annotated[int, Field(strict=True, ge=1)]
+"""How many consecutive terms the incumbent government has held, counting the term already
+underway at scenario genesis as term 1."""
+
+StrictTransitionPressureBps: TypeAlias = Annotated[
+    int, Field(strict=True, ge=0, le=BPS_DENOMINATOR)
+]
+"""How much a recent constitutional amendment -- liberalizing or consolidating; this field cannot
+distinguish direction by construction, which is exactly what makes its cost symmetric between the
+two -- is currently elevating coup risk."""
+
+StrictRiskBps: TypeAlias = Annotated[int, Field(strict=True, ge=0, le=BPS_DENOMINATOR)]
+"""A per-turn attempt/success probability or election support level, in basis points."""
+
+StrictSignedRiskContributionBps: TypeAlias = Annotated[
+    int, Field(strict=True, ge=-BPS_DENOMINATOR, le=BPS_DENOMINATOR)
+]
+"""One named, signed contributing factor to a `StrictRiskBps` total, before the final clamp --
+mirrors `StrictRelationshipChangeBps`'s role in `political_memory.py`."""
+
+
 def clamp_relationship_bps(value: int) -> int:
     """The signed relationship clamp: `[-StrictRelationshipBps, +StrictRelationshipBps]`, i.e.
     `[-10_000, 10_000]`. `clamp_bps`'s defaults are `[0, 10_000]` (the legitimacy scale) and cannot
