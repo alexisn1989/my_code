@@ -250,6 +250,45 @@ describe("terminal screen", () => {
   });
 });
 
+describe("glossary is persistent chrome, not a navigation screen", () => {
+  it("is not one of the registered navigation controls", () => {
+    render(<GreyboxApp />);
+    const nav = screen.getByRole("navigation", { name: "Screens" });
+    expect(within(nav).queryByRole("button", { name: "Glossary" })).not.toBeInTheDocument();
+  });
+
+  it("opens as a non-blocking panel from the persistent top bar, without navigating away", () => {
+    render(<GreyboxApp />);
+    goTo("Legislature");
+    expect(screen.getByRole("heading", { name: "Legislature", level: 2 })).toBeInTheDocument();
+
+    const toggle = screen.getByRole("button", { name: "Glossary" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+
+    expect(screen.getByRole("region", { name: "Glossary" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Glossary", level: 2 })).toBeInTheDocument();
+    // The screen underneath is still present -- this is a panel, not a route change.
+    expect(screen.getByRole("heading", { name: "Legislature", level: 2 })).toBeInTheDocument();
+  });
+
+  it("is reachable from the Title screen, before any campaign is loaded", () => {
+    render(<GreyboxApp />);
+    expect(screen.getByRole("heading", { name: "New campaign", level: 2 })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Glossary" }));
+    expect(screen.getByRole("region", { name: "Glossary" })).toBeInTheDocument();
+  });
+
+  it("closes on a second toggle", () => {
+    render(<GreyboxApp />);
+    const toggle = screen.getByRole("button", { name: "Glossary" });
+    fireEvent.click(toggle);
+    expect(screen.getByRole("region", { name: "Glossary" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close glossary" }));
+    expect(screen.queryByRole("region", { name: "Glossary" })).not.toBeInTheDocument();
+  });
+});
+
 describe("title screen", () => {
   it("lists all three scenarios and marks the showcase", () => {
     render(<GreyboxApp />);

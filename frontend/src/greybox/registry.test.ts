@@ -1,9 +1,14 @@
 /**
  * Gate 4A0 — the route table.
  *
- * The frozen plan names twelve screens. This test pins the list exactly: adding,
- * removing, or renaming one without updating the plan is a failure, not a
- * silent drift.
+ * The frozen plan's §8.1 main-tab bar lists eight items, plus Title, Turn
+ * Result, and Victory/Defeat as their own screens — eleven navigable screens
+ * in total. Glossary is deliberately excluded from this list: §9 describes it
+ * as "a static reference panel, reachable from the persistent chrome, not a
+ * modal that blocks the game," i.e. a chrome-level toggle (`GreyboxApp.test.tsx`
+ * covers that), not a peer navigation destination. This test pins the eleven-
+ * screen list exactly: adding, removing, or renaming one without updating the
+ * plan is a failure, not a silent drift.
  */
 
 import { describe, expect, it } from "vitest";
@@ -23,16 +28,19 @@ const EXPECTED_SCREEN_IDS: ScreenId[] = [
   "result",
   "history",
   "terminal",
-  "glossary",
 ];
 
 describe("greybox screen registry", () => {
-  it("contains exactly the twelve planned screens, in order", () => {
+  it("contains exactly the eleven planned navigation screens, in order", () => {
     expect(SCREENS.map((screen) => screen.id)).toEqual(EXPECTED_SCREEN_IDS);
   });
 
-  it("has twelve entries", () => {
-    expect(SCREENS).toHaveLength(12);
+  it("has eleven entries", () => {
+    expect(SCREENS).toHaveLength(11);
+  });
+
+  it("does not register glossary as a navigation screen", () => {
+    expect(SCREENS.map((screen) => screen.id)).not.toContain("glossary");
   });
 
   it("gives every screen a unique id and a non-empty label and heading", () => {
@@ -49,17 +57,21 @@ describe("greybox screen registry", () => {
     expect(SCREENS[0]?.id).toBe("title");
   });
 
-  it("marks title and glossary as outside the gameplay chrome, and the rest inside", () => {
+  it("marks only title as outside the gameplay chrome", () => {
     const withoutChrome = SCREENS.filter((screen) => !screen.showsGameplayChrome).map(
       (screen) => screen.id,
     );
-    expect(withoutChrome).toEqual(["title", "glossary"]);
+    expect(withoutChrome).toEqual(["title"]);
   });
 
-  it("resolves every id and rejects an unknown one", () => {
+  it("resolves every registered id and rejects an unknown one", () => {
     for (const id of EXPECTED_SCREEN_IDS) {
       expect(screenById(id).id).toBe(id);
     }
     expect(() => screenById("nope" as ScreenId)).toThrow(/unknown screen id/);
+  });
+
+  it("rejects glossary specifically, since it is chrome-level, not a registered screen", () => {
+    expect(() => screenById("glossary" as ScreenId)).toThrow(/unknown screen id/);
   });
 });

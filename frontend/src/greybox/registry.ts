@@ -10,6 +10,14 @@
  * `showsGameplayChrome: false` marks the screens that exist outside a running
  * campaign, where the persistent national header would be claiming a country
  * that is not loaded.
+ *
+ * ELEVEN entries, not twelve. The frozen plan's own §8.1 lists the main-tab bar
+ * as eight items (Dashboard · Government · Economy · Legislature · Constitution
+ * · Relationships · Decisions · History) and separately, in §9, describes
+ * Glossary as "a static reference panel, reachable from the persistent chrome,
+ * not a modal that blocks the game" — i.e. a chrome-level toggle, never a peer
+ * navigation tab. `GlossaryScreen` therefore stays in `./screens` and is
+ * rendered by `GreyboxApp`'s persistent header, not registered here.
  */
 
 import type { ComponentType } from "react";
@@ -20,7 +28,6 @@ import {
   DashboardScreen,
   DecisionsScreen,
   EconomyScreen,
-  GlossaryScreen,
   GovernmentScreen,
   HistoryScreen,
   LegislatureScreen,
@@ -118,13 +125,6 @@ export const SCREENS: readonly ScreenDefinition[] = [
     heading: "Victory / defeat",
     component: TerminalScreen,
     showsGameplayChrome: true,
-  },
-  {
-    id: "glossary",
-    label: "Glossary",
-    heading: "Glossary",
-    component: GlossaryScreen,
-    showsGameplayChrome: false,
   },
 ];
 

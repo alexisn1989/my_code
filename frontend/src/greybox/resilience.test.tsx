@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import type { GreyboxFixture } from "./contract";
 import { GREYBOX_FIXTURE } from "./fixture";
 import { SCREENS } from "./registry";
+import { GlossaryScreen } from "./screens";
 
 /** The same shape, with every optional field absent and every list empty. */
 const EMPTY_FIXTURE: GreyboxFixture = {
@@ -70,7 +71,7 @@ const EMPTY_FIXTURE: GreyboxFixture = {
   constitution: { ...GREYBOX_FIXTURE.constitution, axes: [] },
 };
 
-describe("every screen tolerates absent optional data", () => {
+describe("every registered screen tolerates absent optional data", () => {
   for (const entry of SCREENS) {
     it(`renders ${entry.id} against an empty fixture without crashing`, () => {
       const Screen = entry.component;
@@ -78,6 +79,14 @@ describe("every screen tolerates absent optional data", () => {
       expect(screen.getByRole("heading", { name: entry.heading, level: 2 })).toBeInTheDocument();
     });
   }
+
+  // Glossary is not in SCREENS (it is chrome-level, see registry.ts and
+  // GreyboxApp.test.tsx), so its resilience is exercised directly here.
+  it("renders glossary against an empty fixture without crashing", () => {
+    render(<GlossaryScreen fixture={EMPTY_FIXTURE} navigate={() => {}} />);
+    expect(screen.getByRole("heading", { name: "Glossary", level: 2 })).toBeInTheDocument();
+    expect(screen.getByText("No glossary entries.")).toBeInTheDocument();
+  });
 
   it("says a chamber has no recorded vote rather than showing a zero tally", () => {
     const Screen = SCREENS.find((s) => s.id === "legislature")!.component;
