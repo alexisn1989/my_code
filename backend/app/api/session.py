@@ -37,6 +37,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from app.core.errors import MandateError
 from app.simulation.history import GameSave
@@ -50,6 +51,30 @@ class SessionBusyError(MandateError):
 
 class NoActiveSessionError(MandateError):
     """No game is loaded. Maps to 404 `no_active_session`."""
+
+
+class PersistenceError(MandateError):
+    """The engine resolved the turn, but the save could not be written.
+
+    A first-class outcome rather than an escaped `OSError`: the turn is NOT
+    committed, `session.current_save` is untouched, and the previous bytes are
+    still on disk, because the swap only ever happens after a successful write.
+    """
+
+
+class StaleRevisionError(MandateError):
+    """The submitted revision no longer matches the live state.
+
+    A friendlier, earlier statement of the same fact the engine's own
+    `DecisionSetError` would raise -- never a substitute for it.
+    """
+
+    def __init__(self, *, expected: str, actual: str) -> None:
+        self.expected = expected
+        self.actual = actual
+        super().__init__(
+            f"the game has moved on: submitted revision {actual!r}, current {expected!r}"
+        )
 
 
 class MutationBoundary:
@@ -86,6 +111,18 @@ class MutationBoundary:
             self._admitted = False
 
 
+@dataclass
+class MutationBarrier:
+    """A test-controlled pause point inside an admitted mutation."""
+
+    reached: asyncio.Event
+    release: asyncio.Event
+
+    @classmethod
+    def create(cls) -> MutationBarrier:
+        return cls(reached=asyncio.Event(), release=asyncio.Event())
+
+
 class GameSession:
     """The single authoritative session: one save, one save ID, one boundary."""
 
@@ -94,6 +131,12 @@ class GameSession:
         self._current_save: GameSave | None = None
         self._save_id: str | None = None
         self.boundary = MutationBoundary()
+        #: Test-only seam. `None` in production. When a test sets it, a mutation
+        #: signals `reached` immediately after gaining admission and then waits
+        #: for `release`, so a second request can be issued while the first is
+        #: provably in flight -- a deterministic overlap, with no sleeps and no
+        #: timing guesses anywhere in the concurrency suite.
+        self.barrier: MutationBarrier | None = None
 
     @property
     def repository(self) -> SaveRepository:
@@ -129,3 +172,11 @@ class GameSession:
         """Drop the active session. Used by tests and by a failed load path."""
         self._current_save = None
         self._save_id = None
+
+    async def wait_at_barrier(self) -> None:
+        """Pause here if a test installed a barrier; a no-op in production."""
+        barrier = self.barrier
+        if barrier is None:
+            return
+        barrier.reached.set()
+        await barrier.release.wait()

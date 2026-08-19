@@ -30,7 +30,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.core.errors import (
     DecisionSetError,
@@ -46,7 +46,12 @@ from app.core.errors import (
 )
 
 from .save_registry import InvalidDisplayNameError, InvalidSaveIdError, SaveNotFoundError
-from .session import NoActiveSessionError, SessionBusyError
+from .session import (
+    NoActiveSessionError,
+    PersistenceError,
+    SessionBusyError,
+    StaleRevisionError,
+)
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
 
@@ -94,6 +99,7 @@ def problem_response(
 _MAPPING: tuple[tuple[type[Exception], int, str, str], ...] = (
     (SessionBusyError, 409, "resolution_in_progress", "Another action is being resolved"),
     (NoActiveSessionError, 404, "no_active_session", "No active game"),
+    (StaleRevisionError, 409, "stale_revision", "The game has moved on"),
     (InvalidSaveIdError, 400, "save_not_found", "That save could not be found"),
     (SaveNotFoundError, 404, "save_not_found", "That save could not be found"),
     (InvalidDisplayNameError, 422, "invalid_display_name", "That name cannot be used"),
@@ -105,6 +111,7 @@ _MAPPING: tuple[tuple[type[Exception], int, str, str], ...] = (
     (SaveFileError, 400, "save_unreadable", "That save could not be read"),
     (DecisionSetError, 422, "decision_rejected", "Those decisions were rejected"),
     (TurnResolutionError, 422, "decision_rejected", "The turn could not be resolved"),
+    (PersistenceError, 500, "persistence_failed", "The turn could not be saved"),
     (StateValidationError, 500, "internal_error", "The engine rejected the resulting state"),
 )
 
@@ -131,6 +138,8 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "reason": getattr(error.reason, "value", str(error.reason)),
                 "turn": error.turn,
             }
+        elif isinstance(error, StaleRevisionError):
+            extra = {"expected": error.expected, "actual": error.actual}
         elif isinstance(error, SnapshotNotFoundError):
             extra = {"turn": error.turn, "available_turns": list(error.available_turns)}
         return problem_response(
@@ -158,4 +167,29 @@ def register_exception_handlers(app: FastAPI) -> None:
             status=422,
             detail="the submitted payload did not match the expected schema",
             fields=fields,
+        )
+
+    @app.exception_handler(ValidationError)
+    async def _model_validation(request: Request, error: Exception) -> JSONResponse:
+        """A payload that failed a model's own validators, not FastAPI's."""
+        return problem_response(
+            type_="decision_rejected",
+            title="That request was rejected",
+            status=422,
+            detail=str(error),
+        )
+
+    @app.exception_handler(Exception)
+    async def _unexpected(request: Request, error: Exception) -> JSONResponse:
+        """Anything unmapped -- notably filesystem failures during persistence.
+
+        The mutation boundary has already been released by its own `finally`, so
+        reaching here never leaves the session busy. The save is untouched:
+        `session.current_save` is only ever swapped AFTER a successful write.
+        """
+        return problem_response(
+            type_="internal_error",
+            title="The request could not be completed",
+            status=500,
+            detail=str(error),
         )

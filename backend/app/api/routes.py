@@ -11,18 +11,23 @@ Gate 4A1 commit 4 covers the read-only and lifecycle operations. `/preview` and
 from __future__ import annotations
 
 import re
+from contextlib import suppress
 from pathlib import Path
+from typing import Any
 
+from anyio import to_thread
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.content.scenarios import load_scenario_file
 from app.core.errors import (
+    DecisionSetError,
     HistoryValidationError,
     ScenarioValidationError,
     SnapshotNotFoundError,
 )
-from app.simulation.history import GameSave, new_game, validate_history
+from app.simulation.decisions import DecisionSet
+from app.simulation.history import GameSave, advance_game, new_game, validate_history
 from app.simulation.save_format import SAVE_FORMAT_VERSION
 from app.simulation.state import GameState
 
@@ -30,6 +35,7 @@ from .projections import (
     DashboardProjection,
     HistoryDetailResponse,
     HistoryListEntry,
+    ResolveResponse,
     SaveSummary,
     ScenarioSummary,
     build_dashboard,
@@ -41,7 +47,7 @@ from .save_registry import (
     validate_display_name,
     validate_save_id,
 )
-from .session import GameSession
+from .session import GameSession, PersistenceError, StaleRevisionError
 
 #: A scenario id is a bare lowercase identifier -- the same reject-by-shape
 #: discipline as save IDs, so no request can walk out of the scenario root.
@@ -49,6 +55,9 @@ SCENARIO_ID_PATTERN = re.compile(r"^[a-z0-9_]+$")
 
 #: The one polished showcase scenario (frozen plan §6.2).
 SHOWCASE_SCENARIO_ID = "decree_state"
+
+#: The opaque revision token's only permitted shape.
+REVISION_PATTERN = re.compile(r"^(\d+)\.(\d+)$")
 
 router = APIRouter()
 
@@ -295,3 +304,107 @@ def list_saves(request: Request) -> list[SaveSummary]:
         )
         for record in _repository(request).list_saves()
     ]
+
+
+# --------------------------------------------------------------------------
+# Resolve -- the one authoritative mutation
+# --------------------------------------------------------------------------
+
+
+class ResolveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: The opaque token most recently received, echoed back VERBATIM.
+    revision: str
+    #: Assembled in canonical order by the client. The server does not sort,
+    #: deduplicate, normalize or repair -- noncanonical order is REJECTED by the
+    #: engine's own validators, which is the contract the engine guarantees.
+    decisions: tuple[dict[str, Any], ...] = ()
+
+
+def _parse_revision(revision: str) -> tuple[int, int]:
+    """Split the opaque token into the two integers the ENGINE will check.
+
+    The server never substitutes its own current values here. Passing the
+    client's claim through is what keeps `resolver.py`'s staleness check
+    load-bearing instead of trivially satisfied (ADR 0014).
+    """
+    match = REVISION_PATTERN.fullmatch(revision)
+    if match is None:
+        raise DecisionSetError(f"malformed revision token {revision!r}")
+    return int(match.group(1)), int(match.group(2))
+
+
+@router.post("/game/resolve", response_model=ResolveResponse)
+async def resolve(request: Request, body: ResolveRequest) -> ResolveResponse:
+    """Resolve one turn.
+
+    The order below is the authoritative one from ADR 0014, and the last two
+    steps are the ones that are easy to get subtly wrong:
+
+      1. Acquire mutation admission immediately, or reject `resolution_in_progress`.
+      2. Parse the client-echoed revision.
+      3. Compare it with the live state; reject a stale revision.
+      4. Build `DecisionSet` from the CLIENT's claimed turn/version, unsorted.
+      5. Call the engine.
+      6. Capture the returned immutable save in `new_save`.
+      7. Persist `new_save` atomically.
+      8. Swap `session.current_save` only after persistence succeeds.
+      9. Release the boundary -- on every path, success or failure.
+     10. Build the response from the CAPTURED `new_save`, never by re-reading
+         `session.current_save` after the boundary is released, which another
+         request could by then have advanced.
+
+    A persistence failure leaves both the in-memory save and the on-disk save
+    exactly as they were.
+    """
+    session = _session(request)
+    async with session.boundary.admit("resolution"):
+        await session.wait_at_barrier()
+
+        save = session.current_save
+        claimed_turn, claimed_version = _parse_revision(body.revision)
+        live = save.current_state()
+        if (claimed_turn, claimed_version) != (live.turn, live.state_version):
+            raise StaleRevisionError(
+                expected=f"{live.turn}.{live.state_version}", actual=body.revision
+            )
+
+        try:
+            decision_set = DecisionSet.model_validate(
+                {
+                    "expected_turn": claimed_turn,
+                    "expected_state_version": claimed_version,
+                    "decisions": list(body.decisions),
+                }
+            )
+        except ValidationError as error:
+            # Translate the schema rejection into the engine's own error type.
+            # This is a change of exception CLASS only -- the payload is not
+            # sorted, deduplicated, repaired or coerced on its way through, so a
+            # noncanonical or malformed decision set stays rejected.
+            raise DecisionSetError(str(error)) from error
+        # The engine is synchronous and can take ~100ms on a long history, so it
+        # runs off the event loop. The transaction stays single: the boundary is
+        # still held for the whole of it.
+        new_save = await to_thread.run_sync(advance_game, save, decision_set)
+        try:
+            session.repository.write_save(session.save_id, new_save)
+        except OSError as error:
+            # Nothing is swapped: the in-memory save and the on-disk bytes both
+            # remain exactly as they were before this request.
+            raise PersistenceError(f"could not persist the resolved turn: {error}") from error
+        session.adopt(new_save, session.save_id)
+        # Index refresh is best-effort convenience metadata. The turn is already
+        # committed and authoritative, so a metadata failure must NOT turn a
+        # successful resolve into a reported failure; the next listing repairs it.
+        with suppress(OSError):
+            session.repository.list_saves()
+
+    entry = new_save.entries[-1]
+    report = entry.report()
+    assert report is not None, "a resolved turn always stores a report"
+    state = entry.state()
+    return ResolveResponse(
+        turnResult=build_turn_result(state, report), dashboard=build_dashboard(state, report)
+    )
