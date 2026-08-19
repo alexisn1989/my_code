@@ -26,8 +26,13 @@ jobs:
       # --locked fails the build if uv.lock is out of date relative to
       # pyproject.toml, rather than silently re-resolving (product spec §5.5,
       # keep committed dependency resolution reproducible).
+      #
+      # --extra gui installs the Phase 4A graphical application's minimal
+      # runtime (FastAPI + Uvicorn only). It is deliberately NOT --extra api,
+      # which additionally carries sqlalchemy/alembic/psycopg for the future
+      # database work that Phase 4A does not do.
       - name: Install dependencies (locked)
-        run: uv sync --locked --group dev
+        run: uv sync --locked --group dev --extra gui
 
       - name: Check formatting
         run: uv run ruff format --check .

@@ -10,12 +10,23 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# The Phase 4 persistence stack. NOT used by the Phase 4A graphical vertical
+# slice, which needs no database at all -- see `gui` below and ADR 0014.
+# Deliberately left exactly as it was.
 api = [
     "fastapi>=0.115,<1",
     "uvicorn[standard]>=0.30,<1",
     "sqlalchemy>=2.0,<3",
     "alembic>=1.13,<2",
     "psycopg[binary]>=3.2,<4",
+]
+# Phase 4A Gate 4A1: the minimal runtime for the local graphical application.
+# FastAPI and Uvicorn only -- no database, no ORM, no migration tool. Installing
+# `--extra api` instead would drag in sqlalchemy/alembic/psycopg that 4A never
+# uses, which is why this is a separate extra rather than a reuse.
+gui = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
 ]
 
 [dependency-groups]
@@ -26,10 +37,15 @@ dev = [
     "mypy>=1.11,<2",
     "hypothesis>=6.108,<7",
     "types-pyyaml>=6.0,<7",
+    # Test-only: Starlette's TestClient and httpx.AsyncClient/ASGITransport, which
+    # the API tests drive the ASGI app with. Never a runtime dependency -- it is
+    # deliberately absent from the `gui` extra above.
+    "httpx>=0.27,<1",
 ]
 
 [project.scripts]
 mandate = "app.cli:main"
+mandate-gui = "app.api.main:run"
 
 [build-system]
 requires = ["hatchling"]
@@ -52,7 +68,7 @@ known-first-party = ["app"]
 
 [tool.mypy]
 python_version = "3.11"
-packages = ["app.core", "app.simulation", "app.content"]
+packages = ["app.core", "app.simulation", "app.content", "app.api"]
 modules = ["app.saves"]
 strict = true
 warn_unused_ignores = true
