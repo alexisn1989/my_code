@@ -20,6 +20,11 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from .errors import register_exception_handlers
+from .routes import router
+from .save_registry import SaveRepository
+from .session import GameSession
+
 DEFAULT_PORT = 8420
 DEFAULT_BIND_HOST = "127.0.0.1"
 
@@ -91,6 +96,11 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.settings = resolved
+    # The ONE authoritative session for this process. Built per app instance so
+    # tests get an isolated save root rather than sharing a process global.
+    app.state.session = GameSession(SaveRepository(resolved.save_root))
+    register_exception_handlers(app)
+    app.include_router(router, prefix="/api")
     return app
 
 
