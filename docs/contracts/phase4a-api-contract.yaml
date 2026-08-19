@@ -181,14 +181,27 @@ paths:
     post:
       tags: [game]
       operationId: resolveTurn
-      summary: Resolve one turn. MUTATING — takes the mutation lock.
+      summary: >-
+        Resolve one turn. MUTATING — takes the ONE process-wide mutation lock
+        (GameSession holds exactly one lock and one active save; there is no
+        per-session locking).
       description: |
-        Order: acquire lock immediately or reject `resolution_in_progress` ->
-        parse the echoed `revision` -> compare against live state and reject
-        `stale_revision` -> construct `DecisionSet` WITHOUT normalization and
-        call `advance_game` -> serialize and atomically persist -> swap
-        `session.current_save` only after persistence succeeds -> release the
-        lock -> return projections built from the persisted save.
+        Order: acquire the process-wide lock immediately or reject
+        `resolution_in_progress` -> parse the echoed `revision` -> compare
+        against live state and reject `stale_revision` -> construct
+        `DecisionSet` WITHOUT normalization and call `advance_game`, capturing
+        the returned immutable save as a LOCAL `new_save` -> serialize and
+        atomically persist `new_save` -> swap `session.current_save = new_save`
+        only after persistence succeeds -> release the lock -> return
+        projections built from the captured local `new_save`, NOT from
+        re-reading `session.current_save`.
+
+        The re-read is forbidden deliberately: the lock is already released by
+        the time the response is built, so another admitted request could have
+        advanced `session.current_save` again in the interval. Reading the
+        session field at that point would describe someone else's turn under
+        this request's response. `resolve_turn` never mutates its input, so the
+        captured `new_save` is safe to read after the lock is gone.
 
         Every error path releases the lock. A failed resolution or persistence
         leaves both the in-memory save and the on-disk save unchanged.

@@ -65,21 +65,32 @@ exactly like the CLI's `--state`/`--out` model. A deliberate simplification, nam
 ### The authoritative mutation order: persist, then swap, then unlock, then respond
 
 Every session-mutating operation (`/api/game/new`, `/api/game/load`, `/api/game/resolve`,
-`/api/game/save-as`) follows this order:
+`/api/game/save-as`) takes **the one process-wide mutation lock** described above and follows this
+order:
 
-1. **Acquire the mutation lock immediately, or reject** with `409 {"type": "resolution_in_progress"}`.
-   A mutation is never silently queued behind another.
+1. **Acquire the process-wide mutation lock immediately, or reject** with
+   `409 {"type": "resolution_in_progress"}`. A mutation is never silently queued behind another.
 2. **Parse the client-echoed revision token.**
 3. **Compare it with the live state**, and reject a stale revision with
    `409 {"type": "stale_revision"}`.
-4. **Construct `DecisionSet` without normalization** and call the authoritative engine.
-5. **Serialize and atomically persist** the newly returned save.
-6. **Swap `session.current_save` only after persistence succeeds.**
-7. **Release the mutation lock.**
-8. **Construct and return the projections from the successfully persisted new save.**
+4. **Construct `DecisionSet` without normalization** and call the authoritative engine, **capturing
+   the returned immutable `new_save` in a local variable**.
+5. **Serialize and atomically persist** that captured `new_save`.
+6. **Swap `session.current_save = new_save` only after persistence succeeds.**
+7. **Release the process-wide mutation lock.**
+8. **Construct and return the projections from the captured local `new_save`.**
 
 The result is returned *after* the lock is released, not before, and always from the save that was
 actually persisted.
+
+⚠ **Step 8 must read the captured local variable, never re-read `session.current_save`.** The lock
+is released at step 7, so between step 7 and step 8 another admitted mutation can legitimately
+advance `session.current_save` to a *later* turn. Building the response by re-reading the session
+field would then return a projection of somebody else's turn under this request's revision token —
+a silent lost-update at exactly the moment the client is told its own turn succeeded. Capturing
+`new_save` at step 4 makes the response provably describe the turn this request resolved and
+persisted. The engine's purity is what makes the capture safe: `resolve_turn` deep-copies its input
+and never mutates it, so the captured `GameSave` cannot be altered by any later request.
 
 **Failure behaviour:** every error path releases the lock. A failed resolution or a failed
 persistence leaves **both** the authoritative in-memory save and the existing on-disk save
