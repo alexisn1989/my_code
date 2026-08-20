@@ -260,6 +260,42 @@ class TurnResultProjection(BaseModel):
 # --------------------------------------------------------------------------
 
 
+class ChamberPreview(BaseModel):
+    """One chamber's projected tally. Chambers are never pooled."""
+
+    model_config = _STRICT
+
+    chamber: str
+    total_seats: int
+    supporting_seats: int
+    required_seats: int
+    carries: bool
+
+
+class PreviewProjection(BaseModel):
+    """A deterministic ESTIMATE, explicitly not an authoritative outcome.
+
+    `estimate` is always True and `excludes_stochastic_channels` names what the
+    preview deliberately does not know, so no caller can mistake this for a
+    resolved result.
+    """
+
+    model_config = _STRICT
+
+    estimate: Literal[True] = True
+    excludes_stochastic_channels: tuple[str, ...] = ()
+    chambers: tuple[ChamberPreview, ...] = ()
+    would_pass: bool = False
+    has_proposal: bool = False
+    route: str | None = None
+    route_capital_cost: int = 0
+    influence_capital: int = 0
+    investment_capital: int = 0
+    committed_capital: int = 0
+    opening_capital: int = 0
+    affordable: bool = True
+
+
 class ScenarioSummary(BaseModel):
     model_config = _STRICT
 

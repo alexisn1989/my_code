@@ -31,10 +31,12 @@ from app.simulation.history import GameSave, advance_game, new_game, validate_hi
 from app.simulation.save_format import SAVE_FORMAT_VERSION
 from app.simulation.state import GameState
 
+from .preview import preview_decisions
 from .projections import (
     DashboardProjection,
     HistoryDetailResponse,
     HistoryListEntry,
+    PreviewProjection,
     ResolveResponse,
     SaveSummary,
     ScenarioSummary,
@@ -408,3 +410,52 @@ async def resolve(request: Request, body: ResolveRequest) -> ResolveResponse:
     return ResolveResponse(
         turnResult=build_turn_result(state, report), dashboard=build_dashboard(state, report)
     )
+
+
+# --------------------------------------------------------------------------
+# Preview -- read-only, and deliberately NOT behind the mutation boundary
+# --------------------------------------------------------------------------
+
+
+class PreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision: str
+    decisions: tuple[dict[str, Any], ...] = ()
+
+
+@router.post("/game/preview", response_model=PreviewProjection)
+def preview_proposal(request: Request, body: PreviewRequest) -> PreviewProjection:
+    """Score a drafted proposal without changing anything.
+
+    Deliberately does NOT take the mutation boundary: the frozen plan states
+    preview uses "never the session lock, never a write", and taking it would let
+    a player drafting in one tab reject an unrelated resolve in another.
+
+    Instead it captures `session.current_save` ONCE, at the top, and works
+    entirely from that immutable reference -- so a concurrent resolve can never
+    show preview a mixture of pre- and post-mutation state. It observes one
+    complete revision or the other.
+    """
+    save = _session(request).current_save  # captured once; never re-read below
+    state = save.current_state()
+    claimed_turn, claimed_version = _parse_revision(body.revision)
+    if (claimed_turn, claimed_version) != (state.turn, state.state_version):
+        raise StaleRevisionError(
+            expected=f"{state.turn}.{state.state_version}", actual=body.revision
+        )
+
+    try:
+        decision_set = DecisionSet.model_validate(
+            {
+                "expected_turn": claimed_turn,
+                "expected_state_version": claimed_version,
+                "decisions": list(body.decisions),
+            }
+        )
+    except ValidationError as error:
+        # Same reject-not-normalize contract as /resolve: exception class is
+        # translated, the payload is never sorted, repaired or coerced.
+        raise DecisionSetError(str(error)) from error
+
+    return preview_decisions(state, decision_set)
