@@ -151,6 +151,129 @@ def test_state_exposes_no_raw_engine_payload(client: TestClient) -> None:
 
 
 # --------------------------------------------------------------------------
+# Decision options -- the legal-move envelope (frozen plan Sec 4.6)
+# --------------------------------------------------------------------------
+
+
+def test_decision_options_before_any_game_is_a_distinct_404(client: TestClient) -> None:
+    response = client.get("/api/game/decision-options")
+
+    assert response.status_code == 404
+    assert response.json()["type"] == "no_active_session"
+
+
+def test_decision_options_reports_the_real_engine_constants(client: TestClient) -> None:
+    """Bounds and costs must be the engine's own numbers -- never invented ones."""
+    _new_game(client)
+
+    body = client.get("/api/game/decision-options").json()
+
+    assert body["revision"] == "0.0"
+    assert body["tax_rate_bps_minimum"] == 0
+    assert body["tax_rate_bps_maximum"] == 10_000
+    assert body["relationship_investment_minimum"] == 1
+    assert body["relationship_investment_maximum"] == 200
+    assert body["decree_legislative_capital_cost"] == 250
+    assert body["decree_amendment_capital_cost"] == 400
+
+
+@pytest.mark.parametrize(
+    ("scenario_id", "expected"),
+    [("decree_state", True), ("deficit_demo", False), ("tiny_valid", False)],
+)
+def test_decree_availability_reflects_the_real_constitution(
+    client: TestClient, scenario_id: str, expected: bool
+) -> None:
+    _new_game(client, scenario_id)
+
+    body = client.get("/api/game/decision-options").json()
+
+    assert body["decree_available"] is expected
+    axis = next(row for row in body["constitutional_axes"] if row["axis"] == "decree_authority")
+    assert axis["current_value"] in {"none", "emergency_only", "unlimited"}
+    assert (axis["current_value"] == "unlimited") is expected
+
+
+@pytest.mark.parametrize("scenario_id", ("decree_state", "deficit_demo"))
+def test_unicameral_scenarios_report_exactly_one_chamber_of_options(
+    client: TestClient, scenario_id: str
+) -> None:
+    _new_game(client, scenario_id)
+
+    body = client.get("/api/game/decision-options").json()
+
+    assert len(body["chambers"]) == 1
+    assert all(row["chamber"] == body["chambers"][0] for row in body["blocs"])
+
+
+def test_bicameral_scenario_reports_both_chambers_of_options(client: TestClient) -> None:
+    _new_game(client, "tiny_valid")
+
+    body = client.get("/api/game/decision-options").json()
+
+    assert len(body["chambers"]) == 2
+    assert {row["chamber"] for row in body["blocs"]} == set(body["chambers"])
+
+
+def test_decision_options_spending_categories_match_the_seven_real_categories(
+    client: TestClient,
+) -> None:
+    _new_game(client)
+
+    body = client.get("/api/game/decision-options").json()
+
+    assert {row["category"] for row in body["spending_categories"]} == {
+        "health",
+        "education",
+        "welfare",
+        "infrastructure",
+        "defense",
+        "security",
+        "administration",
+    }
+    for row in body["spending_categories"]:
+        assert row["current_amount"] > 0
+
+
+def test_decision_options_lists_all_five_constitutional_axes(client: TestClient) -> None:
+    _new_game(client)
+
+    body = client.get("/api/game/decision-options").json()
+
+    axes = {row["axis"] for row in body["constitutional_axes"]}
+    assert axes == {
+        "decree_authority",
+        "executive_system",
+        "executive_selection",
+        "national_election_interval_turns",
+        "executive_term_limit_terms",
+    }
+    for row in body["constitutional_axes"]:
+        if row["nullable"]:
+            assert row["allowed_values"] is None
+        else:
+            assert row["current_value"] in row["allowed_values"]
+
+
+def test_decision_options_exposes_no_raw_engine_payload(client: TestClient) -> None:
+    _new_game(client)
+
+    raw = client.get("/api/game/decision-options").text
+
+    for forbidden in ("state_json", "report_json", "entry_hash", "constitution_json"):
+        assert forbidden not in raw
+
+
+def test_decision_options_opening_capital_matches_the_dashboard(client: TestClient) -> None:
+    _new_game(client)
+
+    options = client.get("/api/game/decision-options").json()
+    dashboard = client.get("/api/game/state").json()
+
+    assert options["opening_capital"] == dashboard["political_capital"]["current"]
+
+
+# --------------------------------------------------------------------------
 # History
 # --------------------------------------------------------------------------
 

@@ -25,11 +25,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.money import format_money
-from app.simulation.constitution import DecreeAuthority
+from app.core.money import BPS_DENOMINATOR, format_money
+from app.core.politics import RELATIONSHIP_INVESTMENT_CAP
+from app.simulation.constitution import DecreeAuthority, ExecutiveSelection, ExecutiveSystem
+from app.simulation.legislative_voting import (
+    CONSTITUTIONAL_AMENDMENT_DECREE_COST,
+    DECREE_POLITICAL_CAPITAL_COST,
+)
 from app.simulation.legislature import LegislativeOutcome
 from app.simulation.report import TurnReport
-from app.simulation.state import GameState, OutcomeBucket, PoliticalState
+from app.simulation.state import GameState, OutcomeBucket, PoliticalState, SpendingCategory
 
 Tone = Literal["positive", "negative", "caution", "neutral"]
 Direction = Literal["up", "down", "unchanged"]
@@ -345,6 +350,153 @@ class HistoryDetailResponse(BaseModel):
     turn_result: TurnResultProjection = Field(serialization_alias="turnResult", alias="turnResult")
     dashboard_as_of_turn: DashboardProjection = Field(
         serialization_alias="dashboardAsOfTurn", alias="dashboardAsOfTurn"
+    )
+
+
+# --------------------------------------------------------------------------
+# Decision options -- the legal-move envelope (frozen plan Sec 4.6, Sec 10)
+# --------------------------------------------------------------------------
+
+
+class SpendingCategoryOption(BaseModel):
+    model_config = _STRICT
+
+    category: str
+    current_amount: int
+
+
+class BlocOption(BaseModel):
+    model_config = _STRICT
+
+    party_id: str
+    party_name: str
+    bloc_id: str
+    bloc_name: str
+    chamber: str
+    seats: int
+
+
+class ConstitutionalAxisOption(BaseModel):
+    model_config = _STRICT
+
+    axis: str
+    current_value: str | int | None
+    allowed_values: tuple[str, ...] | None = None
+    #: Whether submitting `null` for this axis is a legal target (an abolished
+    #: term limit or election requirement), distinct from an enum axis where
+    #: every value is one of `allowed_values` and never null.
+    nullable: bool = False
+
+
+class DecisionOptionsProjection(BaseModel):
+    """Every REAL fact and constant needed to construct a legal decision.
+
+    Nothing here is invented: the bps and capital bounds are the engine's own
+    strict types and constants (`StrictBps`, `RELATIONSHIP_INVESTMENT_CAP`,
+    `DECREE_POLITICAL_CAPITAL_COST`, `CONSTITUTIONAL_AMENDMENT_DECREE_COST`),
+    and the spending, bloc and constitutional-axis listings are read straight
+    from state. This endpoint answers "what exists to choose from" -- it never
+    scores a draft (`/preview` does that) and never decides legality on
+    submission (`/resolve`'s own validators still do, authoritatively).
+    """
+
+    model_config = _STRICT
+
+    revision: str
+    opening_capital: int
+    tax_rate_bps_minimum: int
+    tax_rate_bps_maximum: int
+    spending_categories: tuple[SpendingCategoryOption, ...]
+    relationship_investment_minimum: int
+    relationship_investment_maximum: int
+    decree_available: bool
+    decree_legislative_capital_cost: int
+    decree_amendment_capital_cost: int
+    chambers: tuple[str, ...]
+    blocs: tuple[BlocOption, ...]
+    constitutional_axes: tuple[ConstitutionalAxisOption, ...]
+
+
+def build_decision_options(state: GameState) -> DecisionOptionsProjection:
+    country = state.world.countries[state.world.player_country_id]
+    politics = country.politics
+    if politics is None:  # pragma: no cover - every shipped scenario has politics
+        raise ValueError("player country has no political state")
+    constitution = politics.constitution
+    finance = country.finance
+
+    spending_categories = (
+        ()
+        if finance is None
+        else tuple(
+            SpendingCategoryOption(
+                category=category.value, current_amount=finance.spending_plan.get(category)
+            )
+            for category in SpendingCategory
+        )
+    )
+
+    legislature = politics.legislature
+    chambers: tuple[str, ...] = ()
+    blocs: list[BlocOption] = []
+    if legislature is not None:
+        chambers = tuple(chamber.chamber.value for chamber in legislature.chambers)
+        for party in legislature.parties:
+            for bloc in party.blocs:
+                for seat_entry in bloc.seats:
+                    blocs.append(
+                        BlocOption(
+                            party_id=party.id,
+                            party_name=party.name,
+                            bloc_id=bloc.id,
+                            bloc_name=bloc.name,
+                            chamber=seat_entry.chamber.value,
+                            seats=seat_entry.seats,
+                        )
+                    )
+
+    constitutional_axes = (
+        ConstitutionalAxisOption(
+            axis="decree_authority",
+            current_value=constitution.decree_authority.value,
+            allowed_values=tuple(member.value for member in DecreeAuthority),
+        ),
+        ConstitutionalAxisOption(
+            axis="executive_system",
+            current_value=constitution.executive_system.value,
+            allowed_values=tuple(member.value for member in ExecutiveSystem),
+        ),
+        ConstitutionalAxisOption(
+            axis="executive_selection",
+            current_value=constitution.executive_selection.value,
+            allowed_values=tuple(member.value for member in ExecutiveSelection),
+        ),
+        ConstitutionalAxisOption(
+            axis="national_election_interval_turns",
+            current_value=constitution.national_election_interval_turns,
+            nullable=True,
+        ),
+        ConstitutionalAxisOption(
+            axis="executive_term_limit_terms",
+            current_value=constitution.executive_term_limit_terms,
+            nullable=True,
+        ),
+    )
+
+    return DecisionOptionsProjection(
+        revision=revision_token(state),
+        opening_capital=politics.political_capital,
+        tax_rate_bps_minimum=0,
+        tax_rate_bps_maximum=BPS_DENOMINATOR,
+        spending_categories=spending_categories,
+        relationship_investment_minimum=1,
+        relationship_investment_maximum=RELATIONSHIP_INVESTMENT_CAP,
+        decree_available=constitution.decree_authority is DecreeAuthority.UNLIMITED,
+        decree_legislative_capital_cost=DECREE_POLITICAL_CAPITAL_COST,
+        decree_amendment_capital_cost=CONSTITUTIONAL_AMENDMENT_DECREE_COST,
+        chambers=chambers,
+        blocs=tuple(blocs),
+        constitutional_axes=constitutional_axes,
     )
 
 

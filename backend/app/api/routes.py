@@ -45,6 +45,7 @@ from app.simulation.state import GameState
 from .preview import preview_decisions
 from .projections import (
     DashboardProjection,
+    DecisionOptionsProjection,
     HistoryDetailResponse,
     HistoryListEntry,
     PreviewProjection,
@@ -52,6 +53,7 @@ from .projections import (
     SaveSummary,
     ScenarioSummary,
     build_dashboard,
+    build_decision_options,
     build_turn_result,
 )
 from .save_registry import (
@@ -263,6 +265,20 @@ def get_state(request: Request) -> DashboardProjection:
     """The bare dashboard shape -- never a narrative about what changed."""
     save = _session(request).current_save
     return build_dashboard(save.current_state(), save.entries[-1].report())
+
+
+@router.get("/game/decision-options", response_model=DecisionOptionsProjection)
+def get_decision_options(request: Request) -> DecisionOptionsProjection:
+    """The legal-move envelope: what the client needs to build a decision.
+
+    Read-only, like `/game/state` -- captures `session.current_save` once and
+    never takes the mutation boundary. Every figure is a real engine constant
+    or a real state fact (frozen plan Sec 4.6, Sec 10); this endpoint decides
+    nothing about what is affordable or legal to SUBMIT -- `/preview` scores a
+    draft and `/resolve`'s own validators are still the only authority.
+    """
+    save = _session(request).current_save
+    return build_decision_options(save.current_state())
 
 
 @router.get("/game/history", response_model=list[HistoryListEntry])

@@ -17,6 +17,7 @@ from app.api.projections import (
     DashboardProjection,
     TurnResultProjection,
     build_dashboard,
+    build_decision_options,
     build_turn_result,
     format_bps_percent,
     format_signed_bps_points,
@@ -226,6 +227,49 @@ def test_revision_token_is_turn_dot_state_version() -> None:
 
 
 # --------------------------------------------------------------------------
+# Decision options -- the legal-move envelope
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS)
+def test_decision_options_builds_for_every_shipped_scenario(scenario: str) -> None:
+    state = _fresh_save(scenario).current_state()
+
+    options = build_decision_options(state)
+
+    assert options.revision == revision_token(state)
+    assert options.tax_rate_bps_minimum == 0
+    assert options.tax_rate_bps_maximum == 10_000
+    assert len(options.constitutional_axes) == 5
+    assert len(options.spending_categories) == 7
+
+
+def test_decision_options_does_not_mutate_the_state_it_reads() -> None:
+    """A pure read: the same builder call twice must be byte-identical."""
+    state = _fresh_save("decree_state.yaml").current_state()
+    before = state.model_dump_json()
+
+    first = build_decision_options(state)
+    second = build_decision_options(state)
+
+    assert state.model_dump_json() == before, "reading options must not touch state"
+    assert first.model_dump_json() == second.model_dump_json(), "repeated calls agree"
+
+
+def test_decision_options_blocs_match_the_real_legislature_seat_totals() -> None:
+    state = _fresh_save("decree_state.yaml").current_state()
+    country = state.world.countries[state.world.player_country_id]
+    politics = country.politics
+    assert politics is not None and politics.legislature is not None
+
+    options = build_decision_options(state)
+
+    for chamber in politics.legislature.chambers:
+        total = sum(row.seats for row in options.blocs if row.chamber == chamber.chamber.value)
+        assert total == chamber.total_seats
+
+
+# --------------------------------------------------------------------------
 # No raw engine models leak
 # --------------------------------------------------------------------------
 
@@ -240,6 +284,7 @@ def test_projections_expose_no_raw_engine_payloads() -> None:
     payloads = (
         build_dashboard(entry.state(), report).model_dump_json(),
         build_turn_result(entry.state(), report).model_dump_json(),
+        build_decision_options(entry.state()).model_dump_json(),
     )
 
     for payload in payloads:
