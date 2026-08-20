@@ -15,7 +15,7 @@
 
 import { useState } from "react";
 
-import { useDecisionOptions, usePreview, useResolve } from "../../api/queries";
+import { useDashboard, useDecisionOptions, usePreview, useResolve } from "../../api/queries";
 import type { PreviewProjection } from "../../api/client";
 import { ResolutionInProgressError, StaleRevisionError } from "../../api/errors";
 import { formatAmount, formatBpsPercent, formatCommitted } from "../../format/format";
@@ -76,11 +76,40 @@ function PreviewPanel({ preview }: { preview: PreviewProjection }) {
 
 export function DecisionsScreen({ navigate }: ScreenProps) {
   const { revision, setRevision } = useSession();
+  const dashboard = useDashboard(revision);
   const options = useDecisionOptions(revision);
   const preview = usePreview();
   const resolve = useResolve();
   const draft = useDraftStore();
   const [confirming, setConfirming] = useState(false);
+
+  // A concluded campaign disables Resolve proactively, before the player
+  // builds a decision that could only ever be rejected: the dashboard's own
+  // `terminal` field (the same one Dashboard/TerminalScreen read) is checked
+  // here too, ahead of the composer, rather than relying solely on the
+  // server's `game_concluded` 409 to surface after the fact.
+  if (dashboard.data?.terminal) {
+    const terminal = dashboard.data.terminal;
+    return (
+      <Panel title="The campaign has ended">
+        <p>
+          <ToneValue tone={terminal.bucket === "victory" ? "positive" : "negative"}>
+            {terminal.headline}
+          </ToneValue>
+        </p>
+        <p className="mt-2 text-sm text-parchment-200/70">
+          No further turn can be resolved. Review the outcome instead.
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate("terminal")}
+          className="mt-3 rounded border border-gold-600 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+        >
+          Go to Victory / Defeat
+        </button>
+      </Panel>
+    );
+  }
 
   if (options.isPending) {
     return <LoadingPanel label="Loading decision options…" />;
