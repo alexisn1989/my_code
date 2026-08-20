@@ -27,6 +27,7 @@ export interface ProblemBody {
 
 export class ApiError extends Error {
   readonly type: string;
+  readonly title: string;
   readonly status: number;
   readonly detail: string | null;
   readonly fields: { path: string; message: string }[];
@@ -36,6 +37,7 @@ export class ApiError extends Error {
     super(body.detail ?? body.title);
     this.name = "ApiError";
     this.type = body.type;
+    this.title = body.title;
     this.status = body.status;
     this.detail = body.detail;
     this.fields = body.fields;
