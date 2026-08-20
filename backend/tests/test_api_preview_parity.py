@@ -192,17 +192,28 @@ def test_amendment_preview_matches_real_resolution(tmp_path: Path) -> None:
     assert trace[key] == f"{row['supporting_seats']} of {row['required_seats']}"
 
 
-def test_the_299_vs_300_influence_boundary_moves_the_predicted_tally(
+def test_299_vs_300_budget_influence_is_not_a_knife_edge_on_decree_state(
     tmp_path: Path,
 ) -> None:
-    """The real knife-edge: one point of influence is the difference.
+    """This scenario/route/pair is NOT a boundary -- both sides already pass.
 
-    Preview must reproduce the boundary exactly, not approximately -- this is
-    the moment the whole feature exists to make decidable.
+    A prior closeout report described "the real 299-vs-300 seat boundary" for
+    this exact allocation. Investigated for THIS closeout: `decree_state`'s
+    own committed calibration comment documents the budget bargain's real
+    knife-edge as 282 (fails) -> 283 (passes) -- see the scenario file's
+    header. 299 and 300 both sit above that threshold, so both already carry,
+    with IDENTICAL seat counts at both points (52 of 100, against 51
+    required). The previous test here asserted only `tallies[300] >=
+    tallies[299]` -- true, but true even with zero seats moved, so it never
+    actually exercised a boundary. This test asserts the real, unglamorous
+    fact instead: no seat changes hands between 299 and 300 here. The genuine
+    knife-edge test is `test_the_real_amendment_knife_edge_on_tiny_valid`
+    below, on the route/scenario where one actually exists at a legislative
+    amendment's threshold.
     """
     tallies: dict[int, int] = {}
     for allocated in (299, 300):
-        with _make_client(tmp_path, f"boundary-{allocated}") as client:
+        with _make_client(tmp_path, f"budget-{allocated}") as client:
             revision = _new(client, "decree_state")
             body = _preview(
                 client,
@@ -220,32 +231,87 @@ def test_the_299_vs_300_influence_boundary_moves_the_predicted_tally(
                 ],
             ).json()
             tallies[allocated] = body["chambers"][0]["supporting_seats"]
+            assert body["chambers"][0]["carries"] is True, "both 299 and 300 already carry"
             assert body["committed_capital"] == allocated
 
-    assert tallies[300] >= tallies[299], "more influence never buys fewer seats"
+    assert tallies[299] == tallies[300] == 52, (
+        "299 and 300 are identical here -- 52 of 100 seats, both above the real "
+        "283-seat budget threshold this scenario documents"
+    )
 
-    # And the real resolver agrees at both points.
-    for allocated, expected in tallies.items():
-        with _make_client(tmp_path, f"real-{allocated}") as client:
-            revision = _new(client, "decree_state")
-            resolved = _resolve(
-                client,
-                revision,
-                [
-                    _budget(
-                        influence=[
-                            {
-                                "party_id": "opposition_party",
-                                "bloc_id": "main",
-                                "political_capital": allocated,
-                            }
-                        ]
-                    )
-                ],
-            )
-            trace = _chamber_tallies_from_trace(resolved.json()["turnResult"])
-            name = client.get("/api/game/history/1").json()["turnResult"]["trace"][0]["label"]
-            assert trace[name] == str(expected)
+
+def test_the_real_amendment_knife_edge_on_tiny_valid(tmp_path: Path) -> None:
+    """The real, verified, pinned knife-edge -- found this closeout by binary
+    search against the live preview endpoint, never by editing the scenario.
+
+    `decree_state`'s legislative amendment route has NO reachable knife-edge
+    at all: with the opposition bloc's influence taken to unbounded (and
+    unaffordable) amounts, `supporting_seats` saturates at 56 of the 100
+    required 67 -- discipline_bps=8000 caps how far capital alone can move
+    that bloc, so a supermajority amendment can never pass there by
+    legislative vote (only by decree, a separate, unconditional route).
+
+    `tiny_valid` (bicameral: 100-seat lower needing 67, 60-seat upper needing
+    40) DOES have a reachable one. Fixing `national_front/conservatives` at
+    300 (its own saturation point, where the lower chamber alone already
+    carries at 67 of 67) and varying `national_front/populists` alone finds
+    the exact seat where the UPPER chamber -- the one still short -- flips:
+    166 fails (39 of 40), 167 passes (40 of 40). Both allocations are
+    affordable (466/467 of a 500 opening capital, no extra turns needed).
+    """
+    failing_populist_capital = 166
+    passing_populist_capital = 167
+    conservative_capital = 300
+
+    def _amendment(populist_capital: int) -> dict[str, Any]:
+        return {
+            "kind": "constitutional_amendment",
+            "targets": [{"axis": "decree_authority", "value": "none"}],
+            "route": "legislative",
+            "influence": [
+                {
+                    "party_id": "national_front",
+                    "bloc_id": "conservatives",
+                    "political_capital": conservative_capital,
+                },
+                {
+                    "party_id": "national_front",
+                    "bloc_id": "populists",
+                    "political_capital": populist_capital,
+                },
+            ],
+        }
+
+    expectations = {
+        failing_populist_capital: (False, 39, 40),
+        passing_populist_capital: (True, 40, 40),
+    }
+
+    for populist_capital, (would_pass, upper_supporting, upper_required) in expectations.items():
+        # Preview.
+        with _make_client(tmp_path, f"amend-preview-{populist_capital}") as client:
+            revision = _new(client, BICAMERAL)
+            body = _preview(client, revision, [_amendment(populist_capital)]).json()
+        assert body["would_pass"] is would_pass
+        by_chamber = {row["chamber"]: row for row in body["chambers"]}
+        assert by_chamber["lower"]["carries"] is True, "lower already carries at conservatives=300"
+        assert by_chamber["lower"]["supporting_seats"] == 67
+        assert by_chamber["upper"]["supporting_seats"] == upper_supporting
+        assert by_chamber["upper"]["required_seats"] == upper_required
+        assert by_chamber["upper"]["carries"] is would_pass
+
+        # The real resolver agrees, at the same knife-edge.
+        with _make_client(tmp_path, f"amend-resolve-{populist_capital}") as client:
+            revision = _new(client, BICAMERAL)
+            resolved = _resolve(client, revision, [_amendment(populist_capital)])
+        assert resolved.status_code == 200, resolved.text
+        turn_result = resolved.json()["turnResult"]
+        trace = _chamber_tallies_from_trace(turn_result)
+        assert (
+            trace["Amendment upper: supporting of required"]
+            == f"{upper_supporting} of {upper_required}"
+        )
+        assert ("passed" in turn_result["outcome_headline"].lower()) is would_pass
 
 
 def test_affordability_totals_match_the_engines_own_three_components(
