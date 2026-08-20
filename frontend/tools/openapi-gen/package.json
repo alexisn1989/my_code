@@ -1,0 +1,10 @@
+{
+  "name": "mandate-openapi-gen",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Isolated toolchain for regenerating src/api/schema.d.ts from docs/contracts/phase4a-openapi.json via openapi-typescript. Kept in its own node_modules, separate from the main frontend package, because openapi-typescript depends on the legacy TypeScript Compiler API (`ts.factory`) that this repo's typescript@7 (the native/Go-ported compiler) no longer exports -- only this directory's typescript@5 is used by openapi-typescript; the rest of the frontend (tsc/vite/build/typecheck) is unaffected and stays on typescript@7.",
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3"
+  }
+}

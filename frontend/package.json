@@ -3,14 +3,17 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "MANDATE political strategy game — frontend. Config-only scaffold as of Phase 0/1; no gameplay UI exists yet (see docs/roadmap.md, Phase 5).",
+  "description": "MANDATE political strategy game \u2014 frontend. Config-only scaffold as of Phase 0/1; no gameplay UI exists yet (see docs/roadmap.md, Phase 5).",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "generate:api:schema": "cd ../backend && uv run python scripts/dump_openapi.py > ../docs/contracts/phase4a-openapi.json",
+    "generate:api:types": "cd tools/openapi-gen && npx openapi-typescript ../../../docs/contracts/phase4a-openapi.json -o ../../src/api/schema.d.ts",
+    "generate:api": "npm run generate:api:schema && npm run generate:api:types"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
