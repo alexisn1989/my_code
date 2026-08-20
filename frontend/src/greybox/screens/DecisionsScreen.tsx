@@ -16,7 +16,7 @@
 import { useState } from "react";
 
 import { useDashboard, useDecisionOptions, usePreview, useResolve } from "../../api/queries";
-import type { PreviewProjection } from "../../api/client";
+import type { DecisionOptionsProjection, PreviewProjection } from "../../api/client";
 import { ResolutionInProgressError, StaleRevisionError } from "../../api/errors";
 import { formatAmount, formatBpsPercent, formatCommitted } from "../../format/format";
 import { buildDecisions } from "../../state/buildDecisionSet";
@@ -26,6 +26,52 @@ import { ErrorPanel } from "../../status/ErrorPanel";
 import { LoadingPanel } from "../../status/StatusPanels";
 import { DataTable, EmptyNote, Panel, ToneValue } from "../components";
 import type { ScreenProps } from "../registry";
+
+type BlocOption = DecisionOptionsProjection["blocs"][number];
+
+interface BlocActor {
+  party_id: string;
+  bloc_id: string;
+  bloc_name: string;
+  /** One entry per chamber this bloc holds seats in -- kept as separate
+   * already-server-provided seat counts, never summed (the format boundary
+   * forbids client-side chamber summing; two numbers shown side by side is
+   * not the same claim as one number computed from them). */
+  chambers: { chamber: string; seats: number }[];
+}
+
+/**
+ * The server lists one `BlocOption` row PER CHAMBER a bloc holds seats in
+ * (`build_decision_options` in `backend/app/api/projections.py`), but
+ * `InfluenceAllocation`/investment both target a bloc globally by
+ * `(party_id, bloc_id)` alone -- the same actor's lower- and upper-chamber
+ * rows are the SAME target, not two. Rendering one editable input per raw
+ * row would bind two table rows to the same underlying value (confusing,
+ * and a duplicate React key besides); this groups the raw rows back into
+ * one actor per unique `(party_id, bloc_id)` before any input is built.
+ */
+function groupBlocsByActor(blocs: readonly BlocOption[]): BlocActor[] {
+  const byKey = new Map<string, BlocActor>();
+  for (const bloc of blocs) {
+    const key = `${bloc.party_id}/${bloc.bloc_id}`;
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.chambers.push({ chamber: bloc.chamber, seats: bloc.seats });
+    } else {
+      byKey.set(key, {
+        party_id: bloc.party_id,
+        bloc_id: bloc.bloc_id,
+        bloc_name: bloc.bloc_name,
+        chambers: [{ chamber: bloc.chamber, seats: bloc.seats }],
+      });
+    }
+  }
+  return [...byKey.values()];
+}
+
+function chamberSeatsText(chambers: { chamber: string; seats: number }[]): string {
+  return chambers.map((entry) => `${entry.chamber} ${formatAmount(entry.seats)}`).join(" · ");
+}
 
 function PreviewPanel({ preview }: { preview: PreviewProjection }) {
   return (
@@ -316,15 +362,14 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         ) : (
           <DataTable
             caption="Blocs available for relationship investment"
-            columns={["Bloc", "Chamber", "Seats", "Investment"]}
-            rows={data.blocs.map((bloc) => {
-              const key = `${bloc.party_id}/${bloc.bloc_id}`;
+            columns={["Bloc", "Seats by chamber", "Investment"]}
+            rows={groupBlocsByActor(data.blocs).map((actor) => {
+              const key = `${actor.party_id}/${actor.bloc_id}`;
               return {
                 key,
                 cells: [
-                  bloc.bloc_name,
-                  bloc.chamber,
-                  bloc.seats,
+                  actor.bloc_name,
+                  chamberSeatsText(actor.chambers),
                   <input
                     key="inv"
                     type="number"
@@ -333,8 +378,8 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
                     value={draft.investments[key] ?? ""}
                     onChange={(event) =>
                       draft.setInvestment(
-                        bloc.party_id,
-                        bloc.bloc_id,
+                        actor.party_id,
+                        actor.bloc_id,
                         event.target.value === "" ? undefined : Number(event.target.value),
                       )
                     }
@@ -424,7 +469,7 @@ function RouteAndInfluence({
   decreeAvailable: boolean;
   decreeCost: number;
   onRoute: (route: "legislative" | "decree") => void;
-  blocs: { party_id: string; bloc_id: string; bloc_name: string; chamber: string; seats: number }[];
+  blocs: readonly BlocOption[];
   influence: Record<string, number>;
   onInfluence: (partyId: string, blocId: string, politicalCapital: number | undefined) => void;
 }) {
@@ -457,14 +502,14 @@ function RouteAndInfluence({
           <p className="mb-1 text-sm text-parchment-200/70">Influence (whip a bloc's vote):</p>
           <DataTable
             caption="Influence allocations"
-            columns={["Bloc", "Chamber", "Capital"]}
-            rows={blocs.map((bloc) => {
-              const key = `${bloc.party_id}/${bloc.bloc_id}`;
+            columns={["Bloc", "Seats by chamber", "Capital"]}
+            rows={groupBlocsByActor(blocs).map((actor) => {
+              const key = `${actor.party_id}/${actor.bloc_id}`;
               return {
                 key,
                 cells: [
-                  bloc.bloc_name,
-                  bloc.chamber,
+                  actor.bloc_name,
+                  chamberSeatsText(actor.chambers),
                   <input
                     key="inf"
                     type="number"
@@ -472,8 +517,8 @@ function RouteAndInfluence({
                     value={influence[key] ?? ""}
                     onChange={(event) =>
                       onInfluence(
-                        bloc.party_id,
-                        bloc.bloc_id,
+                        actor.party_id,
+                        actor.bloc_id,
                         event.target.value === "" ? undefined : Number(event.target.value),
                       )
                     }
