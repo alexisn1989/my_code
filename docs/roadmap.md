@@ -716,6 +716,32 @@ so each lands as its own reviewable change rather than riding along inside an un
 | `HIST-1` | An unreachable duplicate `return` in `history.py`. **Closed** — its removal was forced during Phase 3B1 when `_validate_entry_payload`'s return type changed from a 3-tuple to a 4-tuple. | closed |
 | `TEST-1` | `test_legislative_neutrality.py`'s float/true-division/`random`/clock AST determinism scans cover `relationships.py` and (as of Phase 3B2B) `political_memory.py` only, even though `NEUTRAL_MODULES` names `apportionment.py`/`legislative_voting.py` too — a real, pre-existing gap in a determinism guard, noticed but deliberately not fixed during Phase 3B2B (generalizing the scan was rejected as an undiscussed bundled fix; see `docs/adr/0012-...md`) or during Phase 3C (same reasoning; see `docs/adr/0013-...md`). | open |
 
+## Phase 4A — Graphical vertical slice (resequencing note)
+
+**Inserted ahead of Phase 4/5 as approved, not a replacement for either.** The frozen plan is
+[`docs/plans/phase-4a-graphical-vertical-slice-implementation-plan.md`](plans/phase-4a-graphical-vertical-slice-implementation-plan.md)
+(architecture rationale in
+[`docs/adr/0014-graphical-vertical-slice-architecture.md`](adr/0014-graphical-vertical-slice-architecture.md)).
+Its API layer (`app/api/`) is deliberately **local and file-backed**, not the Postgres-backed
+service Phase 4 below still describes — it depends on a separate minimal `gui` extra
+(`fastapi`, `uvicorn` only) and never touches SQLAlchemy, Alembic, or the `docker-compose.yml`
+Postgres service. Gates 4A2-4A4 build the actual playable frontend against it, which is much of
+what Phase 5 below describes; Phase 4 (a real database) and any remaining Phase 5 scope this slice
+does not cover are revisited afterward, sequenced from wherever this slice actually lands rather
+than assumed in advance.
+
+- **Gate 4A0 — Plan freeze, UX architecture, greybox, API contract — complete.** The frozen plan,
+  ADR 0014, and an unstyled, fixture-driven React greybox of every screen (no API calls).
+- **Gate 4A1 — Engine-facing application/API layer — complete.** All eleven contract endpoints
+  (scenario listing; new/load/save-as; dashboard; the decision-options legal-move envelope;
+  preview; resolve; history list/detail; save listing), each tested end to end in
+  `backend/tests/test_api_*.py`. See `docs/architecture.md`'s "The local game API" section for the
+  eight-module breakdown, and the frozen plan Sec 4.6 for the endpoint contract itself. Not yet
+  wired to any UI.
+- **Gate 4A2 — Application shell, scenario start/load, national dashboard — not started.**
+- **Gate 4A3 — Decision workspace and turn resolution — not started.**
+- **Gate 4A4 — Results, explanations, history, terminal screens — not started.**
+
 ## Phase 4 — Persistence and API
 
 Scope: §29 (persistence), §30 (API design), §31 (security/integrity, non-auth items).

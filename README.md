@@ -20,7 +20,8 @@ every decision.
   [`docs/adr/0010-legislature-parties-and-political-capital-bargaining.md`](docs/adr/0010-legislature-parties-and-political-capital-bargaining.md),
   [`docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md`](docs/adr/0011-competing-political-capital-uses-and-bloc-relationships.md),
   [`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`](docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md),
-  [`docs/adr/0013-government-survival.md`](docs/adr/0013-government-survival.md)
+  [`docs/adr/0013-government-survival.md`](docs/adr/0013-government-survival.md),
+  [`docs/adr/0014-graphical-vertical-slice-architecture.md`](docs/adr/0014-graphical-vertical-slice-architecture.md)
 - **Economy formulas:** [`docs/economy_methodology.md`](docs/economy_methodology.md)
 
 ## Current status
@@ -84,7 +85,20 @@ production, or extraction. Revenue, spending, interest, and
 debt resolve deterministically and reconcile exactly every turn, with a self-validating report
 chain proving labor allocation, resource extraction, production, tax-base derivation, finance, and
 politics agree with each other, not just internally. All of it is wrapped in the same hash-chained,
-immutable history from Phase 1. There is no API and no database yet; no characters, cabinet
+immutable history from Phase 1.
+
+**Phase 4A Gate 4A1 (local game API) is also complete.** `app/api/` is a thin, local, loopback-only
+HTTP layer over this same frozen engine — one process-wide session, a UUID-identified save store, a
+two-layer mutation boundary shared by every state-changing endpoint, and a deterministic
+`/game/preview` that scores a drafted proposal without touching an RNG stream or the mutation lock.
+It is **not** the Phase 4 database-backed service: it depends on a separate minimal `gui` extra
+(`fastapi`, `uvicorn` only), never SQLAlchemy or Postgres. `mandate-gui` starts it; see
+`docs/architecture.md`'s "The local game API" section and
+`docs/plans/phase-4a-graphical-vertical-slice-implementation-plan.md` for the full contract. The
+React frontend is **not yet wired to it** — that is Gate 4A2 — so today this API has no UI, and the
+Phase 4 relational database described below remains unbuilt.
+
+Still missing everywhere: no characters, cabinet
 ministers, or named-actor layer (every removal reason describes the office, never a person); no
 emergency system (`decree_authority: emergency_only` remains unreachable) or courts/judicial
 review; no seat realignment, defections, confidence votes, or coalition collapse; no AI-country
@@ -97,8 +111,8 @@ isn't.
 ## Repository layout
 
 ```
-backend/    Python simulation engine, history/save layer, CLI, (Phase 4+) FastAPI app
-frontend/   React/TypeScript/Vite app — verified shell, no gameplay screens yet
+backend/    Python simulation engine, history/save layer, CLI, and the local `app/api` game API
+frontend/   React/TypeScript/Vite app — verified shell, no gameplay screens yet, not API-wired
 data/       Data-driven content: scenarios (YAML), later events/map
 docs/       Product spec, architecture, roadmap, ADRs
 ```
@@ -112,7 +126,7 @@ cd backend
 uv sync --group dev              # installs pinned, locked dependencies
 uv run ruff format --check .     # formatting
 uv run ruff check .              # lint
-uv run mypy                      # strict type-check (app/core, app/simulation, app/content, app/saves)
+uv run mypy                      # strict type-check (app/core, app/simulation, app/content, app/saves, app/api)
 uv run pytest -v                 # full test suite
 ```
 
@@ -381,11 +395,32 @@ used the opening deviation, and that a report's claimed proposal and legislature
 bugs this phase's own calibration work found and fixed, and the complete calibration record:
 [`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`](docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md).
 
+## Local game API (Gate 4A1)
+
+`app/api/` is a local, loopback-only HTTP layer over the same frozen engine the CLI drives — one
+process-wide session, UUID-identified saves, a shared mutation boundary across every state-changing
+endpoint, and a deterministic `/game/preview`. It depends on a separate `gui` extra so installing it
+never pulls in the database stack below:
+
+```bash
+cd backend
+uv sync --group dev --extra gui   # adds fastapi + uvicorn only, not sqlalchemy/psycopg
+uv run mandate-gui                # serves on http://127.0.0.1:8420 by default
+uv run mandate-gui --help         # --port, --save-root, --scenario-root, --dev-origin, --frontend-dist
+```
+
+`mandate-gui` binds loopback, refuses more than one worker, and fails clearly (naming the exact fix)
+on a port collision or a missing `frontend/dist` build — build the frontend first with
+`cd frontend && npm ci && npm run build`. Full contract and design rationale:
+[`docs/plans/phase-4a-graphical-vertical-slice-implementation-plan.md`](docs/plans/phase-4a-graphical-vertical-slice-implementation-plan.md)
+and [`docs/adr/0014-graphical-vertical-slice-architecture.md`](docs/adr/0014-graphical-vertical-slice-architecture.md).
+The React frontend below is **not yet wired to it** (Gate 4A2).
+
 ## Frontend
 
 `frontend/` is a verified but intentionally empty shell (React 19 + TypeScript + Vite + Tailwind v4
-+ Vitest) — one placeholder page, one render smoke test. Real gameplay screens start at Phase 5
-once there is a backend API to talk to.
++ Vitest) — one placeholder page, one render smoke test, plus a static (not yet API-wired) Phase 4A
+greybox behind its own routes. Real gameplay screens wired to the local API above start at Gate 4A2.
 
 ```bash
 cd frontend

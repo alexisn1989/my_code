@@ -594,14 +594,66 @@ naming exactly which one is unsupported, rather than one generic "incompatible s
 `docs/adr/0002-snapshot-history-and-versioning.md` for the compatibility policy and why the Phase-0
 save format is rejected outright rather than migrated.
 
+## The local game API (Gate 4A1)
+
+Phase 4A adds `app/api/` — a thin, local HTTP layer over the frozen engine, built specifically to
+drive the graphical vertical slice (`docs/plans/phase-4a-graphical-vertical-slice-implementation-plan.md`,
+`docs/adr/0014-graphical-vertical-slice-architecture.md`). It is **not** the Phase 4 database-backed
+service described below — that remains unbuilt — and depends on a separate, minimal `gui` extra
+(`fastapi`, `uvicorn[standard]` only) so pulling it in never drags in SQLAlchemy, Alembic, or
+Postgres. The existing DB-bearing `api` extra is untouched.
+
+Eight modules, each with one job:
+
+- **`routes.py`** — the HTTP verbs themselves: validate input, call the engine or a projection
+  builder, return a projection. No simulation logic lives here; anything that decides what is true
+  in the game happens inside `app.simulation`.
+- **`session.py`** — the one process-wide `GameSession` (one active `GameSave`, one save id) and
+  its `MutationBoundary`: a synchronous admission flag (atomic test-and-set, no `await` between)
+  guarding a real `asyncio.Lock`. `/game/new`, `/game/load`, `/game/save-as` and `/game/resolve`
+  all take the same boundary — not `/resolve` alone — because a load or new-game racing resolution
+  could otherwise replace `session.current_save` mid-persistence. A competing mutation is refused
+  immediately (`409 resolution_in_progress`), never queued; read-only views and `/game/preview`
+  stay outside the boundary but each capture `session.current_save` exactly once, so a concurrent
+  resolve can never hand them a mixture of pre- and post-mutation state.
+- **`save_registry.py`** — save identity is a server-issued UUID4, never a client-supplied path.
+  `validate_save_id` rejects anything not shaped like a UUID *before* any `Path` is constructed;
+  `index.json` is reconstructible convenience metadata, and the save files themselves stay the sole
+  authority.
+- **`projections.py`** — every response shape the API returns, and the one place that builds
+  them. `TurnResultProjection` has exactly one constructor, `build_turn_result`, called identically
+  by live resolution and historical detail so the two views cannot drift apart. Nothing here is a
+  raw engine model; nothing invents a number the engine's own state or a stored report does not
+  already contain.
+- **`preview.py`** — `POST /game/preview` scores a drafted proposal by composing the engine's own
+  primitives in the same order `phases.py` does (never a second implementation of the vote math),
+  consumes no RNG stream, and works from one captured immutable state — an estimate, explicitly
+  marked as excluding the seeded channels (election swing, coup, unrest, impeachment) that are the
+  game's genuine uncertainty.
+- **`security.py`** — `LocalSecurityMiddleware` enforces a port-derived `Host`/`Origin` allow-list
+  and JSON-only mutations on every request. No CORS header is ever added: this is a same-origin,
+  loopback-only desktop interface, not a service with a trusted network to exempt.
+- **`errors.py`** — every engine exception maps to one problem-JSON shape (`type`, `title`,
+  `status`, `detail`, `fields`, `extra`); a catch-all handler keeps an unexpected failure
+  structured, with no traceback or filesystem path ever reaching the response body.
+- **`main.py`** — the application factory and the `mandate-gui` console command. Binds loopback by
+  default, refuses to run more than one Uvicorn worker (a second worker would mean a second,
+  divergent `GameSession`), detects a port collision or a missing frontend build before Uvicorn
+  starts, and serves the Gate 4A0 static build behind `/api/*` — not yet wired to it; that is Gate
+  4A2.
+
+All eleven endpoints from the frozen contract (§4.6) exist and are tested end to end in
+`backend/tests/test_api_*.py`: scenario listing, new/load/save-as, the dashboard, the
+decision-options legal-move envelope, preview, resolve, history list/detail, and save listing.
+
 ## Why not more, yet
 
-FastAPI, SQLAlchemy, and Alembic are intentionally not exercised yet. The brief's phase discipline
-(§38, §39) treats "playable and understandable game loop" and "deterministic, correct simulation"
-as higher priority than API surface or UI, and explicitly warns against generating a large amount
-of unverified code in one pass. `app/api`, `app/db`, `app/models`, `app/schemas`, `app/services`
-are documented here as the target shape (git does not track empty directories, so they are not
-created on disk until Phase 4 gives them contents).
+SQLAlchemy and Alembic are intentionally not exercised yet — Gate 4A1's `gui` extra deliberately
+excludes them. The brief's phase discipline (§38, §39) treats "playable and understandable game
+loop" and "deterministic, correct simulation" as higher priority than a database-backed service,
+and explicitly warns against generating a large amount of unverified code in one pass. `app/db`,
+`app/models`, `app/schemas`, `app/services` are documented here as the target shape (git does not
+track empty directories, so they are not created on disk until Phase 4 gives them contents).
 
 The frontend toolchain *is* now installed and verified (`npm ci`, `tsc --noEmit`, `vite build`,
 `vitest run` all pass in CI) — see `README.md` for the commands — but it remains a placeholder
