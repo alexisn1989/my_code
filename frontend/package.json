@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "MANDATE political strategy game \u2014 frontend. Config-only scaffold as of Phase 0/1; no gameplay UI exists yet (see docs/roadmap.md, Phase 5).",
+  "description": "MANDATE political strategy game \u2014 frontend. As of Phase 4A Gate 4A2 this is a playable vertical slice against the local game API (see docs/roadmap.md, Phase 4A).",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -11,6 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "_comment:postinstall": "tools/openapi-gen holds an isolated typescript@5 (see its package.json for why). node_modules/ is gitignored, so a clean checkout has no TS5 unless this runs -- and BOTH `generate:api:types` AND src/format/format-boundary.test.ts import from it. Without this, `npm ci && npm test` fails from a fresh clone and in CI.",
+    "postinstall": "cd tools/openapi-gen && npm ci",
     "generate:api:schema": "cd ../backend && uv run python scripts/dump_openapi.py > ../docs/contracts/phase4a-openapi.json",
     "generate:api:types": "cd tools/openapi-gen && npx openapi-typescript ../../../docs/contracts/phase4a-openapi.json -o ../../src/api/schema.d.ts",
     "generate:api": "npm run generate:api:schema && npm run generate:api:types"
