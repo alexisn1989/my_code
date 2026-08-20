@@ -32,7 +32,7 @@ def _make_client(tmp_path: Path, name: str = "saves") -> TestClient:
     app = create_app(
         ApiSettings(save_root=tmp_path / name, scenario_root=SCENARIO_DIR, serve_spa=False)
     )
-    return TestClient(app)
+    return TestClient(app, base_url="http://127.0.0.1:8420")
 
 
 @pytest.fixture

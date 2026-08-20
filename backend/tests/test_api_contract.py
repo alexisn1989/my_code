@@ -30,7 +30,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     app = create_app(
         ApiSettings(save_root=tmp_path / "saves", scenario_root=SCENARIO_DIR, serve_spa=False)
     )
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url="http://127.0.0.1:8420") as test_client:
         yield test_client
 
 

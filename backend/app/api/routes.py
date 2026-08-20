@@ -4,8 +4,19 @@ Every handler does the same three things: validate its input, call the engine or
 a projection builder, and return a projection. Anything that decides what is
 true in the game happens inside `app.simulation`.
 
-Gate 4A1 commit 4 covers the read-only and lifecycle operations. `/preview` and
-`/resolve` arrive in this gate's later commits and are registered there.
+**One mutation boundary guards the whole authoritative session, not just
+`/resolve`.** `/game/new`, `/game/load`, `/game/save-as` and `/game/resolve` each
+open `session.boundary.admit(...)` before touching `session.current_save` or the
+save root, because any of the four can replace the active save or mutate
+persisted save data. Without a shared boundary, a `/load` racing `/resolve`
+could swap `session.current_save` between resolve's persist and its own swap,
+silently discarding whichever write lost the race. `/preview` is the one
+mutating-shaped request that deliberately stays OUTSIDE the boundary -- it never
+writes anything, so admission would only block an unrelated resolve for no
+reason -- but it still captures `session.current_save` exactly once, matching
+the same one-complete-revision discipline the boundary enforces for everyone
+else. See `test_api_concurrency.py` for the real-overlap proof across every
+operation pair.
 """
 
 from __future__ import annotations
@@ -171,6 +182,7 @@ async def create_game(request: Request, body: NewGameRequest) -> DashboardProjec
     """
     session = _session(request)
     async with session.boundary.admit("new game"):
+        await session.wait_at_barrier()
         state = load_scenario_file(_scenario_path(_scenario_root(request), body.scenario_id))
         if body.seed is not None:
             # Exactly what the CLI does for `--seed`, so a GUI campaign and a CLI
@@ -194,6 +206,7 @@ async def load_game(request: Request, body: LoadRequest) -> DashboardProjection:
     """
     session = _session(request)
     async with session.boundary.admit("load"):
+        await session.wait_at_barrier()
         save_id = validate_save_id(body.save_id)
         save = session.repository.read_save(save_id)
         problems = validate_history(save)
