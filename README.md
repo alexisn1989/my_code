@@ -94,9 +94,18 @@ two-layer mutation boundary shared by every state-changing endpoint, and a deter
 It is **not** the Phase 4 database-backed service: it depends on a separate minimal `gui` extra
 (`fastapi`, `uvicorn` only), never SQLAlchemy or Postgres. `mandate-gui` starts it; see
 `docs/architecture.md`'s "The local game API" section and
-`docs/plans/phase-4a-graphical-vertical-slice-implementation-plan.md` for the full contract. The
-React frontend is **not yet wired to it** — that is Gate 4A2 — so today this API has no UI, and the
-Phase 4 relational database described below remains unbuilt.
+`docs/plans/phase-4a-graphical-vertical-slice-implementation-plan.md` for the full contract.
+
+**Phase 4A Gate 4A2 (typed React integration and playable vertical slice) is also complete.** The
+React frontend is now wired to this API for real: a typed client generated from the API's own
+OpenAPI schema (`frontend/src/api/schema.d.ts`, never hand-edited), React Query owning every piece
+of authoritative server state, and Zustand owning only the decision draft and UI preferences. New
+game, load, the national dashboard, the decision composer and preview, resolve, the shared turn
+result view, history, and terminal outcomes are all live against this API; five screens
+(Government, Economy, Legislature, Constitution, Relationships) remain an honest "not available in
+this gate" placeholder, since the dashboard projection only carries five summary concern cards, not
+the per-institution detail those screens were mocked up against. `docs/roadmap.md`'s Phase 4A
+section has the full breakdown. The Phase 4 relational database described below remains unbuilt.
 
 Still missing everywhere: no characters, cabinet
 ministers, or named-actor layer (every removal reason describes the office, never a person); no
@@ -414,21 +423,32 @@ on a port collision or a missing `frontend/dist` build — build the frontend fi
 `cd frontend && npm ci && npm run build`. Full contract and design rationale:
 [`docs/plans/phase-4a-graphical-vertical-slice-implementation-plan.md`](docs/plans/phase-4a-graphical-vertical-slice-implementation-plan.md)
 and [`docs/adr/0014-graphical-vertical-slice-architecture.md`](docs/adr/0014-graphical-vertical-slice-architecture.md).
-The React frontend below is **not yet wired to it** (Gate 4A2).
+The React frontend below is wired to it for real as of Gate 4A2.
 
-## Frontend
+## Frontend (Gate 4A2)
 
-`frontend/` is a verified but intentionally empty shell (React 19 + TypeScript + Vite + Tailwind v4
-+ Vitest) — one placeholder page, one render smoke test, plus a static (not yet API-wired) Phase 4A
-greybox behind its own routes. Real gameplay screens wired to the local API above start at Gate 4A2.
+`frontend/` (React 19 + TypeScript + Vite + Tailwind v4 + Vitest) is a playable vertical slice
+against the local game API above: eleven navigable screens, a typed client generated from the
+API's own OpenAPI schema (`npm run generate:api` regenerates
+`docs/contracts/phase4a-openapi.json` and `src/api/schema.d.ts` — both committed, neither hand-edited,
+drift caught by `git diff --exit-code` in CI), React Query owning every piece of authoritative
+server state, and Zustand owning only the decision draft and UI preferences. Six screens are live
+(Title, Dashboard, Decisions, Turn Result, History, Terminal); five (Government, Economy,
+Legislature, Constitution, Relationships) are an honest "not available in this gate" placeholder,
+since the dashboard projection carries only five summary concern cards, not the per-institution
+detail those screens were mocked up against in Gate 4A0.
 
 ```bash
 cd frontend
 npm ci               # installs exactly what's locked in package-lock.json
+npm run generate:api  # regenerates the OpenAPI schema JSON + src/api/schema.d.ts from the backend
 npm run typecheck
 npm run build
 npm test              # noninteractive (vitest run)
 ```
+
+Play it locally: `cd backend && uv run mandate-gui` (after building the frontend above), then open
+`http://127.0.0.1:8420/`.
 
 ## Local Postgres (Phase 4+)
 

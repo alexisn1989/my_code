@@ -639,8 +639,8 @@ Eight modules, each with one job:
 - **`main.py`** — the application factory and the `mandate-gui` console command. Binds loopback by
   default, refuses to run more than one Uvicorn worker (a second worker would mean a second,
   divergent `GameSession`), detects a port collision or a missing frontend build before Uvicorn
-  starts, and serves the Gate 4A0 static build behind `/api/*` — not yet wired to it; that is Gate
-  4A2.
+  starts, and serves the built frontend behind `/api/*`. As of Gate 4A2 that frontend is wired to
+  this API for real, not the Gate 4A0 static fixture build.
 
 All eleven endpoints from the frozen contract (§4.6) exist and are tested end to end in
 `backend/tests/test_api_*.py`: scenario listing, new/load/save-as, the dashboard, the
@@ -655,11 +655,16 @@ and explicitly warns against generating a large amount of unverified code in one
 `app/models`, `app/schemas`, `app/services` are documented here as the target shape (git does not
 track empty directories, so they are not created on disk until Phase 4 gives them contents).
 
-The frontend toolchain *is* now installed and verified (`npm ci`, `tsc --noEmit`, `vite build`,
-`vitest run` all pass in CI) — see `README.md` for the commands — but it remains a placeholder
-shell with one render smoke test. No gameplay screens, API calls, routing, or state management are
-implemented; those start at Phase 5 once there is a backend API for them to talk to. Building them
-sooner would mean building UI against a save-file CLI it will never talk to in production.
+The frontend toolchain is installed and verified (`npm ci`, `tsc --noEmit`, `vite build`,
+`vitest run` all pass in CI) — see `README.md` for the commands. As of Gate 4A2 it is no longer a
+placeholder shell: eleven navigable screens (six live, five an honest "not available in this gate"
+placeholder pending real per-institution projections), a typed client generated from this API's own
+OpenAPI schema, React Query owning every piece of authoritative server state, and Zustand owning
+only the decision draft and UI preferences. See `docs/roadmap.md`'s Phase 4A section for what Gate
+4A2 covers and `frontend/src/api/schema.d.ts`'s generation command for how the contract stays in
+sync with this module. Phase 5 below, describing a from-scratch playable frontend against a
+database-backed API, is superseded by Phase 4A wherever the two describe the same screens; it still
+applies to whatever Phase 4A does not cover once Phase 4 (a real database) lands.
 
 Future domain model classes from the product spec (§8) that have no behavior yet — full
 `GovernmentState`, `MilitaryState`, `DiplomaticRelationState`, party/election models, and so on —

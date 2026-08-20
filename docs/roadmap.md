@@ -712,7 +712,7 @@ so each lands as its own reviewable change rather than riding along inside an un
 | `POL-3` | Competing political-capital expenditures within a turn, plus relationship consequences for how blocs are treated. The specific unblocker for ADR 0010's retracted opportunity-cost claim. **First half (competing expenditures + mutable, improve-only relationships) closed by Phase 3B2A. Second half (decay, automatic reactions, decree-bypass penalty) closed by Phase 3B2B.** | closed |
 | `POL-4` | A tagged expenditure-target model. `CapitalExpenditureReport` addresses a legislative bloc by `(party_id, bloc_id)` and nothing else; a future expenditure with a different target kind (character, population group, constitutional axis) needs a tagged `target` union. Deliberately not built in 3B2A, where it would be a union of one. | open |
 | `FIN-1` | Reconcile `FinanceReport` closing balances against `TreasuryState`. Deliberately **not** absorbed into 3B1: it would not have caught a gating bug, since a failed vote produces perfectly self-consistent finance numbers for the *wrong* budget — reconciliation group 16 is what catches that. | open |
-| `FE-1` | Clear the dev-only transitive `nanoid` advisory by regenerating the frontend lockfile so `postcss` resolves `nanoid >= 3.3.17`. Dev-only, transitive, fix available, not a regression (the advisory database changed). Kept separate from every gameplay phase. | open |
+| `FE-1` | Clear the dev-only transitive `nanoid` advisory by regenerating the frontend lockfile so `postcss` resolves `nanoid >= 3.3.17`. Dev-only, transitive, fix available, not a regression (the advisory database changed). **Closed incidentally during Gate 4A2**: `rm -rf node_modules package-lock.json && npm install`, done to install `openapi-typescript`'s isolated tool package, regenerated the root lockfile too and picked up the fixed `nanoid` transitively -- `npm audit` now reports 0 vulnerabilities. Not the deliberate reason for the reinstall; recorded here since it was a side effect, not requested. | closed |
 | `HIST-1` | An unreachable duplicate `return` in `history.py`. **Closed** — its removal was forced during Phase 3B1 when `_validate_entry_payload`'s return type changed from a 3-tuple to a 4-tuple. | closed |
 | `TEST-1` | `test_legislative_neutrality.py`'s float/true-division/`random`/clock AST determinism scans cover `relationships.py` and (as of Phase 3B2B) `political_memory.py` only, even though `NEUTRAL_MODULES` names `apportionment.py`/`legislative_voting.py` too — a real, pre-existing gap in a determinism guard, noticed but deliberately not fixed during Phase 3B2B (generalizing the scan was rejected as an undiscussed bundled fix; see `docs/adr/0012-...md`) or during Phase 3C (same reasoning; see `docs/adr/0013-...md`). | open |
 
@@ -738,9 +738,24 @@ than assumed in advance.
   `backend/tests/test_api_*.py`. See `docs/architecture.md`'s "The local game API" section for the
   eight-module breakdown, and the frozen plan Sec 4.6 for the endpoint contract itself. Not yet
   wired to any UI.
-- **Gate 4A2 — Application shell, scenario start/load, national dashboard — not started.**
-- **Gate 4A3 — Decision workspace and turn resolution — not started.**
-- **Gate 4A4 — Results, explanations, history, terminal screens — not started.**
+- **Gate 4A2 — typed React integration and playable vertical slice — complete.** A follow-up
+  mandate broadened Gate 4A2 to cover everything the frozen plan lists across Gates 4A2-4A4 below
+  (application shell, scenario start/load, the national dashboard, the decision workspace, turn
+  resolution, results/explanations, history, and terminal screens) as one gate, delivered as a
+  single push. `docs/contracts/phase4a-openapi.json` (generated, committed) and
+  `frontend/src/api/schema.d.ts` (generated via `openapi-typescript`, never hand-edited) replace
+  the greybox's hand-written fixture contract; React Query owns every piece of authoritative server
+  state (scenarios, dashboard, decision options, preview, resolution, history, saves); Zustand
+  owns only the decision draft and UI preferences; `frontend/src/state/buildDecisionSet.ts`
+  assembles the canonically-ordered decision payload by construction; a TypeScript-AST-based guard
+  (`frontend/src/format/format-boundary.test.ts`, reusing the `openapi-typescript` tool package's
+  own TS5 install rather than adding a dependency) structurally enforces that no arithmetic exists
+  outside `src/format/`. The frozen plan's per-gate names below (4A3, 4A4) are therefore already
+  done, folded into this one push -- they are NOT the same "Gate 4A3" the mandate itself points to
+  next (visual and functional review, then final art/polish/packaging), which has not started.
+- ~~Gate 4A3 — Decision workspace and turn resolution — not started.~~ Folded into Gate 4A2 above.
+- ~~Gate 4A4 — Results, explanations, history, terminal screens — not started.~~ Folded into Gate
+  4A2 above.
 
 ## Phase 4 — Persistence and API
 
