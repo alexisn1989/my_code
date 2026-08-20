@@ -1,20 +1,19 @@
 /**
- * Gate 4A0 greybox — THE shared turn-result component.
+ * Gate 4A2 — THE shared turn-result component, now over the REAL
+ * `TurnResultProjection`. Both the live Turn Result screen and the History
+ * detail view render this same component, over the same generated type,
+ * which is what makes `test_resolve_returns_both_shapes_and_they_agree_with_history`
+ * (backend `test_api_concurrency.py`) a guarantee about the UI too: there is
+ * no second, parallel presentation path that could drift from this one.
  *
- * This file exists once, and both the live Turn Result screen and the History
- * detail view render it. That is what "one shared result component" means in the
- * frozen plan: the two views do not have parallel presentation logic that could
- * drift apart, exactly as the API defines `TurnResultProjection` once and returns
- * the same type from `/api/game/resolve` and `/api/game/history/{turn}`.
- *
- * Three disclosure layers: outcome -> drivers -> trace. The trace layer is
- * collapsed by default and expanded on demand.
+ * Three disclosure layers: outcome -> drivers/ledger/unchanged -> trace. The
+ * trace layer is collapsed by default and expanded on demand.
  */
 
 import { useState } from "react";
 
+import type { TurnResultProjection } from "../api/client";
 import { DataTable, EmptyNote, Panel, ToneValue } from "./components";
-import type { TurnResultProjection } from "./contract";
 
 export function TurnResultView({
   result,
@@ -30,7 +29,7 @@ export function TurnResultView({
     <div data-testid="turn-result-view" data-context={context} className="flex flex-col gap-4">
       <Panel title={`Turn ${result.turn} — outcome`} headingLevel={3}>
         <p className="text-lg">
-          <ToneValue tone={result.outcomeTone}>{result.outcomeHeadline}</ToneValue>
+          <ToneValue tone={result.outcome_tone}>{result.outcome_headline}</ToneValue>
         </p>
         {context === "history" ? (
           <p className="mt-2 text-xs text-parchment-200/60">
@@ -45,9 +44,9 @@ export function TurnResultView({
         ) : (
           <ul className="flex list-disc flex-col gap-2 pl-5 text-sm">
             {result.drivers.map((driver) => (
-              <li key={driver.reasonId}>
+              <li key={driver.reason_id}>
                 {driver.label}{" "}
-                <code className="text-xs text-parchment-200/50">{driver.reasonId}</code>
+                <code className="text-xs text-parchment-200/50">{driver.reason_id}</code>
               </li>
             ))}
           </ul>
@@ -66,8 +65,8 @@ export function TurnResultView({
               cells: [
                 entry.label,
                 entry.target ?? "—",
-                entry.amountText,
-                entry.effectText ?? "—",
+                entry.amount_text,
+                entry.effect_text ?? "—",
               ],
             }))}
           />
@@ -104,12 +103,12 @@ export function TurnResultView({
                 caption="Exact values and the report fields they came from"
                 columns={["Value", "Amount", "Source field"]}
                 rows={result.trace.map((field) => ({
-                  key: field.sourceField,
+                  key: field.source_field,
                   cells: [
                     field.label,
-                    field.valueText,
+                    field.value_text,
                     <code key="src" className="text-xs text-parchment-200/50">
-                      {field.sourceField}
+                      {field.source_field}
                     </code>,
                   ],
                 }))}

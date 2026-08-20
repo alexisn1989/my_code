@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { ScreenId } from "./contract";
+import type { ScreenId } from "./types";
 import { INITIAL_SCREEN, SCREENS, screenById } from "./registry";
 
 const EXPECTED_SCREEN_IDS: ScreenId[] = [

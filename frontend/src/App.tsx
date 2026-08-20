@@ -1,11 +1,11 @@
 /**
- * Phase 4A Gate 4A0. This was an eleven-line placeholder saying no gameplay
- * screens existed; it now renders the navigable greybox.
+ * Phase 4A Gate 4A0 introduced this as an eleven-line placeholder saying no
+ * gameplay screens existed; Gate 4A2 makes it live.
  *
- * The greybox is STATIC: it renders one frozen fixture, calls no API, imports no
- * backend module, and performs no simulation arithmetic. It exists to validate
- * the planned API contract (docs/contracts/phase4a-api-contract.yaml) before any
- * of it is implemented. Gate 4A2 onward replaces the fixture with real
- * projections from the local FastAPI process.
+ * The greybox now renders real projections from the local FastAPI process via
+ * the generated contract (`src/api/schema.d.ts`) and React Query -- no
+ * fixture, no client-side simulation arithmetic outside `src/format/`. It
+ * imports no backend module directly; every value crosses the typed HTTP
+ * client in `src/api/client.ts`.
  */
 export { GreyboxApp as App } from "./greybox/GreyboxApp";

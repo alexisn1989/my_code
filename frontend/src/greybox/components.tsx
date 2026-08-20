@@ -1,18 +1,20 @@
 /**
- * Gate 4A0 greybox — shared, unstyled-by-design presentation primitives.
+ * Gate 4A2 — shared, unstyled-by-design presentation primitives.
  *
  * "Greybox" means structure without art: flat panels from the existing token
  * palette, no icons, no portraits, no animation, no final imagery. Layout and
  * semantics are the deliverable; visual polish is Gate 4A5.
  *
  * No component here performs simulation arithmetic. Where a bar has a width, it
- * scales an ALREADY-PROJECTED ratio field for visual purposes only, and never
- * changes the semantic value shown in text beside it.
+ * scales an ALREADY-PROJECTED ratio field for visual purposes only (via
+ * `../format/format.ts`, the one arithmetic boundary), and never changes the
+ * semantic value shown in text beside it.
  */
 
 import type { ReactNode } from "react";
 
-import type { Direction, Tone } from "./contract";
+import { ratioBpsToWidthPercent } from "../format/format";
+import type { Direction, Tone } from "./types";
 
 const TONE_CLASS: Record<Tone, string> = {
   positive: "text-emerald-300",
@@ -132,7 +134,7 @@ export function RatioBar({
   valueText: string;
   ratioBps: number;
 }) {
-  const widthPercent = `${ratioBps / 100}%`;
+  const widthPercent = ratioBpsToWidthPercent(ratioBps);
   return (
     <div>
       <div className="mb-1 flex justify-between text-sm">

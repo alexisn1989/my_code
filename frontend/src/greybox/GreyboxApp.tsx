@@ -1,37 +1,50 @@
 /**
- * Gate 4A0 greybox — the application shell.
+ * Gate 4A2 — the application shell, now live. Holds the current `ScreenId`
+ * and renders the persistent national header from the real dashboard query
+ * (`useDashboard`, keyed by `SessionContext`'s `revision`), the navigation
+ * list, the dismissible help note, and the persistent chrome-level glossary
+ * toggle -- all backed by `useDraftStore`'s UI-preference fields, never a
+ * second, parallel piece of state.
  *
- * Holds the current `ScreenId`, renders the persistent national header on
- * gameplay screens, the navigation list, the dismissible help note, the
- * persistent chrome-level glossary toggle, and the selected screen. Everything
- * it displays comes from one frozen fixture.
- *
- * This shell calls no API and computes no simulation value. It exists to answer
- * one question before Gate 4A1 writes any backend code: can the planned contract
- * express every screen without a client-side calculation?
- *
- * Glossary is deliberately NOT one of the `SCREENS` nav entries. The frozen
- * plan's §9 describes it as "a static reference panel, reachable from the
- * persistent chrome, not a modal that blocks the game" — so it is a toggle in
- * the top bar, always reachable regardless of which screen is selected, that
- * opens an inline, non-blocking panel without navigating away.
+ * Glossary stays chrome-level per the frozen plan's §9 (see `registry.ts`'s
+ * own docstring for the full citation): a toggle in the top bar, reachable
+ * from every screen including Title, that opens an inline, non-blocking
+ * panel without navigating away.
  */
 
 import { useState } from "react";
 
-import type { ScreenId } from "./contract";
-import { GREYBOX_FIXTURE } from "./fixture";
+import { useDashboard } from "../api/queries";
+import { useDraftStore } from "../state/draft";
+import { SessionProvider, useSession } from "../state/SessionContext";
 import { INITIAL_SCREEN, SCREENS, screenById } from "./registry";
-import { GlossaryScreen } from "./screens";
+import { GlossaryScreen } from "./screens/GlossaryScreen";
+import type { ScreenId } from "./types";
 
 function NationalHeader() {
-  const { dashboard } = GREYBOX_FIXTURE;
+  const { revision } = useSession();
+  const dashboard = useDashboard(revision);
+
+  if (!dashboard.data) {
+    return (
+      <header
+        data-testid="national-header"
+        className="border-b border-navy-800 bg-navy-900 px-6 py-3"
+      >
+        <p role="status" aria-live="polite" className="text-sm text-parchment-200/60">
+          Loading…
+        </p>
+      </header>
+    );
+  }
+
+  const data = dashboard.data;
   const concerns = [
-    dashboard.concerns.money,
-    dashboard.concerns.legitimacy,
-    dashboard.concerns.legislature,
-    dashboard.concerns.constitution,
-    dashboard.concerns.survival,
+    data.concerns.money,
+    data.concerns.legitimacy,
+    data.concerns.legislature,
+    data.concerns.constitution,
+    data.concerns.survival,
   ];
 
   return (
@@ -42,14 +55,14 @@ function NationalHeader() {
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <span className="font-[family-name:var(--font-display)] text-xl text-parchment-100">
-            {dashboard.countryName}
+            {data.country_name}
           </span>
-          <span className="ml-3 text-sm text-parchment-200/70">{dashboard.governmentForm}</span>
+          <span className="ml-3 text-sm text-parchment-200/70">{data.government_form}</span>
         </div>
         <div className="flex flex-wrap gap-4 text-sm tabular-nums">
-          <span>Turn {dashboard.turn}</span>
-          <span>Election: {dashboard.nextElectionLabel}</span>
-          <span>Capital {dashboard.politicalCapital.display}</span>
+          <span>Turn {data.turn}</span>
+          <span>Election: {data.next_election_label}</span>
+          <span>Capital {data.political_capital.display}</span>
         </div>
       </div>
       <ul className="mt-2 flex flex-wrap gap-4 text-xs text-parchment-200/80">
@@ -63,10 +76,12 @@ function NationalHeader() {
   );
 }
 
-export function GreyboxApp() {
+function GreyboxShell() {
   const [screenId, setScreenId] = useState<ScreenId>(INITIAL_SCREEN);
-  const [helpDismissed, setHelpDismissed] = useState(false);
-  const [glossaryOpen, setGlossaryOpen] = useState(false);
+  const dismissedHelp = useDraftStore((state) => state.dismissedHelp);
+  const dismissHelp = useDraftStore((state) => state.dismissHelp);
+  const glossaryOpen = useDraftStore((state) => state.glossaryOpen);
+  const setGlossaryOpen = useDraftStore((state) => state.setGlossaryOpen);
 
   const screen = screenById(screenId);
   const ScreenComponent = screen.component;
@@ -79,19 +94,13 @@ export function GreyboxApp() {
             MANDATE
           </h1>
           <p className="text-xs text-parchment-200/60">
-            Greybox — static fixture data. No turn has been resolved and no API exists yet.
+            Connected to the local MANDATE server.
           </p>
         </div>
-        {/*
-          Persistent chrome, per the frozen plan's §9: "reachable from the
-          persistent chrome, not a modal that blocks the game." This toggle is
-          present on every screen, including Title, and opens an inline panel
-          without navigating away or trapping focus.
-        */}
         <button
           type="button"
           aria-expanded={glossaryOpen}
-          onClick={() => setGlossaryOpen((open) => !open)}
+          onClick={() => setGlossaryOpen(!glossaryOpen)}
           className="shrink-0 rounded border border-navy-800 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
         >
           {glossaryOpen ? "Close glossary" : "Glossary"}
@@ -100,13 +109,13 @@ export function GreyboxApp() {
 
       {glossaryOpen ? (
         <div role="region" aria-label="Glossary" className="border-b border-navy-800 px-6 py-4">
-          <GlossaryScreen fixture={GREYBOX_FIXTURE} navigate={setScreenId} />
+          <GlossaryScreen />
         </div>
       ) : null}
 
       {screen.showsGameplayChrome ? <NationalHeader /> : null}
 
-      {helpDismissed ? null : (
+      {dismissedHelp ? null : (
         <aside
           role="note"
           aria-label="How to govern"
@@ -118,7 +127,7 @@ export function GreyboxApp() {
           </p>
           <button
             type="button"
-            onClick={() => setHelpDismissed(true)}
+            onClick={dismissHelp}
             className="mt-2 rounded border border-navy-800 px-3 py-1 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
           >
             Dismiss
@@ -145,9 +154,17 @@ export function GreyboxApp() {
         </nav>
 
         <main className="min-w-0 flex-1">
-          <ScreenComponent fixture={GREYBOX_FIXTURE} navigate={setScreenId} />
+          <ScreenComponent navigate={setScreenId} />
         </main>
       </div>
     </div>
+  );
+}
+
+export function GreyboxApp() {
+  return (
+    <SessionProvider>
+      <GreyboxShell />
+    </SessionProvider>
   );
 }

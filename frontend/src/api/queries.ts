@@ -106,6 +106,30 @@ export function useHistoryDetail(turn: number | null) {
   });
 }
 
+/** The most recent LIVE resolve's `turnResult` -- seeded into the cache by
+ * `useResolve`'s `onSuccess` below, read (never fetched) by the Turn Result
+ * screen. This is the one piece of "the result of the turn I just resolved"
+ * state that genuinely has no other query to key off of: it is not
+ * `/game/state` (that is the post-turn dashboard, a different shape) and not
+ * `/game/history/{turn}` (that is a re-fetch of a stored entry, appropriate
+ * for reviewing an OLDER turn, not for the one just produced by this exact
+ * response body -- Sec 4.10 of the frozen plan is explicit that the response
+ * from `/resolve` already contains one). */
+export function liveTurnResultQueryKey() {
+  return ["turnResult", "live"] as const;
+}
+
+export function useLiveTurnResult() {
+  return useQuery<Awaited<ReturnType<typeof api.resolve>>["turnResult"]>({
+    queryKey: liveTurnResultQueryKey(),
+    queryFn: () => {
+      throw new Error("no turn has been resolved yet");
+    },
+    enabled: false,
+    retry: false,
+  });
+}
+
 /**
  * `/game/preview` is deliberately NOT cached across drafts: every keystroke
  * that changes the draft should score the CURRENT draft, not a memoized one.
@@ -142,6 +166,7 @@ export function useResolve(): UseMutationResult<
     onSuccess: (response) => {
       const newRevision = response.dashboard.revision;
       queryClient.setQueryData(dashboardQueryKey(newRevision), response.dashboard);
+      queryClient.setQueryData(liveTurnResultQueryKey(), response.turnResult);
       queryClient.invalidateQueries({ queryKey: historyQueryKey() });
       queryClient.invalidateQueries({ queryKey: savesQueryKey() });
       queryClient.invalidateQueries({ queryKey: decisionOptionsQueryKey(newRevision) });
