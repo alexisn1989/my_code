@@ -620,6 +620,11 @@ def test_the_revision_advances_by_exactly_one_turn(client: TestClient) -> None:
 
 
 def test_resolve_returns_both_shapes_and_they_agree_with_history(client: TestClient) -> None:
+    """The live and historical envelopes are DELIBERATELY not byte-identical --
+    `dashboard` and `dashboardAsOfTurn` are different keys, by contract (Sec 4.10)
+    -- but the two projections underneath them must agree field-for-field for
+    the turn that was just resolved, because both come from the same stored
+    entry via the same builders (`build_turn_result`, `build_dashboard`)."""
     revision = _new_game(client)
 
     body = client.post("/api/game/resolve", json={"revision": revision, "decisions": []}).json()
@@ -629,6 +634,11 @@ def test_resolve_returns_both_shapes_and_they_agree_with_history(client: TestCli
     assert set(historical) == {"turnResult", "dashboardAsOfTurn"}
     # The same projection type from the same builder over the same stored report.
     assert historical["turnResult"] == body["turnResult"]
+    # Same builder, same entry, for the turn just resolved -- the live dashboard
+    # and the historical "as of this turn" dashboard must also agree.
+    assert historical["dashboardAsOfTurn"] == body["dashboard"]
+    # And the envelopes themselves are correctly NOT identical: different keys.
+    assert set(body) != set(historical)
 
 
 # --------------------------------------------------------------------------
