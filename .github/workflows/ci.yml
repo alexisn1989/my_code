@@ -75,5 +75,63 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check bundle (no dev-only raw-report viewer)
+        run: npm run check:bundle
+
       - name: Test
         run: npm test
+
+  smoke:
+    name: Full-stack smoke (contract drift + real mandate-gui)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.x"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install backend dependencies (locked)
+        working-directory: backend
+        run: uv sync --locked --group dev --extra gui
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies (locked)
+        working-directory: frontend
+        run: npm ci
+
+      # The contract-drift check: openapi-typescript regenerates both the
+      # dumped OpenAPI JSON and schema.d.ts from the REAL running app; a
+      # clean `git diff` proves the committed generated files still match
+      # what the current backend actually serves. This step is the only
+      # place in CI that runs `npm run generate:api` -- Gate 4A2's own
+      # verification block always specified it, but the workflow never
+      # actually ran it until this closeout.
+      - name: Regenerate the API contract and check for drift
+        working-directory: frontend
+        run: |
+          npm run generate:api
+          git diff --exit-code -- ../docs/contracts/phase4a-openapi.json src/api/schema.d.ts
+
+      - name: Build the frontend
+        working-directory: frontend
+        run: npm run build
+
+      # A real end-to-end smoke path through the actual `mandate-gui`
+      # process and the actual built SPA -- not a TestClient, not mocked
+      # fetches. See scripts/smoke_gui.py's own docstring for what it
+      # drives (all three scenarios, decision-options through load) and how
+      # it tears itself down (temp save-root, process terminated in
+      # `finally`, deterministic readiness polling, never a blind sleep).
+      - name: Full-stack smoke through mandate-gui
+        run: python3 scripts/smoke_gui.py
