@@ -130,6 +130,30 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   const draft = useDraftStore();
   const [confirming, setConfirming] = useState(false);
 
+  // Found while proving the two-tab stale-revision RECOVERY experience
+  // (not just the error mapping) through the actual browser UI: a
+  // `stale_revision` failure's "Refresh to the current state" action
+  // refetched decision-options, but nothing adopted the fresh `revision`
+  // it carries -- so a player who explicitly refreshed and then
+  // deliberately retried kept resubmitting the SAME stale revision and
+  // kept failing, forever. `DecisionOptionsProjection.revision` IS the
+  // server's own current revision (the same field `handlePreview`/
+  // `handleResolve` send back). Adopting it, ONLY as a direct consequence
+  // of the player's own explicit Refresh click -- never on an ordinary
+  // background/mount refetch, which would inject a needless extra
+  // fetch-and-rerender cycle into every normal visit to this screen -- is
+  // what makes Refresh an actual recovery action instead of an inert
+  // relabelling of the same failure. This also naturally refreshes the
+  // dashboard: `useDashboard` is keyed by `revision`, so adopting a new one
+  // is exactly what makes it refetch.
+  function handleRefreshAfterStaleRevision() {
+    void options.refetch().then((result) => {
+      if (result.data) {
+        setRevision(result.data.revision);
+      }
+    });
+  }
+
   // A concluded campaign disables Resolve proactively, before the player
   // builds a decision that could only ever be rejected: the dashboard's own
   // `terminal` field (the same one Dashboard/TerminalScreen read) is checked
@@ -452,7 +476,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
             <ErrorPanel
               error={resolveError}
               onRetry={isBusy ? handleResolve : undefined}
-              onRefresh={isStale ? () => options.refetch() : undefined}
+              onRefresh={isStale ? handleRefreshAfterStaleRevision : undefined}
             />
           </div>
         ) : null}

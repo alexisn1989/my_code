@@ -8,7 +8,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -110,5 +110,59 @@ describe("DashboardScreen: nullable election/survival fields", () => {
 
     await waitFor(() => expect(screen.getByText("The campaign has ended")).toBeInTheDocument());
     expect(screen.getByText("The government collapsed.")).toBeInTheDocument();
+  });
+});
+
+describe("DashboardScreen: Save As", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("calls /api/game/save-as with the entered name, and confirms success without exposing a filesystem path", async () => {
+    let saveAsBody: unknown;
+    renderDashboard(DASHBOARD_NO_TERMINAL_NO_DELTA);
+    await waitFor(() => expect(screen.getByLabelText("Save name")).toBeInTheDocument());
+
+    // renderDashboard's own mock only knows /api/game/state; override it here
+    // with the fuller one this test actually needs, now that the initial
+    // dashboard fetch has already resolved.
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/game/state")) return Promise.resolve(jsonResponse(DASHBOARD_NO_TERMINAL_NO_DELTA));
+      if (url.includes("/api/game/save-as") && init?.method === "POST") {
+        saveAsBody = JSON.parse(String(init.body));
+        return Promise.resolve(
+          jsonResponse({
+            save_id: "save-1",
+            display_name: "My Campaign",
+            scenario_id: "tiny_valid",
+            current_turn: 0,
+            loadable: true,
+          }),
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    fireEvent.change(screen.getByLabelText("Save name"), { target: { value: "My Campaign" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save As" }));
+
+    await waitFor(() => expect(screen.getByText(/Saved as/)).toBeInTheDocument());
+    expect(saveAsBody).toEqual({ display_name: "My Campaign" });
+    expect(screen.getByText(/Saved as/).textContent).not.toMatch(/\/|\\|save-1/);
+  });
+
+  it("disables Save As until a name is entered", async () => {
+    renderDashboard(DASHBOARD_NO_TERMINAL_NO_DELTA);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save As" })).toBeDisabled());
+
+    fireEvent.change(screen.getByLabelText("Save name"), { target: { value: "  " } });
+    expect(screen.getByRole("button", { name: "Save As" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Save name"), { target: { value: "Real Name" } });
+    expect(screen.getByRole("button", { name: "Save As" })).not.toBeDisabled();
   });
 });

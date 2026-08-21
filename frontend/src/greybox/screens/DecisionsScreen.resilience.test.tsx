@@ -181,4 +181,55 @@ describe("DecisionsScreen: stale_revision recovery", () => {
     // Refresh never resubmits the resolve request on the player's behalf.
     expect(resolveCallCount).toBe(1);
   });
+
+  it("adopting the refreshed revision lets a deliberate retry actually succeed, not fail forever", async () => {
+    // Simulates the real two-tab scenario: another session has already
+    // advanced the server to "rev-2" by the time this tab's stale "rev-1"
+    // resolve is rejected. Refresh's decision-options refetch returns the
+    // server's CURRENT revision ("rev-2"); a resolve carrying THAT revision
+    // must then succeed -- proving Refresh is a real recovery action, not
+    // an inert relabelling of the same permanent failure.
+    let resolveCallCount = 0;
+    const seenResolveRevisions: string[] = [];
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/game/state")) return Promise.resolve(jsonResponse(DASHBOARD));
+      if (url.includes("/api/game/decision-options")) {
+        return Promise.resolve(jsonResponse({ ...DECISION_OPTIONS, revision: "rev-2" }));
+      }
+      if (url.includes("/api/game/resolve")) {
+        resolveCallCount += 1;
+        const body = JSON.parse(String(init?.body)) as { revision: string };
+        seenResolveRevisions.push(body.revision);
+        if (body.revision === "rev-1") {
+          return Promise.resolve(problem("stale_revision", 409, { expected: "rev-2", actual: "rev-1" }));
+        }
+        return Promise.resolve(
+          jsonResponse({
+            turnResult: { turn: 4, outcome_headline: "ok", outcome_tone: "positive" },
+            dashboard: { ...DASHBOARD, revision: "rev-3", turn: 4 },
+          }),
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const { navigate } = renderScreen();
+    await waitFor(() => expect(screen.getByRole("button", { name: /resolve turn/i })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /resolve turn/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /confirm and resolve/i }));
+    await waitFor(() => expect(screen.getByText(/another session advanced the game/i)).toBeInTheDocument());
+    expect(seenResolveRevisions).toEqual(["rev-1"]);
+
+    fireEvent.click(screen.getByRole("button", { name: /refresh to the current state/i }));
+    await waitFor(() => expect(screen.queryByText(/another session advanced the game/i)).not.toBeInTheDocument());
+
+    fireEvent.click(await screen.findByRole("button", { name: /resolve turn/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /confirm and resolve/i }));
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("result"));
+    expect(resolveCallCount).toBe(2);
+    expect(seenResolveRevisions).toEqual(["rev-1", "rev-2"]);
+  });
 });

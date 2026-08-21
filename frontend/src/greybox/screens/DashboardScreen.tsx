@@ -3,15 +3,64 @@
  * concern cards, alerts, goal, the presentation-only map placeholder, and
  * terminal state when present. Every field here is a projection field;
  * nothing is recomputed.
+ *
+ * Also the one place a player can Save As: `useSaveAs` was already fully
+ * wired to the backend (api/queries.ts) but had no UI control anywhere --
+ * found while proving the two-tab stale-revision recovery experience
+ * through the actual browser UI, since a second tab has no other honest way
+ * to reach the same revision as the first (SessionContext's revision is set
+ * only by New Game / Load / a successful Resolve, never by simply viewing
+ * the dashboard). Dashboard is the natural home for it: the one gameplay
+ * screen every active campaign returns to.
  */
 
-import { useDashboard } from "../../api/queries";
+import { useState } from "react";
+
+import { useDashboard, useSaveAs } from "../../api/queries";
 import { useSession } from "../../state/SessionContext";
 import { ErrorPanel } from "../../status/ErrorPanel";
 import { LoadingPanel } from "../../status/StatusPanels";
 import { EmptyNote, Panel, ToneValue } from "../components";
 import type { ScreenProps } from "../registry";
 import type { ScreenId } from "../types";
+
+function SaveAsPanel() {
+  const [displayName, setDisplayName] = useState("");
+  const saveAs = useSaveAs();
+
+  return (
+    <Panel title="Save this campaign">
+      <label className="flex flex-col gap-1 text-sm" htmlFor="save-as-display-name">
+        <span>Save name</span>
+        <input
+          id="save-as-display-name"
+          type="text"
+          value={displayName}
+          onChange={(event) => setDisplayName(event.target.value)}
+          className="w-64 rounded border border-navy-800 bg-navy-950 px-2 py-1"
+        />
+      </label>
+      <button
+        type="button"
+        disabled={saveAs.isPending || displayName.trim() === ""}
+        onClick={() => saveAs.mutate({ displayName: displayName.trim() })}
+        className="mt-3 rounded border border-navy-800 px-3 py-1 text-sm disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+      >
+        {saveAs.isPending ? "Saving…" : "Save As"}
+      </button>
+      {saveAs.isError ? (
+        <div className="mt-3">
+          <ErrorPanel error={saveAs.error} />
+        </div>
+      ) : null}
+      {saveAs.isSuccess ? (
+        <p role="status" aria-live="polite" className="mt-3 text-sm text-emerald-300">
+          Saved as &ldquo;{saveAs.data.display_name}&rdquo;. Load it from the Title screen.
+        </p>
+      ) : null}
+    </Panel>
+  );
+}
 
 export function DashboardScreen({ navigate }: ScreenProps) {
   const { revision } = useSession();
@@ -134,6 +183,8 @@ export function DashboardScreen({ navigate }: ScreenProps) {
           Review history
         </button>
       </div>
+
+      <SaveAsPanel />
     </div>
   );
 }
