@@ -88,13 +88,14 @@ function PreviewPanel({ preview }: { preview: PreviewProjection }) {
           ) : (
             <DataTable
               caption="Chamber-by-chamber projection"
-              columns={["Chamber", "Supporting", "Required", "Carries"]}
+              columns={["Chamber", "Supporting", "Required", "Seats", "Carries"]}
               rows={preview.chambers.map((chamber) => ({
                 key: chamber.chamber,
                 cells: [
                   chamber.chamber,
                   formatAmount(chamber.supporting_seats),
                   formatAmount(chamber.required_seats),
+                  formatAmount(chamber.total_seats),
                   <ToneValue key="c" tone={chamber.carries ? "positive" : "negative"}>
                     {chamber.carries ? "Carries" : "Fails"}
                   </ToneValue>,
