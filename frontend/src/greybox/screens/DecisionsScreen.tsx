@@ -296,7 +296,10 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         {draft.policySlot === "amendment" ? (
           <div className="mt-4 flex flex-col gap-3">
             {data.constitutional_axes.map((axis) => (
-              <div key={axis.axis} className="flex items-center justify-between gap-3 text-sm">
+              <label
+                key={axis.axis}
+                className="flex items-center justify-between gap-3 text-sm"
+              >
                 <span>
                   {axis.axis}{" "}
                   <span className="text-xs text-parchment-200/50">
@@ -337,7 +340,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
                     className="w-28 rounded border border-navy-800 bg-navy-950 px-2 py-1 text-right"
                   />
                 )}
-              </div>
+              </label>
             ))}
 
             <RouteAndInfluence
@@ -376,6 +379,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
                     type="number"
                     min={0}
                     max={data.relationship_investment_maximum}
+                    aria-label={`Relationship investment for ${actor.bloc_name}`}
                     value={draft.investments[key] ?? ""}
                     onChange={(event) =>
                       draft.setInvestment(
@@ -515,6 +519,7 @@ function RouteAndInfluence({
                     key="inf"
                     type="number"
                     min={0}
+                    aria-label={`Influence capital for ${actor.bloc_name}`}
                     value={influence[key] ?? ""}
                     onChange={(event) =>
                       onInfluence(
