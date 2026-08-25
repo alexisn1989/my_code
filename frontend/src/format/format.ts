@@ -51,3 +51,11 @@ export function formatFraction(current: number, of: number): string {
 export function formatCommitted(committed: number, opening: number): string {
   return `${formatAmount(committed)} of ${formatAmount(opening)} committed`;
 }
+
+/** Wraps a tab index by `delta` positions within a `length`-sized cycle --
+ * roving-tabindex keyboard navigation math (Gate 4A3A's card browser), not
+ * display formatting, but arithmetic all the same, so it lives in the one
+ * place the format-boundary test allows a `BinaryExpression` to appear. */
+export function wrapIndex(index: number, delta: number, length: number): number {
+  return (index + delta + length) % length;
+}

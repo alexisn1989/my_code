@@ -161,6 +161,10 @@ describe("the format arithmetic boundary (structural, AST-based)", () => {
     expect(relPaths).toContain("format/format.ts");
     expect(relPaths).toContain("greybox/components.tsx");
     expect(relPaths).toContain("greybox/screens/DecisionsScreen.tsx");
+    expect(relPaths).toContain("greybox/policy/PolicyCardGrid.tsx");
+    expect(relPaths).toContain("greybox/policy/PolicyCardView.tsx");
+    expect(relPaths).toContain("greybox/policy/groupPolicyCards.ts");
+    expect(relPaths).toContain("state/applyPolicyCard.ts");
   });
 
   it("parses every file with the real TypeScript AST without a syntax error", () => {

@@ -23,13 +23,16 @@ const TONE_CLASS: Record<Tone, string> = {
   neutral: "text-parchment-200",
 };
 
-const DIRECTION_GLYPH: Record<Direction, string> = {
+/** Exported so other renderers of a `Direction` (e.g. a policy card's effect
+ * chips) can match `DeltaText`'s own glyph/word convention exactly, instead
+ * of maintaining a second copy of the same three-entry map. */
+export const DIRECTION_GLYPH: Record<Direction, string> = {
   up: "▲",
   down: "▼",
   unchanged: "■",
 };
 
-const DIRECTION_LABEL: Record<Direction, string> = {
+export const DIRECTION_LABEL: Record<Direction, string> = {
   up: "up",
   down: "down",
   unchanged: "unchanged",
