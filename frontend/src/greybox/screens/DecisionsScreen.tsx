@@ -16,9 +16,11 @@
 import { useState } from "react";
 
 import { useDashboard, useDecisionOptions, usePreview, useResolve } from "../../api/queries";
-import type { DecisionOptionsProjection, PreviewProjection } from "../../api/client";
+import type { DecisionOptionsProjection, PolicyCard, PreviewProjection } from "../../api/client";
 import { ResolutionInProgressError, StaleRevisionError } from "../../api/errors";
 import { formatAmount, formatBpsPercent, formatCommitted } from "../../format/format";
+import { PolicyCardGrid } from "../policy/PolicyCardGrid";
+import { chooseCardRoute, mapPolicyCardToDraft } from "../../state/applyPolicyCard";
 import { buildDecisions } from "../../state/buildDecisionSet";
 import { useDraftStore } from "../../state/draft";
 import { useSession } from "../../state/SessionContext";
@@ -129,6 +131,40 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   const resolve = useResolve();
   const draft = useDraftStore();
   const [confirming, setConfirming] = useState(false);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [routeChangeAnnouncement, setRouteChangeAnnouncement] = useState<string | null>(null);
+
+  // Selecting a card populates the draft only (mandate: never previews,
+  // resolves, or spends on selection alone). R5's route-preservation rule
+  // needs the PRIOR route, which only this screen -- not the browser, not
+  // the mapping module -- knows, since it is whatever the currently active
+  // slot's own route already is.
+  function handleSelectCard(card: PolicyCard) {
+    const priorRoute =
+      draft.policySlot === "budget"
+        ? draft.budget.route
+        : draft.policySlot === "amendment"
+          ? draft.amendment.route
+          : null;
+    const chosen = chooseCardRoute(card, priorRoute);
+    if (chosen === null) {
+      return; // defensive: the browser's disabled Select button prevents this
+    }
+    draft.applyCard(mapPolicyCardToDraft(card, chosen.route));
+    setSelectedCardId(card.card_id);
+    const newRouteLabel = chosen.route.route === "decree" ? "decree" : "legislative vote";
+    setRouteChangeAnnouncement(
+      chosen.changed
+        ? `Route changed to ${newRouteLabel}: ${priorRoute} is not available for this policy.`
+        : null,
+    );
+  }
+
+  function handleClearSelection() {
+    draft.applyCard({ policySlot: null });
+    setSelectedCardId(null);
+    setRouteChangeAnnouncement(null);
+  }
 
   // Found while proving the two-tab stale-revision RECOVERY experience
   // (not just the error mapping) through the actual browser UI: a
@@ -229,10 +265,32 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
 
       <Panel title="Policy proposal (one per turn)">
         <p className="mb-3 text-sm text-parchment-200/70">
-          A budget and a constitutional amendment occupy the same slot. Choosing one replaces the
-          other. Choosing neither is a legal no-proposal turn.
+          A budget and a constitutional amendment occupy the same slot. Selecting a card replaces
+          the other. Choosing "Take no major action" is a legal no-proposal turn.
         </p>
-        <div role="radiogroup" aria-label="Policy proposal" className="flex flex-wrap gap-3">
+
+        <div role="status" aria-live="polite" className="sr-only">
+          {routeChangeAnnouncement ?? ""}
+        </div>
+
+        <PolicyCardGrid
+          cards={data.policy_cards}
+          selectedCardId={selectedCardId}
+          onSelectCard={handleSelectCard}
+          onClearSelection={handleClearSelection}
+        />
+        {routeChangeAnnouncement ? (
+          <p role="alert" className="mt-2 text-xs text-amber-300">
+            {routeChangeAnnouncement}
+          </p>
+        ) : null}
+
+        <details className="mt-4">
+          <summary className="cursor-pointer text-sm text-parchment-200/70">
+            Customize policy
+          </summary>
+
+        <div role="radiogroup" aria-label="Policy proposal" className="mt-3 flex flex-wrap gap-3">
           {(["budget", "amendment"] as const).map((kind) => (
             <button
               key={kind}
@@ -378,6 +436,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
             />
           </div>
         ) : null}
+        </details>
       </Panel>
 
       <Panel title="Relationship investment (separate slot)">

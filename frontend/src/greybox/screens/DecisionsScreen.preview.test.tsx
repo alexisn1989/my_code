@@ -45,6 +45,7 @@ const DECISION_OPTIONS = {
   constitutional_axes: [],
   decree_amendment_capital_cost: 10,
   decree_available: true,
+  policy_cards: [],
   decree_legislative_capital_cost: 10,
   opening_capital: 100,
   relationship_investment_maximum: 50,
