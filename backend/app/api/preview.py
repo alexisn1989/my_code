@@ -34,7 +34,6 @@ from __future__ import annotations
 
 from app.core.errors import DecisionSetError
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
-from app.simulation.constitution import DecreeAuthority
 from app.simulation.decisions import (
     BudgetDecision,
     ConstitutionalAmendmentDecision,
@@ -58,6 +57,7 @@ from app.simulation.phases import (
 )
 from app.simulation.state import GameState, LegislatureState, PoliticalState
 
+from .decision_preflight import first_decision_problem
 from .projections import ChamberPreview, PreviewProjection
 
 #: Named once so the projection can say what it deliberately does not know.
@@ -88,23 +88,18 @@ def _route_cost(decision: BudgetDecision | ConstitutionalAmendmentDecision) -> i
     )
 
 
-def _require_route_is_permitted(
-    politics: PoliticalState, decision: BudgetDecision | ConstitutionalAmendmentDecision
-) -> None:
-    """The one legality predicate preview evaluates for itself.
+def _require_no_structural_problem(state: GameState, decision_set: DecisionSet) -> None:
+    """Reject a decision `/resolve` would also reject, before scoring it.
 
-    This reads the opening constitution rather than reproducing a formula, and
-    it mirrors `phases.py:862`'s refusal exactly. A parity test asserts that
-    `/preview` and `/resolve` reject the identical unavailable-decree payload
-    with the same error type, so the two cannot drift apart silently.
+    Delegates to the shared `first_decision_problem` preflight (Gate 4A3A) so
+    `/preview` and `/resolve` agree on no-op targets, constitutional coherence,
+    and route legality -- not just the single decree-availability check this
+    function used to make on its own. Affordability is deliberately NOT part of
+    this check; see `decision_preflight`'s own docstring.
     """
-    if decision.route is not ProposalRoute.DECREE:
-        return
-    if politics.constitution.decree_authority is not DecreeAuthority.UNLIMITED:
-        raise DecisionSetError(
-            f"decision requests route=decree but decree_authority is "
-            f"{politics.constitution.decree_authority.value!r} (requires 'unlimited')"
-        )
+    problem = first_decision_problem(state, decision_set)
+    if problem is not None:
+        raise DecisionSetError(problem.message)
 
 
 def _seated_blocs(
@@ -137,8 +132,7 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
     investment = decision_set.relationship_investment_decision()
 
     proposal: BudgetDecision | ConstitutionalAmendmentDecision | None = budget or amendment
-    if proposal is not None:
-        _require_route_is_permitted(politics, proposal)
+    _require_no_structural_problem(state, decision_set)
 
     chambers: tuple[ChamberPreview, ...] = ()
     legislature = politics.legislature

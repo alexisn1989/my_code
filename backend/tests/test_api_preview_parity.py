@@ -532,3 +532,231 @@ def test_a_scenario_state_is_loadable_for_every_shipped_scenario() -> None:
     """Sanity: the parity fixtures above really do cover all three."""
     for scenario_id in ALL_SCENARIO_IDS:
         assert load_scenario_file(SCENARIO_DIR / f"{scenario_id}.yaml") is not None
+
+
+# --------------------------------------------------------------------------
+# Gate 4A3A / R1: the shared structural preflight (`decision_preflight.py`)
+#
+# Before this gate, `/preview`'s only legality check was decree availability.
+# It happily returned 200 for a no-op amendment target, an amendment whose
+# final constitution violated the C1-C10 coherence rules, or an amendment
+# routed through a decree while a legislature still sat -- and then `/resolve`
+# aborted the same decision set with a `DecisionSetError`. Each test below
+# proves preview and resolve now agree on rejection for every one of those
+# three classes, plus a fourth already covered by the pre-existing decree
+# test above, and that a genuinely COHERENT multi-axis amendment -- illegal
+# axis by axis, legal as one atomic bundle -- is accepted by BOTH endpoints,
+# not merely no-longer-rejected by one.
+# --------------------------------------------------------------------------
+
+
+def _assert_both_reject(client: TestClient, revision: str, decisions: list[dict[str, Any]]) -> None:
+    body = {"revision": revision, "decisions": decisions}
+    preview = client.post("/api/game/preview", json=body)
+    resolve = client.post("/api/game/resolve", json=body)
+    assert preview.status_code == 422, preview.text
+    assert resolve.status_code == 422, resolve.text
+    assert preview.json()["type"] == resolve.json()["type"] == "decision_rejected"
+
+
+def test_a_no_op_amendment_target_is_rejected_by_preview_and_resolve_alike(
+    tmp_path: Path,
+) -> None:
+    """`decree_state` opens at `decree_authority=unlimited`; targeting the SAME
+    value changes nothing and must be refused before it ever reaches a vote."""
+    no_op = [
+        {
+            "kind": "constitutional_amendment",
+            "targets": [{"axis": "decree_authority", "value": "unlimited"}],
+            "route": "legislative",
+        }
+    ]
+    with _make_client(tmp_path, "p") as previewer:
+        revision = _new(previewer, "decree_state")
+        _assert_both_reject(previewer, revision, no_op)
+
+
+def test_an_incoherent_single_axis_amendment_is_rejected_by_preview_and_resolve_alike(
+    tmp_path: Path,
+) -> None:
+    """`decree_state` is `monarchical`/`hereditary`. Retargeting `executive_system`
+    to `presidential` alone violates `hereditary_requires_monarchical_system` --
+    proven illegal in isolation by `test_constitutional_amendment_gating.py`."""
+    incoherent = [
+        {
+            "kind": "constitutional_amendment",
+            "targets": [{"axis": "executive_system", "value": "presidential"}],
+            "route": "legislative",
+        }
+    ]
+    with _make_client(tmp_path, "p") as previewer:
+        revision = _new(previewer, "decree_state")
+        _assert_both_reject(previewer, revision, incoherent)
+
+
+def test_a_coherent_multi_axis_amendment_is_accepted_by_preview_and_resolve_alike(
+    tmp_path: Path,
+) -> None:
+    """The same `executive_system=presidential` step from the test above becomes
+    LEGAL once bundled with the companion axes that make the final constitution
+    coherent -- the exact bundle `test_constitutional_amendment_gating.py`'s
+    `_liberalizing_amendment()` already proves passes C1-C10 on `decree_state`.
+    Preview must accept it (not merely fail to reject it) and resolve must too.
+    """
+    bundle = [
+        {
+            "kind": "constitutional_amendment",
+            "targets": [
+                {"axis": "decree_authority", "value": "none"},
+                {"axis": "executive_selection", "value": "direct_election"},
+                {"axis": "executive_system", "value": "presidential"},
+                {"axis": "national_election_interval_turns", "value": 8},
+            ],
+            "route": "legislative",
+        }
+    ]
+    with _make_client(tmp_path, "p") as previewer:
+        revision = _new(previewer, "decree_state")
+        previewed = _preview(previewer, revision, bundle)
+        assert previewed.status_code == 200, previewed.text
+
+    with _make_client(tmp_path, "r") as resolver:
+        revision = _new(resolver, "decree_state")
+        resolved = _resolve(resolver, revision, bundle)
+        assert resolved.status_code == 200, resolved.text
+
+
+def test_amendment_by_decree_while_a_legislature_sits_is_rejected_by_preview_and_resolve_alike(
+    tmp_path: Path,
+) -> None:
+    """`decree_state` has `decree_authority=unlimited` -- enough for a BUDGET
+    decree -- but it also has a real unicameral legislature, so an AMENDMENT
+    decree must still be refused (`phases.py:565`'s stricter rule)."""
+    amendment_by_decree = [
+        {
+            "kind": "constitutional_amendment",
+            "targets": [{"axis": "decree_authority", "value": "none"}],
+            "route": "decree",
+        }
+    ]
+    with _make_client(tmp_path, "p") as previewer:
+        revision = _new(previewer, "decree_state")
+        _assert_both_reject(previewer, revision, amendment_by_decree)
+
+
+def test_noncanonical_amendment_targets_are_rejected_by_preview_and_resolve_alike(
+    tmp_path: Path,
+) -> None:
+    """Unsorted axes are a `DecisionSet`-construction rejection, already shared
+    by both endpoints before this gate -- pinned here alongside the three new
+    preflight cases so this file states the complete rejected-payload class."""
+    unsorted = [
+        {
+            "kind": "constitutional_amendment",
+            "targets": [
+                {"axis": "executive_system", "value": "presidential"},
+                {"axis": "decree_authority", "value": "none"},
+            ],
+            "route": "legislative",
+        }
+    ]
+    with _make_client(tmp_path, "p") as previewer:
+        revision = _new(previewer, "decree_state")
+        _assert_both_reject(previewer, revision, unsorted)
+
+
+# --------------------------------------------------------------------------
+# Gate 4A3A / R11: affordability is preview DATA, never a preview REJECTION.
+#
+# `deficit_demo`'s own pinned calibration (`test_scenario_legislature_calibration.py`)
+# is 300 opening capital and a cheapest carrying bargain of exactly 162 on
+# `citizens_bloc/moderates`. These two tests spend the remaining 138/139
+# capital on a relationship investment in the SAME bloc to land exactly on,
+# and exactly one past, the real affordability boundary.
+# --------------------------------------------------------------------------
+
+
+def _bargain_plus_investment(investment: int) -> list[dict[str, Any]]:
+    return [
+        {
+            "kind": "bloc_relationship_investment",
+            "investments": [
+                {
+                    "party_id": "citizens_bloc",
+                    "bloc_id": "moderates",
+                    "political_capital": investment,
+                }
+            ],
+        },
+        _budget(
+            rate_bps=2_000,
+            influence=[
+                {"party_id": "citizens_bloc", "bloc_id": "moderates", "political_capital": 162}
+            ],
+        ),
+    ]
+
+
+def test_162_bargaining_plus_138_investment_is_exactly_affordable_and_resolves(
+    tmp_path: Path,
+) -> None:
+    """162 + 138 = 300 == deficit_demo's opening capital exactly."""
+    decisions = _bargain_plus_investment(138)
+    with _make_client(tmp_path, "p") as previewer:
+        revision = _new(previewer, "deficit_demo")
+        preview_body = _preview(previewer, revision, decisions).json()
+    assert preview_body["committed_capital"] == 300
+    assert preview_body["opening_capital"] == 300
+    assert preview_body["affordable"] is True
+
+    with _make_client(tmp_path, "r") as resolver:
+        revision = _new(resolver, "deficit_demo")
+        resolved = _resolve(resolver, revision, decisions)
+    assert resolved.status_code == 200, resolved.text
+
+
+def test_162_bargaining_plus_139_investment_previews_as_unaffordable_and_resolve_rejects_atomically(
+    tmp_path: Path,
+) -> None:
+    """162 + 139 = 301 -- one capital past the real boundary. Preview must
+    still return 200 with the real chamber estimates and `affordable=False`
+    (never reject a structurally valid decision for being unaffordable);
+    resolve must refuse it, and refuse it leaving the save, turn, history, and
+    revision completely unchanged -- an atomic rejection, not a partial spend.
+    """
+    decisions = _bargain_plus_investment(139)
+    with _make_client(tmp_path, "p") as previewer:
+        revision = _new(previewer, "deficit_demo")
+        preview_response = _preview(previewer, revision, decisions)
+        assert preview_response.status_code == 200, preview_response.text
+        preview_body = preview_response.json()
+
+    assert preview_body["committed_capital"] == 301
+    assert preview_body["opening_capital"] == 300
+    assert preview_body["affordable"] is False
+    # The chamber estimate is still the real deterministic one -- affordability
+    # never withholds or blanks the vote tally.
+    assert preview_body["chambers"], "chamber estimates must still be present"
+    assert preview_body["chambers"][0]["supporting_seats"] == 51
+    assert preview_body["chambers"][0]["required_seats"] == 51
+
+    with _make_client(tmp_path, "r") as resolver:
+        revision = _new(resolver, "deficit_demo")
+        session = resolver.app.state.session  # type: ignore[attr-defined]
+        save_before = session.current_save
+        entries_before = len(save_before.entries)
+        turn_before = save_before.current_turn()
+
+        resolved = resolver.post(
+            "/api/game/resolve", json={"revision": revision, "decisions": decisions}
+        )
+        assert resolved.status_code == 422, resolved.text
+        assert resolved.json()["type"] == "decision_rejected"
+
+        save_after = session.current_save
+        assert save_after is save_before, "no swap occurred -- the rejection was atomic"
+        assert len(save_after.entries) == entries_before, "no history entry was appended"
+        assert save_after.current_turn() == turn_before, "the turn did not advance"
+
+        state_response = resolver.get("/api/game/state")
+        assert state_response.json()["revision"] == revision, "the revision token is unchanged"
