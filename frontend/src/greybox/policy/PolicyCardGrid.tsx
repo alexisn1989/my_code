@@ -22,10 +22,6 @@ import type { FamilyId, MajorChoiceId } from "./groupPolicyCards";
 import { groupPolicyCards, locateCard } from "./groupPolicyCards";
 import { PolicyCardView } from "./PolicyCardView";
 
-function firstAvailableRoute(card: PolicyCard) {
-  return card.routes.find((route) => route.available) ?? null;
-}
-
 function TabList({
   ariaLabel,
   tabs,
@@ -83,7 +79,11 @@ export function PolicyCardGrid({
 }: {
   cards: readonly PolicyCard[];
   selectedCardId: string | null;
-  onSelectCard: (card: PolicyCard, route: NonNullable<ReturnType<typeof firstAvailableRoute>>) => void;
+  /** Fires with the CARD only -- which route to apply (preserving the
+   * player's prior route choice where the new card still offers it, per R5)
+   * is a decision `chooseCardRoute` makes, one level up in DecisionsScreen,
+   * which is also the only place that knows what the prior route was. */
+  onSelectCard: (card: PolicyCard) => void;
   onClearSelection: () => void;
 }) {
   const majors = groupPolicyCards(cards);
@@ -105,14 +105,6 @@ export function PolicyCardGrid({
     if (!major) return;
     setOpenMajor(major.id);
     setOpenFamily(major.families[0]?.id ?? null);
-  }
-
-  function handleSelect(card: PolicyCard) {
-    const route = firstAvailableRoute(card);
-    if (route === null) {
-      return; // an unavailable card's Select button is disabled; defensive only
-    }
-    onSelectCard(card, route);
   }
 
   const visibleCards = activeMajor.id === "restraint" ? activeMajor.cards : (effectiveFamily?.cards ?? []);
@@ -189,7 +181,7 @@ export function PolicyCardGrid({
                 key={card.card_id}
                 card={card}
                 selected={card.card_id === selectedCardId}
-                onSelect={() => handleSelect(card)}
+                onSelect={() => onSelectCard(card)}
               />
             ))}
           </ul>

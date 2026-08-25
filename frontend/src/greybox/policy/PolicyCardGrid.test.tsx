@@ -88,7 +88,7 @@ const CONSTITUTION_CARD = card({
 const CARDS = [card(), SPENDING_CARD, UNAVAILABLE_CARD, CONSTITUTION_CARD, NO_PROPOSAL_CARD];
 
 describe("PolicyCardGrid: selection", () => {
-  it("fires onSelectCard with the card and its first available route", () => {
+  it("fires onSelectCard with the card -- route selection belongs to the caller (R5)", () => {
     const onSelectCard = vi.fn();
     render(
       <PolicyCardGrid
@@ -105,9 +105,8 @@ describe("PolicyCardGrid: selection", () => {
     const enabledSelect = selectButtons.find((button) => !button.hasAttribute("disabled"))!;
     fireEvent.click(enabledSelect);
     expect(onSelectCard).toHaveBeenCalledTimes(1);
-    const [selectedCard, selectedRoute] = onSelectCard.mock.calls[0]!;
+    const [selectedCard] = onSelectCard.mock.calls[0]!;
     expect(selectedCard.card_id).toBe("tax_personal_income_increase");
-    expect(selectedRoute.available).toBe(true);
   });
 
   it("shows the selection summary strip and a Clear action once a card is selected", () => {

@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PolicyCard, PolicyCardRoute } from "../api/client";
-import { mapPolicyCardToDraft } from "./applyPolicyCard";
+import { chooseCardRoute, mapPolicyCardToDraft } from "./applyPolicyCard";
 
 function budgetRoute(overrides: Partial<PolicyCardRoute> = {}): PolicyCardRoute {
   return {
@@ -141,5 +141,52 @@ describe("mapPolicyCardToDraft: guards against applying an unavailable route", (
     const route = budgetRoute({ available: false, template: null });
     const card = baseCard({ available: false, routes: [route] });
     expect(() => mapPolicyCardToDraft(card, route)).toThrow(/not available/);
+  });
+});
+
+describe("chooseCardRoute: R5's route-preservation rule", () => {
+  it("with no prior route, chooses the card's first available route and reports no change", () => {
+    const legislative = budgetRoute({ route: "legislative" });
+    const decree = budgetRoute({
+      route: "decree",
+      template: { kind: "budget", route: "decree", personal_income_rate_bps: 2500 },
+    });
+    const card = baseCard({ routes: [legislative, decree] });
+    expect(chooseCardRoute(card, null)).toEqual({ route: legislative, changed: false });
+  });
+
+  it("preserves the prior route when the new card still offers it available", () => {
+    const legislative = budgetRoute({ route: "legislative" });
+    const decree = budgetRoute({
+      route: "decree",
+      template: { kind: "budget", route: "decree", personal_income_rate_bps: 2500 },
+    });
+    const card = baseCard({ routes: [legislative, decree] });
+    expect(chooseCardRoute(card, "decree")).toEqual({ route: decree, changed: false });
+  });
+
+  it("falls back to the first available route and reports a change when the prior route is gone", () => {
+    const legislative = budgetRoute({ route: "legislative" });
+    const card = baseCard({ routes: [legislative] }); // no decree route at all
+    expect(chooseCardRoute(card, "decree")).toEqual({ route: legislative, changed: true });
+  });
+
+  it("falls back when the prior route exists on the card but is itself unavailable", () => {
+    const legislative = budgetRoute({ route: "legislative" });
+    const unavailableDecree = budgetRoute({
+      route: "decree",
+      available: false,
+      template: null,
+      unavailable_reason: "route_constitutionally_unavailable",
+      unavailable_detail: "No decree authority.",
+    });
+    const card = baseCard({ routes: [legislative, unavailableDecree] });
+    expect(chooseCardRoute(card, "decree")).toEqual({ route: legislative, changed: true });
+  });
+
+  it("returns null when the card has no available route at all (defensive; the UI disables Select first)", () => {
+    const unavailable = budgetRoute({ available: false, template: null });
+    const card = baseCard({ available: false, routes: [unavailable] });
+    expect(chooseCardRoute(card, null)).toBeNull();
   });
 });

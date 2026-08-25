@@ -57,3 +57,42 @@ export function mapPolicyCardToDraft(card: PolicyCard, route: PolicyCardRoute): 
   }
   return { policySlot: "amendment", amendment: mapAmendmentTemplate(template) };
 }
+
+export interface ChosenCardRoute {
+  route: PolicyCardRoute;
+  /** True iff `priorRoute` was set but this card does not offer it
+   * available, so a DIFFERENT route (the card's first available one) had to
+   * be chosen instead -- the caller's cue to announce the change (R5). */
+  changed: boolean;
+}
+
+/**
+ * R5's route-preservation rule, as one pure, independently testable
+ * decision: "preserve the selected route only if the new card declares that
+ * route available; otherwise select the card's first available route and
+ * announce why the route changed." `priorRoute` is `null` when there was no
+ * previous selection (a fresh pick, or the prior selection was the
+ * no-proposal card) -- in that case the card's first available route is
+ * chosen with no announcement, since nothing was actually preserved or lost.
+ *
+ * Returns `null` only for a card with no available route at all, which the
+ * card browser's disabled Select button should already prevent reaching
+ * here -- defensive, not a path any test expects to exercise via the UI.
+ */
+export function chooseCardRoute(
+  card: PolicyCard,
+  priorRoute: "legislative" | "decree" | null,
+): ChosenCardRoute | null {
+  const available = card.routes.filter((route) => route.available);
+  if (available.length === 0) {
+    return null;
+  }
+  if (priorRoute !== null) {
+    const preserved = available.find((route) => route.route === priorRoute);
+    if (preserved) {
+      return { route: preserved, changed: false };
+    }
+    return { route: available[0]!, changed: true };
+  }
+  return { route: available[0]!, changed: false };
+}
