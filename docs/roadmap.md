@@ -756,6 +756,17 @@ than assumed in advance.
 - ~~Gate 4A3 — Decision workspace and turn resolution — not started.~~ Folded into Gate 4A2 above.
 - ~~Gate 4A4 — Results, explanations, history, terminal screens — not started.~~ Folded into Gate
   4A2 above.
+- **Gate 4A3A — policy cards and consequences — complete.** A separately-mandated follow-up,
+  distinct from the frozen plan's "Gate 4A3" name above (which stays not-started: visual/functional
+  review, then final art/polish/packaging). Replaces the Decisions screen's raw-editor-only flow
+  with a server-authored policy-card catalog (`backend/app/api/policy_cards.py`, ADR 0015) as the
+  default UI: a two-level card browser (`frontend/src/greybox/policy/PolicyCardGrid.tsx`), route
+  preservation on card switch (R5), and a three-honest-groups consequences panel
+  (`ConsequencesPanel.tsx`) that never blends a preview's estimate with a resolved turn's actual
+  outcome. The original detailed editor is preserved, collapsed, under "Customize policy" — no
+  power-user functionality was removed. See ADR 0015 for the full architecture and the presentation
+  defects (raw enum values, a literal `"null"` render, indistinguishable "Details" buttons,
+  `ToneValue`'s missing glyph) found and fixed alongside it.
 
 ## Phase 4 — Persistence and API
 
