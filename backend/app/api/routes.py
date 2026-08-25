@@ -42,6 +42,7 @@ from app.simulation.history import GameSave, advance_game, new_game, validate_hi
 from app.simulation.save_format import SAVE_FORMAT_VERSION
 from app.simulation.state import GameState
 
+from .policy_cards import build_decision_options_with_policy_cards
 from .preview import preview_decisions
 from .projections import (
     DashboardProjection,
@@ -53,7 +54,6 @@ from .projections import (
     SaveSummary,
     ScenarioSummary,
     build_dashboard,
-    build_decision_options,
     build_turn_result,
 )
 from .save_registry import (
@@ -278,7 +278,7 @@ def get_decision_options(request: Request) -> DecisionOptionsProjection:
     draft and `/resolve`'s own validators are still the only authority.
     """
     save = _session(request).current_save
-    return build_decision_options(save.current_state())
+    return build_decision_options_with_policy_cards(save.current_state())
 
 
 @router.get("/game/history", response_model=list[HistoryListEntry])
