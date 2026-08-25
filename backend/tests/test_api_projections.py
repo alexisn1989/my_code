@@ -204,6 +204,15 @@ def test_live_and_history_turn_result_are_identical() -> None:
     assert live == historical
     assert live.model_dump_json() == historical.model_dump_json()
 
+    # Gate 4A3A: `DriverItem.category` was restored from the stored report
+    # (it existed on `TurnReportEntry` all along, just never carried into the
+    # projection). The full-object equality above already subsumes it, but
+    # this pins explicitly that it is genuinely populated -- not merely equal
+    # by both sides defaulting to the same empty value.
+    assert live.drivers, "a resolved turn always emits at least one driver"
+    assert all(driver.category for driver in live.drivers)
+    assert [d.category for d in live.drivers] == [d.category for d in historical.drivers]
+
 
 def test_historical_dashboard_reflects_that_turn_not_the_current_one() -> None:
     """`dashboardAsOfTurn` must be reconstructed from the stored entry's state."""

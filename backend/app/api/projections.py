@@ -21,18 +21,19 @@ from a stored, already-validated report; the only arithmetic is presentation
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.money import BPS_DENOMINATOR, format_money
 from app.core.politics import RELATIONSHIP_INVESTMENT_CAP
 from app.simulation.constitution import DecreeAuthority, ExecutiveSelection, ExecutiveSystem
+from app.simulation.decisions import BudgetDecision, ConstitutionalAmendmentDecision
 from app.simulation.legislative_voting import (
     CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
 )
-from app.simulation.legislature import LegislativeOutcome
+from app.simulation.legislature import LegislativeOutcome, ProposalRoute
 from app.simulation.report import TurnReport
 from app.simulation.state import GameState, OutcomeBucket, PoliticalState, SpendingCategory
 
@@ -224,6 +225,13 @@ class DashboardProjection(BaseModel):
 class DriverItem(BaseModel):
     model_config = _STRICT
 
+    #: Gate 4A3A: `TurnReportEntry.category` already exists on the stored
+    #: report and was already being read (`entry.category` below) -- it was
+    #: simply never carried into the projection. Restoring it lets the
+    #: consequences panel group real resolved drivers (policy / vote /
+    #: relationships / economy / political events) without inventing any new
+    #: data or duplicating a formula.
+    category: str
     reason_id: str
     label: str
     params: dict[str, str | int] = Field(default_factory=dict)
@@ -388,6 +396,199 @@ class ConstitutionalAxisOption(BaseModel):
     nullable: bool = False
 
 
+# --------------------------------------------------------------------------
+# Policy cards (Gate 4A3A) -- server-authored, typed, self-validating.
+#
+# The browser must not calculate legal policy targets, costs, thresholds, or
+# consequences. A card's `routes[].template`, when present, is a REAL,
+# canonical, submit-ready `BudgetDecision` or `ConstitutionalAmendmentDecision`
+# -- the same discriminated union `DecisionSet` itself accepts -- never a
+# `dict[str, Any]`. React may wrap the chosen template with investments and
+# revision metadata through the existing `buildDecisions` builder; it computes
+# no proposal content.
+#
+# Affordability is deliberately NOT an availability concept here (see
+# `decision_preflight.py`'s own docstring for why): a route the player cannot
+# currently afford is still a legal, selectable choice, and `/preview`'s
+# `committed_capital`/`opening_capital`/`affordable` fields are what explain
+# the shortfall once a card is selected and previewed.
+# --------------------------------------------------------------------------
+
+PolicyCardCategory = Literal["taxation", "spending", "constitution", "restraint"]
+
+PolicyCardUnavailableReason = Literal[
+    "route_constitutionally_unavailable",
+    "no_legislature",
+    "decree_cannot_amend_with_legislature",
+    "requires_companion_constitutional_change",
+    "outside_legal_bounds",
+    "no_baseline_to_scale",
+    "no_change_from_current",
+    "game_concluded",
+]
+
+#: The raw internal diagnostic identifiers (C-rule codes) that must never
+#: appear in a player-facing string. Checked directly in tests against every
+#: emitted card and route.
+_DIAGNOSTIC_CODE_PREFIX = "C"
+
+
+class PolicyCardEffect(BaseModel):
+    """One "current -> proposed" fact about a card, in RAW typed form (R6).
+
+    No value here is preformatted ("20.00%", "200,000,000"): `current_value`/
+    `proposed_value` are the raw bps/money/turn/term integers, `unit` names
+    which format function in `src/format/**` applies, and `current_label`/
+    `proposed_label` carry ONLY server-authored enum display text (there is no
+    numeric formatting to do for an enum). React formats the raw values; it
+    never invents or reformats a number itself.
+    """
+
+    model_config = _STRICT
+
+    label: str
+    unit: Literal["bps", "money", "turns", "terms", "enum"]
+    current_value: int | None = None
+    proposed_value: int | None = None
+    current_label: str | None = None
+    proposed_label: str | None = None
+    direction: Direction
+
+
+class PolicyCardChamberRequirement(BaseModel):
+    model_config = _STRICT
+
+    chamber: str
+    total_seats: int
+    required_seats: int
+
+
+class PolicyCardRoute(BaseModel):
+    """One route (legislative or decree) a card could be submitted through.
+
+    R11: no affordability field lives here. R2/R3: `template` is a real typed
+    decision or `None` -- never a placeholder dict.
+    """
+
+    model_config = _STRICT
+
+    route: ProposalRoute
+    available: bool
+    unavailable_reason: PolicyCardUnavailableReason | None = None
+    unavailable_detail: str | None = None
+    base_route_cost: int
+    bargaining_available: bool
+    chambers: tuple[PolicyCardChamberRequirement, ...] = ()
+    template: (
+        Annotated[BudgetDecision | ConstitutionalAmendmentDecision, Field(discriminator="kind")]
+        | None
+    ) = None
+
+    @model_validator(mode="after")
+    def _availability_matches_template(self) -> PolicyCardRoute:
+        if self.available and self.template is None:
+            raise ValueError("an available route must carry a template")
+        if not self.available and self.template is not None:
+            raise ValueError("an unavailable route must not carry a template")
+        return self
+
+    @model_validator(mode="after")
+    def _available_route_has_no_reason(self) -> PolicyCardRoute:
+        if self.available and (
+            self.unavailable_reason is not None or self.unavailable_detail is not None
+        ):
+            raise ValueError("an available route must not carry an unavailable reason or detail")
+        return self
+
+    @model_validator(mode="after")
+    def _unavailable_route_explains_itself(self) -> PolicyCardRoute:
+        if not self.available and (
+            self.unavailable_reason is None or self.unavailable_detail is None
+        ):
+            raise ValueError(
+                "an unavailable route must carry both a stable reason and a player-facing detail"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _no_diagnostic_leak_into_player_text(self) -> PolicyCardRoute:
+        if (
+            self.unavailable_detail is not None
+            and _DIAGNOSTIC_CODE_PREFIX in self.unavailable_detail
+        ):
+            raise ValueError("a diagnostic code must never appear in player-facing text")
+        return self
+
+
+class PolicyCard(BaseModel):
+    model_config = _STRICT
+
+    card_id: str
+    category: PolicyCardCategory
+    category_label: str
+    title: str
+    description: str
+    available: bool
+    unavailable_reason: PolicyCardUnavailableReason | None = None
+    unavailable_detail: str | None = None
+    #: The raw internal rule id (e.g. a C-rule name), kept SEPARATE from
+    #: `unavailable_detail` so it can never leak into player-facing text.
+    diagnostic_code: str | None = None
+    #: True only for the single "take no major policy action" card -- it
+    #: explicitly clears the proposal slot rather than carrying a template.
+    clears_proposal_slot: bool = False
+    effects: tuple[PolicyCardEffect, ...] = ()
+    routes: tuple[PolicyCardRoute, ...] = ()
+
+    @model_validator(mode="after")
+    def _available_card_has_no_reason(self) -> PolicyCard:
+        if self.available and (
+            self.unavailable_reason is not None or self.unavailable_detail is not None
+        ):
+            raise ValueError("an available card must not carry an unavailable reason or detail")
+        return self
+
+    @model_validator(mode="after")
+    def _unavailable_card_explains_itself(self) -> PolicyCard:
+        if not self.available and (
+            self.unavailable_reason is None or self.unavailable_detail is None
+        ):
+            raise ValueError(
+                "an unavailable card must carry both a stable reason and a player-facing detail"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _no_diagnostic_leak_into_player_text(self) -> PolicyCard:
+        if (
+            self.unavailable_detail is not None
+            and _DIAGNOSTIC_CODE_PREFIX in self.unavailable_detail
+        ):
+            raise ValueError("a diagnostic code must never appear in player-facing text")
+        return self
+
+    @model_validator(mode="after")
+    def _proposal_card_availability_matches_its_routes(self) -> PolicyCard:
+        """Rule 4/6/7 (§3 invariants): for a PROPOSAL card, `available` is
+        true iff at least one route is available; an unavailable proposal
+        card has no available route and no template on any route. The
+        no-proposal card is the explicit special case this rule skips."""
+        if self.clears_proposal_slot:
+            return self
+        any_route_available = any(route.available for route in self.routes)
+        if self.available != any_route_available:
+            raise ValueError(
+                "a proposal card's availability must match whether any route is available"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _no_proposal_card_has_no_routes(self) -> PolicyCard:
+        if self.clears_proposal_slot and self.routes:
+            raise ValueError("the no-proposal card clears the slot; it carries no routes")
+        return self
+
+
 class DecisionOptionsProjection(BaseModel):
     """Every REAL fact and constant needed to construct a legal decision.
 
@@ -398,6 +599,11 @@ class DecisionOptionsProjection(BaseModel):
     from state. This endpoint answers "what exists to choose from" -- it never
     scores a draft (`/preview` does that) and never decides legality on
     submission (`/resolve`'s own validators still do, authoritatively).
+
+    `policy_cards` is the Gate 4A3A game-loop projection: named, understood
+    choices generated from this SAME state. It shares this envelope's
+    `revision`, so a card catalog and the legal-move facts it was generated
+    from are always the same age.
     """
 
     model_config = _STRICT
@@ -412,6 +618,7 @@ class DecisionOptionsProjection(BaseModel):
     decree_available: bool
     decree_legislative_capital_cost: int
     decree_amendment_capital_cost: int
+    policy_cards: tuple[PolicyCard, ...] = ()
     chambers: tuple[str, ...]
     blocs: tuple[BlocOption, ...]
     constitutional_axes: tuple[ConstitutionalAxisOption, ...]
@@ -710,7 +917,12 @@ def build_turn_result(state: GameState, report: TurnReport) -> TurnResultProject
     """
     politics = _politics(state)
     drivers = tuple(
-        DriverItem(reason_id=entry.reason_id, label=label_for(entry.reason_id), params=entry.params)
+        DriverItem(
+            category=entry.category,
+            reason_id=entry.reason_id,
+            label=label_for(entry.reason_id),
+            params=entry.params,
+        )
         for entry in report.entries
     )
 
