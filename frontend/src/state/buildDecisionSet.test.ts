@@ -20,6 +20,7 @@ function baseDraft(overrides: Partial<DraftState> = {}): DraftState {
     dismissedHelp: false,
     glossaryOpen: false,
     setPolicySlot: () => {},
+    applyCard: () => {},
     setBudgetRateTarget: () => {},
     setBudgetSpendingTarget: () => {},
     setBudgetRoute: () => {},

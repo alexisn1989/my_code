@@ -26,6 +26,12 @@ export type TurnResultProjection = Schemas["TurnResultProjection"];
 export type ChamberPreview = Schemas["ChamberPreview"];
 export type ConcernCard = Schemas["ConcernCard"];
 export type Alert = Schemas["Alert"];
+export type PolicyCard = Schemas["PolicyCard"];
+export type PolicyCardRoute = Schemas["PolicyCardRoute"];
+export type PolicyCardEffect = Schemas["PolicyCardEffect"];
+export type PolicyCardChamberRequirement = Schemas["PolicyCardChamberRequirement"];
+export type BudgetDecision = Schemas["BudgetDecision"];
+export type ConstitutionalAmendmentDecision = Schemas["ConstitutionalAmendmentDecision"];
 
 /** A raw, unvalidated decision payload. The server's own reject-not-normalize
  * validators are the only authority on whether one is legal; this client

@@ -35,6 +35,30 @@ export interface AmendmentDraft {
   influence: Record<string, number>;
 }
 
+/** The fields a selected policy card's template supplies (Gate 4A3A) --
+ * everything EXCEPT influence, which a fresh card selection always clears
+ * (R5: "clear all influence allocations; they belong to the replaced
+ * proposal"). `applyPolicyCard.ts` is the only place that constructs one of
+ * these, from a real `PolicyCardRoute.template`. */
+export interface AppliedBudgetFields {
+  personalIncomeRateBps?: number;
+  corporateRateBps?: number;
+  consumptionRateBps?: number;
+  spendingUpdates: Record<string, number>;
+  route: ProposalRoute;
+}
+
+export interface AppliedAmendmentFields {
+  targets: Record<string, string | number | null>;
+  route: ProposalRoute;
+}
+
+export interface AppliedCard {
+  policySlot: PolicySlotKind | null;
+  budget?: AppliedBudgetFields;
+  amendment?: AppliedAmendmentFields;
+}
+
 export interface DraftState {
   /** The one mutually-exclusive policy-proposal slot. `null` means no
    * proposal this turn -- a legal, first-class choice, not an unset value. */
@@ -49,6 +73,12 @@ export interface DraftState {
   glossaryOpen: boolean;
 
   setPolicySlot: (slot: PolicySlotKind | null) => void;
+  /** Selecting a policy card (Gate 4A3A): replaces the relevant slot WHOLESALE
+   * from `applyPolicyCard.ts`'s mapping -- no stale field survives a card
+   * switch, and the incompatible slot is reset to empty, not merged. Never
+   * previews, resolves, or spends; it only changes what the next Preview/
+   * Resolve call would submit. */
+  applyCard: (applied: AppliedCard) => void;
   setBudgetRateTarget: (
     field: "personalIncomeRateBps" | "corporateRateBps" | "consumptionRateBps",
     valueBps: number | undefined,
@@ -108,6 +138,15 @@ export const useDraftStore = create<DraftState>((set) => ({
   glossaryOpen: false,
 
   setPolicySlot: (slot) => set({ policySlot: slot }),
+
+  applyCard: (applied) =>
+    set({
+      policySlot: applied.policySlot,
+      budget: applied.budget ? { ...EMPTY_BUDGET, ...applied.budget } : EMPTY_BUDGET,
+      amendment: applied.amendment
+        ? { ...EMPTY_AMENDMENT, ...applied.amendment }
+        : EMPTY_AMENDMENT,
+    }),
 
   setBudgetRateTarget: (field, valueBps) =>
     set((state) => ({
