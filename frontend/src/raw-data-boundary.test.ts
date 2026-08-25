@@ -140,6 +140,7 @@ describe("the raw-data boundary (structural, sentinel-based, mirrors tools/check
     expect(relPaths).toContain("greybox/TurnResultView.tsx");
     expect(relPaths).toContain("greybox/policy/PolicyCardGrid.tsx");
     expect(relPaths).toContain("greybox/policy/PolicyCardView.tsx");
+    expect(relPaths).toContain("greybox/policy/ConsequencesPanel.tsx");
   });
 
   it("no screen or shared UI component renders a raw JSON dump (no JSON.stringify in the rendering layer)", () => {

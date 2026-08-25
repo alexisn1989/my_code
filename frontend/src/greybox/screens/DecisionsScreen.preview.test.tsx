@@ -215,7 +215,8 @@ describe("DecisionsScreen preview presentation", () => {
       const { unmount } = renderScreenAndPreview(projection);
       await clickPreview();
 
-      await waitFor(() => expect(screen.getByText("Preview (estimate)")).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByText("Known before resolution")).toBeInTheDocument());
+      expect(screen.getByText("Uncertain / excluded from this estimate")).toBeInTheDocument();
       for (const channel of EXCLUDED_CHANNELS) {
         expect(screen.getByText(new RegExp(channel))).toBeInTheDocument();
       }

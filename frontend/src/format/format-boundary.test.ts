@@ -163,6 +163,7 @@ describe("the format arithmetic boundary (structural, AST-based)", () => {
     expect(relPaths).toContain("greybox/screens/DecisionsScreen.tsx");
     expect(relPaths).toContain("greybox/policy/PolicyCardGrid.tsx");
     expect(relPaths).toContain("greybox/policy/PolicyCardView.tsx");
+    expect(relPaths).toContain("greybox/policy/ConsequencesPanel.tsx");
     expect(relPaths).toContain("greybox/policy/groupPolicyCards.ts");
     expect(relPaths).toContain("state/applyPolicyCard.ts");
   });

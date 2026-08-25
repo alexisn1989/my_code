@@ -16,9 +16,10 @@
 import { useState } from "react";
 
 import { useDashboard, useDecisionOptions, usePreview, useResolve } from "../../api/queries";
-import type { DecisionOptionsProjection, PolicyCard, PreviewProjection } from "../../api/client";
+import type { DecisionOptionsProjection, PolicyCard } from "../../api/client";
 import { ResolutionInProgressError, StaleRevisionError } from "../../api/errors";
-import { formatAmount, formatBpsPercent, formatCommitted } from "../../format/format";
+import { formatAmount, formatBpsPercent } from "../../format/format";
+import { ConsequencesPanel } from "../policy/ConsequencesPanel";
 import { PolicyCardGrid } from "../policy/PolicyCardGrid";
 import { chooseCardRoute, mapPolicyCardToDraft } from "../../state/applyPolicyCard";
 import { buildDecisions } from "../../state/buildDecisionSet";
@@ -73,54 +74,6 @@ function groupBlocsByActor(blocs: readonly BlocOption[]): BlocActor[] {
 
 function chamberSeatsText(chambers: { chamber: string; seats: number }[]): string {
   return chambers.map((entry) => `${entry.chamber} ${formatAmount(entry.seats)}`).join(" · ");
-}
-
-function PreviewPanel({ preview }: { preview: PreviewProjection }) {
-  return (
-    <Panel title="Preview (estimate)">
-      <p className="mb-3 text-xs text-parchment-200/60">
-        An estimate, not a guarantee. Excludes: {preview.excludes_stochastic_channels.join(", ")}.
-      </p>
-      {!preview.has_proposal ? (
-        <EmptyNote>No policy proposal is drafted. Only investment (if any) would apply.</EmptyNote>
-      ) : (
-        <>
-          {preview.chambers.length === 0 ? (
-            <EmptyNote>No legislative vote applies to this route.</EmptyNote>
-          ) : (
-            <DataTable
-              caption="Chamber-by-chamber projection"
-              columns={["Chamber", "Supporting", "Required", "Seats", "Carries"]}
-              rows={preview.chambers.map((chamber) => ({
-                key: chamber.chamber,
-                cells: [
-                  chamber.chamber,
-                  formatAmount(chamber.supporting_seats),
-                  formatAmount(chamber.required_seats),
-                  formatAmount(chamber.total_seats),
-                  <ToneValue key="c" tone={chamber.carries ? "positive" : "negative"}>
-                    {chamber.carries ? "Carries" : "Fails"}
-                  </ToneValue>,
-                ],
-              }))}
-            />
-          )}
-          <p className="mt-3 text-sm">
-            <ToneValue tone={preview.would_pass ? "positive" : "negative"}>
-              {preview.would_pass ? "Would pass" : "Would not pass"}
-            </ToneValue>
-          </p>
-        </>
-      )}
-      <p className="mt-2 text-sm">
-        {formatCommitted(preview.committed_capital, preview.opening_capital)}
-        {" — "}
-        <ToneValue tone={preview.affordable ? "positive" : "negative"}>
-          {preview.affordable ? "affordable" : "exceeds available capital"}
-        </ToneValue>
-      </p>
-    </Panel>
-  );
 }
 
 export function DecisionsScreen({ navigate }: ScreenProps) {
@@ -502,7 +455,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         </div>
 
         {preview.isError ? <ErrorPanel error={preview.error} /> : null}
-        {preview.isSuccess ? <PreviewPanel preview={preview.data} /> : null}
+        {preview.isSuccess ? <ConsequencesPanel preview={preview.data} /> : null}
 
         {confirming ? (
           <div className="mt-4 rounded border border-gold-600 p-3">
