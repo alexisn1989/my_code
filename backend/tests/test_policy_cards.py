@@ -74,6 +74,30 @@ def test_catalog_generates_for_every_shipped_scenario(scenario: str) -> None:
     assert any(card.available for card in cards), f"{scenario}: at least one card must be usable"
 
 
+#: Gate 4A3A calibration -- (total cards, available cards), computed directly
+#: from the real catalog generator against each shipped scenario's actual
+#: authored content (never hand-derived or guessed). A change to any of these
+#: numbers means the catalog's shape genuinely changed for that scenario --
+#: either a deliberate content/calibration change (update the table) or a
+#: real regression (do not).
+_KNOWN_CARD_COUNTS: dict[str, tuple[int, int]] = {
+    "tiny_valid.yaml": (44, 33),
+    "deficit_demo.yaml": (45, 35),
+    "decree_state.yaml": (44, 31),
+}
+
+
+@pytest.mark.parametrize("scenario", ALL_SCENARIOS)
+def test_catalog_size_matches_known_calibration(scenario: str) -> None:
+    cards = build_policy_cards(_state(scenario))
+    expected_total, expected_available = _KNOWN_CARD_COUNTS[scenario]
+    actual_available = sum(1 for card in cards if card.available)
+    assert (len(cards), actual_available) == (expected_total, expected_available), (
+        f"{scenario}: catalog shape changed -- if this is a deliberate content or "
+        "calibration change, update _KNOWN_CARD_COUNTS; otherwise this is a regression"
+    )
+
+
 @pytest.mark.parametrize("scenario", ALL_SCENARIOS)
 def test_card_ids_are_unique_and_generation_is_deterministic(scenario: str) -> None:
     state = _state(scenario)
