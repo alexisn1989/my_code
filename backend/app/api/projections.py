@@ -427,11 +427,6 @@ PolicyCardUnavailableReason = Literal[
     "game_concluded",
 ]
 
-#: The raw internal diagnostic identifiers (C-rule codes) that must never
-#: appear in a player-facing string. Checked directly in tests against every
-#: emitted card and route.
-_DIAGNOSTIC_CODE_PREFIX = "C"
-
 
 class PolicyCardEffect(BaseModel):
     """One "current -> proposed" fact about a card, in RAW typed form (R6).
@@ -510,14 +505,11 @@ class PolicyCardRoute(BaseModel):
             )
         return self
 
-    @model_validator(mode="after")
-    def _no_diagnostic_leak_into_player_text(self) -> PolicyCardRoute:
-        if (
-            self.unavailable_detail is not None
-            and _DIAGNOSTIC_CODE_PREFIX in self.unavailable_detail
-        ):
-            raise ValueError("a diagnostic code must never appear in player-facing text")
-        return self
+    # No `_no_diagnostic_leak_into_player_text` here: a route carries no
+    # `diagnostic_code` field (only `PolicyCard` does -- constitutional
+    # coherence is a property of the amendment TARGET, which is route-
+    # independent), so there is nothing at this level to check a leak
+    # against. See `PolicyCard`'s own version of this validator below.
 
 
 class PolicyCard(BaseModel):
@@ -560,9 +552,14 @@ class PolicyCard(BaseModel):
 
     @model_validator(mode="after")
     def _no_diagnostic_leak_into_player_text(self) -> PolicyCard:
+        """`diagnostic_code` holds the raw internal rule id `first_constitutional_violation`
+        returns -- a snake_case identifier such as `hereditary_requires_monarchical_system`,
+        never a "C7"-style code -- so the leak check compares against THIS card's own actual
+        value, not a hardcoded placeholder prefix that would never match anything real."""
         if (
-            self.unavailable_detail is not None
-            and _DIAGNOSTIC_CODE_PREFIX in self.unavailable_detail
+            self.diagnostic_code is not None
+            and self.unavailable_detail is not None
+            and self.diagnostic_code in self.unavailable_detail
         ):
             raise ValueError("a diagnostic code must never appear in player-facing text")
         return self
