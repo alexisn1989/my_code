@@ -383,7 +383,11 @@ describe("Decision controls carry a real accessible label", () => {
 
     fireEvent.click(await screen.findByRole("radio", { name: "Constitutional amendment" }));
 
-    expect(await screen.findByLabelText(/decree_authority/)).toBeInTheDocument();
+    // Real axis ids (e.g. "decree_authority") render a human-readable label ("Decree
+    // authority") rather than the raw snake_case field identifier; an axis id with no
+    // known label (the synthetic "electoral_competitiveness" fixture below) still falls
+    // back to its raw id, so a distinguishing accessible name always exists either way.
+    expect(await screen.findByLabelText(/Decree authority/)).toBeInTheDocument();
     expect(screen.getByLabelText(/electoral_competitiveness/)).toBeInTheDocument();
   });
 

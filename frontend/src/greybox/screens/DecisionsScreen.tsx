@@ -76,6 +76,59 @@ function chamberSeatsText(chambers: { chamber: string; seats: number }[]): strin
   return chambers.map((entry) => `${entry.chamber} ${formatAmount(entry.seats)}`).join(" · ");
 }
 
+/** Matches `backend/app/api/policy_cards.py`'s `_SPENDING_CATEGORY_LABELS` wording, so the
+ * "Customize policy" raw editor and the card catalog never present two different vocabularies
+ * for the same server-sent `SpendingCategory` value. */
+const SPENDING_CATEGORY_LABEL: Record<string, string> = {
+  health: "Health",
+  education: "Education",
+  welfare: "Welfare",
+  infrastructure: "Infrastructure",
+  defense: "Defense",
+  security: "Security",
+  administration: "Administration",
+};
+
+/** The raw `axis` string a `ConstitutionalAxisOption` carries (`backend/app/api/projections.py`)
+ * is a field identifier, not display text -- shown human-readable here for the same reason
+ * `SPENDING_CATEGORY_LABEL` exists. */
+const AXIS_LABEL: Record<string, string> = {
+  decree_authority: "Decree authority",
+  executive_system: "Executive system",
+  executive_selection: "Executive selection",
+  national_election_interval_turns: "Election interval (turns)",
+  executive_term_limit_terms: "Executive term limit (terms)",
+};
+
+/** The enum-valued axes' `current_value`/`allowed_values` are raw server enum strings (e.g.
+ * `DecreeAuthority.value`); matches `backend/app/api/policy_cards.py`'s own label maps for the
+ * same three enums so the raw editor and the card catalog agree. */
+const AXIS_VALUE_LABEL: Record<string, string> = {
+  none: "No decree authority",
+  emergency_only: "Emergency decree authority only",
+  unlimited: "Unlimited decree authority",
+  presidential: "Presidential",
+  parliamentary: "Parliamentary",
+  semi_presidential: "Semi-presidential",
+  monarchical: "Monarchical",
+  direct_election: "Direct election",
+  legislative_selection: "Selected by the legislature",
+  hereditary: "Hereditary succession",
+  appointed: "Appointed",
+};
+
+/** A nullable axis (election interval, term limit) genuinely has no current value when unset --
+ * rendered as a plain English "none set", never `String(null)`'s literal `"null"`. */
+function axisCurrentValueText(currentValue: string | number | null): string {
+  if (currentValue === null) {
+    return "none set";
+  }
+  if (typeof currentValue === "number") {
+    return formatAmount(currentValue);
+  }
+  return AXIS_VALUE_LABEL[currentValue] ?? currentValue;
+}
+
 export function DecisionsScreen({ navigate }: ScreenProps) {
   const { revision, setRevision } = useSession();
   const dashboard = useDashboard(revision);
@@ -296,7 +349,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
                 className="flex items-center justify-between gap-3 text-sm"
               >
                 <span>
-                  {category.category}{" "}
+                  {SPENDING_CATEGORY_LABEL[category.category] ?? category.category}{" "}
                   <span className="text-xs text-parchment-200/50">
                     (current {formatAmount(category.current_amount)})
                   </span>
@@ -336,9 +389,9 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
                 className="flex items-center justify-between gap-3 text-sm"
               >
                 <span>
-                  {axis.axis}{" "}
+                  {AXIS_LABEL[axis.axis] ?? axis.axis}{" "}
                   <span className="text-xs text-parchment-200/50">
-                    (current {String(axis.current_value)})
+                    (current {axisCurrentValueText(axis.current_value)})
                   </span>
                 </span>
                 {axis.allowed_values ? (
@@ -355,7 +408,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
                     <option value="">— unchanged —</option>
                     {axis.allowed_values.map((value) => (
                       <option key={value} value={value}>
-                        {value}
+                        {AXIS_VALUE_LABEL[value] ?? value}
                       </option>
                     ))}
                   </select>

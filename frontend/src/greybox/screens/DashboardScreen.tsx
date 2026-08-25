@@ -24,6 +24,12 @@ import { EmptyNote, Panel, ToneValue } from "../components";
 import type { ScreenProps } from "../registry";
 import type { ScreenId } from "../types";
 
+const SEVERITY_LABEL: Record<"critical" | "warning" | "info", string> = {
+  critical: "Critical",
+  warning: "Warning",
+  info: "Info",
+};
+
 function SaveAsPanel() {
   const [displayName, setDisplayName] = useState("");
   const saveAs = useSaveAs();
@@ -136,7 +142,7 @@ export function DashboardScreen({ navigate }: ScreenProps) {
               {data.alerts.map((alert) => (
                 <li key={alert.id} className="text-sm">
                   <span className="uppercase tracking-wide text-xs text-parchment-200/60">
-                    {alert.severity}
+                    {SEVERITY_LABEL[alert.severity]}
                   </span>
                   <p>{alert.headline}</p>
                   {alert.detail ? <p className="text-parchment-200/70">{alert.detail}</p> : null}
@@ -159,6 +165,7 @@ export function DashboardScreen({ navigate }: ScreenProps) {
             <button
               type="button"
               onClick={() => navigate(concern.detail_screen as ScreenId)}
+              aria-label={`Details: ${concern.label}`}
               className="mt-2 text-xs underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
             >
               Details

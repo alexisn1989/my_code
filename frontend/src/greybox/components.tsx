@@ -23,6 +23,20 @@ const TONE_CLASS: Record<Tone, string> = {
   neutral: "text-parchment-200",
 };
 
+const TONE_GLYPH: Record<Tone, string> = {
+  positive: "✓",
+  negative: "✗",
+  caution: "▲",
+  neutral: "■",
+};
+
+const TONE_LABEL: Record<Tone, string> = {
+  positive: "positive",
+  negative: "negative",
+  caution: "caution",
+  neutral: "neutral",
+};
+
 /** Exported so other renderers of a `Direction` (e.g. a policy card's effect
  * chips) can match `DeltaText`'s own glyph/word convention exactly, instead
  * of maintaining a second copy of the same three-entry map. */
@@ -63,7 +77,13 @@ export function Panel({
  * glyph and a visually-hidden word.
  */
 export function ToneValue({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return <span className={TONE_CLASS[tone]}>{children}</span>;
+  return (
+    <span className={TONE_CLASS[tone]}>
+      <span aria-hidden="true">{TONE_GLYPH[tone]}</span>{" "}
+      <span className="sr-only">{TONE_LABEL[tone]}</span>
+      {children}
+    </span>
+  );
 }
 
 export function DeltaText({
