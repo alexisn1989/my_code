@@ -109,6 +109,17 @@ export function PolicyCardGrid({
 
   const visibleCards = activeMajor.id === "restraint" ? activeMajor.cards : (effectiveFamily?.cards ?? []);
 
+  // The family the SELECTED card belongs to, not necessarily the family the
+  // browser currently has open (the player may select a card and then
+  // navigate elsewhere while it stays selected) -- and only shown when it
+  // says something the category label alone did not (taxation/spending
+  // family labels currently equal their category label; constitution's four
+  // families do not).
+  const selectedCardFamilyLabel = located?.family
+    ? (majors.flatMap((major) => major.families).find((family) => family.id === located.family)
+        ?.label ?? null)
+    : null;
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-gold-600 bg-navy-900 p-3">
@@ -116,7 +127,9 @@ export function PolicyCardGrid({
           <div className="text-sm">
             <p className="text-parchment-200/60">
               {selectedCard.category_label}
-              {located?.family ? ` · ${effectiveFamily?.label ?? ""}` : ""}
+              {selectedCardFamilyLabel && selectedCardFamilyLabel !== selectedCard.category_label
+                ? ` · ${selectedCardFamilyLabel}`
+                : ""}
             </p>
             <p className="text-parchment-100">{selectedCard.title}</p>
           </div>

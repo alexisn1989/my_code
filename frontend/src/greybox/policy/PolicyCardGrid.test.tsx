@@ -85,7 +85,30 @@ const CONSTITUTION_CARD = card({
   ],
 });
 
-const CARDS = [card(), SPENDING_CARD, UNAVAILABLE_CARD, CONSTITUTION_CARD, NO_PROPOSAL_CARD];
+const GOVERNMENT_FORM_CARD = card({
+  card_id: "constitution_government_form_presidential_appointed",
+  category: "constitution",
+  category_label: "Constitutional reform",
+  title: "Reform to presidential, appointed",
+  routes: [
+    route({
+      template: {
+        kind: "constitutional_amendment",
+        route: "legislative",
+        targets: [{ axis: "executive_selection", value: "appointed" }],
+      },
+    }),
+  ],
+});
+
+const CARDS = [
+  card(),
+  SPENDING_CARD,
+  UNAVAILABLE_CARD,
+  CONSTITUTION_CARD,
+  GOVERNMENT_FORM_CARD,
+  NO_PROPOSAL_CARD,
+];
 
 describe("PolicyCardGrid: selection", () => {
   it("fires onSelectCard with the card -- route selection belongs to the caller (R5)", () => {
@@ -125,6 +148,44 @@ describe("PolicyCardGrid: selection", () => {
     // exactly one.
     expect(screen.getAllByText("Raise the personal income tax").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("button", { name: "Clear" })).toBeInTheDocument();
+  });
+
+  it("does not repeat the category label as a redundant family suffix (taxation's family label equals its category label)", () => {
+    render(
+      <PolicyCardGrid
+        cards={CARDS}
+        selectedCardId="tax_personal_income_increase"
+        onSelectCard={() => {}}
+        onClearSelection={() => {}}
+      />,
+    );
+    expect(screen.queryByText("Taxation · Taxation")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Taxation").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows a genuinely distinct family suffix for a constitution card (its family label differs from its category label)", () => {
+    render(
+      <PolicyCardGrid
+        cards={CARDS}
+        selectedCardId="constitution_decree_authority_to_unlimited"
+        onSelectCard={() => {}}
+        onClearSelection={() => {}}
+      />,
+    );
+    expect(screen.getByText("Constitutional reform · Decree authority")).toBeInTheDocument();
+  });
+
+  it("keeps showing the selected card's OWN family suffix even after navigating to a different family tab", () => {
+    render(
+      <PolicyCardGrid
+        cards={CARDS}
+        selectedCardId="constitution_decree_authority_to_unlimited"
+        onSelectCard={() => {}}
+        onClearSelection={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /Government form/ }));
+    expect(screen.getByText("Constitutional reform · Decree authority")).toBeInTheDocument();
   });
 
   it("calls onClearSelection when Clear is activated", () => {
