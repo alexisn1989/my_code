@@ -312,6 +312,54 @@ export interface components {
             /** Seats */
             seats: number;
         };
+        /**
+         * BudgetDecision
+         * @description Set target tax rates and/or spending amounts for the upcoming turn.
+         *
+         *     Targets, not deltas: an omitted rate (`None`) leaves that rate at its
+         *     current value; a rate that *is* included replaces it outright — even if
+         *     the new value equals the old one, which is still an explicit, reportable
+         *     player choice (`FinanceReport` labels it "unchanged" rather than treating
+         *     it as if nothing was submitted; see `report.py`).
+         *
+         *     Must set at least one target: an empty decision that changes nothing is
+         *     rejected at construction rather than silently accepted as a no-op that
+         *     happens to do nothing (a *missing* `BudgetDecision` in a `DecisionSet` is
+         *     how "keep the current budget" is actually expressed).
+         *
+         *     (Phase 3B1) `route` and `influence` extend this same decision rather than introducing a
+         *     discriminated decision union yet (D5): the budget IS the one proposal 3B1 routes through a
+         *     legislative vote or a decree, so there is no second decision kind yet for a union to
+         *     discriminate. `route` defaults to `LEGISLATIVE` — a government must explicitly ask to bypass
+         *     its chamber, never fall into doing so by omission. `influence` carries no stored total: the
+         *     amount committed is always the exact sum of its allocations, so there is no second field that
+         *     could ever disagree with the first.
+         *
+         *     None of the validators below can see `GameState`: whether a targeted bloc exists, whether the
+         *     constitution actually permits the chosen route, and whether the government can afford the sum
+         *     of every allocation are all resolution-time questions (slot 1) — an invalid decision aborts
+         *     the whole turn atomically rather than partially applying (`simulation.legislature.
+         *     LegislativeOutcome`'s docstring).
+         */
+        BudgetDecision: {
+            /** Consumption Rate Bps */
+            consumption_rate_bps?: number | null;
+            /** Corporate Rate Bps */
+            corporate_rate_bps?: number | null;
+            /** Influence */
+            influence?: components["schemas"]["InfluenceAllocation"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "budget";
+            /** Personal Income Rate Bps */
+            personal_income_rate_bps?: number | null;
+            /** @default legislative */
+            route: components["schemas"]["ProposalRoute"];
+            /** Spending Updates */
+            spending_updates?: components["schemas"]["SpendingUpdate"][];
+        };
         /** CapitalSummary */
         CapitalSummary: {
             /** Capacity */
@@ -361,6 +409,28 @@ export interface components {
              * @enum {string}
              */
             tone: "positive" | "negative" | "caution" | "neutral";
+        };
+        /**
+         * ConstitutionalAmendmentDecision
+         * @description Propose one atomic amendment across one or more constitutional axes (Phase 3C).
+         *
+         *     This model validates only state-independent shape. Whether the selected route is legal,
+         *     whether every target changes the opening constitution, whether the final combination remains
+         *     coherent under C1-C10, and whether the political-capital commitment is affordable are all
+         *     resolution-time checks in slot 1.
+         */
+        ConstitutionalAmendmentDecision: {
+            /** Influence */
+            influence?: components["schemas"]["InfluenceAllocation"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "constitutional_amendment";
+            /** @default legislative */
+            route: components["schemas"]["ProposalRoute"];
+            /** Targets */
+            targets: (components["schemas"]["DecreeAuthorityTarget"] | components["schemas"]["ExecutiveSystemTarget"] | components["schemas"]["ExecutiveSelectionTarget"] | components["schemas"]["ElectionIntervalTarget"] | components["schemas"]["TermLimitTarget"])[];
         };
         /** ConstitutionalAxisOption */
         ConstitutionalAxisOption: {
@@ -418,6 +488,11 @@ export interface components {
          *     from state. This endpoint answers "what exists to choose from" -- it never
          *     scores a draft (`/preview` does that) and never decides legality on
          *     submission (`/resolve`'s own validators still do, authoritatively).
+         *
+         *     `policy_cards` is the Gate 4A3A game-loop projection: named, understood
+         *     choices generated from this SAME state. It shares this envelope's
+         *     `revision`, so a card catalog and the legal-move facts it was generated
+         *     from are always the same age.
          */
         DecisionOptionsProjection: {
             /** Blocs */
@@ -434,6 +509,11 @@ export interface components {
             decree_legislative_capital_cost: number;
             /** Opening Capital */
             opening_capital: number;
+            /**
+             * Policy Cards
+             * @default []
+             */
+            policy_cards: components["schemas"]["PolicyCard"][];
             /** Relationship Investment Maximum */
             relationship_investment_maximum: number;
             /** Relationship Investment Minimum */
@@ -447,8 +527,28 @@ export interface components {
             /** Tax Rate Bps Minimum */
             tax_rate_bps_minimum: number;
         };
+        /**
+         * DecreeAuthority
+         * @description Whether the executive may legislate unilaterally.
+         * @enum {string}
+         */
+        DecreeAuthority: "none" | "emergency_only" | "unlimited";
+        /**
+         * DecreeAuthorityTarget
+         * @description Replace the constitution's decree-authority axis.
+         */
+        DecreeAuthorityTarget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            axis: "decree_authority";
+            value: components["schemas"]["DecreeAuthority"];
+        };
         /** DriverItem */
         DriverItem: {
+            /** Category */
+            category: string;
             /** Label */
             label: string;
             /** Params */
@@ -457,6 +557,60 @@ export interface components {
             };
             /** Reason Id */
             reason_id: string;
+        };
+        /**
+         * ElectionIntervalTarget
+         * @description Replace or abolish the scheduled national-election interval.
+         */
+        ElectionIntervalTarget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            axis: "national_election_interval_turns";
+            /** Value */
+            value: number | null;
+        };
+        /**
+         * ExecutiveSelection
+         * @description How the executive comes to hold office.
+         * @enum {string}
+         */
+        ExecutiveSelection: "direct_election" | "legislative_selection" | "hereditary" | "appointed";
+        /**
+         * ExecutiveSelectionTarget
+         * @description Replace the constitution's executive-selection axis.
+         */
+        ExecutiveSelectionTarget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            axis: "executive_selection";
+            value: components["schemas"]["ExecutiveSelection"];
+        };
+        /**
+         * ExecutiveSystem
+         * @description How the executive relates to the legislature.
+         *
+         *     **(R8)** `MONARCHICAL` exists because `PRESIDENTIAL + HEREDITARY` is incoherent: a presidential
+         *     executive's defining feature is a separate origin from, and accountability distinct from, the
+         *     legislature — a mandate or an appointment, never an inheritance. `MONARCHICAL` is the value that
+         *     makes a hereditary (or elective) head of state honest, bound by C6/C7 below.
+         * @enum {string}
+         */
+        ExecutiveSystem: "presidential" | "parliamentary" | "semi_presidential" | "monarchical";
+        /**
+         * ExecutiveSystemTarget
+         * @description Replace the constitution's executive-system axis.
+         */
+        ExecutiveSystemTarget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            axis: "executive_system";
+            value: components["schemas"]["ExecutiveSystem"];
         };
         /** GoalCard */
         GoalCard: {
@@ -489,6 +643,24 @@ export interface components {
             tone: "positive" | "negative" | "caution" | "neutral";
             /** Turn */
             turn: number;
+        };
+        /**
+         * InfluenceAllocation
+         * @description Political capital committed to one bloc, to move its vote (Phase 3B1).
+         *
+         *     Targets a bloc by `(party_id, bloc_id)` — the same pair `simulation.state` already uses to
+         *     address a bloc globally (`LegislativeBlocState`'s docstring). Deliberately dumb about anything
+         *     that needs `GameState` to answer: whether that bloc exists, whether the route even calls for
+         *     whipping votes, and whether the government can afford the sum of every allocation are all
+         *     resolution-time questions (slot 1), not construction-time ones.
+         */
+        InfluenceAllocation: {
+            /** Bloc Id */
+            bloc_id: string;
+            /** Party Id */
+            party_id: string;
+            /** Political Capital */
+            political_capital: number;
         };
         /** LedgerEntry */
         LedgerEntry: {
@@ -530,6 +702,114 @@ export interface components {
             scenario_id: string;
             /** Seed */
             seed?: number | null;
+        };
+        /** PolicyCard */
+        PolicyCard: {
+            /** Available */
+            available: boolean;
+            /** Card Id */
+            card_id: string;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "taxation" | "spending" | "constitution" | "restraint";
+            /** Category Label */
+            category_label: string;
+            /**
+             * Clears Proposal Slot
+             * @default false
+             */
+            clears_proposal_slot: boolean;
+            /** Description */
+            description: string;
+            /** Diagnostic Code */
+            diagnostic_code?: string | null;
+            /**
+             * Effects
+             * @default []
+             */
+            effects: components["schemas"]["PolicyCardEffect"][];
+            /**
+             * Routes
+             * @default []
+             */
+            routes: components["schemas"]["PolicyCardRoute"][];
+            /** Title */
+            title: string;
+            /** Unavailable Detail */
+            unavailable_detail?: string | null;
+            /** Unavailable Reason */
+            unavailable_reason?: ("route_constitutionally_unavailable" | "no_legislature" | "decree_cannot_amend_with_legislature" | "requires_companion_constitutional_change" | "outside_legal_bounds" | "no_baseline_to_scale" | "no_change_from_current" | "game_concluded") | null;
+        };
+        /** PolicyCardChamberRequirement */
+        PolicyCardChamberRequirement: {
+            /** Chamber */
+            chamber: string;
+            /** Required Seats */
+            required_seats: number;
+            /** Total Seats */
+            total_seats: number;
+        };
+        /**
+         * PolicyCardEffect
+         * @description One "current -> proposed" fact about a card, in RAW typed form (R6).
+         *
+         *     No value here is preformatted ("20.00%", "200,000,000"): `current_value`/
+         *     `proposed_value` are the raw bps/money/turn/term integers, `unit` names
+         *     which format function in `src/format/**` applies, and `current_label`/
+         *     `proposed_label` carry ONLY server-authored enum display text (there is no
+         *     numeric formatting to do for an enum). React formats the raw values; it
+         *     never invents or reformats a number itself.
+         */
+        PolicyCardEffect: {
+            /** Current Label */
+            current_label?: string | null;
+            /** Current Value */
+            current_value?: number | null;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "up" | "down" | "unchanged";
+            /** Label */
+            label: string;
+            /** Proposed Label */
+            proposed_label?: string | null;
+            /** Proposed Value */
+            proposed_value?: number | null;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "bps" | "money" | "turns" | "terms" | "enum";
+        };
+        /**
+         * PolicyCardRoute
+         * @description One route (legislative or decree) a card could be submitted through.
+         *
+         *     R11: no affordability field lives here. R2/R3: `template` is a real typed
+         *     decision or `None` -- never a placeholder dict.
+         */
+        PolicyCardRoute: {
+            /** Available */
+            available: boolean;
+            /** Bargaining Available */
+            bargaining_available: boolean;
+            /** Base Route Cost */
+            base_route_cost: number;
+            /**
+             * Chambers
+             * @default []
+             */
+            chambers: components["schemas"]["PolicyCardChamberRequirement"][];
+            route: components["schemas"]["ProposalRoute"];
+            /** Template */
+            template?: (components["schemas"]["BudgetDecision"] | components["schemas"]["ConstitutionalAmendmentDecision"]) | null;
+            /** Unavailable Detail */
+            unavailable_detail?: string | null;
+            /** Unavailable Reason */
+            unavailable_reason?: ("route_constitutionally_unavailable" | "no_legislature" | "decree_cannot_amend_with_legislature" | "requires_companion_constitutional_change" | "outside_legal_bounds" | "no_baseline_to_scale" | "no_change_from_current" | "game_concluded") | null;
         };
         /**
          * PreviewProjection
@@ -611,6 +891,16 @@ export interface components {
             /** Revision */
             revision: string;
         };
+        /**
+         * ProposalRoute
+         * @description How the player asked for a proposal to become law.
+         *
+         *     Chosen explicitly per proposal, never inferred. A government that *could* rule by decree still
+         *     has to say so, because bypassing a chamber is a deliberate act that later phases will attach
+         *     consequences to (courts, legitimacy cost, constitutional crisis -- Phase 3C).
+         * @enum {string}
+         */
+        ProposalRoute: "legislative" | "decree";
         /** ResolveRequest */
         ResolveRequest: {
             /**
@@ -673,12 +963,44 @@ export interface components {
             /** Starting Legitimacy Text */
             starting_legitimacy_text: string;
         };
+        /**
+         * SpendingCategory
+         * @description The seven government spending categories modeled in Phase 2A (product spec §13).
+         *
+         *     Shared between `SpendingPlanState` (field names match these values exactly)
+         *     and `simulation.decisions.SpendingUpdate` (a player's budget target for one
+         *     category) — one enum, not two parallel category lists that could drift.
+         * @enum {string}
+         */
+        SpendingCategory: "health" | "education" | "welfare" | "infrastructure" | "defense" | "security" | "administration";
         /** SpendingCategoryOption */
         SpendingCategoryOption: {
             /** Category */
             category: string;
             /** Current Amount */
             current_amount: number;
+        };
+        /**
+         * SpendingUpdate
+         * @description A player's target amount for one spending category.
+         */
+        SpendingUpdate: {
+            /** Amount */
+            amount: number;
+            category: components["schemas"]["SpendingCategory"];
+        };
+        /**
+         * TermLimitTarget
+         * @description Replace or abolish the executive term limit.
+         */
+        TermLimitTarget: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            axis: "executive_term_limit_terms";
+            /** Value */
+            value: number | null;
         };
         /** TerminalSummary */
         TerminalSummary: {

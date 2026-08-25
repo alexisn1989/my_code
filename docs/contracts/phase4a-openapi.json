@@ -91,6 +91,77 @@
         "title": "BlocOption",
         "type": "object"
       },
+      "BudgetDecision": {
+        "additionalProperties": false,
+        "description": "Set target tax rates and/or spending amounts for the upcoming turn.\n\nTargets, not deltas: an omitted rate (`None`) leaves that rate at its\ncurrent value; a rate that *is* included replaces it outright \u2014 even if\nthe new value equals the old one, which is still an explicit, reportable\nplayer choice (`FinanceReport` labels it \"unchanged\" rather than treating\nit as if nothing was submitted; see `report.py`).\n\nMust set at least one target: an empty decision that changes nothing is\nrejected at construction rather than silently accepted as a no-op that\nhappens to do nothing (a *missing* `BudgetDecision` in a `DecisionSet` is\nhow \"keep the current budget\" is actually expressed).\n\n(Phase 3B1) `route` and `influence` extend this same decision rather than introducing a\ndiscriminated decision union yet (D5): the budget IS the one proposal 3B1 routes through a\nlegislative vote or a decree, so there is no second decision kind yet for a union to\ndiscriminate. `route` defaults to `LEGISLATIVE` \u2014 a government must explicitly ask to bypass\nits chamber, never fall into doing so by omission. `influence` carries no stored total: the\namount committed is always the exact sum of its allocations, so there is no second field that\ncould ever disagree with the first.\n\nNone of the validators below can see `GameState`: whether a targeted bloc exists, whether the\nconstitution actually permits the chosen route, and whether the government can afford the sum\nof every allocation are all resolution-time questions (slot 1) \u2014 an invalid decision aborts\nthe whole turn atomically rather than partially applying (`simulation.legislature.\nLegislativeOutcome`'s docstring).",
+        "properties": {
+          "consumption_rate_bps": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consumption Rate Bps"
+          },
+          "corporate_rate_bps": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corporate Rate Bps"
+          },
+          "influence": {
+            "items": {
+              "$ref": "#/components/schemas/InfluenceAllocation"
+            },
+            "title": "Influence",
+            "type": "array"
+          },
+          "kind": {
+            "const": "budget",
+            "default": "budget",
+            "title": "Kind",
+            "type": "string"
+          },
+          "personal_income_rate_bps": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personal Income Rate Bps"
+          },
+          "route": {
+            "$ref": "#/components/schemas/ProposalRoute",
+            "default": "legislative"
+          },
+          "spending_updates": {
+            "items": {
+              "$ref": "#/components/schemas/SpendingUpdate"
+            },
+            "title": "Spending Updates",
+            "type": "array"
+          }
+        },
+        "title": "BudgetDecision",
+        "type": "object"
+      },
       "CapitalSummary": {
         "additionalProperties": false,
         "properties": {
@@ -209,6 +280,68 @@
           "detail_screen"
         ],
         "title": "ConcernCard",
+        "type": "object"
+      },
+      "ConstitutionalAmendmentDecision": {
+        "additionalProperties": false,
+        "description": "Propose one atomic amendment across one or more constitutional axes (Phase 3C).\n\nThis model validates only state-independent shape. Whether the selected route is legal,\nwhether every target changes the opening constitution, whether the final combination remains\ncoherent under C1-C10, and whether the political-capital commitment is affordable are all\nresolution-time checks in slot 1.",
+        "properties": {
+          "influence": {
+            "items": {
+              "$ref": "#/components/schemas/InfluenceAllocation"
+            },
+            "title": "Influence",
+            "type": "array"
+          },
+          "kind": {
+            "const": "constitutional_amendment",
+            "default": "constitutional_amendment",
+            "title": "Kind",
+            "type": "string"
+          },
+          "route": {
+            "$ref": "#/components/schemas/ProposalRoute",
+            "default": "legislative"
+          },
+          "targets": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "decree_authority": "#/components/schemas/DecreeAuthorityTarget",
+                  "executive_selection": "#/components/schemas/ExecutiveSelectionTarget",
+                  "executive_system": "#/components/schemas/ExecutiveSystemTarget",
+                  "executive_term_limit_terms": "#/components/schemas/TermLimitTarget",
+                  "national_election_interval_turns": "#/components/schemas/ElectionIntervalTarget"
+                },
+                "propertyName": "axis"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/DecreeAuthorityTarget"
+                },
+                {
+                  "$ref": "#/components/schemas/ExecutiveSystemTarget"
+                },
+                {
+                  "$ref": "#/components/schemas/ExecutiveSelectionTarget"
+                },
+                {
+                  "$ref": "#/components/schemas/ElectionIntervalTarget"
+                },
+                {
+                  "$ref": "#/components/schemas/TermLimitTarget"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "targets"
+        ],
+        "title": "ConstitutionalAmendmentDecision",
         "type": "object"
       },
       "ConstitutionalAxisOption": {
@@ -358,7 +491,7 @@
       },
       "DecisionOptionsProjection": {
         "additionalProperties": false,
-        "description": "Every REAL fact and constant needed to construct a legal decision.\n\nNothing here is invented: the bps and capital bounds are the engine's own\nstrict types and constants (`StrictBps`, `RELATIONSHIP_INVESTMENT_CAP`,\n`DECREE_POLITICAL_CAPITAL_COST`, `CONSTITUTIONAL_AMENDMENT_DECREE_COST`),\nand the spending, bloc and constitutional-axis listings are read straight\nfrom state. This endpoint answers \"what exists to choose from\" -- it never\nscores a draft (`/preview` does that) and never decides legality on\nsubmission (`/resolve`'s own validators still do, authoritatively).",
+        "description": "Every REAL fact and constant needed to construct a legal decision.\n\nNothing here is invented: the bps and capital bounds are the engine's own\nstrict types and constants (`StrictBps`, `RELATIONSHIP_INVESTMENT_CAP`,\n`DECREE_POLITICAL_CAPITAL_COST`, `CONSTITUTIONAL_AMENDMENT_DECREE_COST`),\nand the spending, bloc and constitutional-axis listings are read straight\nfrom state. This endpoint answers \"what exists to choose from\" -- it never\nscores a draft (`/preview` does that) and never decides legality on\nsubmission (`/resolve`'s own validators still do, authoritatively).\n\n`policy_cards` is the Gate 4A3A game-loop projection: named, understood\nchoices generated from this SAME state. It shares this envelope's\n`revision`, so a card catalog and the legal-move facts it was generated\nfrom are always the same age.",
         "properties": {
           "blocs": {
             "items": {
@@ -396,6 +529,14 @@
           "opening_capital": {
             "title": "Opening Capital",
             "type": "integer"
+          },
+          "policy_cards": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PolicyCard"
+            },
+            "title": "Policy Cards",
+            "type": "array"
           },
           "relationship_investment_maximum": {
             "title": "Relationship Investment Maximum",
@@ -443,9 +584,43 @@
         "title": "DecisionOptionsProjection",
         "type": "object"
       },
+      "DecreeAuthority": {
+        "description": "Whether the executive may legislate unilaterally.",
+        "enum": [
+          "none",
+          "emergency_only",
+          "unlimited"
+        ],
+        "title": "DecreeAuthority",
+        "type": "string"
+      },
+      "DecreeAuthorityTarget": {
+        "additionalProperties": false,
+        "description": "Replace the constitution's decree-authority axis.",
+        "properties": {
+          "axis": {
+            "const": "decree_authority",
+            "default": "decree_authority",
+            "title": "Axis",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/DecreeAuthority"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "DecreeAuthorityTarget",
+        "type": "object"
+      },
       "DriverItem": {
         "additionalProperties": false,
         "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
           "label": {
             "title": "Label",
             "type": "string"
@@ -470,10 +645,102 @@
           }
         },
         "required": [
+          "category",
           "reason_id",
           "label"
         ],
         "title": "DriverItem",
+        "type": "object"
+      },
+      "ElectionIntervalTarget": {
+        "additionalProperties": false,
+        "description": "Replace or abolish the scheduled national-election interval.",
+        "properties": {
+          "axis": {
+            "const": "national_election_interval_turns",
+            "default": "national_election_interval_turns",
+            "title": "Axis",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "ElectionIntervalTarget",
+        "type": "object"
+      },
+      "ExecutiveSelection": {
+        "description": "How the executive comes to hold office.",
+        "enum": [
+          "direct_election",
+          "legislative_selection",
+          "hereditary",
+          "appointed"
+        ],
+        "title": "ExecutiveSelection",
+        "type": "string"
+      },
+      "ExecutiveSelectionTarget": {
+        "additionalProperties": false,
+        "description": "Replace the constitution's executive-selection axis.",
+        "properties": {
+          "axis": {
+            "const": "executive_selection",
+            "default": "executive_selection",
+            "title": "Axis",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/ExecutiveSelection"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "ExecutiveSelectionTarget",
+        "type": "object"
+      },
+      "ExecutiveSystem": {
+        "description": "How the executive relates to the legislature.\n\n**(R8)** `MONARCHICAL` exists because `PRESIDENTIAL + HEREDITARY` is incoherent: a presidential\nexecutive's defining feature is a separate origin from, and accountability distinct from, the\nlegislature \u2014 a mandate or an appointment, never an inheritance. `MONARCHICAL` is the value that\nmakes a hereditary (or elective) head of state honest, bound by C6/C7 below.",
+        "enum": [
+          "presidential",
+          "parliamentary",
+          "semi_presidential",
+          "monarchical"
+        ],
+        "title": "ExecutiveSystem",
+        "type": "string"
+      },
+      "ExecutiveSystemTarget": {
+        "additionalProperties": false,
+        "description": "Replace the constitution's executive-system axis.",
+        "properties": {
+          "axis": {
+            "const": "executive_system",
+            "default": "executive_system",
+            "title": "Axis",
+            "type": "string"
+          },
+          "value": {
+            "$ref": "#/components/schemas/ExecutiveSystem"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "ExecutiveSystemTarget",
         "type": "object"
       },
       "GoalCard": {
@@ -560,6 +827,34 @@
           "tone"
         ],
         "title": "HistoryListEntry",
+        "type": "object"
+      },
+      "InfluenceAllocation": {
+        "additionalProperties": false,
+        "description": "Political capital committed to one bloc, to move its vote (Phase 3B1).\n\nTargets a bloc by `(party_id, bloc_id)` \u2014 the same pair `simulation.state` already uses to\naddress a bloc globally (`LegislativeBlocState`'s docstring). Deliberately dumb about anything\nthat needs `GameState` to answer: whether that bloc exists, whether the route even calls for\nwhipping votes, and whether the government can afford the sum of every allocation are all\nresolution-time questions (slot 1), not construction-time ones.",
+        "properties": {
+          "bloc_id": {
+            "minLength": 1,
+            "title": "Bloc Id",
+            "type": "string"
+          },
+          "party_id": {
+            "minLength": 1,
+            "title": "Party Id",
+            "type": "string"
+          },
+          "political_capital": {
+            "exclusiveMinimum": 0.0,
+            "title": "Political Capital",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "party_id",
+          "bloc_id",
+          "political_capital"
+        ],
+        "title": "InfluenceAllocation",
         "type": "object"
       },
       "LedgerEntry": {
@@ -673,6 +968,314 @@
         "title": "NewGameRequest",
         "type": "object"
       },
+      "PolicyCard": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "card_id": {
+            "title": "Card Id",
+            "type": "string"
+          },
+          "category": {
+            "enum": [
+              "taxation",
+              "spending",
+              "constitution",
+              "restraint"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "category_label": {
+            "title": "Category Label",
+            "type": "string"
+          },
+          "clears_proposal_slot": {
+            "default": false,
+            "title": "Clears Proposal Slot",
+            "type": "boolean"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "diagnostic_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Diagnostic Code"
+          },
+          "effects": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PolicyCardEffect"
+            },
+            "title": "Effects",
+            "type": "array"
+          },
+          "routes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PolicyCardRoute"
+            },
+            "title": "Routes",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "unavailable_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Detail"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "route_constitutionally_unavailable",
+                  "no_legislature",
+                  "decree_cannot_amend_with_legislature",
+                  "requires_companion_constitutional_change",
+                  "outside_legal_bounds",
+                  "no_baseline_to_scale",
+                  "no_change_from_current",
+                  "game_concluded"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "card_id",
+          "category",
+          "category_label",
+          "title",
+          "description",
+          "available"
+        ],
+        "title": "PolicyCard",
+        "type": "object"
+      },
+      "PolicyCardChamberRequirement": {
+        "additionalProperties": false,
+        "properties": {
+          "chamber": {
+            "title": "Chamber",
+            "type": "string"
+          },
+          "required_seats": {
+            "title": "Required Seats",
+            "type": "integer"
+          },
+          "total_seats": {
+            "title": "Total Seats",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chamber",
+          "total_seats",
+          "required_seats"
+        ],
+        "title": "PolicyCardChamberRequirement",
+        "type": "object"
+      },
+      "PolicyCardEffect": {
+        "additionalProperties": false,
+        "description": "One \"current -> proposed\" fact about a card, in RAW typed form (R6).\n\nNo value here is preformatted (\"20.00%\", \"200,000,000\"): `current_value`/\n`proposed_value` are the raw bps/money/turn/term integers, `unit` names\nwhich format function in `src/format/**` applies, and `current_label`/\n`proposed_label` carry ONLY server-authored enum display text (there is no\nnumeric formatting to do for an enum). React formats the raw values; it\nnever invents or reformats a number itself.",
+        "properties": {
+          "current_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Label"
+          },
+          "current_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Value"
+          },
+          "direction": {
+            "enum": [
+              "up",
+              "down",
+              "unchanged"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "proposed_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Label"
+          },
+          "proposed_value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Value"
+          },
+          "unit": {
+            "enum": [
+              "bps",
+              "money",
+              "turns",
+              "terms",
+              "enum"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "unit",
+          "direction"
+        ],
+        "title": "PolicyCardEffect",
+        "type": "object"
+      },
+      "PolicyCardRoute": {
+        "additionalProperties": false,
+        "description": "One route (legislative or decree) a card could be submitted through.\n\nR11: no affordability field lives here. R2/R3: `template` is a real typed\ndecision or `None` -- never a placeholder dict.",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "bargaining_available": {
+            "title": "Bargaining Available",
+            "type": "boolean"
+          },
+          "base_route_cost": {
+            "title": "Base Route Cost",
+            "type": "integer"
+          },
+          "chambers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PolicyCardChamberRequirement"
+            },
+            "title": "Chambers",
+            "type": "array"
+          },
+          "route": {
+            "$ref": "#/components/schemas/ProposalRoute"
+          },
+          "template": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "budget": "#/components/schemas/BudgetDecision",
+                    "constitutional_amendment": "#/components/schemas/ConstitutionalAmendmentDecision"
+                  },
+                  "propertyName": "kind"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/BudgetDecision"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ConstitutionalAmendmentDecision"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template"
+          },
+          "unavailable_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Detail"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "route_constitutionally_unavailable",
+                  "no_legislature",
+                  "decree_cannot_amend_with_legislature",
+                  "requires_companion_constitutional_change",
+                  "outside_legal_bounds",
+                  "no_baseline_to_scale",
+                  "no_change_from_current",
+                  "game_concluded"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "route",
+          "available",
+          "base_route_cost",
+          "bargaining_available"
+        ],
+        "title": "PolicyCardRoute",
+        "type": "object"
+      },
       "PreviewProjection": {
         "additionalProperties": false,
         "description": "A deterministic ESTIMATE, explicitly not an authoritative outcome.\n\n`estimate` is always True and `excludes_stochastic_channels` names what the\npreview deliberately does not know, so no caller can mistake this for a\nresolved result.",
@@ -776,6 +1379,15 @@
         ],
         "title": "PreviewRequest",
         "type": "object"
+      },
+      "ProposalRoute": {
+        "description": "How the player asked for a proposal to become law.\n\nChosen explicitly per proposal, never inferred. A government that *could* rule by decree still\nhas to say so, because bypassing a chamber is a deliberate act that later phases will attach\nconsequences to (courts, legitimacy cost, constitutional crisis -- Phase 3C).",
+        "enum": [
+          "legislative",
+          "decree"
+        ],
+        "title": "ProposalRoute",
+        "type": "string"
       },
       "ResolveRequest": {
         "additionalProperties": false,
@@ -933,6 +1545,20 @@
         "title": "ScenarioSummary",
         "type": "object"
       },
+      "SpendingCategory": {
+        "description": "The seven government spending categories modeled in Phase 2A (product spec \u00a713).\n\nShared between `SpendingPlanState` (field names match these values exactly)\nand `simulation.decisions.SpendingUpdate` (a player's budget target for one\ncategory) \u2014 one enum, not two parallel category lists that could drift.",
+        "enum": [
+          "health",
+          "education",
+          "welfare",
+          "infrastructure",
+          "defense",
+          "security",
+          "administration"
+        ],
+        "title": "SpendingCategory",
+        "type": "string"
+      },
       "SpendingCategoryOption": {
         "additionalProperties": false,
         "properties": {
@@ -950,6 +1576,55 @@
           "current_amount"
         ],
         "title": "SpendingCategoryOption",
+        "type": "object"
+      },
+      "SpendingUpdate": {
+        "additionalProperties": false,
+        "description": "A player's target amount for one spending category.",
+        "properties": {
+          "amount": {
+            "minimum": 0.0,
+            "title": "Amount",
+            "type": "integer"
+          },
+          "category": {
+            "$ref": "#/components/schemas/SpendingCategory"
+          }
+        },
+        "required": [
+          "category",
+          "amount"
+        ],
+        "title": "SpendingUpdate",
+        "type": "object"
+      },
+      "TermLimitTarget": {
+        "additionalProperties": false,
+        "description": "Replace or abolish the executive term limit.",
+        "properties": {
+          "axis": {
+            "const": "executive_term_limit_terms",
+            "default": "executive_term_limit_terms",
+            "title": "Axis",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "TermLimitTarget",
         "type": "object"
       },
       "TerminalSummary": {
