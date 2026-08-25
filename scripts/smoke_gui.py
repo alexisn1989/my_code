@@ -110,6 +110,30 @@ def _smoke_one_scenario(base_url: str, scenario_id: str) -> None:
     _assert(status == 200, f"[{scenario_id}] /api/game/decision-options: expected 200, got {status}")
     _assert("opening_capital" in options, f"[{scenario_id}] decision-options missing opening_capital")
 
+    # Gate 4A3A: the server-authored policy-card catalog must round-trip through
+    # a REAL running process and REAL HTTP JSON encoding, not just a TestClient
+    # -- this is the one place that would catch a serialization bug a pytest
+    # TestClient call could miss (e.g. an enum that doesn't survive real JSON).
+    cards = options.get("policy_cards")
+    _assert(isinstance(cards, list) and len(cards) > 0, f"[{scenario_id}] decision-options has no policy_cards")
+    for card in cards:
+        _assert("card_id" in card, f"[{scenario_id}] a policy card is missing card_id")
+        _assert("category" in card, f"[{scenario_id}] card {card.get('card_id')} is missing category")
+        _assert("available" in card, f"[{scenario_id}] card {card.get('card_id')} is missing available")
+        # The "no proposal" card is the one legitimate exception: it has no
+        # route concept at all (nothing is submitted through legislative or
+        # decree), so an empty routes list is correct for it specifically.
+        if card["card_id"] != "no_proposal":
+            _assert(
+                "routes" in card and len(card["routes"]) > 0,
+                f"[{scenario_id}] card {card.get('card_id')} has no routes",
+            )
+        if not card["available"]:
+            _assert(
+                card.get("unavailable_reason") is not None,
+                f"[{scenario_id}] unavailable card {card.get('card_id')} has no unavailable_reason",
+            )
+
     status, preview = _request(
         base_url, "/api/game/preview", method="POST", body={"revision": revision, "decisions": []}
     )
