@@ -8,6 +8,14 @@ Phase 3B2A adds `simulation.relationships` to the same guarantee: how readily a 
 government is a property of that caucus, not of the government's constitutional form. A monarchy
 and a republic buy the same relationship improvement for the same capital.
 
+External Wars W1 adds `simulation.foreign_conflict` to `NEUTRAL_MODULES` for T-N1a/T-N1b, and gives
+it its own additional guarantee below (T-N2): a foreign actor's abstract `war_capability_bps` must
+have no channel into this game's *domestic* political math either. Unlike the other three modules,
+`foreign_conflict` also carries an integer-only purity claim of its own; T-N2's AST scan is scoped
+to that module by name specifically, not folded into the general neutrality checks, because
+broadening a module-specific purity claim across the package would silently change what the other
+neutral modules are permitted to do.
+
 Phase 3B1 reads the constitution in exactly **one** place — routing, which decides which chambers
 must approve a proposal and whether a decree is constitutionally available. That is structure
 deciding *procedure*. Neither `simulation.apportionment` nor `simulation.legislative_voting`
@@ -32,6 +40,7 @@ from types import ModuleType
 
 from app.simulation import apportionment as apportionment_module
 from app.simulation import constitution as constitution_module
+from app.simulation import foreign_conflict as foreign_conflict_module
 from app.simulation import legislative_voting as voting_module
 from app.simulation import political_memory as political_memory_module
 from app.simulation import relationships as relationships_module
@@ -62,6 +71,7 @@ NEUTRAL_MODULES = (
     voting_module,
     relationships_module,
     political_memory_module,
+    foreign_conflict_module,
 )
 
 
@@ -159,6 +169,7 @@ def test_the_neutral_modules_are_genuinely_the_ones_under_test() -> None:
         "app.simulation.legislative_voting",
         "app.simulation.relationships",
         "app.simulation.political_memory",
+        "app.simulation.foreign_conflict",
     }
 
 
@@ -364,3 +375,80 @@ def test_government_survival_is_deliberately_excluded_from_neutral_modules() -> 
 
     assert government_survival_module not in NEUTRAL_MODULES
     assert government_survival_module.__name__ not in {m.__name__ for m in NEUTRAL_MODULES}
+
+
+# --- T-N2 (External Wars W1): foreign_conflict is float-free, and reaches nothing domestic ----
+#
+# Scoped to `foreign_conflict.py` BY NAME, exactly like the relationships/political_memory scans
+# above are scoped to their own modules -- never folded into a scan that would silently start
+# constraining apportionment.py or legislative_voting.py, which §T-1 above documents are NOT
+# covered by this discipline.
+
+
+def test_the_foreign_conflict_module_uses_no_floating_point_arithmetic() -> None:
+    """Determinism depends on it: `state_json` is BLAKE2b-covered, and a float would make the
+    same game hash differently on a different platform. Checked against the parsed source, so
+    importing a float helper later is caught even if it is never called."""
+    source = Path(inspect.getfile(foreign_conflict_module)).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    for node in ast.walk(tree):
+        assert not isinstance(node, ast.Constant) or not isinstance(node.value, float), (
+            f"float literal {node.value!r} in foreign_conflict.py"
+        )
+        if isinstance(node, ast.BinOp):
+            assert not isinstance(node.op, ast.Div), "true division (/) in foreign_conflict.py"
+        if isinstance(node, ast.Name):
+            assert node.id not in {"float", "random", "Decimal"}, node.id
+
+
+def test_the_foreign_conflict_module_imports_no_randomness_or_clock() -> None:
+    """The RNG draws this module's functions consume arrive as caller-supplied integers; the
+    module itself must have no channel to a generator or a clock, or the engine's determinism
+    claim would depend on convention rather than on structure."""
+    source = Path(inspect.getfile(foreign_conflict_module)).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported = {node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
+    imported |= {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    assert not (imported & {"random", "time", "datetime", "secrets", "os"}), imported
+
+
+def test_foreign_conflict_module_shares_no_state_or_i_o() -> None:
+    """The module docstring's purity claim, checked structurally: no top-level mutable
+    containers (the classic hidden-state bug) and no I/O builtins referenced anywhere in the
+    source."""
+    source = Path(inspect.getfile(foreign_conflict_module)).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    forbidden_calls = {"open", "print", "input"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            assert node.func.id not in forbidden_calls, (
+                f"foreign_conflict.py calls {node.func.id!r}"
+            )
+
+
+def test_foreign_conflict_does_not_import_government_survival_or_vice_versa() -> None:
+    """The isolation guarantee is checked from both directions: `foreign_conflict` must not
+    reach into domestic survival math, and `government_survival` must not reach into it either
+    (pinned again, from this module's own source, alongside `test_foreign_conflict.py`'s check
+    from `government_survival.py`'s side)."""
+    import app.simulation.government_survival as government_survival_module
+
+    fc_source = Path(inspect.getfile(foreign_conflict_module)).read_text(encoding="utf-8")
+    fc_tree = ast.parse(fc_source)
+    fc_imports = {
+        node.module or "" for node in ast.walk(fc_tree) if isinstance(node, ast.ImportFrom)
+    }
+    assert not any("government_survival" in name for name in fc_imports)
+
+    gs_source = Path(inspect.getfile(government_survival_module)).read_text(encoding="utf-8")
+    gs_tree = ast.parse(gs_source)
+    gs_imports = {
+        node.module or "" for node in ast.walk(gs_tree) if isinstance(node, ast.ImportFrom)
+    }
+    assert not any("foreign_conflict" in name for name in gs_imports)
