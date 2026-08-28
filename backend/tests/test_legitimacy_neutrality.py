@@ -165,6 +165,7 @@ def _run_authored_case(
             opening_bps=legitimacy_bps,
             order_support_contribution=drift,
             performance_contribution=assessment.performance_contribution_bps,
+            security_contribution=0,
         )
         regeneration, closing_capital = resolve_political_capital(
             opening=political_capital,

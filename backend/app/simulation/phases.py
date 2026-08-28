@@ -64,6 +64,45 @@ from app.simulation.decisions import (
     budget_decision_digest,
     constitutional_amendment_decision_digest,
 )
+from app.simulation.foreign_conflict import (
+    CEASEFIRE_BREAKDOWN_BPS,
+    CEASEFIRE_DURABILITY_TURNS,
+    CEASEFIRE_INTENSITY_DECAY_BPS,
+    CEASEFIRE_RECOVERY_BPS,
+    CEASEFIRE_THRESHOLD_BPS,
+    DECISIVE_POSITION_BPS,
+    DECISIVENESS_PENALTY_BPS,
+    EXHAUSTION_RATE_BPS,
+    INITIAL_INTENSITY_BPS,
+    INTENSITY_DECAY_BPS,
+    INTENSITY_GROWTH_BPS,
+    MIN_ACTIVE_INTENSITY_BPS,
+    MIN_OUTBREAK_WEIGHT_BPS,
+    OUTBREAK_SCALE_BPS,
+    PROGRESS_JITTER_BPS,
+    SETTLEMENT_THRESHOLD_BPS,
+    TENSION_INTENSITY_WEIGHT_BPS,
+    TERMINAL_STATUSES,
+    ConflictStatus,
+    active_closing_status,
+    apply_active_intensity_floor,
+    average_exhaustion_bps,
+    ceasefire_closing_intensity_bps,
+    ceasefire_closing_status,
+    ceasefire_decayed_intensity_bps,
+    ceasefire_gate_open,
+    closing_position_bps,
+    closing_readiness_bps,
+    dyad_weight_bps,
+    exhaustion_gain_bps,
+    initial_intensity_bps,
+    is_decisive,
+    outbreak_occurs,
+    outbreak_probability_bps,
+    passes_pressure_floor,
+    raw_closing_intensity_bps,
+    select_candidate_index,
+)
 from app.simulation.government_survival import (
     ASSASSINATION_SEVERITY_THRESHOLD_BPS,
     MAX_POLLING_UNCERTAINTY_SWING_BPS,
@@ -111,7 +150,9 @@ from app.simulation.legislature import (
 from app.simulation.legislature import ChangeDirection as LegislativeChangeDirection
 from app.simulation.legitimacy import (
     PerformanceSignals,
+    aggregate_security_contribution_bps,
     assess_economic_performance,
+    foreign_conflict_security_anxiety_bps,
     order_support_contribution_bps,
     resolve_legitimacy,
     resolve_political_capital,
@@ -141,6 +182,10 @@ from app.simulation.report import (
     EconomicBaselineReport,
     ElectionReport,
     FinanceReport,
+    ForeignAffairsReport,
+    ForeignConflictOutbreakCandidateRow,
+    ForeignConflictOutbreakReport,
+    ForeignConflictProgressionRow,
     ImpeachmentChannelReport,
     LaborMarketReport,
     LegislativeReport,
@@ -179,7 +224,9 @@ from app.simulation.resource_output import (
     compute_resource_output_contributions,
 )
 from app.simulation.state import (
+    ConflictDyadState,
     EconomicBaselineState,
+    ForeignConflictState,
     GameState,
     LegislativeBlocState,
     LegislatureState,
@@ -463,6 +510,17 @@ class PhaseContext:
     `OpeningPoliticalSnapshot` plus `production_report`/`labor_market_report`; `resolver.py`
     copies this onto the final `TurnReport`, where it is cross-validated against both of those
     reports and, after resolution, against the resulting state (`simulation.reconciliation`)."""
+    foreign_outbreak_report: ForeignConflictOutbreakReport | None = None
+    """Set by `_resolve_foreign_conflict_outbreak` (slot 7, External Wars Gate W1); read by slot 8
+    (to know which conflict, if any, was just created and must also progress this same turn — see
+    that function's docstring) and by slot 15 (report assembly)."""
+    foreign_progression_rows: tuple[ForeignConflictProgressionRow, ...] = ()
+    """Set by `_resolve_foreign_conflict_progression` (slot 8, External Wars Gate W1); read by
+    slot 15 (report assembly) to build `ForeignAffairsReport` together with
+    `foreign_outbreak_report`."""
+    foreign_affairs_report: ForeignAffairsReport | None = None
+    """Set by `generate_turn_report` (slot 15) from `foreign_outbreak_report` and
+    `foreign_progression_rows`; `resolver.py` copies this onto the final `TurnReport`."""
     _current_phase_id: str | None = field(default=None, repr=False)
 
     def rng(self, stream: str) -> random.Random:
@@ -1813,6 +1871,386 @@ def _resolve_production_and_trade(ctx: PhaseContext) -> None:
     ctx.mark_implemented()
 
 
+def _resolve_foreign_conflict_outbreak(ctx: PhaseContext) -> None:
+    """External Wars Gate W1, slot 7 (`resolve_diplomacy_and_sanctions`): the outbreak draw.
+
+    Runs every turn, whether or not a war starts (frozen plan sec.7/sec.11.1). A dyad is a
+    candidate iff `eligible` and no existing conflict for its pair is currently `ACTIVE` or
+    `CEASEFIRE` (sec.6.2 rule 2 -- a pair cannot fight two wars at once). At most one new conflict
+    per turn (sec.6.2 rule 3): one draw decides whether a war starts, a second decides which
+    eligible dyad, both from the same `foreign_conflict_outbreak` stream, in that order (sec.8.7)
+    -- the second draw is only ever made when the first says a war starts.
+
+    A conflict created here is written straight into `ctx.state.world.conflicts` -- the one
+    deliberate state mutation in this function, mirroring `_extract_resources`'s narrow exception
+    to the "phases don't mutate state" convention -- because sec.7 rule 1 requires it to ALSO
+    progress in slot 8 of this same turn, which reads `ctx.state.world.conflicts` fresh and applies
+    the same progression formula uniformly whether a conflict is new or pre-existing.
+    """
+    world = ctx.state.world
+    excluded_pairs = {
+        (conflict.country_a, conflict.country_b)
+        for conflict in world.conflicts
+        if conflict.status in (ConflictStatus.ACTIVE, ConflictStatus.CEASEFIRE)
+    }
+
+    candidate_rows: list[ForeignConflictOutbreakCandidateRow] = []
+    passing_dyads: list[ConflictDyadState] = []
+    for dyad in world.dyads:
+        if not dyad.eligible or (dyad.country_a, dyad.country_b) in excluded_pairs:
+            continue
+        weight = dyad_weight_bps(tension_bps=dyad.tension_bps, grievance_bps=dyad.grievance_bps)
+        passed = passes_pressure_floor(raw_weight_bps=weight)
+        candidate_rows.append(
+            ForeignConflictOutbreakCandidateRow(
+                country_a=dyad.country_a,
+                country_b=dyad.country_b,
+                aggressor=dyad.aggressor,
+                defender=dyad.defender,
+                tension_bps=dyad.tension_bps,
+                grievance_bps=dyad.grievance_bps,
+                raw_dyad_weight_bps=weight,
+                passed_pressure_floor=passed,
+            )
+        )
+        if passed:
+            passing_dyads.append(dyad)
+
+    total_weight = sum(
+        row.raw_dyad_weight_bps for row in candidate_rows if row.passed_pressure_floor
+    )
+    probability = outbreak_probability_bps(total_weight_bps=total_weight)
+
+    rng = ctx.rng("foreign_conflict_outbreak")
+    occurrence_draw = rng.randrange(BPS_DENOMINATOR)
+    occurred = outbreak_occurs(occurrence_draw=occurrence_draw, probability_bps=probability)
+
+    selection_draw: int | None = None
+    selected_dyad: ConflictDyadState | None = None
+    new_conflict: ForeignConflictState | None = None
+
+    if occurred:
+        # Mathematically guaranteed by outbreak_probability_bps: zero passing dyads means
+        # total_weight == 0, which means probability == 0, which makes occurred impossible for
+        # any occurrence_draw >= 0 -- made explicit here rather than silently relied upon.
+        assert passing_dyads, "occurred=True is unreachable with zero passing candidates"
+
+        weights = tuple(
+            dyad_weight_bps(tension_bps=d.tension_bps, grievance_bps=d.grievance_bps)
+            for d in passing_dyads
+        )
+        selection_draw = rng.randrange(total_weight)
+        selected_index = select_candidate_index(selection_draw=selection_draw, weights_bps=weights)
+        selected_dyad = passing_dyads[selected_index]
+
+        conflict_id = f"{selected_dyad.country_a}__{selected_dyad.country_b}__t{ctx.resolving_turn}"
+        intensity = initial_intensity_bps(tension_bps=selected_dyad.tension_bps)
+        capability_a = world.foreign_profiles[selected_dyad.country_a].war_capability_bps
+        capability_b = world.foreign_profiles[selected_dyad.country_b].war_capability_bps
+        new_conflict = ForeignConflictState(
+            conflict_id=conflict_id,
+            country_a=selected_dyad.country_a,
+            country_b=selected_dyad.country_b,
+            aggressor=selected_dyad.aggressor,
+            defender=selected_dyad.defender,
+            war_capability_a_bps=capability_a,
+            war_capability_b_bps=capability_b,
+            aim_a=selected_dyad.aim_a,
+            aim_b=selected_dyad.aim_b,
+            opened_turn=ctx.resolving_turn,
+            intensity_bps=intensity,
+            position_bps=0,
+            exhaustion_a_bps=0,
+            exhaustion_b_bps=0,
+            negotiation_readiness_bps=0,
+            status=ConflictStatus.ACTIVE,
+            ceasefire_run_turns=0,
+            resolved_turn=None,
+        )
+        updated_conflicts = tuple(
+            sorted((*world.conflicts, new_conflict), key=lambda c: c.conflict_id)
+        )
+        ctx.state.world = world.model_copy(update={"conflicts": updated_conflicts})
+
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="foreign_affairs",
+                reason_id="foreign_conflict_outbreak",
+                params={
+                    "country_a": selected_dyad.country_a,
+                    "country_b": selected_dyad.country_b,
+                    "aggressor": selected_dyad.aggressor,
+                    "conflict_id": conflict_id,
+                },
+            )
+        )
+
+    ctx.foreign_outbreak_report = ForeignConflictOutbreakReport(
+        turn=ctx.resolving_turn,
+        candidates=tuple(candidate_rows),
+        minimum_outbreak_weight_bps=MIN_OUTBREAK_WEIGHT_BPS,
+        total_weight_bps=total_weight,
+        outbreak_scale_bps=OUTBREAK_SCALE_BPS,
+        clamped_probability_bps=probability,
+        occurrence_draw=occurrence_draw,
+        occurred=occurred,
+        selection_draw=selection_draw,
+        selected_country_a=(selected_dyad.country_a if selected_dyad else None),
+        selected_country_b=(selected_dyad.country_b if selected_dyad else None),
+        conflict_id=(new_conflict.conflict_id if new_conflict else None),
+        opened_turn=(new_conflict.opened_turn if new_conflict else None),
+        initial_intensity_bps=(new_conflict.intensity_bps if new_conflict else None),
+        initial_position_bps=(new_conflict.position_bps if new_conflict else None),
+        initial_exhaustion_a_bps=(new_conflict.exhaustion_a_bps if new_conflict else None),
+        initial_exhaustion_b_bps=(new_conflict.exhaustion_b_bps if new_conflict else None),
+        initial_readiness_bps=(new_conflict.negotiation_readiness_bps if new_conflict else None),
+        initial_intensity_constant_bps=INITIAL_INTENSITY_BPS,
+        tension_intensity_weight_bps=TENSION_INTENSITY_WEIGHT_BPS,
+    )
+    ctx.mark_implemented()
+
+
+def _progress_active_conflict(
+    ctx: PhaseContext, conflict: ForeignConflictState
+) -> tuple[ForeignConflictState, ForeignConflictProgressionRow]:
+    """One `ACTIVE`-opening conflict's sec.8.2 progression, including the terminal gates (sec.8.3)
+    and the active-intensity floor (sec.8.2), applied only after `closing_status` is known."""
+    rng = ctx.rng(f"foreign_conflict_progress:{conflict.conflict_id}")
+    jitter = rng.randint(-PROGRESS_JITTER_BPS, PROGRESS_JITTER_BPS)
+
+    position = closing_position_bps(
+        opening_position_bps=conflict.position_bps,
+        opening_war_capability_a_bps=conflict.war_capability_a_bps,
+        opening_war_capability_b_bps=conflict.war_capability_b_bps,
+        opening_intensity_bps=conflict.intensity_bps,
+        position_jitter_bps=jitter,
+    )
+    gain = exhaustion_gain_bps(opening_intensity_bps=conflict.intensity_bps)
+    exhaustion_a = min(BPS_DENOMINATOR, max(0, conflict.exhaustion_a_bps + gain))
+    exhaustion_b = min(BPS_DENOMINATOR, max(0, conflict.exhaustion_b_bps + gain))
+    avg_exhaustion = average_exhaustion_bps(
+        exhaustion_a_bps=exhaustion_a, exhaustion_b_bps=exhaustion_b
+    )
+    raw_intensity = raw_closing_intensity_bps(
+        opening_intensity_bps=conflict.intensity_bps, closing_average_exhaustion_bps=avg_exhaustion
+    )
+    readiness = closing_readiness_bps(
+        closing_average_exhaustion_bps=avg_exhaustion, closing_position_bps_value=position
+    )
+
+    termination_draw: int | None = None
+    if not is_decisive(closing_position_bps_value=position) and ceasefire_gate_open(
+        closing_readiness_bps_value=readiness
+    ):
+        termination_draw = ctx.rng(
+            f"foreign_conflict_termination:{conflict.conflict_id}"
+        ).randrange(BPS_DENOMINATOR)
+    status = active_closing_status(
+        closing_position_bps_value=position,
+        closing_readiness_bps_value=readiness,
+        termination_draw=termination_draw,
+    )
+    closing_intensity = apply_active_intensity_floor(
+        raw_intensity_bps=raw_intensity, closing_status=status
+    )
+    floor_applied = status is ConflictStatus.ACTIVE and raw_intensity < MIN_ACTIVE_INTENSITY_BPS
+    resolved_turn = ctx.resolving_turn if status in TERMINAL_STATUSES else None
+
+    updated = conflict.model_copy(
+        update={
+            "intensity_bps": closing_intensity,
+            "position_bps": position,
+            "exhaustion_a_bps": exhaustion_a,
+            "exhaustion_b_bps": exhaustion_b,
+            "negotiation_readiness_bps": readiness,
+            "status": status,
+            "ceasefire_run_turns": 0,
+            "resolved_turn": resolved_turn,
+        }
+    )
+    row = ForeignConflictProgressionRow(
+        conflict_id=conflict.conflict_id,
+        opened_turn=conflict.opened_turn,
+        resolved_turn=resolved_turn,
+        opening_status=ConflictStatus.ACTIVE,
+        closing_status=status,
+        opening_war_capability_a_bps=conflict.war_capability_a_bps,
+        opening_war_capability_b_bps=conflict.war_capability_b_bps,
+        opening_intensity_bps=conflict.intensity_bps,
+        raw_closing_intensity_bps=raw_intensity,
+        closing_intensity_bps=closing_intensity,
+        minimum_active_intensity_bps=MIN_ACTIVE_INTENSITY_BPS,
+        active_intensity_floor_applied=floor_applied,
+        opening_position_bps=conflict.position_bps,
+        closing_position_bps=position,
+        position_jitter_bps=jitter,
+        opening_exhaustion_a_bps=conflict.exhaustion_a_bps,
+        opening_exhaustion_b_bps=conflict.exhaustion_b_bps,
+        closing_exhaustion_a_bps=exhaustion_a,
+        closing_exhaustion_b_bps=exhaustion_b,
+        closing_avg_exhaustion_bps=avg_exhaustion,
+        exhaustion_rate_bps=EXHAUSTION_RATE_BPS,
+        exhaustion_gain_bps=gain,
+        intensity_growth_bps=INTENSITY_GROWTH_BPS,
+        intensity_decay_bps=INTENSITY_DECAY_BPS,
+        opening_readiness_bps=conflict.negotiation_readiness_bps,
+        closing_readiness_bps=readiness,
+        decisiveness_penalty_bps=DECISIVENESS_PENALTY_BPS,
+        decisive_position_threshold_bps=DECISIVE_POSITION_BPS,
+        ceasefire_threshold_bps=CEASEFIRE_THRESHOLD_BPS,
+        settlement_threshold_bps=SETTLEMENT_THRESHOLD_BPS,
+        ceasefire_intensity_decay_bps=CEASEFIRE_INTENSITY_DECAY_BPS,
+        ceasefire_recovery_bps=CEASEFIRE_RECOVERY_BPS,
+        ceasefire_breakdown_bps=CEASEFIRE_BREAKDOWN_BPS,
+        ceasefire_durability_turns=CEASEFIRE_DURABILITY_TURNS,
+        opening_ceasefire_run_turns=conflict.ceasefire_run_turns,
+        closing_ceasefire_run_turns=0,
+        termination_draw=termination_draw,
+    )
+    return updated, row
+
+
+def _progress_ceasefire_conflict(
+    ctx: PhaseContext, conflict: ForeignConflictState
+) -> tuple[ForeignConflictState, ForeignConflictProgressionRow]:
+    """One `CEASEFIRE`-opening conflict's sec.8.5 maintenance: decay, per-side recovery, then
+    breakdown (evaluated BEFORE maturation). Consumes no randomness at all (sec.8.7)."""
+    decayed_intensity = ceasefire_decayed_intensity_bps(
+        opening_intensity_bps=conflict.intensity_bps
+    )
+    exhaustion_a = max(0, conflict.exhaustion_a_bps - CEASEFIRE_RECOVERY_BPS)
+    exhaustion_b = max(0, conflict.exhaustion_b_bps - CEASEFIRE_RECOVERY_BPS)
+    avg_exhaustion = average_exhaustion_bps(
+        exhaustion_a_bps=exhaustion_a, exhaustion_b_bps=exhaustion_b
+    )
+    # Position is frozen during a ceasefire (no jitter, no progress draw, no exhaustion accrual
+    # beyond the per-side recovery above) -- so readiness uses the unchanged opening position.
+    readiness = closing_readiness_bps(
+        closing_average_exhaustion_bps=avg_exhaustion,
+        closing_position_bps_value=conflict.position_bps,
+    )
+    provisional_run_turns = conflict.ceasefire_run_turns + 1
+    status = ceasefire_closing_status(
+        closing_readiness_bps_value=readiness, closing_ceasefire_run_turns=provisional_run_turns
+    )
+    run_turns = 0 if status is ConflictStatus.ACTIVE else provisional_run_turns
+    closing_intensity = ceasefire_closing_intensity_bps(
+        decayed_intensity_bps=decayed_intensity, closing_status=status
+    )
+    floor_applied = status is ConflictStatus.ACTIVE and decayed_intensity < MIN_ACTIVE_INTENSITY_BPS
+    resolved_turn = ctx.resolving_turn if status in TERMINAL_STATUSES else None
+
+    updated = conflict.model_copy(
+        update={
+            "intensity_bps": closing_intensity,
+            "exhaustion_a_bps": exhaustion_a,
+            "exhaustion_b_bps": exhaustion_b,
+            "negotiation_readiness_bps": readiness,
+            "status": status,
+            "ceasefire_run_turns": run_turns,
+            "resolved_turn": resolved_turn,
+        }
+    )
+    row = ForeignConflictProgressionRow(
+        conflict_id=conflict.conflict_id,
+        opened_turn=conflict.opened_turn,
+        resolved_turn=resolved_turn,
+        opening_status=ConflictStatus.CEASEFIRE,
+        closing_status=status,
+        opening_war_capability_a_bps=conflict.war_capability_a_bps,
+        opening_war_capability_b_bps=conflict.war_capability_b_bps,
+        opening_intensity_bps=conflict.intensity_bps,
+        raw_closing_intensity_bps=decayed_intensity,
+        closing_intensity_bps=closing_intensity,
+        minimum_active_intensity_bps=MIN_ACTIVE_INTENSITY_BPS,
+        active_intensity_floor_applied=floor_applied,
+        opening_position_bps=conflict.position_bps,
+        closing_position_bps=conflict.position_bps,
+        position_jitter_bps=0,
+        opening_exhaustion_a_bps=conflict.exhaustion_a_bps,
+        opening_exhaustion_b_bps=conflict.exhaustion_b_bps,
+        closing_exhaustion_a_bps=exhaustion_a,
+        closing_exhaustion_b_bps=exhaustion_b,
+        closing_avg_exhaustion_bps=avg_exhaustion,
+        exhaustion_rate_bps=EXHAUSTION_RATE_BPS,
+        exhaustion_gain_bps=-CEASEFIRE_RECOVERY_BPS,
+        intensity_growth_bps=INTENSITY_GROWTH_BPS,
+        intensity_decay_bps=INTENSITY_DECAY_BPS,
+        opening_readiness_bps=conflict.negotiation_readiness_bps,
+        closing_readiness_bps=readiness,
+        decisiveness_penalty_bps=DECISIVENESS_PENALTY_BPS,
+        decisive_position_threshold_bps=DECISIVE_POSITION_BPS,
+        ceasefire_threshold_bps=CEASEFIRE_THRESHOLD_BPS,
+        settlement_threshold_bps=SETTLEMENT_THRESHOLD_BPS,
+        ceasefire_intensity_decay_bps=CEASEFIRE_INTENSITY_DECAY_BPS,
+        ceasefire_recovery_bps=CEASEFIRE_RECOVERY_BPS,
+        ceasefire_breakdown_bps=CEASEFIRE_BREAKDOWN_BPS,
+        ceasefire_durability_turns=CEASEFIRE_DURABILITY_TURNS,
+        opening_ceasefire_run_turns=conflict.ceasefire_run_turns,
+        closing_ceasefire_run_turns=run_turns,
+        termination_draw=None,
+    )
+    return updated, row
+
+
+def _resolve_foreign_conflict_progression(ctx: PhaseContext) -> None:
+    """External Wars Gate W1, slot 8 (`resolve_military_movement_and_combat`): every still-live
+    conflict (opening status `ACTIVE` or `CEASEFIRE`) progresses or maintains exactly once,
+    including a conflict slot 7 created this same turn (sec.7 rule 1) -- its current state in
+    `ctx.state.world.conflicts` already equals its initialization, so the same per-status branch
+    applies uniformly regardless of how old the conflict is.
+
+    Terminal conflicts (`SETTLED`/`DECIDED`) are never touched again once reached -- they are
+    carried through `ctx.state.world.conflicts` unchanged, permanent history.
+    """
+    world = ctx.state.world
+    progression_rows: list[ForeignConflictProgressionRow] = []
+    updated_by_id: dict[str, ForeignConflictState] = {}
+
+    for conflict in world.conflicts:
+        if conflict.status is ConflictStatus.ACTIVE:
+            updated, row = _progress_active_conflict(ctx, conflict)
+        elif conflict.status is ConflictStatus.CEASEFIRE:
+            updated, row = _progress_ceasefire_conflict(ctx, conflict)
+        else:
+            continue  # terminal: permanent history, never progresses again
+        updated_by_id[conflict.conflict_id] = updated
+        progression_rows.append(row)
+
+        if (
+            row.opening_status is ConflictStatus.ACTIVE
+            and row.closing_status is ConflictStatus.CEASEFIRE
+        ):
+            reason_id = "foreign_conflict_ceasefire_entered"
+        elif (
+            row.opening_status is ConflictStatus.CEASEFIRE
+            and row.closing_status is ConflictStatus.ACTIVE
+        ):
+            reason_id = "foreign_conflict_ceasefire_broke_down"
+        elif row.closing_status in TERMINAL_STATUSES:
+            reason_id = "foreign_conflict_terminated"
+        else:
+            reason_id = "foreign_conflict_progressed"
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="foreign_affairs",
+                reason_id=reason_id,
+                params={
+                    "conflict_id": conflict.conflict_id,
+                    "closing_status": row.closing_status.value,
+                    "closing_intensity_bps": row.closing_intensity_bps,
+                },
+            )
+        )
+
+    new_conflicts = tuple(
+        updated_by_id.get(conflict.conflict_id, conflict) for conflict in world.conflicts
+    )
+    ctx.state.world = world.model_copy(update={"conflicts": new_conflicts})
+    ctx.foreign_progression_rows = tuple(sorted(progression_rows, key=lambda row: row.conflict_id))
+    ctx.mark_implemented()
+
+
 def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
     """Phase 3A, slot 10 (`update_group_welfare_approval_trust_radicalization`): resolves this
     turn's legitimacy and political-capital change from the two economic signals the engine
@@ -1885,10 +2323,44 @@ def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
         support_bps=opening.constitutional_order_support_bps,
         opening_legitimacy_bps=opening.legitimacy_bps,
     )
+
+    # External Wars Gate W1: security anxiety from every ACTIVE foreign conflict with nonzero
+    # player exposure, using the POST-slot-8 conflict snapshot -- slot 8 has already run, so
+    # ctx.state.world.conflicts already reflects this turn's progression (sec.7 rule 6/7).
+    # Exposure is read from the ORIGINATING dyad (never from the conflict itself, which does not
+    # carry it -- sec.9.2); each conflict's raw contribution is uncapped, summed across every
+    # qualifying conflict, and the aggregate cap is applied exactly once (sec.7 rule 10).
+    exposure_by_pair = {
+        (dyad.country_a, dyad.country_b): dyad.player_security_exposure_bps
+        for dyad in ctx.state.world.dyads
+    }
+    uncapped_security_total = 0
+    for conflict in ctx.state.world.conflicts:
+        if conflict.status is not ConflictStatus.ACTIVE:
+            continue
+        exposure_bps = exposure_by_pair.get((conflict.country_a, conflict.country_b), 0)
+        if exposure_bps == 0:
+            continue
+        uncapped_security_total += foreign_conflict_security_anxiety_bps(
+            exposure_bps=exposure_bps, intensity_bps=conflict.intensity_bps
+        )
+    security_contribution = aggregate_security_contribution_bps(
+        uncapped_total_bps=uncapped_security_total
+    )
+    if security_contribution != 0:
+        ctx.report_entries.append(
+            TurnReportEntry(
+                category="foreign_affairs",
+                reason_id="foreign_security_anxiety_applied",
+                params={"security_contribution_bps": security_contribution},
+            )
+        )
+
     total_change, closing_legitimacy = resolve_legitimacy(
         opening_bps=opening.legitimacy_bps,
         order_support_contribution=drift,
         performance_contribution=assessment.performance_contribution_bps,
+        security_contribution=security_contribution,
     )
     regeneration, closing_capital = resolve_political_capital(
         opening=opening.political_capital,
@@ -1952,6 +2424,7 @@ def _update_legitimacy_and_political_capital(ctx: PhaseContext) -> None:
         unemployment_change_bps=assessment.unemployment_change_bps,
         unemployment_contribution_bps=assessment.unemployment_contribution_bps,
         performance_contribution_bps=assessment.performance_contribution_bps,
+        security_contribution_bps=security_contribution,
         order_support_contribution_bps=drift,
         total_legitimacy_change_bps=total_change,
         closing_legitimacy_bps=closing_legitimacy,
@@ -2913,6 +3386,16 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
     )
     _append_political_relationship_report_entries(ctx, ctx.political_relationship_report)
 
+    # (External Wars Gate W1) Combines slot 7's outbreak row with slot 8's progression rows --
+    # never recomputed here, exactly like the political-relationship report above wraps slot 11's
+    # already-validated rows.
+    outbreak_report = ctx.foreign_outbreak_report
+    assert outbreak_report is not None, "resolve_foreign_conflict_outbreak always runs first"
+    ctx.foreign_affairs_report = ForeignAffairsReport(
+        outbreak=outbreak_report,
+        progressions=ctx.foreign_progression_rows,
+    )
+
     # (Phase 3B1) Appended LAST, after every other phase and after this slot's own legislative
     # entries, so `turn_resolved` stays the final line of every report exactly as it was before
     # Phase 3B1 -- it closes the turn, so nothing may follow it.
@@ -3123,8 +3606,8 @@ PHASE_ORDER: tuple[tuple[str, PhaseHandler], ...] = (
         _update_prices_inflation_employment_debt_reserves,
     ),
     ("resolve_public_services_and_infrastructure", _noop),
-    ("resolve_diplomacy_and_sanctions", _noop),
-    ("resolve_military_movement_and_combat", _noop),
+    ("resolve_diplomacy_and_sanctions", _resolve_foreign_conflict_outbreak),
+    ("resolve_military_movement_and_combat", _resolve_foreign_conflict_progression),
     ("apply_casualties_occupation_disruption_war_costs", _noop),
     (
         "update_group_welfare_approval_trust_radicalization",

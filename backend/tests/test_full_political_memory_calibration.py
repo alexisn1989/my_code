@@ -527,21 +527,27 @@ _TABLE_S5_SEVEN_STEP_STAIRCASE = (
 )
 
 _TABLE_S6_INVEST_PLUS_DECREE = (
+    # External Wars Gate W1: closing/opening capital re-measured against the real engine with
+    # decree_state's eligible dyad (exposure 3,000) live -- the security-anxiety legitimacy
+    # pressure (frozen plan sec.9.4/9.5) shaves a few bps off political capital regeneration from
+    # turn 4 onward. total_committed, cumulative and both bloc relationship columns are byte-
+    # identical to the pre-W1 figures, confirming the shift is isolated to legitimacy-derived
+    # capital regen and nothing else.
     (1, 2500, "decree", 350, 500, 533, 350, 5850, -5350),
     (2, 2500, "decree", 350, 533, 568, 700, 5668, -3323),
     (3, 2500, "decree", 350, 568, 606, 1050, 5509, -1887),
-    (4, 2500, "decree", 350, 606, 646, 1400, 5370, -870),
-    (5, 2500, "decree", 350, 646, 688, 1750, 5248, -150),
-    (6, 2500, "decree", 350, 688, 732, 2100, 5142, 360),
-    (7, 2500, "decree", 350, 732, 777, 2450, 5049, 721),
-    (8, 2500, "decree", 350, 777, 824, 2800, 4967, 977),
-    (9, 2500, "decree", 350, 824, 872, 3150, 4896, 1158),
-    (10, 2500, "decree", 350, 872, 921, 3500, 4834, 1287),
-    (11, 2500, "decree", 350, 921, 971, 3850, 4779, 1379),
-    (12, 2500, "decree", 350, 971, 1000, 4200, 4731, 1443),
-    (13, 2500, "decree", 350, 1000, 1000, 4550, 4689, 1489),
-    (14, 2500, "decree", 350, 1000, 1000, 4900, 4652, 1521),
-    (15, 2500, "decree", 350, 1000, 1000, 5250, 4620, 1544),
+    (4, 2500, "decree", 350, 606, 643, 1400, 5370, -870),
+    (5, 2500, "decree", 350, 643, 679, 1750, 5248, -150),
+    (6, 2500, "decree", 350, 679, 714, 2100, 5142, 360),
+    (7, 2500, "decree", 350, 714, 748, 2450, 5049, 721),
+    (8, 2500, "decree", 350, 748, 781, 2800, 4967, 977),
+    (9, 2500, "decree", 350, 781, 813, 3150, 4896, 1158),
+    (10, 2500, "decree", 350, 813, 845, 3500, 4834, 1287),
+    (11, 2500, "decree", 350, 845, 877, 3850, 4779, 1379),
+    (12, 2500, "decree", 350, 877, 909, 4200, 4731, 1443),
+    (13, 2500, "decree", 350, 909, 941, 4550, 4689, 1489),
+    (14, 2500, "decree", 350, 941, 973, 4900, 4652, 1521),
+    (15, 2500, "decree", 350, 973, 1000, 5250, 4620, 1544),
     (16, 2500, "decree", 350, 1000, 1000, 5600, 4592, 1560),
     (17, 2500, "decree", 350, 1000, 1000, 5950, 4568, 1571),
     (18, 2500, "decree", 350, 1000, 1000, 6300, 4547, 1579),
@@ -550,11 +556,14 @@ _TABLE_S6_INVEST_PLUS_DECREE = (
 )
 
 _TABLE_S7_INVEST_THEN_TRANSITION = (
+    # External Wars Gate W1: same re-measurement as S6 above -- only turn 4's closing capital (and
+    # therefore turn 5's opening capital) shifts by -3; every other column, including both bloc
+    # relationship figures at every turn, is byte-identical to the pre-W1 figures.
     (1, 2500, "decree", 350, 500, 533, 350, 5850, -5350),
     (2, 2500, "legislative", 290, 533, 628, 640, 5868, -3123),
     (3, 2500, "legislative", 246, 628, 770, 886, 5884, -1545),
-    (4, 2500, "legislative", 214, 770, 946, 1100, 5898, -427),
-    (5, 2500, "legislative", 192, 946, 1000, 1292, 5910, 364),
+    (4, 2500, "legislative", 214, 770, 943, 1100, 5898, -427),
+    (5, 2500, "legislative", 192, 943, 1000, 1292, 5910, 364),
     (6, 2500, "legislative", 176, 1000, 1000, 1468, 5921, 925),
     (7, 2500, "legislative", 165, 1000, 1000, 1633, 5930, 1322),
     (8, 2500, "legislative", 157, 1000, 1000, 1790, 5938, 1603),

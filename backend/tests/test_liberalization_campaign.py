@@ -211,7 +211,12 @@ class TestTheRealEightyFiveOneEighteenThreeHundredCampaign:
     def test_pinned_fixture_seed_77_reaches_the_scheduled_election_and_loses(self) -> None:
         """The scenario's own authored seed. This is the honest primary walkthrough: the
         campaign is real, the amendment passes, the election is genuinely contested by the real
-        seeded polling swing -- and at seed 77 the incumbent loses."""
+        seeded polling swing -- and at seed 77 the incumbent loses.
+
+        External Wars Gate W1: `decree_state`'s eligible dyad (exposure 3,000) starts a war
+        before the election on this seed, and the security-anxiety contribution (frozen plan
+        sec.9.4/9.5) lowers both baseline and final support by -61 bps from their pre-W1 values
+        (5,091/4,822). The polling delta and result (lost, electoral_defeat) are unaffected."""
         save = _run_campaign(seed=None)
         assert save.current_state().seed == 77
         save = _advance_to_election(save)
@@ -219,8 +224,8 @@ class TestTheRealEightyFiveOneEighteenThreeHundredCampaign:
         election_report = save.entries[-1].report()
         assert election_report is not None and election_report.election is not None
         election = election_report.election
-        assert election.baseline_support_bps == 5_091
-        assert election.final_support_bps == 4_822
+        assert election.baseline_support_bps == 5_030
+        assert election.final_support_bps == 4_761
         assert election.final_support_bps - election.baseline_support_bps == -269
         assert election.result == "lost"
         assert not election.liberalization_completed

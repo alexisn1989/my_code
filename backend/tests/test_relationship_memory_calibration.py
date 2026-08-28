@@ -53,8 +53,21 @@ def _bloc(state: GameState, *, country_id: str, party_id: str, bloc_id: str):  #
 def test_decay_plus_investment_converges_to_the_controlled_fixed_point_4856() -> None:
     """(§12.1, §21 decision 3) `citizens_bloc/moderates` (`deficit_demo`, baseline -2,000),
     investing 100/turn against decay alone (no budget decision ever submitted), settles at
-    exactly +4,856 and holds it -- verified by driving the real engine 60 turns, not asserted."""
+    exactly +4,856 and holds it -- verified by driving the real engine 60 turns, not asserted.
+
+    External Wars Gate W1: `deficit_demo` authors an eligible dyad (exposure 2,000, frozen plan
+    sec.9.6). With it live, the added security-anxiety legitimacy pressure (sec.9.4/9.5) can push
+    this run into a war-driven `ELECTORAL_DEFEAT` before turn 60 -- a real but out-of-scope outcome
+    change for a test whose whole claim is about the relationship-memory fixed point, not about
+    survival. The dyad is disabled here so no war can ever start, isolating the exact pre-W1
+    claim this test was written to prove."""
     state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
+    dyads_disabled = tuple(
+        dyad.model_copy(update={"eligible": False}) for dyad in state.world.dyads
+    )
+    state = state.model_copy(
+        update={"world": state.world.model_copy(update={"dyads": dyads_disabled})}
+    )
     investment = BlocRelationshipInvestmentDecision(
         investments=(
             BlocInvestment(party_id="citizens_bloc", bloc_id="moderates", political_capital=100),

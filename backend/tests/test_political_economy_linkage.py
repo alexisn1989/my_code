@@ -30,22 +30,29 @@ def _resolve_to_turn(n: int) -> list:  # type: ignore[type-arg]
 
 
 def test_turn_26_iron_ore_depletion_shock_matches_the_hand_worked_figures_exactly() -> None:
+    """External Wars Gate W1: `deficit_demo`'s eligible dyad (exposure 2,000, sec.9.6) starts a
+    war well before turn 26, and while `security_contribution_bps` happens to read 0 at this
+    specific turn (the conflict is not ACTIVE at this point), the cumulative security-anxiety
+    pressure on earlier turns has already shifted the population-approval trajectory that
+    `order_support_contribution_bps` reads -- re-measured against the real engine, not
+    hand-derived. `output_change_bps`/`output_contribution_bps`/`performance_contribution_bps`
+    (the depletion-shock chain this test exists to prove) are untouched."""
     reports = _resolve_to_turn(26)
     turn_25, turn_26 = reports[24], reports[25]
     assert turn_25.political is not None
     assert turn_26.political is not None
 
-    assert turn_25.political.closing_legitimacy_bps == 6_459
+    assert turn_25.political.closing_legitimacy_bps == 6_310
     political = turn_26.political
-    assert political.opening_legitimacy_bps == 6_459
+    assert political.opening_legitimacy_bps == 6_310
     assert political.output_change_bps == -1_000
     assert political.output_contribution_bps == -250
     assert political.unemployment_change_bps == 0
     assert political.unemployment_contribution_bps == 0
     assert political.performance_contribution_bps == -250
-    assert political.order_support_contribution_bps == 4
-    assert political.total_legitimacy_change_bps == -246
-    assert political.closing_legitimacy_bps == 6_213
+    assert political.order_support_contribution_bps == 19
+    assert political.total_legitimacy_change_bps == -231
+    assert political.closing_legitimacy_bps == 6_079
 
 
 def test_turn_40_electoral_defeat_concludes_the_game_before_timber_steady_state() -> None:
@@ -53,12 +60,14 @@ def test_turn_40_electoral_defeat_concludes_the_game_before_timber_steady_state(
     the timber `STOCK_CONSTRAINED` boundary (`test_soak.py`, 2C2/T31) -- so the turn-41 timber
     steady-state truncation this test pinned pre-3C is no longer reachable through ordinary play;
     `resolve_turn` refuses the 41st call instead (`docs.adr` 0013). Turn 40's own closing
-    legitimacy, 6,431, is unchanged from the pre-3C figure -- the trajectory is identical up to
-    this point, simply observed at its new, real conclusion."""
+    legitimacy was 6,431 pre-3C and stayed there through 3C; External Wars Gate W1's
+    security-anxiety contribution (sec.9.4/9.5, the same live war as the turn-26 test above)
+    shifts it to 6,066 -- re-measured against the real engine, not hand-derived. The conclusion
+    mechanism and turn are unchanged."""
     reports = _resolve_to_turn(40)
     turn_40 = reports[39]
     assert turn_40.political is not None
-    assert turn_40.political.closing_legitimacy_bps == 6_431
+    assert turn_40.political.closing_legitimacy_bps == 6_066
 
     state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
     for _ in range(40):

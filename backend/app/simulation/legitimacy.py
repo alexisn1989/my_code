@@ -62,8 +62,22 @@ MAX_PERFORMANCE_CONTRIBUTION_BPS = 300
 """Symmetric per-turn cap on the combined economic-performance contribution: +/- 3 pp."""
 
 MAX_TOTAL_LEGITIMACY_CHANGE_BPS = 500
-"""Symmetric per-turn cap on the *combined* change from both sources: +/- 5 pp, so no single turn
-can traverse the metric regardless of how extreme its inputs are."""
+"""Symmetric per-turn cap on the *combined* change from all three sources: +/- 5 pp, so no single
+turn can traverse the metric regardless of how extreme its inputs are."""
+
+SECURITY_ANXIETY_WEIGHT_BPS = 600
+"""External Wars Gate W1 (frozen plan sec.9.5): scales authored exposure and current conflict
+intensity into legitimacy pressure. Measured against 563 real ACTIVE-turn intensity samples across
+all three scenarios x five declared seeds x 80 turns (median 4,642 bps): at this weight, exposure
+3,000 contributes a median 83 bps, about 28% of `MAX_PERFORMANCE_CONTRIBUTION_BPS` and 17% of
+`MAX_TOTAL_LEGITIMACY_CHANGE_BPS` -- clearly felt, clearly secondary to the economy."""
+
+MAX_SECURITY_CONTRIBUTION_BPS = 150
+"""Symmetric-in-form, negative-only-in-practice cap on the AGGREGATE security-anxiety
+contribution (summed across every qualifying conflict, capped once -- never per conflict; see
+`aggregate_security_contribution_bps`). Never binds at measured intensities (frozen plan sec.9.5);
+kept as a named, tested boundary rather than an unbounded sum, matching every other ceiling this
+module already enforces."""
 
 POLITICAL_CAPITAL_BASE_REGENERATION = 200
 """Political capital regenerated each turn regardless of standing: any functioning government
@@ -185,17 +199,54 @@ def order_support_contribution_bps(*, support_bps: int, opening_legitimacy_bps: 
     )
 
 
+def foreign_conflict_security_anxiety_bps(*, exposure_bps: int, intensity_bps: int) -> int:
+    """One `ACTIVE` foreign conflict's UNCAPPED security-anxiety contribution (External Wars Gate
+    W1, frozen plan sec.9.4/sec.7 rule 10). Negative-only by construction: a nearby war creates
+    anxiety, never a rally-round-the-flag boost -- claiming the latter here would be an
+    unevidenced invention (sec.9.4).
+
+    Deliberately UNCAPPED: `sec.7` rule 10 requires every qualifying conflict's raw anxiety to be
+    computed uncapped, summed, and the aggregate cap applied exactly once afterward (see
+    `aggregate_security_contribution_bps`) -- never per conflict, which would let many small wars
+    evade the aggregate ceiling by each staying just under it individually.
+
+    `exposure_bps` is read from the ORIGINATING `ConflictDyadState.player_security_exposure_bps`
+    (authored, never inferred from an id -- sec.9.2); zero exposure multiplies out to exactly zero
+    regardless of intensity.
+    """
+    return -trunc_div_toward_zero(
+        exposure_bps * intensity_bps * SECURITY_ANXIETY_WEIGHT_BPS,
+        BPS_DENOMINATOR * BPS_DENOMINATOR,
+    )
+
+
+def aggregate_security_contribution_bps(*, uncapped_total_bps: int) -> int:
+    """The aggregate cap, applied exactly once to the SUM of every qualifying conflict's uncapped
+    anxiety (never per conflict -- see `foreign_conflict_security_anxiety_bps`). `high=0` makes the
+    negative-only property structural here too, not just an empirical property of its inputs."""
+    return clamp_bps(uncapped_total_bps, low=-MAX_SECURITY_CONTRIBUTION_BPS, high=0)
+
+
 def resolve_legitimacy(
-    *, opening_bps: int, order_support_contribution: int, performance_contribution: int
+    *,
+    opening_bps: int,
+    order_support_contribution: int,
+    performance_contribution: int,
+    security_contribution: int,
 ) -> tuple[int, int]:
-    """Apply both contributions to opening legitimacy.
+    """Apply all three contributions to opening legitimacy.
 
     Returns `(applied_total_change_bps, closing_legitimacy_bps)`. The *applied* change is reported,
     not the requested one: when the scale bound bites, `closing - opening` is what actually
     happened, and the report re-derives exactly that rather than storing a "was clamped" flag
     nobody can verify.
+
+    `security_contribution` (External Wars Gate W1) is a required keyword, never defaulted: every
+    caller states its value explicitly, including the ordinary case of passing `0` when no foreign
+    conflict has nonzero exposure to the player. Passing `0` reproduces the pre-W1 two-contribution
+    behavior byte-for-byte, since `requested` is unaffected by adding a zero term.
     """
-    requested = order_support_contribution + performance_contribution
+    requested = order_support_contribution + performance_contribution + security_contribution
     capped = clamp_bps(
         requested,
         low=-MAX_TOTAL_LEGITIMACY_CHANGE_BPS,

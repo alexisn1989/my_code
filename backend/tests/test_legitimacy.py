@@ -14,9 +14,12 @@ from hypothesis import strategies as st
 from app.core.politics import LEGITIMACY_MAX_BPS, LEGITIMACY_MIN_BPS
 from app.simulation.legitimacy import (
     MAX_PERFORMANCE_CONTRIBUTION_BPS,
+    MAX_SECURITY_CONTRIBUTION_BPS,
     MAX_TOTAL_LEGITIMACY_CHANGE_BPS,
     PerformanceSignals,
+    aggregate_security_contribution_bps,
     assess_economic_performance,
+    foreign_conflict_security_anxiety_bps,
     order_support_contribution_bps,
     resolve_legitimacy,
 )
@@ -183,7 +186,10 @@ def test_extreme_growth_is_capped_at_the_performance_bound() -> None:
 def test_combined_change_is_capped_at_the_total_bound() -> None:
     """Drift and performance both pulling the same way still cannot exceed +/-500 in one turn."""
     applied, closing = resolve_legitimacy(
-        opening_bps=5_000, order_support_contribution=400, performance_contribution=300
+        opening_bps=5_000,
+        order_support_contribution=400,
+        performance_contribution=300,
+        security_contribution=0,
     )
     assert applied == MAX_TOTAL_LEGITIMACY_CHANGE_BPS
     assert closing == 5_500
@@ -194,7 +200,10 @@ def test_combined_change_is_capped_at_the_total_bound() -> None:
 
 def test_upper_bound_reports_the_applied_change_not_the_requested_one() -> None:
     applied, closing = resolve_legitimacy(
-        opening_bps=9_950, order_support_contribution=5, performance_contribution=300
+        opening_bps=9_950,
+        order_support_contribution=5,
+        performance_contribution=300,
+        security_contribution=0,
     )
     assert closing == LEGITIMACY_MAX_BPS
     assert applied == 50  # not the requested +305
@@ -202,7 +211,10 @@ def test_upper_bound_reports_the_applied_change_not_the_requested_one() -> None:
 
 def test_lower_bound_reports_the_applied_change_not_the_requested_one() -> None:
     applied, closing = resolve_legitimacy(
-        opening_bps=30, order_support_contribution=-5, performance_contribution=-300
+        opening_bps=30,
+        order_support_contribution=-5,
+        performance_contribution=-300,
+        security_contribution=0,
     )
     assert closing == LEGITIMACY_MIN_BPS
     assert applied == -30  # not the requested -305
@@ -211,7 +223,10 @@ def test_lower_bound_reports_the_applied_change_not_the_requested_one() -> None:
 def test_applied_change_always_equals_closing_minus_opening() -> None:
     for opening in (0, 1, 5_000, 9_999, 10_000):
         applied, closing = resolve_legitimacy(
-            opening_bps=opening, order_support_contribution=250, performance_contribution=-100
+            opening_bps=opening,
+            order_support_contribution=250,
+            performance_contribution=-100,
+            security_contribution=0,
         )
         assert applied == closing - opening
 
@@ -240,7 +255,10 @@ def test_drift_never_overshoots_its_target() -> None:
             support_bps=support, opening_legitimacy_bps=legitimacy
         )
         _, legitimacy = resolve_legitimacy(
-            opening_bps=legitimacy, order_support_contribution=drift, performance_contribution=0
+            opening_bps=legitimacy,
+            order_support_contribution=drift,
+            performance_contribution=0,
+            security_contribution=0,
         )
         assert legitimacy <= support
     assert 7_990 <= legitimacy <= support
@@ -253,7 +271,10 @@ def test_tiny_valid_first_seven_turns_match_the_calibration_table() -> None:
     for _ in range(7):
         drift = order_support_contribution_bps(support_bps=8_000, opening_legitimacy_bps=legitimacy)
         _, legitimacy = resolve_legitimacy(
-            opening_bps=legitimacy, order_support_contribution=drift, performance_contribution=0
+            opening_bps=legitimacy,
+            order_support_contribution=drift,
+            performance_contribution=0,
+            security_contribution=0,
         )
         observed.append(legitimacy)
     assert observed == [7_100, 7_190, 7_271, 7_343, 7_408, 7_467, 7_520]
@@ -264,7 +285,10 @@ def test_tiny_valid_reaches_the_pinned_turn_100_value() -> None:
     for _ in range(100):
         drift = order_support_contribution_bps(support_bps=8_000, opening_legitimacy_bps=legitimacy)
         _, legitimacy = resolve_legitimacy(
-            opening_bps=legitimacy, order_support_contribution=drift, performance_contribution=0
+            opening_bps=legitimacy,
+            order_support_contribution=drift,
+            performance_contribution=0,
+            security_contribution=0,
         )
     assert legitimacy == 7_991
 
@@ -296,6 +320,7 @@ def test_closing_legitimacy_always_stays_within_the_scale(
         opening_bps=opening,
         order_support_contribution=drift,
         performance_contribution=assessment.performance_contribution_bps,
+        security_contribution=0,
     )
     assert LEGITIMACY_MIN_BPS <= closing <= LEGITIMACY_MAX_BPS
     assert applied == closing - opening
@@ -324,3 +349,145 @@ def test_performance_contribution_always_respects_its_cap(
 def test_identical_output_at_any_magnitude_contributes_nothing(magnitude: int) -> None:
     assessment = assess_economic_performance(_signals(magnitude, magnitude))
     assert assessment.performance_contribution_bps == 0
+
+
+# --- External Wars Gate W1: security-anxiety contribution --------------------
+
+
+def test_zero_exposure_contributes_exactly_zero_at_any_intensity() -> None:
+    for intensity in (0, 1, 3_000, 5_668, 10_000):
+        assert foreign_conflict_security_anxiety_bps(exposure_bps=0, intensity_bps=intensity) == 0
+
+
+def test_zero_intensity_contributes_exactly_zero_at_any_exposure() -> None:
+    for exposure in (0, 1, 2_000, 3_000, 10_000):
+        assert foreign_conflict_security_anxiety_bps(exposure_bps=exposure, intensity_bps=0) == 0
+
+
+def test_security_anxiety_is_never_positive() -> None:
+    for exposure in (0, 500, 2_000, 3_000, 10_000):
+        for intensity in (0, 500, 3_000, 5_668, 10_000):
+            assert (
+                foreign_conflict_security_anxiety_bps(
+                    exposure_bps=exposure, intensity_bps=intensity
+                )
+                <= 0
+            )
+
+
+def test_security_anxiety_matches_the_measured_calibration_figures() -> None:
+    """Frozen plan sec.9.5's own worked figures at the selected weight (600): exposure 3,000 at
+    median measured intensity (4,642 bps) contributes a median 83 bps of anxiety."""
+    assert foreign_conflict_security_anxiety_bps(exposure_bps=3_000, intensity_bps=4_642) == -83
+
+
+def test_per_conflict_anxiety_is_uncapped_before_aggregation() -> None:
+    """A single conflict's raw contribution can itself exceed MAX_SECURITY_CONTRIBUTION_BPS in
+    magnitude -- the cap is deliberately NOT applied here (sec.7 rule 10); only the aggregate step
+    caps it."""
+    raw = foreign_conflict_security_anxiety_bps(exposure_bps=10_000, intensity_bps=10_000)
+    assert raw < -MAX_SECURITY_CONTRIBUTION_BPS
+
+
+def test_aggregate_cap_binds_only_once_never_per_conflict() -> None:
+    """Three conflicts, each individually under the aggregate cap in magnitude, but whose SUM
+    exceeds it: the aggregate step must still clamp to exactly -150, not -450 (would happen if the
+    cap were mistakenly applied per conflict) and not any value between (would happen from a
+    partial per-conflict clamp)."""
+    per_conflict = foreign_conflict_security_anxiety_bps(exposure_bps=3_000, intensity_bps=4_642)
+    assert -MAX_SECURITY_CONTRIBUTION_BPS < per_conflict < 0  # each alone is under the cap
+    uncapped_total = per_conflict * 3
+    assert uncapped_total < -MAX_SECURITY_CONTRIBUTION_BPS  # but the sum is not
+    assert aggregate_security_contribution_bps(uncapped_total_bps=uncapped_total) == (
+        -MAX_SECURITY_CONTRIBUTION_BPS
+    )
+
+
+def test_aggregate_cap_does_not_bind_below_the_threshold() -> None:
+    assert aggregate_security_contribution_bps(uncapped_total_bps=-50) == -50
+
+
+def test_aggregate_of_zero_conflicts_is_exactly_zero() -> None:
+    assert aggregate_security_contribution_bps(uncapped_total_bps=0) == 0
+
+
+def test_aggregate_contribution_is_never_positive() -> None:
+    for total in (-10_000, -151, -150, -100, -1, 0):
+        assert aggregate_security_contribution_bps(uncapped_total_bps=total) <= 0
+
+
+@given(
+    exposure=st.integers(min_value=0, max_value=10_000),
+    intensity=st.integers(min_value=0, max_value=10_000),
+)
+def test_security_anxiety_is_never_positive_for_any_valid_input(
+    exposure: int, intensity: int
+) -> None:
+    assert (
+        foreign_conflict_security_anxiety_bps(exposure_bps=exposure, intensity_bps=intensity) <= 0
+    )
+
+
+@given(total=st.integers(min_value=-(10**9), max_value=10**9))
+def test_aggregate_contribution_always_respects_its_cap(total: int) -> None:
+    capped = aggregate_security_contribution_bps(uncapped_total_bps=total)
+    assert -MAX_SECURITY_CONTRIBUTION_BPS <= capped <= 0
+
+
+# --- resolve_legitimacy: three contributions under one existing cap ----------
+
+
+def test_zero_security_contribution_reproduces_pre_w1_behavior_byte_for_byte() -> None:
+    """`(500, 5_500)` is the exact pre-W1 return value pinned by
+    `test_combined_change_is_capped_at_the_total_bound` above, for these same three inputs, from
+    before `security_contribution` existed as a parameter at all. Passing `0` here must reproduce
+    it exactly -- proving the new required parameter changes nothing when its value is neutral."""
+    applied, closing = resolve_legitimacy(
+        opening_bps=5_000,
+        order_support_contribution=400,
+        performance_contribution=300,
+        security_contribution=0,
+    )
+    assert (applied, closing) == (MAX_TOTAL_LEGITIMACY_CHANGE_BPS, 5_500)
+
+
+def test_security_contribution_is_summed_with_the_other_two_under_the_same_cap() -> None:
+    applied, closing = resolve_legitimacy(
+        opening_bps=5_000,
+        order_support_contribution=100,
+        performance_contribution=100,
+        security_contribution=-50,
+    )
+    assert applied == 150  # 100 + 100 - 50, well under the +/-500 cap
+    assert closing == 5_150
+
+
+def test_security_contribution_can_push_the_total_below_the_lower_bound() -> None:
+    applied, closing = resolve_legitimacy(
+        opening_bps=5_000,
+        order_support_contribution=-200,
+        performance_contribution=-200,
+        security_contribution=-150,
+    )
+    assert applied == -MAX_TOTAL_LEGITIMACY_CHANGE_BPS  # -550 requested, capped at -500
+    assert closing == 4_500
+
+
+@given(
+    opening=st.integers(min_value=0, max_value=10_000),
+    order=st.integers(min_value=-10_000, max_value=10_000),
+    performance=st.integers(
+        min_value=-MAX_PERFORMANCE_CONTRIBUTION_BPS, max_value=MAX_PERFORMANCE_CONTRIBUTION_BPS
+    ),
+    security=st.integers(min_value=-MAX_SECURITY_CONTRIBUTION_BPS, max_value=0),
+)
+def test_closing_legitimacy_stays_within_scale_with_all_three_contributions(
+    opening: int, order: int, performance: int, security: int
+) -> None:
+    _, closing = resolve_legitimacy(
+        opening_bps=opening,
+        order_support_contribution=order,
+        performance_contribution=performance,
+        security_contribution=security,
+    )
+    assert LEGITIMACY_MIN_BPS <= closing <= LEGITIMACY_MAX_BPS

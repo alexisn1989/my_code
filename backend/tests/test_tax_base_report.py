@@ -191,7 +191,7 @@ class TestTaxBaseDerivationReportSelfValidation:
 # --- R1: cross-report validation on TurnReport ------------------------------
 
 
-_TWELVE_REPORT_FIELDS = (
+_THIRTEEN_REPORT_FIELDS = (
     "labor_market",
     "resources",
     "production",
@@ -204,6 +204,7 @@ _TWELVE_REPORT_FIELDS = (
     "election",
     "coup_unrest",
     "constitutional_amendment",
+    "foreign_affairs",
 )
 
 
@@ -279,25 +280,25 @@ class TestR1CrossReportValidation:
         "present_fields",
         [
             sorted(combo)
-            for r in range(1, 12)
-            for combo in itertools.combinations(_TWELVE_REPORT_FIELDS, r)
+            for r in range(1, 13)
+            for combo in itertools.combinations(_THIRTEEN_REPORT_FIELDS, r)
         ],
     )
-    def test_all_partial_combinations_of_twelve_reports_are_rejected(
+    def test_all_partial_combinations_of_thirteen_reports_are_rejected(
         self, present_fields: list[str]
     ) -> None:
         """Phase 2B3 extended the completeness rule from three reports to four; Phase 2C1 extends
         it again to five; Phase 3A extends it again to six; Phase 3B1 extends it again to seven;
-        Phase 3B2A extends it again to eight; Phase 3B2B extends it again to nine; and Phase 3C
-        completes the twelve-report set with `election`, `coup_unrest`, and
-        `constitutional_amendment`. Every proper nonempty subset of {labor_market, resources,
-        production,
+        Phase 3B2A extends it again to eight; Phase 3B2B extends it again to nine; Phase 3C
+        extends it to twelve with `election`, `coup_unrest`, and `constitutional_amendment`; and
+        External Wars Gate W1 completes the thirteen-report set with `foreign_affairs`. Every
+        proper nonempty subset of {labor_market, resources, production,
         tax_base_derivation, finance, political, legislative, political_capital,
-        political_relationship, election, coup_unrest, constitutional_amendment} (4,094 of them)
-        must be rejected.
+        political_relationship, election, coup_unrest, constitutional_amendment,
+        foreign_affairs} (8,190 of them) must be rejected.
         """
         data, _ = _valid_turn_report_dict()
-        for field in _TWELVE_REPORT_FIELDS:
+        for field in _THIRTEEN_REPORT_FIELDS:
             if field not in present_fields:
                 data[field] = None
         with pytest.raises(ValidationError, match="all present or all absent"):
@@ -351,17 +352,17 @@ class TestR1CrossReportValidation:
         with pytest.raises(ValidationError, match="does not match"):
             TurnReport.model_validate(data)
 
-    def test_all_twelve_absent_is_valid(self) -> None:
+    def test_all_thirteen_absent_is_valid(self) -> None:
         """`_valid_turn_report_dict()` now comes from the real resolver, so `labor_market` and
         `resources` are also present by default (Phase 2B3 extended the completeness rule to
         four reports; Phase 2C1 extended it again to five; Phase 3A extended it again to six;
-        Phase 3B1 extended it again to seven; Phase 3B2 completed nine; and Phase 3C completes
-        twelve) — all must be nulled out here too, or this
-        becomes a partial (rejected) combination rather than the "all absent" case this test
-        means to exercise.
+        Phase 3B1 extended it again to seven; Phase 3B2 completed nine; Phase 3C extends it to
+        twelve; and External Wars Gate W1 completes thirteen with `foreign_affairs`) — all must
+        be nulled out here too, or this becomes a partial (rejected) combination rather than the
+        "all absent" case this test means to exercise.
         """
         data, _ = _valid_turn_report_dict()
-        for field in _TWELVE_REPORT_FIELDS:
+        for field in _THIRTEEN_REPORT_FIELDS:
             data[field] = None
         report = TurnReport.model_validate(data)
         assert report.labor_market is None
@@ -376,6 +377,7 @@ class TestR1CrossReportValidation:
         assert report.election is None
         assert report.coup_unrest is None
         assert report.constitutional_amendment is None
+        assert report.foreign_affairs is None
 
     def test_all_twelve_present_and_consistent_is_valid(self) -> None:
         data, report = _valid_turn_report_dict()

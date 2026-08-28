@@ -133,7 +133,8 @@ def test_phases_run_in_the_documented_order() -> None:
 
 
 def test_only_the_accounting_and_report_phases_are_implemented_so_far() -> None:
-    # As of Phase 3B2A: government accounting (3 phases) + sector production (1 phase) +
+    # As of External Wars Gate W1: government accounting (3 phases) + sector production
+    # (1 phase) + foreign-conflict outbreak and progression (2 phases, slots 7-8) +
     # legitimacy/political-capital resolution (1 phase, slot 10) + legislative vote and
     # capital-ledger resolution (1 phase, slot 1) + bloc-relationship application (1 phase,
     # slot 11) + report generation are real; every other resolution-order step remains an honest
@@ -150,6 +151,8 @@ def test_only_the_accounting_and_report_phases_are_implemented_so_far() -> None:
         "resolve_production_and_trade",
         "resolve_government_revenue_and_expenditure",
         "update_prices_inflation_employment_debt_reserves",
+        "resolve_diplomacy_and_sanctions",
+        "resolve_military_movement_and_combat",
         "update_group_welfare_approval_trust_radicalization",
         "update_institutional_loyalty_competence_corruption_power",
         "evaluate_protests_strikes_insurgency_coups_revolutions",

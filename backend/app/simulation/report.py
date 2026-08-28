@@ -92,6 +92,24 @@ from app.simulation.constitution import (
     TerritorialOrganization,
 )
 from app.simulation.decisions import InfluenceAllocation
+from app.simulation.foreign_conflict import (
+    TERMINAL_STATUSES,
+    ConflictStatus,
+    active_closing_status,
+    apply_active_intensity_floor,
+    average_exhaustion_bps,
+    ceasefire_closing_intensity_bps,
+    ceasefire_closing_status,
+    ceasefire_decayed_intensity_bps,
+    closing_position_bps,
+    closing_readiness_bps,
+    dyad_weight_bps,
+    exhaustion_gain_bps,
+    initial_intensity_bps,
+    passes_pressure_floor,
+    raw_closing_intensity_bps,
+    select_candidate_index,
+)
 from app.simulation.government_survival import (
     AMENDMENT_PRESSURE_PER_AXIS_BY_DIFFICULTY_BPS,
     BASE_COUP_ATTEMPT_RISK_BPS,
@@ -1474,6 +1492,11 @@ class PoliticalReport(BaseModel):
     performance_contribution_bps: StrictSignedLegitimacyBps
     """Capped to `+/-MAX_PERFORMANCE_CONTRIBUTION_BPS` — the first field in this chain the scale
     bound actually applies to."""
+    security_contribution_bps: StrictSignedLegitimacyBps
+    """External Wars Gate W1: the aggregate, already-capped security-anxiety contribution from
+    every `ACTIVE` foreign conflict with nonzero player exposure, summed across conflicts and
+    capped exactly once (`simulation.legitimacy.aggregate_security_contribution_bps`) — never
+    positive, and exactly `0` when no exposed conflict is `ACTIVE` this turn."""
     order_support_contribution_bps: StrictSignedLegitimacyBps
     total_legitimacy_change_bps: StrictSignedLegitimacyBps
     """The *applied* change (`closing - opening`), not the requested one — see
@@ -1613,8 +1636,24 @@ class PoliticalReport(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _security_contribution_is_never_positive(self) -> PoliticalReport:
+        """External Wars Gate W1 (frozen plan sec.9.4): a foreign war creates anxiety, never a
+        rally-round-the-flag boost. Checked independently of `aggregate_security_contribution_bps`
+        itself, whose own `high=0` argument this mirrors rather than trusts."""
+        if self.security_contribution_bps > 0:
+            raise ValueError(
+                f"security_contribution_bps={self.security_contribution_bps} is positive; a "
+                "foreign conflict may never raise legitimacy"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _total_change_and_closing_legitimacy_match_clamped_formula(self) -> PoliticalReport:
-        requested = self.order_support_contribution_bps + self.performance_contribution_bps
+        requested = (
+            self.order_support_contribution_bps
+            + self.performance_contribution_bps
+            + self.security_contribution_bps
+        )
         capped = clamp_bps(
             requested,
             low=-MAX_TOTAL_LEGITIMACY_CHANGE_BPS,
@@ -3316,6 +3355,524 @@ class ConstitutionalAmendmentReport(BaseModel):
         return self
 
 
+# --------------------------------------------------------------------------
+# External Wars Gate W1: foreign affairs (13th domain report)
+# --------------------------------------------------------------------------
+
+EXCLUDED_STOCHASTIC_CHANNELS: tuple[str, ...] = (
+    "foreign_conflict_outbreak",
+    "foreign_conflict_progress:{cid}",
+    "foreign_conflict_termination:{cid}",
+)
+"""The three RNG stream name patterns External Wars Gate W1 adds (frozen plan sec.14), named here
+once so `ForeignAffairsReport.excluded_stochastic_channels` and any test asserting the declared
+set stay in sync by construction rather than by two independently-typed literals."""
+
+
+class ForeignConflictOutbreakCandidateRow(BaseModel):
+    """One eligible dyad's outbreak-selection inputs for this turn (frozen plan sec.11.1),
+    canonical by `(country_a, country_b)` on the parent report."""
+
+    model_config = _STRICT_CONFIG
+
+    country_a: str
+    country_b: str
+    aggressor: str
+    defender: str
+    tension_bps: StrictBps
+    grievance_bps: StrictBps
+    raw_dyad_weight_bps: StrictBps
+    """`dyad_weight_bps(tension_bps, grievance_bps)` — before the pressure floor."""
+    passed_pressure_floor: bool
+
+
+class ForeignConflictOutbreakReport(BaseModel):
+    """Slot 7's outbreak draw, emitted every turn whether or not a war starts (frozen plan
+    sec.11.1). Self-validators re-derive every candidate's weight and floor pass/fail, the
+    clamped occurrence probability, the occurrence decision, and — when a war starts — the
+    selected pair and its full initialization, all from the row's own stored fields."""
+
+    model_config = _STRICT_CONFIG
+
+    turn: int = Field(ge=0)
+    candidates: tuple[ForeignConflictOutbreakCandidateRow, ...] = ()
+    minimum_outbreak_weight_bps: StrictBps
+    total_weight_bps: StrictBps
+    """Sum of `raw_dyad_weight_bps` over candidates that passed the pressure floor only."""
+    outbreak_scale_bps: StrictBps
+    clamped_probability_bps: StrictBps
+    occurrence_draw: StrictBps
+    occurred: bool
+    selection_draw: int | None = None
+    selected_country_a: str | None = None
+    selected_country_b: str | None = None
+    conflict_id: str | None = None
+    opened_turn: int | None = None
+    initial_intensity_bps: StrictBps | None = None
+    initial_position_bps: StrictRelationshipBps | None = None
+    initial_exhaustion_a_bps: StrictBps | None = None
+    initial_exhaustion_b_bps: StrictBps | None = None
+    initial_readiness_bps: StrictBps | None = None
+    initial_intensity_constant_bps: StrictBps
+    tension_intensity_weight_bps: StrictBps
+
+    @model_validator(mode="after")
+    def _candidates_are_canonically_ordered(self) -> ForeignConflictOutbreakReport:
+        pairs = [(row.country_a, row.country_b) for row in self.candidates]
+        if len(set(pairs)) != len(pairs):
+            raise ValueError(f"duplicate candidate pair(s): {pairs!r}")
+        if pairs != sorted(pairs):
+            raise ValueError(
+                f"candidates are not in canonical (country_a, country_b) order: {pairs!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _each_candidate_weight_and_floor_match_the_formula(self) -> ForeignConflictOutbreakReport:
+        for row in self.candidates:
+            expected_weight = dyad_weight_bps(
+                tension_bps=row.tension_bps, grievance_bps=row.grievance_bps
+            )
+            if row.raw_dyad_weight_bps != expected_weight:
+                raise ValueError(
+                    f"candidate {(row.country_a, row.country_b)!r}: raw_dyad_weight_bps="
+                    f"{row.raw_dyad_weight_bps} does not match dyad_weight_bps ({expected_weight})"
+                )
+            expected_floor = passes_pressure_floor(raw_weight_bps=row.raw_dyad_weight_bps)
+            if expected_floor != (row.raw_dyad_weight_bps >= self.minimum_outbreak_weight_bps):
+                # Sanity on the report's OWN stored floor constant, independent of the module
+                # constant `passes_pressure_floor` itself uses -- catches a tampered
+                # `minimum_outbreak_weight_bps` field even if `foreign_conflict.py`'s constant
+                # were somehow different.
+                raise ValueError(
+                    "minimum_outbreak_weight_bps does not match the constant "
+                    "passes_pressure_floor was checked against"
+                )
+            if row.passed_pressure_floor != expected_floor:
+                raise ValueError(
+                    f"candidate {(row.country_a, row.country_b)!r}: passed_pressure_floor="
+                    f"{row.passed_pressure_floor} does not match passes_pressure_floor "
+                    f"({expected_floor})"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _total_weight_sums_only_passing_candidates(self) -> ForeignConflictOutbreakReport:
+        expected = sum(
+            row.raw_dyad_weight_bps for row in self.candidates if row.passed_pressure_floor
+        )
+        if self.total_weight_bps != expected:
+            raise ValueError(
+                f"total_weight_bps={self.total_weight_bps} does not match the sum of passing "
+                f"candidates' raw_dyad_weight_bps ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _clamped_probability_matches_the_formula(self) -> ForeignConflictOutbreakReport:
+        expected = min(
+            BPS_DENOMINATOR,
+            trunc_div_toward_zero(self.total_weight_bps * self.outbreak_scale_bps, BPS_DENOMINATOR),
+        )
+        if self.clamped_probability_bps != expected:
+            raise ValueError(
+                f"clamped_probability_bps={self.clamped_probability_bps} does not match "
+                f"min(10_000, trunc_div(total_weight_bps * outbreak_scale_bps, 10_000)) "
+                f"({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _occurred_matches_the_draw(self) -> ForeignConflictOutbreakReport:
+        expected = self.occurrence_draw < self.clamped_probability_bps
+        if self.occurred != expected:
+            raise ValueError(
+                f"occurred={self.occurred} does not match occurrence_draw < "
+                f"clamped_probability_bps ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _selection_and_initialization_fields_present_iff_occurred(
+        self,
+    ) -> ForeignConflictOutbreakReport:
+        selection_fields = (
+            self.selection_draw,
+            self.selected_country_a,
+            self.selected_country_b,
+            self.conflict_id,
+            self.opened_turn,
+            self.initial_intensity_bps,
+            self.initial_position_bps,
+            self.initial_exhaustion_a_bps,
+            self.initial_exhaustion_b_bps,
+            self.initial_readiness_bps,
+        )
+        present = tuple(field is not None for field in selection_fields)
+        if self.occurred and not all(present):
+            raise ValueError("occurred=True but a selection/initialization field is None")
+        if not self.occurred and any(present):
+            raise ValueError("occurred=False but a selection/initialization field is set")
+        return self
+
+    @model_validator(mode="after")
+    def _selected_pair_and_initialization_match_the_formulas(
+        self,
+    ) -> ForeignConflictOutbreakReport:
+        if not self.occurred:
+            return self
+        passing = [row for row in self.candidates if row.passed_pressure_floor]
+        weights = tuple(row.raw_dyad_weight_bps for row in passing)
+        assert self.selection_draw is not None  # narrowed by the presence validator above
+        expected_index = select_candidate_index(
+            selection_draw=self.selection_draw, weights_bps=weights
+        )
+        expected_row = passing[expected_index]
+        if (self.selected_country_a, self.selected_country_b) != (
+            expected_row.country_a,
+            expected_row.country_b,
+        ):
+            raise ValueError(
+                f"selected pair ({self.selected_country_a!r}, {self.selected_country_b!r}) is "
+                f"not the candidate the cumulative-weight walk over selection_draw lands on "
+                f"({expected_row.country_a!r}, {expected_row.country_b!r})"
+            )
+        expected_conflict_id = f"{self.selected_country_a}__{self.selected_country_b}__t{self.turn}"
+        if self.conflict_id != expected_conflict_id:
+            raise ValueError(
+                f"conflict_id={self.conflict_id!r} does not match the deterministic id "
+                f"({expected_conflict_id!r})"
+            )
+        if self.opened_turn != self.turn:
+            raise ValueError(f"opened_turn={self.opened_turn} does not equal this report's turn")
+        expected_intensity = initial_intensity_bps(tension_bps=expected_row.tension_bps)
+        if self.initial_intensity_bps != expected_intensity:
+            raise ValueError(
+                f"initial_intensity_bps={self.initial_intensity_bps} does not match "
+                f"initial_intensity_bps(tension_bps) ({expected_intensity})"
+            )
+        if self.initial_position_bps != 0:
+            raise ValueError(f"initial_position_bps={self.initial_position_bps} must be 0")
+        if self.initial_exhaustion_a_bps != 0 or self.initial_exhaustion_b_bps != 0:
+            raise ValueError("initial exhaustion must be 0 for both sides at outbreak")
+        if self.initial_readiness_bps != 0:
+            raise ValueError(f"initial_readiness_bps={self.initial_readiness_bps} must be 0")
+        return self
+
+
+class ForeignConflictProgressionRow(BaseModel):
+    """One conflict's per-turn progression or ceasefire-maintenance update (frozen plan sec.11.2).
+
+    Unified across both branches: every field below is always populated (never `None`) except
+    `termination_draw`, which is present iff an `ACTIVE`-opening row's ceasefire gate opened this
+    turn (sec.8.3 rule 2) and `None` in every other case, including every `CEASEFIRE`-opening row
+    (ceasefire maintenance, breakdown and maturation consume no draw at all — sec.8.7).
+
+    On a `CEASEFIRE`-opening row: `position_jitter_bps` is `0` and `closing_position_bps` equals
+    `opening_position_bps` (frozen, sec.8.5); `exhaustion_gain_bps` is the SIGNED recovery rate
+    applied this turn, `-ceasefire_recovery_bps` exactly (the stored constant, negated) — never the
+    per-side post-floor delta, which can differ between the two sides when `max(0, ...)` binds
+    asymmetrically and so cannot be represented by one shared scalar; the per-side result is fully
+    recoverable from `opening_exhaustion_a/b_bps` and `closing_exhaustion_a/b_bps` directly, each
+    independently self-validated against `ceasefire_recovered_exhaustion_bps`.
+    `raw_closing_intensity_bps` holds the pre-floor DECAYED intensity
+    (`ceasefire_decayed_intensity_bps`), reusing the same field an `ACTIVE`-opening row uses for
+    its own pre-floor value, since both represent "closing intensity before any floor is applied."
+    """
+
+    model_config = _STRICT_CONFIG
+
+    conflict_id: str
+    opened_turn: int = Field(ge=0)
+    resolved_turn: int | None = None
+
+    opening_status: ConflictStatus
+    closing_status: ConflictStatus
+
+    opening_war_capability_a_bps: StrictBps
+    opening_war_capability_b_bps: StrictBps
+
+    opening_intensity_bps: StrictBps
+    raw_closing_intensity_bps: StrictBps
+    closing_intensity_bps: StrictBps
+    minimum_active_intensity_bps: StrictBps
+    active_intensity_floor_applied: bool
+
+    opening_position_bps: StrictRelationshipBps
+    closing_position_bps: StrictRelationshipBps
+    position_jitter_bps: StrictRelationshipBps
+
+    opening_exhaustion_a_bps: StrictBps
+    opening_exhaustion_b_bps: StrictBps
+    closing_exhaustion_a_bps: StrictBps
+    closing_exhaustion_b_bps: StrictBps
+    closing_avg_exhaustion_bps: StrictBps
+
+    exhaustion_rate_bps: StrictBps
+    exhaustion_gain_bps: StrictSignedBps
+
+    intensity_growth_bps: StrictBps
+    intensity_decay_bps: StrictBps
+
+    opening_readiness_bps: StrictBps
+    closing_readiness_bps: StrictBps
+    decisiveness_penalty_bps: StrictBps
+
+    decisive_position_threshold_bps: StrictBps
+    ceasefire_threshold_bps: StrictBps
+    settlement_threshold_bps: StrictBps
+
+    ceasefire_intensity_decay_bps: StrictBps
+    ceasefire_recovery_bps: StrictBps
+    ceasefire_breakdown_bps: StrictBps
+    ceasefire_durability_turns: int = Field(ge=0)
+
+    opening_ceasefire_run_turns: int = Field(ge=0)
+    closing_ceasefire_run_turns: int = Field(ge=0)
+
+    termination_draw: StrictBps | None = None
+
+    @model_validator(mode="after")
+    def _resolved_turn_matches_terminal_status(self) -> ForeignConflictProgressionRow:
+        is_terminal = self.closing_status in TERMINAL_STATUSES
+        if is_terminal and self.resolved_turn is None:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: closing_status={self.closing_status.value!r} "
+                "is terminal but resolved_turn is None"
+            )
+        if not is_terminal and self.resolved_turn is not None:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: closing_status={self.closing_status.value!r} "
+                f"is reversible but resolved_turn={self.resolved_turn} is set"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _active_branch_matches_the_progression_formulas(self) -> ForeignConflictProgressionRow:
+        if self.opening_status is not ConflictStatus.ACTIVE:
+            return self
+
+        expected_position = closing_position_bps(
+            opening_position_bps=self.opening_position_bps,
+            opening_war_capability_a_bps=self.opening_war_capability_a_bps,
+            opening_war_capability_b_bps=self.opening_war_capability_b_bps,
+            opening_intensity_bps=self.opening_intensity_bps,
+            position_jitter_bps=self.position_jitter_bps,
+        )
+        if self.closing_position_bps != expected_position:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: closing_position_bps does not match "
+                f"closing_position_bps formula ({expected_position})"
+            )
+
+        expected_gain = exhaustion_gain_bps(opening_intensity_bps=self.opening_intensity_bps)
+        if self.exhaustion_gain_bps != expected_gain:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: exhaustion_gain_bps does not match "
+                f"exhaustion_gain_bps(opening_intensity_bps) ({expected_gain})"
+            )
+
+        expected_exhaustion_a = clamp_bps(self.opening_exhaustion_a_bps + expected_gain)
+        expected_exhaustion_b = clamp_bps(self.opening_exhaustion_b_bps + expected_gain)
+        if self.closing_exhaustion_a_bps != expected_exhaustion_a:
+            raise ValueError(f"conflict {self.conflict_id!r}: closing_exhaustion_a_bps mismatch")
+        if self.closing_exhaustion_b_bps != expected_exhaustion_b:
+            raise ValueError(f"conflict {self.conflict_id!r}: closing_exhaustion_b_bps mismatch")
+
+        expected_avg = average_exhaustion_bps(
+            exhaustion_a_bps=self.closing_exhaustion_a_bps,
+            exhaustion_b_bps=self.closing_exhaustion_b_bps,
+        )
+        if self.closing_avg_exhaustion_bps != expected_avg:
+            raise ValueError(f"conflict {self.conflict_id!r}: closing_avg_exhaustion_bps mismatch")
+
+        expected_raw_intensity = raw_closing_intensity_bps(
+            opening_intensity_bps=self.opening_intensity_bps,
+            closing_average_exhaustion_bps=self.closing_avg_exhaustion_bps,
+        )
+        if self.raw_closing_intensity_bps != expected_raw_intensity:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: raw_closing_intensity_bps does not match "
+                f"raw_closing_intensity_bps formula ({expected_raw_intensity})"
+            )
+
+        expected_readiness = closing_readiness_bps(
+            closing_average_exhaustion_bps=self.closing_avg_exhaustion_bps,
+            closing_position_bps_value=self.closing_position_bps,
+        )
+        if self.closing_readiness_bps != expected_readiness:
+            raise ValueError(f"conflict {self.conflict_id!r}: closing_readiness_bps mismatch")
+
+        try:
+            expected_status = active_closing_status(
+                closing_position_bps_value=self.closing_position_bps,
+                closing_readiness_bps_value=self.closing_readiness_bps,
+                termination_draw=self.termination_draw,
+            )
+        except ValueError as exc:
+            raise ValueError(f"conflict {self.conflict_id!r}: {exc}") from exc
+        if self.closing_status is not expected_status:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: closing_status={self.closing_status.value!r} "
+                f"does not match active_closing_status ({expected_status.value!r})"
+            )
+
+        expected_floor_applied = (
+            self.closing_status is ConflictStatus.ACTIVE
+            and self.raw_closing_intensity_bps < self.minimum_active_intensity_bps
+        )
+        if self.active_intensity_floor_applied != expected_floor_applied:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: active_intensity_floor_applied mismatch"
+            )
+        expected_closing_intensity = apply_active_intensity_floor(
+            raw_intensity_bps=self.raw_closing_intensity_bps, closing_status=self.closing_status
+        )
+        if self.closing_intensity_bps != expected_closing_intensity:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: closing_intensity_bps does not match "
+                f"apply_active_intensity_floor ({expected_closing_intensity})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _ceasefire_branch_matches_the_maintenance_formulas(self) -> ForeignConflictProgressionRow:
+        if self.opening_status is not ConflictStatus.CEASEFIRE:
+            return self
+
+        if self.position_jitter_bps != 0:
+            raise ValueError(f"conflict {self.conflict_id!r}: position is frozen during ceasefire")
+        if self.closing_position_bps != self.opening_position_bps:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: position must not move during ceasefire"
+            )
+        if self.termination_draw is not None:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: ceasefire maintenance consumes no termination draw"
+            )
+
+        expected_gain = -self.ceasefire_recovery_bps
+        if self.exhaustion_gain_bps != expected_gain:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: exhaustion_gain_bps does not equal "
+                f"-ceasefire_recovery_bps ({expected_gain})"
+            )
+        expected_exhaustion_a = max(0, self.opening_exhaustion_a_bps - self.ceasefire_recovery_bps)
+        expected_exhaustion_b = max(0, self.opening_exhaustion_b_bps - self.ceasefire_recovery_bps)
+        if self.closing_exhaustion_a_bps != expected_exhaustion_a:
+            raise ValueError(f"conflict {self.conflict_id!r}: closing_exhaustion_a_bps mismatch")
+        if self.closing_exhaustion_b_bps != expected_exhaustion_b:
+            raise ValueError(f"conflict {self.conflict_id!r}: closing_exhaustion_b_bps mismatch")
+
+        expected_avg = average_exhaustion_bps(
+            exhaustion_a_bps=self.closing_exhaustion_a_bps,
+            exhaustion_b_bps=self.closing_exhaustion_b_bps,
+        )
+        if self.closing_avg_exhaustion_bps != expected_avg:
+            raise ValueError(f"conflict {self.conflict_id!r}: closing_avg_exhaustion_bps mismatch")
+
+        expected_decayed = ceasefire_decayed_intensity_bps(
+            opening_intensity_bps=self.opening_intensity_bps
+        )
+        if self.raw_closing_intensity_bps != expected_decayed:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: raw_closing_intensity_bps does not match "
+                f"ceasefire_decayed_intensity_bps ({expected_decayed})"
+            )
+
+        expected_readiness = closing_readiness_bps(
+            closing_average_exhaustion_bps=self.closing_avg_exhaustion_bps,
+            closing_position_bps_value=self.closing_position_bps,
+        )
+        if self.closing_readiness_bps != expected_readiness:
+            raise ValueError(f"conflict {self.conflict_id!r}: closing_readiness_bps mismatch")
+
+        provisional_run_turns = self.opening_ceasefire_run_turns + 1
+        expected_status = ceasefire_closing_status(
+            closing_readiness_bps_value=self.closing_readiness_bps,
+            closing_ceasefire_run_turns=provisional_run_turns,
+        )
+        if self.closing_status is not expected_status:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: closing_status={self.closing_status.value!r} "
+                f"does not match ceasefire_closing_status ({expected_status.value!r})"
+            )
+        expected_run_turns = (
+            0 if expected_status is ConflictStatus.ACTIVE else provisional_run_turns
+        )
+        if self.closing_ceasefire_run_turns != expected_run_turns:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: "
+                f"closing_ceasefire_run_turns={self.closing_ceasefire_run_turns} does not match "
+                f"the expected post-breakdown/maintenance value ({expected_run_turns})"
+            )
+
+        expected_closing_intensity = ceasefire_closing_intensity_bps(
+            decayed_intensity_bps=self.raw_closing_intensity_bps,
+            closing_status=self.closing_status,
+        )
+        if self.closing_intensity_bps != expected_closing_intensity:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: closing_intensity_bps does not match "
+                f"ceasefire_closing_intensity_bps ({expected_closing_intensity})"
+            )
+        expected_floor_applied = (
+            self.closing_status is ConflictStatus.ACTIVE
+            and self.raw_closing_intensity_bps < self.minimum_active_intensity_bps
+        )
+        if self.active_intensity_floor_applied != expected_floor_applied:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: active_intensity_floor_applied mismatch"
+            )
+        return self
+
+
+class ForeignAffairsReport(BaseModel):
+    """External Wars Gate W1's 13th domain report: this turn's outbreak draw plus every still-live
+    (non-terminal-opening) conflict's progression or ceasefire-maintenance row. Built for every
+    resolved turn, including turns with no conflicts at all -- an outbreak row with zero candidates
+    and an empty `progressions` tuple is still a valid, complete report (matching every other
+    always-present-when-any-report-is-present domain report's convention)."""
+
+    model_config = _STRICT_CONFIG
+
+    outbreak: ForeignConflictOutbreakReport
+    progressions: tuple[ForeignConflictProgressionRow, ...] = ()
+    excluded_stochastic_channels: tuple[str, ...] = EXCLUDED_STOCHASTIC_CHANNELS
+
+    @model_validator(mode="after")
+    def _progressions_are_canonically_ordered(self) -> ForeignAffairsReport:
+        ids = [row.conflict_id for row in self.progressions]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"duplicate conflict_id(s) in progressions: {ids!r}")
+        if ids != sorted(ids):
+            raise ValueError(f"progressions are not in canonical conflict_id order: {ids!r}")
+        return self
+
+    @model_validator(mode="after")
+    def _excluded_stochastic_channels_is_the_declared_set(self) -> ForeignAffairsReport:
+        if self.excluded_stochastic_channels != EXCLUDED_STOCHASTIC_CHANNELS:
+            raise ValueError(
+                f"excluded_stochastic_channels={self.excluded_stochastic_channels!r} does not "
+                f"match the declared set ({EXCLUDED_STOCHASTIC_CHANNELS!r})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _an_occurred_outbreak_names_a_conflict_opened_this_turn(self) -> ForeignAffairsReport:
+        if not self.outbreak.occurred:
+            return self
+        opened_ids = {
+            row.conflict_id for row in self.progressions if row.opened_turn == self.outbreak.turn
+        }
+        if self.outbreak.conflict_id not in opened_ids:
+            raise ValueError(
+                f"outbreak reports occurred=True for conflict_id={self.outbreak.conflict_id!r}, "
+                "but no progression row with that id and opened_turn == this turn is present"
+            )
+        return self
+
+
 class TurnReport(BaseModel):
     """The full report produced by one `resolve_turn` call."""
 
@@ -3380,16 +3937,22 @@ class TurnReport(BaseModel):
     `phases.py`."""
     constitutional_amendment: ConstitutionalAmendmentReport | None = None
     """The Gate 3C3 amendment report, including explicit `NO_PROPOSAL` turns."""
+    foreign_affairs: ForeignAffairsReport | None = None
+    """`None` only when the foreign-conflict phases did not run (never for a successful External
+    Wars Gate W1+ turn on a valid player state). Built for every resolved turn, including turns
+    with no candidates and no live conflicts at all — an outbreak row with zero candidates and an
+    empty `progressions` tuple is still a valid, complete report. Slots 7 (outbreak) and 8
+    (progression); assembled at slot 15; see `phases.py`."""
 
     @model_validator(mode="after")
-    def _all_twelve_domain_reports_are_all_present_or_all_absent(
+    def _all_thirteen_domain_reports_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
         """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1, Phase 3B2A,
-        Phase 3B2B, Phase 3C Gate 3C1, Gate 3C2, and Gate 3C3): a partial combination of these
-        twelve player-economy/politics reports would represent a broken audit chain (e.g.
-        production ran but derivation silently didn't) — reject it outright rather than accepting
-        whatever subset happens to be present.
+        Phase 3B2B, Phase 3C Gate 3C1, Gate 3C2, Gate 3C3, and External Wars Gate W1): a partial
+        combination of these thirteen player-economy/politics/foreign-affairs reports would
+        represent a broken audit chain (e.g. production ran but derivation silently didn't) —
+        reject it outright rather than accepting whatever subset happens to be present.
         """
         present = (
             self.labor_market is not None,
@@ -3404,16 +3967,17 @@ class TurnReport(BaseModel):
             self.election is not None,
             self.coup_unrest is not None,
             self.constitutional_amendment is not None,
+            self.foreign_affairs is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
                 "labor_market, resources, production, tax_base_derivation, finance, political, "
                 "legislative, political_capital, political_relationship, election, coup_unrest, "
-                "and constitutional_amendment must be all present or all absent on a TurnReport "
-                "— got "
+                "constitutional_amendment, and foreign_affairs must be all present or all absent "
+                "on a TurnReport — got "
                 f"present={present} (labor_market, resources, production, tax_base_derivation, "
                 "finance, political, legislative, political_capital, political_relationship, "
-                "election, coup_unrest, constitutional_amendment)"
+                "election, coup_unrest, constitutional_amendment, foreign_affairs)"
             )
         return self
 

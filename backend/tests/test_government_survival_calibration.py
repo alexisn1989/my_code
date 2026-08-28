@@ -23,10 +23,19 @@ def _empty_decisions(current) -> DecisionSet:  # type: ignore[no-untyped-def]
     )
 
 
-def _run(scenario: str, turns: int, *, seed: int | None = None):  # type: ignore[no-untyped-def]
+def _run(  # type: ignore[no-untyped-def]
+    scenario: str, turns: int, *, seed: int | None = None, disable_dyads: bool = False
+):
     state = load_scenario_file(SCENARIO_DIR / scenario)
     if seed is not None:
         state = state.model_copy(update={"seed": seed})
+    if disable_dyads:
+        dyads_disabled = tuple(
+            dyad.model_copy(update={"eligible": False}) for dyad in state.world.dyads
+        )
+        state = state.model_copy(
+            update={"world": state.world.model_copy(update={"dyads": dyads_disabled})}
+        )
     save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
     for _ in range(turns):
         current = save.current_state()
@@ -40,14 +49,21 @@ class TestTinyValidTermLimitExit:
     defeat, since it never loses a vote."""
 
     def test_turn_16_first_election_is_won_unaided(self) -> None:
+        """External Wars Gate W1: `tiny_valid`'s eligible kessia/vetruska dyad (exposure 2,000)
+        starts a war on this seed before turn 16, and the security-anxiety contribution
+        (frozen plan sec.9.4/9.5) legitimately lowers legitimacy and therefore support -- both
+        figures below are re-measured against the real engine post-W1, -29 bps from their
+        pre-W1 values (5,568/5,449). `polling_uncertainty_bps` is untouched -- it is a pure RNG
+        draw independent of legitimacy -- and the election OUTCOME (won, term-limit path) does
+        not change."""
         save = _run("tiny_valid.yaml", 16)
         election = save.entries[-1].report().election
         assert election is not None
         assert election.scheduled
         assert election.result == "won"
-        assert election.baseline_support_bps == 5_568
+        assert election.baseline_support_bps == 5_539
         assert election.polling_uncertainty_bps == -119
-        assert election.final_support_bps == 5_449
+        assert election.final_support_bps == 5_420
         assert election.required_support_bps == 5_000
         assert not election.liberalization_completed
 
@@ -95,7 +111,13 @@ class TestDeficitDemoContestedElections:
     baseline."""
 
     def test_turn_20_is_won_by_a_favorable_polling_swing(self) -> None:
-        save = _run("deficit_demo.yaml", 20)
+        """External Wars Gate W1: `deficit_demo` authors an eligible dyad (exposure 2,000, frozen
+        plan sec.9.6). With it live, the war's security-anxiety contribution (sec.9.4/9.5) grows
+        turn over turn, so the baseline at turn 20 (4,683) and turn 40 (4,671) would no longer be
+        the SAME figure -- breaking this class's own "same structural baseline, only the swing
+        differs" claim. The dyad is disabled here so no war can ever start, restoring the exact
+        pre-W1 structural-baseline-invariance conditions this class was written to prove."""
+        save = _run("deficit_demo.yaml", 20, disable_dyads=True)
         election = save.entries[-1].report().election
         assert election is not None
         assert election.result == "won"
@@ -114,7 +136,10 @@ class TestDeficitDemoContestedElections:
         assert politics.terminal_outcome is None
 
     def test_turn_40_is_lost_by_an_unfavorable_polling_swing_electoral_defeat(self) -> None:
-        save = _run("deficit_demo.yaml", 40)
+        """External Wars Gate W1: see the war-free rationale on the turn-20 test above -- the
+        dyad is disabled here for the same reason, preserving the SAME structural baseline as
+        turn 20."""
+        save = _run("deficit_demo.yaml", 40, disable_dyads=True)
         election = save.entries[-1].report().election
         assert election is not None
         assert election.result == "lost"
@@ -139,12 +164,16 @@ class TestTinyValidFixtureSeedElectionResult:
     seed-range sweep below (which deliberately does not single out any one seed as special)."""
 
     def test_fixture_seed_42_result(self) -> None:
+        """External Wars Gate W1: same -29 bps security-anxiety shift as
+        `TestTinyValidTermLimitExit::test_turn_16_first_election_is_won_unaided` above (same
+        scenario, seed, and turn) -- the war is live and un-disabled here on purpose, since this
+        class makes no cross-seed invariance claim for the dyad to break."""
         save = _run("tiny_valid.yaml", 16, seed=42)
         election = save.entries[-1].report().election
         assert election is not None
-        assert election.baseline_support_bps == 5_568
+        assert election.baseline_support_bps == 5_539
         assert election.polling_uncertainty_bps == -119
-        assert election.final_support_bps == 5_449
+        assert election.final_support_bps == 5_420
         assert election.result == "won"
 
 
@@ -156,7 +185,15 @@ class TestTinyValidSeedZeroToNineteenSweepProvesTheElectionIsGenuinelyContested:
     the election is a real contest, not a foregone conclusion dressed up with cosmetic
     randomness. Every figure below was produced by actually resolving each seed through the real
     engine (a small verification script, not part of the repository), the same discipline this
-    whole file follows."""
+    whole file follows.
+
+    External Wars Gate W1: `tiny_valid` authors an eligible dyad (exposure 2,000, frozen plan
+    sec.9.6), and outbreak timing is itself seed-dependent -- on this seed range, some seeds see
+    a war live by turn 16 and others don't, which would make baseline_support_bps genuinely vary
+    by seed and break this class's central "baseline is seed-independent" claim. The dyad is
+    disabled in every `_run` call below so no war can ever start on any seed, restoring the exact
+    pre-W1 conditions this class was written to prove -- verified to reproduce every figure below
+    byte-identically to the pre-W1 measurements."""
 
     _SEED_RANGE = range(20)
 
@@ -187,7 +224,7 @@ class TestTinyValidSeedZeroToNineteenSweepProvesTheElectionIsGenuinelyContested:
         assert set(self._EXPECTED_BY_SEED) == set(self._SEED_RANGE)
         for seed in self._SEED_RANGE:
             swing, final, result = self._EXPECTED_BY_SEED[seed]
-            save = _run("tiny_valid.yaml", 16, seed=seed)
+            save = _run("tiny_valid.yaml", 16, seed=seed, disable_dyads=True)
             election = save.entries[-1].report().election
             assert election is not None
             assert election.baseline_support_bps == 5_568, seed
@@ -209,7 +246,7 @@ class TestTinyValidSeedZeroToNineteenSweepProvesTheElectionIsGenuinelyContested:
         across all 20 seeds despite the final result varying."""
         baselines = set()
         for seed in self._SEED_RANGE:
-            save = _run("tiny_valid.yaml", 16, seed=seed)
+            save = _run("tiny_valid.yaml", 16, seed=seed, disable_dyads=True)
             election = save.entries[-1].report().election
             assert election is not None
             baselines.add(election.baseline_support_bps)
@@ -306,13 +343,25 @@ class TestDecreeStateSeedZeroToNineteenSweepProvesStabilityUnderAddedRisk:
     coup/unrest/impeachment channels now live for the first time. Every seed was actually run
     through the real engine (a small verification script, not part of the repository): none
     terminate early, confirming Gate 3C2's added background risk does not break the non-
-    termination property Gate 3C1 established -- re-verified, not merely assumed unchanged."""
+    termination property Gate 3C1 established -- re-verified, not merely assumed unchanged.
+
+    External Wars Gate W1: `decree_state` authors an eligible valdrun/neighbor dyad (exposure
+    3,000, frozen plan sec.9.6), and on this seed range a live war's security-anxiety
+    contribution (sec.9.4/9.5) genuinely lowers legitimacy far enough that, on at least one seed,
+    a coup actually SUCCEEDS at turn 53 -- a real, attributable, war-driven outcome, not noise.
+    This class's own claim has always been narrower than that: it isolates the PURE background
+    coup/unrest/impeachment risk `decree_state` was calibrated against in Gate 3C2, before W1
+    existed. Both tests below therefore run with `disable_dyads=True`, which makes every dyad
+    ineligible so no war can ever start -- restoring the exact war-free background-risk
+    conditions this class was written to prove, without cherry-picking seeds or weakening the
+    assertion. War-driven termination is a separate, real, and correctly-scoped phenomenon,
+    covered instead by the W1 wiring tests (`test_foreign_conflict_wiring.py`)."""
 
     _SEED_RANGE = range(20)
 
     def test_no_seed_in_the_declared_range_terminates_within_100_turns(self) -> None:
         for seed in self._SEED_RANGE:
-            save = _run("decree_state.yaml", 100, seed=seed)
+            save = _run("decree_state.yaml", 100, seed=seed, disable_dyads=True)
             politics = save.current_state().world.countries["valdrun"].politics
             assert politics is not None
             assert politics.terminal_outcome is None, seed
@@ -327,7 +376,7 @@ class TestDecreeStateSeedZeroToNineteenSweepProvesStabilityUnderAddedRisk:
         a SUCCESS, since that would silently terminate the game this sweep is asserting stays
         alive for the full 100 turns."""
         for seed in self._SEED_RANGE:
-            save = _run("decree_state.yaml", 100, seed=seed)
+            save = _run("decree_state.yaml", 100, seed=seed, disable_dyads=True)
             for entry in save.entries[1:]:
                 report = entry.report()
                 assert report is not None and report.coup_unrest is not None

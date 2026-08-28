@@ -85,8 +85,19 @@ def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustai
     accounting resolving every turn, and an explicit check that the
     deliberately-sustainable budget behaves as documented over a long run —
     cash grows, debt never does, and every turn still reconciles, through
-    tiny_valid's real, natural conclusion (Phase 3C: a term-limit exit)."""
+    tiny_valid's real, natural conclusion (Phase 3C: a term-limit exit).
+
+    External Wars Gate W1: `tiny_valid` authors an eligible dyad (exposure 2,000, sec.9.6). This
+    soak's whole point is Phase 2A/2B/2C's accounting/labor/resource/production pipeline, not the
+    orthogonal foreign-war mechanic, and a live war's fluctuating security-anxiety contribution
+    (sec.9.4/9.5) would break both the pinned final legitimacy figure and the monotone-legitimacy
+    claim below. The dyad is disabled so this soak measures exactly what it was written to
+    measure."""
     state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+    dyads_disabled = tuple(d.model_copy(update={"eligible": False}) for d in state.world.dyads)
+    state = state.model_copy(
+        update={"world": state.world.model_copy(update={"dyads": dyads_disabled})}
+    )
     save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
     opening_debt = state.world.countries["arken"].treasury.debt
     turns = TINY_VALID_NATURAL_CONCLUSION_TURN
@@ -224,8 +235,18 @@ def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() 
     boundary sits around resolution 250. Also proves conservation/no-negative-reserves/
     labor-resource-agreement hold for the full real horizon of a scenario that (unlike
     `tiny_valid`) deliberately borrows every turn.
+
+    External Wars Gate W1: `deficit_demo` authors an eligible dyad (exposure 2,000, sec.9.6),
+    same rationale as the tiny_valid soak above -- disabled so this pipeline-focused soak isn't
+    perturbed by the orthogonal foreign-war mechanic's fluctuating security-anxiety contribution,
+    which would otherwise add extra legitimacy dips beyond the single resource-depletion-shock
+    dip this test exists to prove.
     """
     state = load_scenario_file(SCENARIO_DIR / "deficit_demo.yaml")
+    dyads_disabled = tuple(d.model_copy(update={"eligible": False}) for d in state.world.dyads)
+    state = state.model_copy(
+        update={"world": state.world.model_copy(update={"dyads": dyads_disabled})}
+    )
     save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
     turns = DEFICIT_DEMO_NATURAL_CONCLUSION_TURN
 
