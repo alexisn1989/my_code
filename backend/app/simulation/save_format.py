@@ -91,7 +91,7 @@ with an actionable message, same as the save-format-version case above. See
 `docs/adr/0013-government-survival.md`.
 """
 
-SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.12.0"})
+SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.13.0"})
 """Tracks content-*schema* compatibility (what shape scenario-authored data must have), not a
 fingerprint of any scenario's actual parameter values — two scenarios sharing a content_version
 routinely carry different `resource_output_coefficients`/`resource_deposits`/`sectors` values
@@ -103,9 +103,14 @@ Phase 3C Gate 3C1: every scenario's `InstitutionState`/`PopulationGroupState` me
 floats to basis points, the redundant `id: "legislature"` institution row is dropped from
 `tiny_valid`/`decree_state`, `deficit_demo` gains a new authored `military` institution row, and
 every scenario's `politics:` block gains `consecutive_terms_held`/`next_election_turn`/
-`regime_transition_pressure_bps`. See `docs/adr/0008-physical-extraction-derived-sector-output.md`,
-"Content-version policy", `docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`,
-and `docs/adr/0013-government-survival.md`."""
+`regime_transition_pressure_bps`. Bumped `"0.12.0" -> "0.13.0"` for External Wars Gate W1: every
+scenario gains a `foreign_profiles:`/`dyads:` block (two foreign actors and one eligible dyad
+each) — a genuine schema addition no earlier scenario shape has anything to omit-as-empty for,
+matching every prior content-version bump's reasoning. See
+`docs/adr/0008-physical-extraction-derived-sector-output.md`, "Content-version policy",
+`docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`,
+`docs/adr/0013-government-survival.md`, and
+`docs/adr/0016-external-wars-foreign-conflicts.md`."""
 
 _REQUIRED_ENVELOPE_KEYS = {
     "save_format_version",

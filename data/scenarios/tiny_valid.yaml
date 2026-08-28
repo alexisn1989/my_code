@@ -18,9 +18,32 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.12.0"
+content_version: "0.13.0"
 seed: 42
 player_country_id: arken
+
+# External Wars Gate W1: Kessia and Vetruska are foreign actors, never player-style
+# CountryState entries. `neighbor` below is untouched and is never a dyad member.
+# Exactly one eligible dyad, per the frozen plan's §9.6 authored content table.
+foreign_profiles:
+  kessia:
+    display_name: "Kessia"
+    war_capability_bps: 5000
+  vetruska:
+    display_name: "Vetruska"
+    war_capability_bps: 5600
+
+dyads:
+  - country_a: kessia
+    country_b: vetruska
+    tension_bps: 8500
+    grievance_bps: 7500
+    eligible: true
+    aggressor: vetruska
+    defender: kessia
+    aim_a: deterrence
+    aim_b: territorial
+    player_security_exposure_bps: 2000
 
 countries:
   - id: arken

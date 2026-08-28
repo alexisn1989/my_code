@@ -39,9 +39,32 @@
 schema_version: 1
 scenario_id: decree_state
 name: "Decree State Fixture"
-content_version: "0.12.0"
+content_version: "0.13.0"
 seed: 77
 player_country_id: valdrun
+
+# External Wars Gate W1: Marnil and Sorrend are foreign actors, never player-style
+# CountryState entries. `neighbor` below is untouched and is never a dyad member.
+# Exactly one eligible dyad, per the frozen plan's §9.6 authored content table.
+foreign_profiles:
+  marnil:
+    display_name: "Marnil"
+    war_capability_bps: 5800
+  sorrend:
+    display_name: "Sorrend"
+    war_capability_bps: 6400
+
+dyads:
+  - country_a: marnil
+    country_b: sorrend
+    tension_bps: 9500
+    grievance_bps: 8500
+    eligible: true
+    aggressor: sorrend
+    defender: marnil
+    aim_a: deterrence
+    aim_b: regime_change
+    player_security_exposure_bps: 3000
 
 countries:
   - id: valdrun

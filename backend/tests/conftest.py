@@ -21,10 +21,13 @@ from app.simulation.state import (
     RULESET_VERSION,
     BlocSeats,
     ChamberState,
+    ConflictDyadState,
     ConstitutionState,
     CountryState,
     EconomicBaselineState,
     EconomyState,
+    ForeignConflictState,
+    ForeignProfileState,
     GameState,
     GovernmentFinanceState,
     InstitutionState,
@@ -421,6 +424,9 @@ def make_game_state(
     player_country_id: str = "testland",
     turn: int = 0,
     state_version: int = 0,
+    foreign_profiles: dict[str, ForeignProfileState] | None = None,
+    dyads: tuple[ConflictDyadState, ...] = (),
+    conflicts: tuple[ForeignConflictState, ...] = (),
 ) -> GameState:
     """Build a minimal, valid `GameState` for unit tests that don't need YAML.
 
@@ -430,6 +436,9 @@ def make_game_state(
     zero-baseline branch means it contributes no performance effect if this state is ever
     resolved). A caller who passes `countries=...` explicitly is responsible for its own
     politics, exactly as they already are for finance/economy.
+
+    `foreign_profiles`/`dyads`/`conflicts` (External Wars Gate W1) default to empty, matching
+    `WorldState`'s own defaults, so every existing call site is unaffected.
     """
     if countries is None:
         politics = (
@@ -448,7 +457,13 @@ def make_game_state(
         seed=seed,
         turn=turn,
         state_version=state_version,
-        world=WorldState(countries=countries, player_country_id=player_country_id),
+        world=WorldState(
+            countries=countries,
+            player_country_id=player_country_id,
+            foreign_profiles=foreign_profiles or {},
+            dyads=dyads,
+            conflicts=conflicts,
+        ),
     )
 
 

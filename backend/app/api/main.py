@@ -26,6 +26,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.simulation.state import RULESET_VERSION
+
 from .errors import register_exception_handlers
 from .routes import router
 from .save_registry import SaveRepository
@@ -103,7 +105,7 @@ def create_app(settings: ApiSettings | None = None) -> FastAPI:
     resolved = settings if settings is not None else settings_from_env()
     app = FastAPI(
         title="MANDATE local game API",
-        version="0.12.0",
+        version=RULESET_VERSION,
         summary="Local, loopback-only interface to the MANDATE simulation engine.",
         docs_url=None,
         redoc_url=None,

@@ -409,14 +409,15 @@ def test_phase3b2b_save_compatibility_is_checked_before_any_entry_payload_is_par
 def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
     """Gate 3C3: `RULESET_VERSION` was bumped exactly once, at Gate 3C1, for the whole of Phase
     3C -- not once per gate. This proves that single bump's rationale actually covers what Gate
-    3C3 added too: a real `resolve_turn` call produces all twelve top-level reports, including
-    `constitutional_amendment`, under the SAME `"0.12.0"` `RULESET_VERSION` Gate 3C1 shipped, with
-    no further bump required."""
+    3C3 added too: a real `resolve_turn` call produces all twelve top-level Phase-3C reports,
+    including `constitutional_amendment`, still true today even though `RULESET_VERSION` has
+    since moved on again (External Wars Gate W1 bumped `"0.12.0" -> "0.13.0"` for its own,
+    unrelated thirteenth report) -- no *further* Phase-3C-specific bump was ever required."""
     from app.simulation.decisions import DecisionSet
     from app.simulation.resolver import resolve_turn
 
     state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
-    assert state.ruleset_version == RULESET_VERSION == "0.12.0"
+    assert state.ruleset_version == RULESET_VERSION == "0.13.0"
     decisions = DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
     )
@@ -454,7 +455,7 @@ def test_scenario_content_version_is_current(scenario_name: str) -> None:
     since it changes field TYPES (float -> strict bps) as well as adding/removing whole rows --
     not a case a line-level text rebuild can express cleanly."""
     state = load_scenario_file(SCENARIOS_DIR / scenario_name)
-    assert state.content_version == "0.12.0"
+    assert state.content_version == "0.13.0"
 
 
 @pytest.mark.parametrize(

@@ -43,6 +43,7 @@ from app.core.quantity import (
     StrictResourceQuantityPerWorker,
 )
 from app.simulation.constitution import ConstitutionState, Legislature
+from app.simulation.foreign_conflict import TERMINAL_STATUSES, ConflictStatus, WarAim
 from app.simulation.legislature import GovernmentRole, LegislativeChamber
 
 _STRICT_CONFIG = ConfigDict(extra="forbid", validate_assignment=True)
@@ -971,16 +972,238 @@ class CountryState(BaseModel):
     `player_politics_required`, mirroring `player_finance_required`/`player_economy_required`."""
 
 
+class ForeignProfileState(BaseModel):
+    """An abstract foreign actor (External Wars, Gate W1).
+
+    Not a `CountryState`: `CountryState` requires `population` and `treasury` with no defaults,
+    so representing an abstract foreign actor that way would force inventing demographic and
+    fiscal data no scenario has any business authoring for a country the player never governs.
+    `war_capability_bps` is an ABSTRACT AUTHORED CAPABILITY used ONLY for non-player conflict
+    progression (`simulation.foreign_conflict`). It is structurally separate from, and never
+    read by: the player's future `MilitaryState` (W4), `InstitutionState(id="military")`, and
+    the coup/unrest/impeachment formulas in `simulation.government_survival` — enforced by an
+    AST/source scan in `tests/test_foreign_conflict.py` and
+    `tests/test_legislative_neutrality.py`, and by the behavioural
+    `test_foreign_capability_cannot_reach_domestic_coup_math` (commit 6, once a resolver exists
+    to run it against).
+
+    Lives in `WorldState.foreign_profiles: dict[str, ForeignProfileState]`, keyed by the stable
+    foreign-country id. The id is deliberately **not** duplicated inside this value, so key and
+    value can never disagree.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    display_name: str
+    war_capability_bps: StrictBps
+
+
+class ConflictDyadState(BaseModel):
+    """An authored bilateral relationship between two FOREIGN countries (External Wars, Gate
+    W1). Only `eligible` dyads may ever generate a war — generic per-actor belligerence never
+    causes an outbreak on its own; the dyad is the only thing that can express that a specific
+    pair has a specific quarrel.
+
+    `country_a`/`country_b` are canonical: `country_a < country_b` lexicographically, enforced
+    below and **rejected, never reordered**, matching every other ordered collection in this
+    module (`resource_deposits`, `resource_output_coefficients`).
+
+    `aggressor`/`defender` are separate, explicit, authored fields and are NEVER inferred from
+    `country_a`/`country_b`'s canonical ordering — that ordering exists only to make the pair's
+    identity and serialization stable, and carries no role meaning. Enforced below: `{aggressor,
+    defender} == {country_a, country_b}` and `aggressor != defender`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    country_a: str
+    country_b: str
+    tension_bps: StrictBps
+    """Standing bilateral hostility."""
+    grievance_bps: StrictBps
+    """Accumulated specific casus belli."""
+    eligible: bool
+    """Authored gate: may this pair ever fight? A pair with `eligible=False` can never generate
+    an outbreak regardless of `tension_bps`/`grievance_bps`."""
+    aggressor: str
+    defender: str
+    aim_a: WarAim
+    """Each side's war aim IF war occurs — authored, never drawn. `aim_a` belongs to the
+    canonical `country_a` actor and `aim_b` to `country_b`, following canonical ordering, never
+    aggressor/defender roles."""
+    aim_b: WarAim
+    player_security_exposure_bps: StrictBps
+    """AUTHORED security exposure of the player to THIS dyad's war. Explicit content, never
+    inferred from a country id, name, adjacency heuristic, or any other derived signal. Economic
+    exposure is deliberately NOT modelled here and is zero in W1 — it arrives only when W3
+    builds a real trade channel."""
+
+    @model_validator(mode="after")
+    def _pair_is_canonically_ordered(self) -> ConflictDyadState:
+        """Invariant code (construction-time half): `dyad_pair_not_canonical`."""
+        if self.country_a >= self.country_b:
+            raise ValueError(
+                f"dyad pair ({self.country_a!r}, {self.country_b!r}) is not canonically "
+                "ordered; country_a must be strictly less than country_b lexicographically"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _roles_are_distinct_and_match_the_pair(self) -> ConflictDyadState:
+        """Invariant codes (construction-time half): `dyad_aggressor_equals_defender`,
+        `dyad_roles_do_not_match_pair`. A dedicated test authors a dyad whose aggressor is
+        `country_b` to prove role and ordering are genuinely independent."""
+        if self.aggressor == self.defender:
+            raise ValueError(
+                f"dyad ({self.country_a!r}, {self.country_b!r}): aggressor and defender are "
+                f"both {self.aggressor!r}"
+            )
+        if {self.aggressor, self.defender} != {self.country_a, self.country_b}:
+            raise ValueError(
+                f"dyad ({self.country_a!r}, {self.country_b!r}): "
+                f"{{aggressor={self.aggressor!r}, defender={self.defender!r}}} does not match "
+                f"{{country_a, country_b}}"
+            )
+        return self
+
+
+class ForeignConflictState(BaseModel):
+    """A persistent, self-running war between two foreign countries (External Wars, Gate W1).
+
+    `country_a`/`country_b` mirror the originating dyad's canonical pair. `aggressor`/`defender`
+    and `war_capability_a_bps`/`war_capability_b_bps` are COPIED at outbreak from the dyad and
+    each country's `ForeignProfileState` respectively, and never re-derived — the conflict is
+    self-contained once it exists, so a later authored-content edit cannot retroactively change
+    an already-fought war's terms.
+
+    `status`/`resolved_turn` follow one rule, enforced below: `ACTIVE`/`CEASEFIRE` are
+    reversible and `resolved_turn` must be `None`; `SETTLED`/`DECIDED` (`TERMINAL_STATUSES`,
+    `simulation.foreign_conflict`) are terminal and `resolved_turn` is required.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    conflict_id: str
+    """`f"{country_a}__{country_b}__t{opened_turn}"` — deterministic and unique; a pair cannot
+    re-fight while an existing conflict between them is still `ACTIVE` or `CEASEFIRE`."""
+    country_a: str
+    country_b: str
+    aggressor: str
+    defender: str
+    war_capability_a_bps: StrictBps
+    war_capability_b_bps: StrictBps
+    aim_a: WarAim
+    aim_b: WarAim
+    opened_turn: int = Field(ge=0)
+    intensity_bps: StrictBps
+    position_bps: StrictRelationshipBps
+    """Signed: positive favours the canonical `country_a` actor, negative favours `country_b`."""
+    exhaustion_a_bps: StrictBps
+    exhaustion_b_bps: StrictBps
+    negotiation_readiness_bps: StrictBps
+    status: ConflictStatus
+    ceasefire_run_turns: int = Field(ge=0, default=0)
+    resolved_turn: int | None = None
+
+    @model_validator(mode="after")
+    def _pair_is_canonically_ordered(self) -> ForeignConflictState:
+        """Invariant code (construction-time half): `conflict_ids_not_canonical`."""
+        if self.country_a >= self.country_b:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: pair ({self.country_a!r}, {self.country_b!r}) "
+                "is not canonically ordered; country_a must be strictly less than country_b"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _roles_are_distinct_and_match_the_pair(self) -> ForeignConflictState:
+        if self.aggressor == self.defender:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: aggressor and defender are both {self.aggressor!r}"
+            )
+        if {self.aggressor, self.defender} != {self.country_a, self.country_b}:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: "
+                f"{{aggressor={self.aggressor!r}, defender={self.defender!r}}} does not match "
+                f"{{country_a, country_b}}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _resolved_turn_matches_terminal_status(self) -> ForeignConflictState:
+        """Invariant codes (construction-time half): `conflict_resolved_turn_requires_terminal_status`,
+        `conflict_terminal_status_requires_resolved_turn`. Enforced by a row self-validator here
+        AND by two `check_invariants` codes, so neither a report nor a state can carry the
+        mismatch alone."""
+        is_terminal = self.status in TERMINAL_STATUSES
+        if is_terminal and self.resolved_turn is None:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: status {self.status.value!r} is terminal but "
+                "resolved_turn is None"
+            )
+        if not is_terminal and self.resolved_turn is not None:
+            raise ValueError(
+                f"conflict {self.conflict_id!r}: status {self.status.value!r} is reversible but "
+                f"resolved_turn={self.resolved_turn} is set"
+            )
+        return self
+
+
 class WorldState(BaseModel):
-    """All countries in the game world, plus which one the player controls."""
+    """All countries in the game world, plus which one the player controls.
+
+    `foreign_profiles`/`dyads`/`conflicts` (External Wars, Gate W1) represent foreign actors and
+    their persistent, self-running wars — entirely separate from `countries`, which remains
+    exactly what it always was: the player and any future player-style AI country. See
+    `ForeignProfileState`'s docstring for why foreign actors are not `CountryState` entries.
+    """
 
     model_config = _STRICT_CONFIG
 
     countries: dict[str, CountryState] = Field(default_factory=dict)
     player_country_id: str
+    foreign_profiles: dict[str, ForeignProfileState] = Field(default_factory=dict)
+    """Keyed by the stable foreign-country id. Every read — validation, outbreak candidate
+    assembly, weighted selection, report row emission, canonical JSON — iterates
+    `sorted(foreign_profiles)`; canonical JSON serialization already sorts mapping keys
+    (`core.canonical_json`), so a different construction order produces byte-identical output."""
+    dyads: tuple[ConflictDyadState, ...] = Field(default_factory=tuple)
+    """Canonical by `(country_a, country_b)`, **reject-not-normalize** — matching
+    `resource_deposits`' policy (ADR 0007 R3), not `sectors`' normalize-on-reorder one."""
+    conflicts: tuple[ForeignConflictState, ...] = Field(default_factory=tuple)
+    """Canonical by `conflict_id`, **reject-not-normalize**."""
+
+    @model_validator(mode="after")
+    def _dyads_are_unique_and_canonically_ordered(self) -> WorldState:
+        """Invariant codes (construction-time half): `dyad_duplicate_pair`,
+        `dyad_pair_not_canonical` (the tuple-level half; each dyad's own field-level ordering is
+        already enforced by `ConflictDyadState`'s own validator)."""
+        pairs = [(dyad.country_a, dyad.country_b) for dyad in self.dyads]
+        if len(set(pairs)) != len(pairs):
+            raise ValueError(f"duplicate dyad pair(s) in world.dyads: {pairs!r}")
+        if pairs != sorted(pairs):
+            raise ValueError(
+                f"world.dyads is not in canonical (country_a, country_b) order: got {pairs!r}, "
+                f"expected {sorted(pairs)!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _conflicts_are_unique_and_canonically_ordered(self) -> WorldState:
+        """Invariant codes (construction-time half): `conflict_duplicate_id`,
+        `conflict_ids_not_canonical` (the tuple-level half)."""
+        ids = [conflict.conflict_id for conflict in self.conflicts]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"duplicate conflict_id(s) in world.conflicts: {ids!r}")
+        if ids != sorted(ids):
+            raise ValueError(
+                f"world.conflicts is not in canonical conflict_id order: got {ids!r}, expected "
+                f"{sorted(ids)!r}"
+            )
+        return self
 
 
-RULESET_VERSION = "0.12.0"
+RULESET_VERSION = "0.13.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -1034,7 +1257,17 @@ political-survival history in a 0.11.0 save to backfill them from; and `TurnRepo
 nine reports to twelve -- `election: ElectionReport` (Gate 3C1), `coup_unrest: CoupUnrestReport`
 (Gate 3C2), and `constitutional_amendment: ConstitutionalAmendmentReport` (Gate 3C3) -- with no
 data in a 0.11.0 save to reconstruct any of the three from: a 0.11.0 turn never evaluated an
-election, assessed coup/unrest/impeachment risk, or resolved a constitutional amendment at all).
+election, assessed coup/unrest/impeachment risk, or resolved a constitutional amendment at all),
+and `docs/adr/0016-external-wars-foreign-conflicts.md` (bumped `"0.12.0" -> "0.13.0"` for External
+Wars Gate W1: `WorldState` gains `foreign_profiles`, `dyads` and `conflicts`, and turn resolution
+now draws foreign-conflict outbreaks and progression from three new RNG streams
+(`foreign_conflict_outbreak`, `foreign_conflict_progress:{cid}`, `foreign_conflict_termination:
+{cid}`), so replaying a 0.12.0 turn under 0.13.0 rules would draw randomness a 0.12.0 turn never
+consumed and could start a war a 0.12.0 turn's decisions never anticipated; `TurnReport` grows
+from twelve reports to thirteen -- `foreign_affairs: ForeignAffairsReport` -- with no data in a
+0.12.0 save to reconstruct it from: a 0.12.0 turn never evaluated a foreign-conflict outbreak or
+progression at all. **No migration**: a 0.12.0 save has no dyads; synthesising a peaceful world
+would assert a fact the save does not contain. `SAVE_FORMAT_VERSION` stays `1`.
 """
 
 

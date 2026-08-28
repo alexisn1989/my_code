@@ -25,9 +25,32 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.12.0"
+content_version: "0.13.0"
 seed: 99
 player_country_id: strapped
+
+# External Wars Gate W1: Marnil and Tolvane are foreign actors, never player-style
+# CountryState entries. `deficit_demo` has no `neighbor` country and never has.
+# Exactly one eligible dyad, per the frozen plan's §9.6 authored content table.
+foreign_profiles:
+  marnil:
+    display_name: "Marnil"
+    war_capability_bps: 5800
+  tolvane:
+    display_name: "Tolvane"
+    war_capability_bps: 6400
+
+dyads:
+  - country_a: marnil
+    country_b: tolvane
+    tension_bps: 9000
+    grievance_bps: 7000
+    eligible: true
+    aggressor: tolvane
+    defender: marnil
+    aim_a: deterrence
+    aim_b: resource_access
+    player_security_exposure_bps: 2000
 
 countries:
   - id: strapped

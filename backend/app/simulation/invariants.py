@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from app.core.errors import InvariantViolation
 from app.simulation.constitution import DecreeAuthority, Legislature, first_constitutional_violation
+from app.simulation.foreign_conflict import TERMINAL_STATUSES
 from app.simulation.legislature import LegislativeChamber
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
@@ -24,6 +25,7 @@ from app.simulation.state import (
     GameState,
     ResourceCategory,
     SectorCategory,
+    WorldState,
 )
 
 _RELATIONSHIP_MIN = -10_000
@@ -878,6 +880,206 @@ def _check_legislature(country: CountryState, *, is_player: bool) -> list[Invari
     return violations
 
 
+def _check_foreign_conflicts(world: WorldState) -> list[InvariantViolation]:
+    """External Wars Gate W1 structural backstops (frozen plan sec.6), mirroring
+    `_check_legislature`'s role: every rule here is already enforced at every legitimate
+    construction/assignment path by `ForeignProfileState`/`ConflictDyadState`/
+    `ForeignConflictState`/`WorldState`'s own Pydantic validators, but all four are mutable, so a
+    nested assignment after construction (e.g. `dyad.country_a = "..."`) can desynchronize an
+    already-valid `WorldState` without re-running those validators — `validate_assignment=True`
+    only re-checks the field being assigned, never the sibling object that referenced it. This is
+    the every-turn, bypassed-construction backstop.
+
+    Editorial note on two near-duplicate code names in the frozen plan's own text: sec.6.1's
+    summary table names `dyad_member_not_a_foreign_profile` and `dyad_references_player_country`;
+    sec.6.3's later, more complete "Invariants (new codes)" list names the same two rules
+    `foreign_profile_required_for_dyad_member` and `dyad_country_is_player` respectively, without
+    also re-listing the sec.6.1 names. Read as sec.6.3 superseding sec.6.1's draft naming (the plan
+    is not edited to resolve this — both readings check the identical rule), this function emits
+    only the sec.6.3 names, so every dyad/conflict-country reference is classified into exactly one
+    of: a `foreign_profiles` key (legitimate), the player country, some other known country id, or
+    unrecognized — never two overlapping codes for the same defect.
+    """
+    violations: list[InvariantViolation] = []
+
+    for profile_id in world.foreign_profiles:
+        if not profile_id:
+            violations.append(
+                InvariantViolation(
+                    code="foreign_profile_id_empty",
+                    message="world.foreign_profiles has an empty-string key",
+                )
+            )
+        if profile_id in world.countries:
+            violations.append(
+                InvariantViolation(
+                    code="foreign_profile_id_collides_with_country",
+                    message=(
+                        f"foreign_profiles key {profile_id!r} collides with a world.countries id"
+                    ),
+                )
+            )
+
+    profile_id_sequence = list(world.foreign_profiles)
+    if profile_id_sequence != sorted(profile_id_sequence):
+        violations.append(
+            InvariantViolation(
+                code="foreign_profiles_not_canonically_ordered",
+                message=(
+                    f"world.foreign_profiles keys are not in sorted order: {profile_id_sequence!r}"
+                ),
+            )
+        )
+
+    def _reference_violation(country_id: str) -> tuple[str, str] | None:
+        """Classifies one dyad/conflict `country_a`/`country_b`/`aggressor`/`defender` reference.
+        Returns `(code_suffix, detail)` for a bad reference, or `None` if `country_id` is a
+        legitimate `foreign_profiles` key."""
+        if country_id in world.foreign_profiles:
+            return None
+        if country_id == world.player_country_id:
+            return ("country_is_player", f"{country_id!r} is the player country")
+        if country_id in world.countries:
+            return (
+                "member_not_a_foreign_profile",
+                f"{country_id!r} is a world.countries id but not a foreign_profiles key",
+            )
+        return (
+            "country_unknown",
+            f"{country_id!r} is neither a foreign_profiles key nor a world.countries id",
+        )
+
+    seen_dyad_pairs: set[tuple[str, str]] = set()
+    for dyad in world.dyads:
+        pair = (dyad.country_a, dyad.country_b)
+        if pair in seen_dyad_pairs:
+            violations.append(
+                InvariantViolation(
+                    code="dyad_duplicate_pair",
+                    message=f"duplicate dyad pair {pair!r} in world.dyads",
+                )
+            )
+        seen_dyad_pairs.add(pair)
+
+        if dyad.country_a >= dyad.country_b:
+            violations.append(
+                InvariantViolation(
+                    code="dyad_pair_not_canonical",
+                    message=f"dyad pair {pair!r} is not canonically ordered",
+                )
+            )
+
+        for country_id in (dyad.country_a, dyad.country_b):
+            problem = _reference_violation(country_id)
+            if problem is None:
+                continue
+            suffix, detail = problem
+            code = (
+                "foreign_profile_required_for_dyad_member"
+                if suffix == "member_not_a_foreign_profile"
+                else f"dyad_{suffix}"
+            )
+            violations.append(InvariantViolation(code=code, message=f"dyad {pair!r}: {detail}"))
+
+    dyad_pair_sequence = [(dyad.country_a, dyad.country_b) for dyad in world.dyads]
+    dyad_pairs_are_unique = len(seen_dyad_pairs) == len(dyad_pair_sequence)
+    if dyad_pairs_are_unique and dyad_pair_sequence != sorted(dyad_pair_sequence):
+        violations.append(
+            InvariantViolation(
+                code="dyad_pair_not_canonical",
+                message=(
+                    f"world.dyads is not in canonical (country_a, country_b) order: "
+                    f"{dyad_pair_sequence!r}"
+                ),
+            )
+        )
+
+    seen_conflict_ids: set[str] = set()
+    for conflict in world.conflicts:
+        if conflict.conflict_id in seen_conflict_ids:
+            violations.append(
+                InvariantViolation(
+                    code="conflict_duplicate_id",
+                    message=f"duplicate conflict_id {conflict.conflict_id!r} in world.conflicts",
+                )
+            )
+        seen_conflict_ids.add(conflict.conflict_id)
+
+        if conflict.country_a >= conflict.country_b:
+            violations.append(
+                InvariantViolation(
+                    code="conflict_ids_not_canonical",
+                    message=(
+                        f"conflict {conflict.conflict_id!r}: pair "
+                        f"({conflict.country_a!r}, {conflict.country_b!r}) is not canonically "
+                        "ordered"
+                    ),
+                )
+            )
+
+        for country_id in (conflict.country_a, conflict.country_b):
+            problem = _reference_violation(country_id)
+            if problem is None:
+                continue
+            suffix, detail = problem
+            if suffix == "member_not_a_foreign_profile":
+                # No sec.6.3 code names this case for conflicts specifically: every conflict is
+                # created from an already-validated dyad (whose members are already checked
+                # above), so this branch is unreachable through any legitimate construction path.
+                # Reported under the conflict's own "unknown" code rather than silently dropped,
+                # since a bypassed construction could still reach it.
+                violations.append(
+                    InvariantViolation(
+                        code="conflict_country_unknown",
+                        message=f"conflict {conflict.conflict_id!r}: {detail}",
+                    )
+                )
+            else:
+                violations.append(
+                    InvariantViolation(
+                        code=f"conflict_{suffix}",
+                        message=f"conflict {conflict.conflict_id!r}: {detail}",
+                    )
+                )
+
+        is_terminal = conflict.status in TERMINAL_STATUSES
+        if is_terminal and conflict.resolved_turn is None:
+            violations.append(
+                InvariantViolation(
+                    code="conflict_terminal_status_requires_resolved_turn",
+                    message=(
+                        f"conflict {conflict.conflict_id!r}: status {conflict.status.value!r} "
+                        "is terminal but resolved_turn is None"
+                    ),
+                )
+            )
+        if not is_terminal and conflict.resolved_turn is not None:
+            violations.append(
+                InvariantViolation(
+                    code="conflict_resolved_turn_requires_terminal_status",
+                    message=(
+                        f"conflict {conflict.conflict_id!r}: status {conflict.status.value!r} "
+                        f"is reversible but resolved_turn={conflict.resolved_turn} is set"
+                    ),
+                )
+            )
+
+    conflict_id_sequence = [conflict.conflict_id for conflict in world.conflicts]
+    conflict_ids_are_unique = len(seen_conflict_ids) == len(conflict_id_sequence)
+    if conflict_ids_are_unique and conflict_id_sequence != sorted(conflict_id_sequence):
+        violations.append(
+            InvariantViolation(
+                code="conflict_ids_not_canonical",
+                message=(
+                    f"world.conflicts is not in canonical conflict_id order: "
+                    f"{conflict_id_sequence!r}"
+                ),
+            )
+        )
+
+    return violations
+
+
 def check_invariants(state: GameState) -> list[InvariantViolation]:
     """Return every invariant violation found in `state`. Empty list means valid.
 
@@ -950,5 +1152,7 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
         violations.extend(_check_country(country))
         violations.extend(_check_politics(country, state_turn=state.turn, is_player=is_player))
         violations.extend(_check_legislature(country, is_player=is_player))
+
+    violations.extend(_check_foreign_conflicts(state.world))
 
     return violations

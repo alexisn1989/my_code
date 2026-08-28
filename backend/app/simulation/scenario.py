@@ -34,7 +34,14 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 from app.core.errors import ScenarioValidationError
 from app.simulation.invariants import check_invariants
-from app.simulation.state import RULESET_VERSION, CountryState, GameState, WorldState
+from app.simulation.state import (
+    RULESET_VERSION,
+    ConflictDyadState,
+    CountryState,
+    ForeignProfileState,
+    GameState,
+    WorldState,
+)
 
 
 class ScenarioDefinition(BaseModel):
@@ -49,6 +56,14 @@ class ScenarioDefinition(BaseModel):
     seed: int
     player_country_id: str
     countries: list[CountryState]
+    foreign_profiles: dict[str, ForeignProfileState] = {}
+    """External Wars Gate W1: abstract foreign actors (`WorldState.foreign_profiles`'s
+    docstring). Defaults to empty so pre-W1 scenario shape stays representable in principle,
+    though `RULESET_VERSION` still gates which saves this build accepts — see the
+    `RULESET_VERSION` docstring's `"0.12.0" -> "0.13.0"` entry."""
+    dyads: list[ConflictDyadState] = []
+    """External Wars Gate W1: authored bilateral relationships (`ConflictDyadState`'s
+    docstring)."""
 
 
 def _parse(source: str, raw_text: str) -> ScenarioDefinition:
@@ -92,7 +107,15 @@ def _to_game_state(source: str, scenario: ScenarioDefinition) -> GameState:
         seed=scenario.seed,
         turn=0,
         state_version=0,
-        world=WorldState(countries=countries, player_country_id=scenario.player_country_id),
+        world=WorldState(
+            countries=countries,
+            player_country_id=scenario.player_country_id,
+            foreign_profiles=scenario.foreign_profiles,
+            # Passed through AS AUTHORED, never sorted here: `WorldState`'s own validator
+            # rejects a non-canonically-ordered tuple rather than silently normalizing it
+            # (reject-not-normalize, matching `resource_deposits`'s policy).
+            dyads=tuple(scenario.dyads),
+        ),
     )
 
     violations = check_invariants(state)
