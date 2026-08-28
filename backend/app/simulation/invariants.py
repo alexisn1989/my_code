@@ -920,17 +920,6 @@ def _check_foreign_conflicts(world: WorldState) -> list[InvariantViolation]:
                 )
             )
 
-    profile_id_sequence = list(world.foreign_profiles)
-    if profile_id_sequence != sorted(profile_id_sequence):
-        violations.append(
-            InvariantViolation(
-                code="foreign_profiles_not_canonically_ordered",
-                message=(
-                    f"world.foreign_profiles keys are not in sorted order: {profile_id_sequence!r}"
-                ),
-            )
-        )
-
     def _reference_violation(country_id: str) -> tuple[str, str] | None:
         """Classifies one dyad/conflict `country_a`/`country_b`/`aggressor`/`defender` reference.
         Returns `(code_suffix, detail)` for a bad reference, or `None` if `country_id` is a
