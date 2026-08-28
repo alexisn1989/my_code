@@ -50,7 +50,9 @@ def _bloc(state: GameState, *, country_id: str, party_id: str, bloc_id: str):  #
     )
 
 
-def test_decay_plus_investment_converges_to_the_controlled_fixed_point_4856() -> None:
+def test_decay_plus_investment_converges_to_the_controlled_fixed_point_4856_no_foreign_war_control() -> (
+    None
+):
     """(§12.1, §21 decision 3) `citizens_bloc/moderates` (`deficit_demo`, baseline -2,000),
     investing 100/turn against decay alone (no budget decision ever submitted), settles at
     exactly +4,856 and holds it -- verified by driving the real engine 60 turns, not asserted.

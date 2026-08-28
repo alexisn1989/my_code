@@ -80,7 +80,9 @@ horizon this test used is no longer reachable through ordinary play for THIS sce
 soak now runs to the real, natural conclusion instead."""
 
 
-def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustainable() -> None:
+def test_100_turn_soak_with_real_scenario_and_accounting_every_turn_stays_sustainable_no_foreign_war_control() -> (
+    None
+):
     """The Phase 2A counterpart to the test above: a real scenario, government
     accounting resolving every turn, and an explicit check that the
     deliberately-sustainable budget behaves as documented over a long run —
@@ -225,7 +227,9 @@ conclusion instead. This truncates the timber trajectory's own hand-worked stead
 (turns 41+), which is now unreachable under ordinary play and is no longer asserted here."""
 
 
-def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory() -> None:
+def test_100_turn_soak_with_deficit_demo_exercises_the_full_timber_trajectory_no_foreign_war_control() -> (
+    None
+):
     """The Phase 2C1 counterpart to the soak test above, using `deficit_demo.yaml` specifically
     because its timber deposit passes through the first two regimes of its hand-worked trajectory
     (R4/R8) within its real, Phase-3C-natural horizon — resolutions 1-39 capacity-bound, resolution

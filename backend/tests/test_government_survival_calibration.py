@@ -110,7 +110,7 @@ class TestDeficitDemoContestedElections:
     turn-40 election via `ELECTORAL_DEFEAT` when the swing goes the other way against the same
     baseline."""
 
-    def test_turn_20_is_won_by_a_favorable_polling_swing(self) -> None:
+    def test_turn_20_is_won_by_a_favorable_polling_swing_no_foreign_war_control(self) -> None:
         """External Wars Gate W1: `deficit_demo` authors an eligible dyad (exposure 2,000, frozen
         plan sec.9.6). With it live, the war's security-anxiety contribution (sec.9.4/9.5) grows
         turn over turn, so the baseline at turn 20 (4,683) and turn 40 (4,671) would no longer be
@@ -135,7 +135,9 @@ class TestDeficitDemoContestedElections:
         assert politics.next_election_turn == 40
         assert politics.terminal_outcome is None
 
-    def test_turn_40_is_lost_by_an_unfavorable_polling_swing_electoral_defeat(self) -> None:
+    def test_turn_40_is_lost_by_an_unfavorable_polling_swing_electoral_defeat_no_foreign_war_control(
+        self,
+    ) -> None:
         """External Wars Gate W1: see the war-free rationale on the turn-20 test above -- the
         dyad is disabled here for the same reason, preserving the SAME structural baseline as
         turn 20."""
@@ -220,7 +222,7 @@ class TestTinyValidSeedZeroToNineteenSweepProvesTheElectionIsGenuinelyContested:
         19: (-740, 4_828, "lost"),
     }
 
-    def test_seed_0_through_19_sweep_matches_pinned_figures(self) -> None:
+    def test_seed_0_through_19_sweep_matches_pinned_figures_no_foreign_war_control(self) -> None:
         assert set(self._EXPECTED_BY_SEED) == set(self._SEED_RANGE)
         for seed in self._SEED_RANGE:
             swing, final, result = self._EXPECTED_BY_SEED[seed]
@@ -240,7 +242,7 @@ class TestTinyValidSeedZeroToNineteenSweepProvesTheElectionIsGenuinelyContested:
         assert results.count("lost") == 8
         assert results.count("won") + results.count("lost") == 20
 
-    def test_seed_0_through_19_baseline_is_invariant(self) -> None:
+    def test_seed_0_through_19_baseline_is_invariant_no_foreign_war_control(self) -> None:
         """The baseline is a pure function of state (seats, relationships, population approval,
         legitimacy) at the moment of the election -- never of the seed -- so it must be identical
         across all 20 seeds despite the final result varying."""
@@ -359,7 +361,9 @@ class TestDecreeStateSeedZeroToNineteenSweepProvesStabilityUnderAddedRisk:
 
     _SEED_RANGE = range(20)
 
-    def test_no_seed_in_the_declared_range_terminates_within_100_turns(self) -> None:
+    def test_no_seed_in_the_declared_range_terminates_within_100_turns_no_foreign_war_control(
+        self,
+    ) -> None:
         for seed in self._SEED_RANGE:
             save = _run("decree_state.yaml", 100, seed=seed, disable_dyads=True)
             politics = save.current_state().world.countries["valdrun"].politics
@@ -367,7 +371,9 @@ class TestDecreeStateSeedZeroToNineteenSweepProvesStabilityUnderAddedRisk:
             assert politics.terminal_outcome is None, seed
             assert save.current_turn() == 100, seed
 
-    def test_no_channel_ever_succeeds_across_any_seed_in_the_declared_range(self) -> None:
+    def test_no_channel_ever_succeeds_across_any_seed_in_the_declared_range_no_foreign_war_control(
+        self,
+    ) -> None:
         """`decree_state`'s calibrated background risk (coup 52bps, unrest 15bps attempt;
         impeachment ineligible at genesis, hereditary selection) genuinely produces occasional
         low-probability ATTEMPTS over a 100-turn x 20-seed sweep (2,000 independent draws each on
