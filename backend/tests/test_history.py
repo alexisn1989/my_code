@@ -48,6 +48,10 @@ from app.simulation.state import (
     VictoryReason,
 )
 from tests.conftest import SCENARIO_DIR, make_game_state
+from tests.history_tamper_helpers import advance_n as _advance_n
+from tests.history_tamper_helpers import (
+    retamper_state_with_consistent_hash as _retamper_state_with_consistent_hash,
+)
 
 _SFV = SAVE_FORMAT_VERSION
 
@@ -73,12 +77,6 @@ def _empty_decisions_for(save: GameSave) -> DecisionSet:
     return DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=[]
     )
-
-
-def _advance_n(save: GameSave, n: int) -> GameSave:
-    for _ in range(n):
-        save = advance_game(save, _empty_decisions_for(save))
-    return save
 
 
 # --- genesis, growth, and per-turn bookkeeping -------------------------------
@@ -677,40 +675,6 @@ def test_entry_version_mismatch_with_envelope_is_detected() -> None:
 
 
 # --- T-R7 (Phase 3A, §9.4): tampered history re-runs reconciliation, not just the hash chain ----
-
-
-def _retamper_state_with_consistent_hash(save: GameSave, *, index: int, tampered_state_json: str):  # type: ignore[no-untyped-def]
-    """Replace one entry's `state_json` AND recompute `entry_hash` to match — simulating a
-    knowledgeable tamperer who edits a value and does the hash arithmetic themselves, rather
-    than the "forgot to update the hash" tamper every other test in this file exercises. The
-    resulting chain passes every hash check; only a check that understands what the DATA means
-    (not just whether it's internally consistent) can still catch it.
-    """
-    import json
-
-    from app.core.canonical_json import canonical_digest
-    from app.simulation.history import _entry_hash_payload
-
-    original = save.entries[index]
-    decisions_payload = json.loads(original.decisions_json) if original.decisions_json else None
-    report_payload = json.loads(original.report_json) if original.report_json else None
-    new_hash = canonical_digest(
-        _entry_hash_payload(
-            turn=original.turn,
-            previous_entry_hash=original.previous_entry_hash,
-            state=json.loads(tampered_state_json),
-            decisions=decisions_payload,
-            report=report_payload,
-            ruleset_version=original.ruleset_version,
-            content_version=original.content_version,
-        )
-    )
-    tampered_entry = dataclasses.replace(
-        original, state_json=tampered_state_json, entry_hash=new_hash
-    )
-    entries = (*save.entries[:index], tampered_entry, *save.entries[index + 1 :])
-    new_head = entries[-1].entry_hash if index == len(save.entries) - 1 else save.head_entry_hash
-    return dataclasses.replace(save, entries=entries, head_entry_hash=new_head)
 
 
 def _tamper_player_politics(state, **updates):  # type: ignore[no-untyped-def]
