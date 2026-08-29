@@ -16,8 +16,10 @@ from app.content.scenarios import load_scenario_file
 from app.simulation.decisions import DecisionSet
 from app.simulation.foreign_conflict import (
     MAX_CONCURRENT_CONFLICTS,
+    MIN_OUTBREAK_WEIGHT_BPS,
     ConflictStatus,
     WarAim,
+    initial_intensity_bps,
 )
 from app.simulation.reconciliation import reconcile_foreign_affairs_report
 from app.simulation.report import ForeignConflictOutbreakCandidateRow
@@ -889,6 +891,52 @@ def test_group52_sub_floor_dyad_is_represented_but_never_selectable() -> None:
     assert not outbreak.occurred
     problems = _reconcile(opening, closing, resolution)
     assert problems == []
+
+
+def test_group52_sub_floor_dyad_forged_as_an_outbreak_is_caught() -> None:
+    """Fix-forward 7b: the frozen plan's group 52 names this clause explicitly -- 'no outbreak
+    occurred from a dyad whose raw_dyad_weight_bps was below MIN_OUTBREAK_WEIGHT_BPS'. A
+    sub-floor dyad (weight 499, one below the 500 floor) that never actually triggers a war is
+    forged into a fully self-consistent outbreak row; reconciliation must reject it with an
+    explicit group-52 problem, not merely an incidental group-48 RNG mismatch."""
+    weight = 499
+    assert weight < MIN_OUTBREAK_WEIGHT_BPS
+    state = _synthetic_state(dyads=(_dyad(*PAIR_A, tension=weight, grievance=weight),))
+    opening, closing, resolution = _resolve_once(state)
+    assert resolution.report.foreign_affairs is not None
+    outbreak = resolution.report.foreign_affairs.outbreak
+    assert outbreak.candidates[0].raw_dyad_weight_bps == weight
+    assert not outbreak.candidates[0].passed_pressure_floor
+    assert not outbreak.occurred, "sanity: this dyad must not genuinely start a war"
+
+    country_a, country_b = PAIR_A
+    forged_outbreak = outbreak.model_copy(
+        update={
+            "occurred": True,
+            "selection_draw": 0,
+            "selected_country_a": country_a,
+            "selected_country_b": country_b,
+            "conflict_id": f"{country_a}__{country_b}__t{opening.turn}",
+            "opened_turn": opening.turn,
+            "initial_intensity_bps": initial_intensity_bps(tension_bps=weight),
+            "initial_position_bps": 0,
+            "initial_exhaustion_a_bps": 0,
+            "initial_exhaustion_b_bps": 0,
+            "initial_readiness_bps": 0,
+        }
+    )
+    forged_report = resolution.report.model_copy(
+        update={
+            "foreign_affairs": resolution.report.foreign_affairs.model_copy(
+                update={"outbreak": forged_outbreak}
+            )
+        }
+    )
+    problems = reconcile_foreign_affairs_report(
+        opening_state=opening, closing_state=closing, report=forged_report
+    )
+    _assert_only(problems, "(group 52)")
+    assert any("sub-floor dyad" in p for p in problems)
 
 
 # --- malformed references: problems, never exceptions --------------------------------------------

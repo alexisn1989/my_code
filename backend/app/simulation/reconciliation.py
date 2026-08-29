@@ -96,6 +96,7 @@ from app.simulation.decisions import (
 from app.simulation.foreign_conflict import (
     MAX_CONCURRENT_CONFLICTS,
     MIN_ACTIVE_INTENSITY_BPS,
+    MIN_OUTBREAK_WEIGHT_BPS,
     PROGRESS_JITTER_BPS,
     ConflictStatus,
     WarAim,
@@ -2590,6 +2591,39 @@ def reconcile_foreign_affairs_report(
             f"foreign_affairs.outbreak selected pair {reported_selected_pair!r} does not match "
             f"the recomputed selection {expected_selected_pair!r} (group 48)"
         )
+
+    # ---- Group 52: an outbreak may never be attributed to a sub-floor dyad ---------------
+    # Fix-forward 7b: the frozen plan's group 52 ("both floors") names this clause explicitly --
+    # "no outbreak occurred from a dyad whose raw_dyad_weight_bps was below
+    # MIN_OUTBREAK_WEIGHT_BPS" -- as a check distinct from group 48's RNG-redraw comparison
+    # above. That comparison already catches this case indirectly (a sub-floor dyad forces
+    # total_weight_bps to exclude it, so expected_occurred is False and every downstream field
+    # mismatches), but only ever as a "(group 48)" disagreement; this direct check on the
+    # REPORT's own claimed pair gives the boundary its own explicit, attributable signal,
+    # independent of whether the RNG-derived expectation happens to agree.
+    if (
+        outbreak.occurred
+        and outbreak.selected_country_a is not None
+        and outbreak.selected_country_b is not None
+    ):
+        reported_selected_pair_for_floor_check = (
+            outbreak.selected_country_a,
+            outbreak.selected_country_b,
+        )
+        selected_pair_dyad = dyad_by_pair.get(reported_selected_pair_for_floor_check)
+        if selected_pair_dyad is not None:
+            reported_pair_weight = dyad_weight_bps(
+                tension_bps=selected_pair_dyad.tension_bps,
+                grievance_bps=selected_pair_dyad.grievance_bps,
+            )
+            if not passes_pressure_floor(raw_weight_bps=reported_pair_weight):
+                problems.append(
+                    "foreign_affairs.outbreak selected pair "
+                    f"{reported_selected_pair_for_floor_check!r} has raw weight "
+                    f"{reported_pair_weight}, below MIN_OUTBREAK_WEIGHT_BPS "
+                    f"({MIN_OUTBREAK_WEIGHT_BPS}) -- no outbreak may be attributed to a "
+                    "sub-floor dyad (group 52)"
+                )
 
     expected_new_conflict_id: str | None = None
     if expected_selected_pair is not None:
