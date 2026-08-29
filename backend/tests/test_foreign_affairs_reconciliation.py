@@ -939,6 +939,41 @@ def test_group52_sub_floor_dyad_forged_as_an_outbreak_is_caught() -> None:
     assert any("sub-floor dyad" in p for p in problems)
 
 
+def test_group52_at_floor_dyad_omitted_from_candidacy_is_caught() -> None:
+    """Fix-forward 7c: group 52 also owns the OTHER floor direction -- an eligible,
+    non-excluded, capacity-available dyad at exactly the 500 floor must never be silently
+    excluded from `candidates`. Before 7c, omitting it was only ever flagged by the generic
+    group-47 membership check; this proves the omission ALSO gets its own explicit,
+    floor-specific group-52 signal."""
+    weight = 500
+    assert weight == MIN_OUTBREAK_WEIGHT_BPS
+    state = _synthetic_state(dyads=(_dyad(*PAIR_A, tension=weight, grievance=weight),))
+    opening, closing, resolution = _resolve_once(state)
+    assert resolution.report.foreign_affairs is not None
+    outbreak = resolution.report.foreign_affairs.outbreak
+    assert outbreak.candidates[0].raw_dyad_weight_bps == weight
+    assert outbreak.candidates[0].passed_pressure_floor
+
+    forged_outbreak = outbreak.model_copy(
+        update={"candidates": (), "total_weight_bps": 0, "clamped_probability_bps": 0}
+    )
+    forged_report = resolution.report.model_copy(
+        update={
+            "foreign_affairs": resolution.report.foreign_affairs.model_copy(
+                update={"outbreak": forged_outbreak}
+            )
+        }
+    )
+    problems = reconcile_foreign_affairs_report(
+        opening_state=opening, closing_state=closing, report=forged_report
+    )
+    _assert_only(problems, "(group 52)")
+    assert any("silently excluded from candidacy" in p for p in problems)
+    # sanity: group 47's own generic membership check still fires too -- 7c adds an explicit
+    # group-52 signal alongside it, it does not replace it.
+    assert any("(group 47)" in p for p in problems)
+
+
 # --- malformed references: problems, never exceptions --------------------------------------------
 
 

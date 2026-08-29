@@ -2494,6 +2494,26 @@ def reconcile_foreign_affairs_report(
             "(group 47)"
         )
 
+    # ---- Group 52: an at-or-above-floor dyad may never be silently excluded from candidacy -
+    # Fix-forward 7c: group 52's own definition names both floor DIRECTIONS -- 7b closed "no
+    # outbreak from a sub-floor dyad" (an occurred=True forgery), but a report that simply omits
+    # a real, eligible, non-excluded, capacity-available dyad whose weight clears
+    # MIN_OUTBREAK_WEIGHT_BPS from `candidates` altogether was previously only ever flagged by
+    # the generic group-47 set-mismatch check above -- never attributed to the floor boundary
+    # itself. This is a distinct, explicit signal for exactly that omission, independent of
+    # whatever the general membership check separately concludes.
+    reported_pair_set = set(reported_pairs)
+    missing_passing_pairs = [
+        pair for pair in expected_passing_pairs if pair not in reported_pair_set
+    ]
+    if missing_passing_pairs:
+        problems.append(
+            f"foreign_affairs.outbreak.candidates omits {missing_passing_pairs!r}, each an "
+            "eligible, non-excluded, capacity-available dyad whose raw weight clears "
+            f"MIN_OUTBREAK_WEIGHT_BPS ({MIN_OUTBREAK_WEIGHT_BPS}) -- an at-or-above-floor dyad "
+            "may never be silently excluded from candidacy (group 52)"
+        )
+
     expected_total_weight = 0
     for row in outbreak.candidates:
         candidate_dyad = dyad_by_pair.get((row.country_a, row.country_b))
