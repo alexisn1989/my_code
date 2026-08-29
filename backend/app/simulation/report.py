@@ -40,7 +40,13 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.canonical_json import canonical_digest
-from app.core.money import BPS_DENOMINATOR, StrictBps, StrictMoney, StrictSignedMoney
+from app.core.money import (
+    BPS_DENOMINATOR,
+    StrictAggregateBps,
+    StrictBps,
+    StrictMoney,
+    StrictSignedMoney,
+)
 from app.core.politics import (
     DECREE_BYPASS_PENALTY_BPS,
     POLICY_REACTION_CAP_BPS,
@@ -3397,13 +3403,23 @@ class ForeignConflictOutbreakReport(BaseModel):
     turn: int = Field(ge=0)
     candidates: tuple[ForeignConflictOutbreakCandidateRow, ...] = ()
     minimum_outbreak_weight_bps: StrictBps
-    total_weight_bps: StrictBps
-    """Sum of `raw_dyad_weight_bps` over candidates that passed the pressure floor only."""
+    total_weight_bps: StrictAggregateBps
+    """Sum of `raw_dyad_weight_bps` over candidates that passed the pressure floor only.
+
+    Deliberately NOT `StrictBps`: each candidate's own weight is clamped to 10,000 (frozen plan
+    sec.6.2, R4 point 4), but their SUM is not, and must not be -- sec.6.2 R4 point 5 makes the
+    unclamped total the input to both the explicitly clamped occurrence probability and the
+    weighted selection walk. Two 9,500-weight candidates legitimately total 19,000."""
     outbreak_scale_bps: StrictBps
     clamped_probability_bps: StrictBps
     occurrence_draw: StrictBps
     occurred: bool
-    selection_draw: int | None = None
+    selection_draw: StrictAggregateBps | None = None
+    """The cumulative-weight pick's draw, in `[0, total_weight_bps)` -- so it shares
+    `total_weight_bps`'s domain exactly and may likewise exceed 10,000. The lower bound is a
+    field constraint; the exact `< total_weight_bps` upper bound depends on another field and
+    stays with `_selected_pair_and_initialization_match_the_formulas`, which re-walks the
+    cumulative weights via `select_candidate_index` and rejects any out-of-range draw."""
     selected_country_a: str | None = None
     selected_country_b: str | None = None
     conflict_id: str | None = None

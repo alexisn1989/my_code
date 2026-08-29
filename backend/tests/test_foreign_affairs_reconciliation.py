@@ -473,15 +473,10 @@ def test_group47_immutable_field_mutation_is_caught() -> None:
 
 
 def test_group47_candidate_omission_and_addition_are_caught() -> None:
-    # tension=grievance=3_000 per dyad (rather than `_dyad`'s high-pressure default of 9_500,
-    # which two dyads together would push `total_weight_bps` past its StrictBps<=10_000 cap):
-    # weight 3_000 each still clears `MIN_OUTBREAK_WEIGHT_BPS` and the pair sums to 6_000.
-    state = _synthetic_state(
-        dyads=(
-            _dyad(*PAIR_A, tension=3_000, grievance=3_000),
-            _dyad(*PAIR_B, tension=3_000, grievance=3_000),
-        )
-    )
+    # Two dyads at `_dyad`'s legitimate 9_500 default: weight 9_500 each, totalling 19_000.
+    # Fix-forward 7a: this fixture briefly used 3_000 to keep the sum under a `StrictBps` ceiling
+    # `total_weight_bps` should never have carried (frozen plan sec.6.2, R4 point 5).
+    state = _synthetic_state(dyads=(_dyad(*PAIR_A), _dyad(*PAIR_B)))
     opening, closing, resolution = _resolve_once(state)
     assert resolution.report.foreign_affairs is not None
     outbreak = resolution.report.foreign_affairs.outbreak

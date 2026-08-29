@@ -52,6 +52,21 @@ StrictSignedMoney: TypeAlias = Annotated[int, Field(strict=True)]
 StrictBps: TypeAlias = Annotated[int, Field(strict=True, ge=0, le=BPS_DENOMINATOR)]
 """A basis-point rate (0-10,000, i.e. 0%-100%) with strict-integer input validation."""
 
+StrictAggregateBps: TypeAlias = Annotated[int, Field(strict=True, ge=0)]
+"""A SUM of `StrictBps` quantities, which may legitimately exceed `BPS_DENOMINATOR`.
+
+Typed separately from `StrictBps` because it is not a rate: it is a total of several rates, and
+capping it at 10,000 silently destroys information the formula consuming it still needs. External
+Wars W1's outbreak total pressure is the motivating case (frozen plan sec.6.2, R4 point 5): the
+aggregate stays unclamped and only the derived occurrence PROBABILITY is clamped, by an explicit
+`min(10_000, ...)`, so that at saturation a war is certain while the weighted pick over the full
+total still decides which pair fights. Clamping the aggregate instead would make a 15-dyad world
+indistinguishable from a 2-dyad one.
+
+Mirrors `core.politics.StrictSeatNumerator`'s role: a scaled/aggregated quantity given its own
+name precisely so it cannot be confused with the bounded component it is built from.
+"""
+
 
 def apply_bps(amount: Money, rate_bps: int) -> Money:
     """`amount * rate_bps / 10_000`, floored. The single rounding step used throughout accounting."""

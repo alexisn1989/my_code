@@ -24,11 +24,13 @@ from tests.conftest import make_game_state
 
 DECLARED_SEEDS = (42, 1337, 20260826, 7, 99991)
 
-# Pressure per dyad, chosen so occurrence is frequent AND so all three dyads' weights can be
-# simultaneously eligible without the outbreak report's own total_weight_bps (StrictBps, capped
-# at 10,000) overflowing before any war has started and removed a dyad from candidacy: weight =
-# clamp_bps(trunc_div(tension+grievance, 2)) = 3,000 per dyad, summing to 9,000 for all three.
-_HIGH_PRESSURE = {"tension_bps": 3_000, "grievance_bps": 3_000}
+# Pressure per dyad, chosen so occurrence is frequent. weight =
+# clamp_bps(trunc_div(tension+grievance, 2)) = 9,500 per dyad, so all three dyads eligible at once
+# total 28,500 -- legitimately above 10,000, since only each dyad's OWN weight is bps-bounded
+# (frozen plan sec.6.2, R4 point 4) while their sum is not (R4 point 5). Fix-forward 7a: this
+# constant previously read 3,000 to keep the sum under a `StrictBps` ceiling that
+# `ForeignConflictOutbreakReport.total_weight_bps` should never have carried.
+_HIGH_PRESSURE = {"tension_bps": 9_500, "grievance_bps": 9_500}
 
 
 def _profile(capability: int = 5_000) -> ForeignProfileState:
