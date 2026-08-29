@@ -63,7 +63,10 @@ from app.core.canonical_json import canonical_digest, canonical_dumps
 from app.core.errors import HistoryValidationError, SnapshotNotFoundError
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
-from app.simulation.reconciliation import reconcile_political_legislative_and_survival_report
+from app.simulation.reconciliation import (
+    reconcile_foreign_affairs_report,
+    reconcile_political_legislative_and_survival_report,
+)
 from app.simulation.report import TurnReport
 from app.simulation.resolver import resolve_turn
 from app.simulation.state import GameState
@@ -376,6 +379,17 @@ def validate_history(save: GameSave) -> list[str]:
                     closing_state=state_model,
                     report=report_model,
                     decisions=decisions_model,
+                )
+            )
+            # External Wars Gate W1, commit 7 (frozen plan sec.12, groups 46-52): a separate
+            # entrypoint, not an extension of the political/legislative/survival reconciler
+            # above -- same opening/closing state and report, independent ownership.
+            problems.extend(
+                f"turn {entry.turn}: {problem}"
+                for problem in reconcile_foreign_affairs_report(
+                    opening_state=previous_state_model,
+                    closing_state=state_model,
+                    report=report_model,
                 )
             )
         if concluded_at is not None:

@@ -93,6 +93,32 @@ from app.simulation.decisions import (
     budget_decision_digest,
     constitutional_amendment_decision_digest,
 )
+from app.simulation.foreign_conflict import (
+    MAX_CONCURRENT_CONFLICTS,
+    MIN_ACTIVE_INTENSITY_BPS,
+    PROGRESS_JITTER_BPS,
+    ConflictStatus,
+    WarAim,
+    apply_active_intensity_floor,
+    average_exhaustion_bps,
+    ceasefire_closing_intensity_bps,
+    ceasefire_closing_status,
+    ceasefire_decayed_intensity_bps,
+    ceasefire_gate_open,
+    ceasefire_recovered_exhaustion_bps,
+    closing_position_bps,
+    closing_readiness_bps,
+    dyad_weight_bps,
+    exhaustion_gain_bps,
+    initial_intensity_bps,
+    is_decisive,
+    outbreak_occurs,
+    outbreak_probability_bps,
+    passes_pressure_floor,
+    raw_closing_intensity_bps,
+    select_candidate_index,
+    settles_rather_than_pauses,
+)
 from app.simulation.government_survival import (
     ASSASSINATION_SEVERITY_THRESHOLD_BPS,
     MAX_POLLING_UNCERTAINTY_SWING_BPS,
@@ -122,6 +148,10 @@ from app.simulation.legislature import (
     LegislativeChamber,
     LegislativeOutcome,
     ProposalRoute,
+)
+from app.simulation.legitimacy import (
+    aggregate_security_contribution_bps,
+    foreign_conflict_security_anxiety_bps,
 )
 from app.simulation.report import ConstitutionalAmendmentReport, TurnReport
 from app.simulation.state import (
@@ -2321,5 +2351,693 @@ def reconcile_political_legislative_and_survival_report(
                         f"legislative.blocs shows {amount} allocated to {alloc_key!r}, but the "
                         "submitted decision does not commit that"
                     )
+
+    return problems
+
+
+# ================================================================================================
+# External Wars Gate W1, Commit 7 (R13, C8 sec.12): reconciliation groups 46-52.
+#
+# `ForeignAffairsReport` and `ForeignConflictProgressionRow` already self-validate their own
+# internal arithmetic -- given a row's own stored opening_*/position_jitter_bps/termination_draw,
+# `report.py`'s own validators re-derive every closing_* field via the exact same pure formulas
+# `phases.py` uses, and reject a mismatch at construction. That is what makes the SAME
+# "composition, not re-derivation" principle this module's docstring already documents for
+# apportionment (group 15) apply here too: this function does not re-derive the position/
+# exhaustion/readiness formula chain from opening to closing (the report's own validators already
+# proved that, whenever the report was genuinely constructed) -- it proves the three things a
+# self-validating report structurally CANNOT prove about itself: that its OPENING values are
+# authentic (group 46), that its DRAWS are authentic redraws of the real seeded streams (group 48),
+# and that its CLOSING claims match the REAL authoritative state (group 47's projection) rather
+# than merely being self-consistent with its own opening values.
+#
+# A `model_copy(update=...)`-forged report bypasses every self-validator (Pydantic v2 never
+# re-validates on `model_copy`), so groups 47/48/52 below DO recompute the position/exhaustion/
+# readiness/termination-gate chain independently wherever that is the only way to know whether a
+# draw should exist at all (the termination-draw guard) or whether a floor should have applied --
+# not because the report's arithmetic can't be trusted when genuinely constructed, but because a
+# bypassed construction is exactly what every tamper test here constructs.
+#
+# Never raises on tampered input: every state/mapping lookup is `.get()`, never `[...]`; the two
+# pure functions that CAN raise on out-of-range input if fed report-derived data directly
+# (`select_candidate_index` on empty/non-positive weights; `active_closing_status` on a
+# termination_draw inconsistent with its own gate state) are never called with report-supplied
+# values -- only with values this function itself derived from authoritative state and its own
+# fresh redraws, which are safe by the same mathematical guarantees `phases.py`'s own comments
+# document (e.g. zero passing candidates makes `occurred=True` unreachable for any draw).
+#
+# Two engine facts shape every guard below:
+#   - The outbreak occurrence draw is UNCONDITIONAL (every turn, including zero-candidate and
+#     at-capacity turns); the selection draw is conditional on occurrence, drawn from the SAME
+#     generator immediately afterward -- never a second generator.
+#   - A CEASEFIRE-opening row consumes NO randomness at all: no jitter draw, no termination draw
+#     (`_progress_ceasefire_conflict`'s own docstring). Only an ACTIVE-opening row ever draws
+#     jitter, and only when ITS OWN recomputed ceasefire gate opens does it draw a termination
+#     value.
+# ================================================================================================
+
+_LIVE_CONFLICT_STATUSES = (ConflictStatus.ACTIVE, ConflictStatus.CEASEFIRE)
+
+
+def _is_live_conflict_status(status: ConflictStatus) -> bool:
+    return status in _LIVE_CONFLICT_STATUSES
+
+
+def reconcile_foreign_affairs_report(
+    *, opening_state: GameState, closing_state: GameState, report: TurnReport
+) -> list[str]:
+    """Return every disagreement between `report.foreign_affairs` and the REAL opening/closing
+    `WorldState` and the REAL seeded RNG streams (External Wars Gate W1, frozen plan sec.12,
+    groups 46-52). Never raises; returns `[]` when `report.foreign_affairs is None` (the 13-report
+    all-present/all-absent rule is `TurnReport`'s own job, unaffected by this function).
+
+    A separate, independently testable entrypoint from
+    `reconcile_political_legislative_and_survival_report` -- not an extension of that ~1,950-line
+    function -- mirroring the "one module, two owners" split this module already keeps for
+    political/legislative concerns versus everything else. Group 51's own closing-legitimacy
+    half stays that function's job (see group 51 below): this function proves the SECURITY
+    CONTRIBUTION reaching the political report is correctly derived; the existing political
+    reconciliation proves that contribution reaching CLOSING LEGITIMACY.
+    """
+    foreign_affairs = report.foreign_affairs
+    if foreign_affairs is None:
+        return []
+
+    problems: list[str] = []
+    opening_world = opening_state.world
+    closing_world = closing_state.world
+    outbreak = foreign_affairs.outbreak
+
+    # ---- Group 49: authored staticness ---------------------------------------------------
+    # Plain `==` on the `foreign_profiles` dict is already insertion-order-independent (Python
+    # dict equality compares key/value pairs, never iteration order), so this is simultaneously
+    # the staticness proof and half of group 52's order-independence guarantee.
+    if opening_world.foreign_profiles != closing_world.foreign_profiles:
+        problems.append(
+            "world.foreign_profiles changed between opening_state and closing_state -- must be "
+            "authored and static in W1 (group 49)"
+        )
+    if opening_world.dyads != closing_world.dyads:
+        problems.append(
+            "world.dyads changed between opening_state and closing_state -- must be authored "
+            "and static in W1 (group 49)"
+        )
+
+    opening_conflicts_by_id = {c.conflict_id: c for c in opening_world.conflicts}
+    closing_conflicts_by_id = {c.conflict_id: c for c in closing_world.conflicts}
+    opening_live_ids = {
+        cid for cid, c in opening_conflicts_by_id.items() if _is_live_conflict_status(c.status)
+    }
+    closing_live_ids = {
+        cid for cid, c in closing_conflicts_by_id.items() if _is_live_conflict_status(c.status)
+    }
+
+    # ---- Group 47a: the global concurrency cap, both states -----------------------------
+    if len(opening_live_ids) > MAX_CONCURRENT_CONFLICTS:
+        problems.append(
+            f"opening_state has {len(opening_live_ids)} live (ACTIVE/CEASEFIRE) conflicts, "
+            f"exceeding MAX_CONCURRENT_CONFLICTS={MAX_CONCURRENT_CONFLICTS} (group 47)"
+        )
+    if len(closing_live_ids) > MAX_CONCURRENT_CONFLICTS:
+        problems.append(
+            f"closing_state has {len(closing_live_ids)} live (ACTIVE/CEASEFIRE) conflicts, "
+            f"exceeding MAX_CONCURRENT_CONFLICTS={MAX_CONCURRENT_CONFLICTS} (group 47)"
+        )
+
+    # ---- Group 47b/52: exact outbreak candidate reconstruction --------------------------
+    at_capacity = len(opening_live_ids) >= MAX_CONCURRENT_CONFLICTS
+    excluded_pairs = {
+        (c.country_a, c.country_b)
+        for c in opening_world.conflicts
+        if _is_live_conflict_status(c.status)
+    }
+    dyad_by_pair = {(d.country_a, d.country_b): d for d in opening_world.dyads}
+
+    expected_pairs: list[tuple[str, str]] = []
+    expected_passing_pairs: list[tuple[str, str]] = []
+    if not at_capacity:
+        for dyad in opening_world.dyads:  # world.dyads is itself always canonically ordered
+            pair = (dyad.country_a, dyad.country_b)
+            if not dyad.eligible or pair in excluded_pairs:
+                continue
+            expected_pairs.append(pair)
+            weight = dyad_weight_bps(tension_bps=dyad.tension_bps, grievance_bps=dyad.grievance_bps)
+            if passes_pressure_floor(raw_weight_bps=weight):  # group 52: floor filters selection
+                expected_passing_pairs.append(pair)  # ... never candidacy -- sub-floor rows stay
+
+    reported_pairs = [(row.country_a, row.country_b) for row in outbreak.candidates]
+    if reported_pairs != expected_pairs:
+        problems.append(
+            f"foreign_affairs.outbreak.candidates pairs {reported_pairs!r} do not match the "
+            f"reconstructed candidate set {expected_pairs!r} (at_capacity={at_capacity}) "
+            "(group 47)"
+        )
+
+    expected_total_weight = 0
+    for row in outbreak.candidates:
+        candidate_dyad = dyad_by_pair.get((row.country_a, row.country_b))
+        if candidate_dyad is None:
+            problems.append(
+                f"foreign_affairs.outbreak.candidates references pair "
+                f"{(row.country_a, row.country_b)!r}, which is not an opening_state dyad "
+                "(group 47)"
+            )
+            continue
+        expected_weight = dyad_weight_bps(
+            tension_bps=candidate_dyad.tension_bps, grievance_bps=candidate_dyad.grievance_bps
+        )
+        expected_passed = passes_pressure_floor(raw_weight_bps=expected_weight)
+        if (
+            row.tension_bps != candidate_dyad.tension_bps
+            or row.grievance_bps != candidate_dyad.grievance_bps
+            or row.raw_dyad_weight_bps != expected_weight
+            or row.passed_pressure_floor != expected_passed
+            or row.aggressor != candidate_dyad.aggressor
+            or row.defender != candidate_dyad.defender
+        ):
+            problems.append(
+                f"candidate {(row.country_a, row.country_b)!r} disagrees with the authored dyad "
+                "on tension/grievance/weight/pressure-floor-flag/aggressor/defender (group 47/52)"
+            )
+        if expected_passed:
+            expected_total_weight += expected_weight
+
+    if outbreak.total_weight_bps != expected_total_weight:
+        problems.append(
+            f"foreign_affairs.outbreak.total_weight_bps={outbreak.total_weight_bps} does not "
+            f"match the recomputed sum of passing candidate weights ({expected_total_weight}) "
+            "(group 47)"
+        )
+    expected_probability = outbreak_probability_bps(total_weight_bps=expected_total_weight)
+    if outbreak.clamped_probability_bps != expected_probability:
+        problems.append(
+            "foreign_affairs.outbreak.clamped_probability_bps="
+            f"{outbreak.clamped_probability_bps} does not match the recomputed probability "
+            f"({expected_probability}) (group 47)"
+        )
+
+    # ---- Group 48a: the outbreak RNG redraw, one generator, correct order ---------------
+    outbreak_rng = derive_rng(opening_state.seed, opening_state.turn, "foreign_conflict_outbreak")
+    expected_occurrence_draw = outbreak_rng.randrange(BPS_DENOMINATOR)
+    if outbreak.occurrence_draw != expected_occurrence_draw:
+        problems.append(
+            f"foreign_affairs.outbreak.occurrence_draw={outbreak.occurrence_draw} does not "
+            f"match the redrawn foreign_conflict_outbreak stream ({expected_occurrence_draw}) "
+            "(group 48)"
+        )
+    expected_occurred = outbreak_occurs(
+        occurrence_draw=expected_occurrence_draw, probability_bps=expected_probability
+    )
+    if outbreak.occurred != expected_occurred:
+        problems.append(
+            f"foreign_affairs.outbreak.occurred={outbreak.occurred} does not match the "
+            f"recomputed occurrence ({expected_occurred}) (group 48)"
+        )
+
+    expected_selected_pair: tuple[str, str] | None = None
+    expected_selection_draw: int | None = None
+    # Mathematically guaranteed exactly as `phases.py` documents: expected_occurred is True only
+    # when expected_total_weight > 0 (zero weight forces probability 0, forcing occurred False
+    # for any draw), so this branch can never call `randrange(0)`.
+    if expected_occurred and expected_total_weight > 0:
+        passing_weights = tuple(
+            dyad_weight_bps(
+                tension_bps=dyad_by_pair[p].tension_bps, grievance_bps=dyad_by_pair[p].grievance_bps
+            )
+            for p in expected_passing_pairs
+        )
+        expected_selection_draw = outbreak_rng.randrange(expected_total_weight)
+        try:
+            selected_index = select_candidate_index(
+                selection_draw=expected_selection_draw, weights_bps=passing_weights
+            )
+            expected_selected_pair = expected_passing_pairs[selected_index]
+        except (ValueError, IndexError):
+            expected_selected_pair = None
+
+    if outbreak.selection_draw != expected_selection_draw:
+        problems.append(
+            f"foreign_affairs.outbreak.selection_draw={outbreak.selection_draw} does not match "
+            f"the redrawn value ({expected_selection_draw}) (group 48)"
+        )
+    reported_selected_pair = (
+        (outbreak.selected_country_a, outbreak.selected_country_b)
+        if outbreak.selected_country_a is not None
+        else None
+    )
+    if reported_selected_pair != expected_selected_pair:
+        problems.append(
+            f"foreign_affairs.outbreak selected pair {reported_selected_pair!r} does not match "
+            f"the recomputed selection {expected_selected_pair!r} (group 48)"
+        )
+
+    expected_new_conflict_id: str | None = None
+    if expected_selected_pair is not None:
+        expected_new_conflict_id = (
+            f"{expected_selected_pair[0]}__{expected_selected_pair[1]}__t{opening_state.turn}"
+        )
+    if outbreak.conflict_id != expected_new_conflict_id:
+        problems.append(
+            f"foreign_affairs.outbreak.conflict_id={outbreak.conflict_id!r} does not match the "
+            f"recomputed conflict id ({expected_new_conflict_id!r}) (group 46/48)"
+        )
+    expected_opened_turn = opening_state.turn if expected_new_conflict_id is not None else None
+    if outbreak.opened_turn != expected_opened_turn:
+        problems.append(
+            f"foreign_affairs.outbreak.opened_turn={outbreak.opened_turn!r} does not match "
+            f"the recomputed value ({expected_opened_turn!r}) (group 46)"
+        )
+
+    # Group 46, new-conflict initialization: re-derived from the AUTHORED dyad, independent of
+    # whatever the outbreak row itself claims -- so a self-consistent-but-fabricated outbreak row
+    # (matching its own initial_* fields to each other but not to the real dyad) is still caught.
+    if expected_selected_pair is not None:
+        selected_dyad = dyad_by_pair.get(expected_selected_pair)
+        if selected_dyad is None:
+            problems.append(
+                f"foreign_affairs.outbreak selected pair {expected_selected_pair!r} is not an "
+                "opening_state dyad (group 46)"
+            )
+        else:
+            expected_initial_intensity = initial_intensity_bps(
+                tension_bps=selected_dyad.tension_bps
+            )
+            if (
+                outbreak.initial_intensity_bps != expected_initial_intensity
+                or outbreak.initial_position_bps != 0
+                or outbreak.initial_exhaustion_a_bps != 0
+                or outbreak.initial_exhaustion_b_bps != 0
+                or outbreak.initial_readiness_bps != 0
+            ):
+                problems.append(
+                    "foreign_affairs.outbreak's initial_* fields do not match the recomputed "
+                    f"outbreak initialization (expected intensity {expected_initial_intensity}, "
+                    "position/exhaustion_a/exhaustion_b/readiness all 0) (group 46)"
+                )
+
+    # ---- Group 47: exact progression-row membership --------------------------------------
+    expected_row_ids = set(opening_live_ids)
+    if expected_new_conflict_id is not None:
+        expected_row_ids.add(expected_new_conflict_id)
+
+    reported_ids = [row.conflict_id for row in foreign_affairs.progressions]
+    reported_id_set = set(reported_ids)
+    if len(reported_ids) != len(reported_id_set):
+        problems.append(
+            f"foreign_affairs.progressions has duplicate conflict_id(s): {reported_ids!r} "
+            "(group 47)"
+        )
+    if reported_id_set != expected_row_ids:
+        problems.append(
+            f"foreign_affairs.progressions ids {sorted(reported_id_set)!r} do not match the "
+            f"expected id set {sorted(expected_row_ids)!r} (missing="
+            f"{sorted(expected_row_ids - reported_id_set)!r}, extra="
+            f"{sorted(reported_id_set - expected_row_ids)!r}) (group 47)"
+        )
+
+    # ---- Groups 46/47/48/50/52, per progression row --------------------------------------
+    for progression_row in foreign_affairs.progressions:
+        existing_conflict = opening_conflicts_by_id.get(progression_row.conflict_id)
+        existing_is_live = existing_conflict is not None and _is_live_conflict_status(
+            existing_conflict.status
+        )
+        new_via_outbreak = (
+            expected_new_conflict_id is not None
+            and expected_new_conflict_id == progression_row.conflict_id
+        )
+
+        source_count = int(existing_is_live) + int(new_via_outbreak)
+        if source_count == 0:
+            problems.append(
+                f"conflict {progression_row.conflict_id!r}: matches neither an existing opening conflict "
+                "nor a validated outbreak initialization (group 46)"
+            )
+            continue
+        if source_count == 2:
+            problems.append(
+                f"conflict {progression_row.conflict_id!r}: matches BOTH an existing opening conflict and "
+                "a validated outbreak initialization -- ambiguous provenance (group 46)"
+            )
+            continue
+
+        # ---- group 46: the one matched source's opening values, and immutable fields ----
+        aggressor: str | None
+        defender: str | None
+        aim_a: WarAim | None
+        aim_b: WarAim | None
+        if existing_is_live:
+            assert existing_conflict is not None
+            country_a, country_b = existing_conflict.country_a, existing_conflict.country_b
+            aggressor, defender = existing_conflict.aggressor, existing_conflict.defender
+            aim_a, aim_b = existing_conflict.aim_a, existing_conflict.aim_b
+            opened_turn = existing_conflict.opened_turn
+
+            opening_status = existing_conflict.status
+            opening_intensity = existing_conflict.intensity_bps
+            opening_position = existing_conflict.position_bps
+            opening_exhaustion_a = existing_conflict.exhaustion_a_bps
+            opening_exhaustion_b = existing_conflict.exhaustion_b_bps
+            opening_readiness = existing_conflict.negotiation_readiness_bps
+            opening_ceasefire_run_turns = existing_conflict.ceasefire_run_turns
+
+            if progression_row.opening_status != opening_status:
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: opening_status={progression_row.opening_status!r} does "
+                    f"not match opening_state's real status ({opening_status!r}) (group 46)"
+                )
+            if (
+                progression_row.opening_intensity_bps != opening_intensity
+                or progression_row.opening_position_bps != opening_position
+                or progression_row.opening_exhaustion_a_bps != opening_exhaustion_a
+                or progression_row.opening_exhaustion_b_bps != opening_exhaustion_b
+                or progression_row.opening_readiness_bps != opening_readiness
+                or progression_row.opening_ceasefire_run_turns != opening_ceasefire_run_turns
+                or progression_row.opened_turn != opened_turn
+            ):
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: opening_* fields do not match "
+                    "opening_state's real conflict (group 46)"
+                )
+        else:
+            assert expected_selected_pair is not None  # new_via_outbreak implies this
+            country_a, country_b = expected_selected_pair
+            selected_dyad = dyad_by_pair.get(expected_selected_pair)
+            aggressor = selected_dyad.aggressor if selected_dyad is not None else None
+            defender = selected_dyad.defender if selected_dyad is not None else None
+            aim_a = selected_dyad.aim_a if selected_dyad is not None else None
+            aim_b = selected_dyad.aim_b if selected_dyad is not None else None
+            opened_turn = opening_state.turn
+
+            opening_status = ConflictStatus.ACTIVE
+            opening_intensity = outbreak.initial_intensity_bps or 0
+            opening_position = outbreak.initial_position_bps or 0
+            opening_exhaustion_a = outbreak.initial_exhaustion_a_bps or 0
+            opening_exhaustion_b = outbreak.initial_exhaustion_b_bps or 0
+            opening_readiness = outbreak.initial_readiness_bps or 0
+            opening_ceasefire_run_turns = 0
+
+            if progression_row.opening_status is not ConflictStatus.ACTIVE:
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: a conflict opened this turn must have "
+                    f"opening_status=ACTIVE, not {progression_row.opening_status!r} (group 46)"
+                )
+            if (
+                progression_row.opening_intensity_bps != opening_intensity
+                or progression_row.opening_position_bps != opening_position
+                or progression_row.opening_exhaustion_a_bps != opening_exhaustion_a
+                or progression_row.opening_exhaustion_b_bps != opening_exhaustion_b
+                or progression_row.opening_readiness_bps != opening_readiness
+                or progression_row.opening_ceasefire_run_turns != 0
+                or progression_row.opened_turn != opened_turn
+            ):
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: opening_* fields do not match the validated "
+                    "outbreak initialization (group 46)"
+                )
+
+        # ---- group 50: capability provenance, both sources alike -------------------------
+        profile_a = opening_world.foreign_profiles.get(country_a)
+        profile_b = opening_world.foreign_profiles.get(country_b)
+        expected_capability_a = profile_a.war_capability_bps if profile_a is not None else None
+        expected_capability_b = profile_b.war_capability_bps if profile_b is not None else None
+        if profile_a is None or profile_b is None:
+            problems.append(
+                f"conflict {progression_row.conflict_id!r}: references a country pair "
+                f"{(country_a, country_b)!r} not fully present in opening_state.foreign_profiles "
+                "(group 50)"
+            )
+        if (
+            progression_row.opening_war_capability_a_bps != expected_capability_a
+            or progression_row.opening_war_capability_b_bps != expected_capability_b
+        ):
+            problems.append(
+                f"conflict {progression_row.conflict_id!r}: opening_war_capability_a/b_bps do not match "
+                "opening_state.world.foreign_profiles (group 50)"
+            )
+
+        # ---- group 47: exact closing projection + immutable-field stability --------------
+        closing_conflict = closing_conflicts_by_id.get(progression_row.conflict_id)
+        if closing_conflict is None:
+            problems.append(
+                f"conflict {progression_row.conflict_id!r}: progression progression_row describes a conflict absent "
+                "from closing_state (group 47)"
+            )
+            continue
+
+        if (
+            closing_conflict.country_a != country_a
+            or closing_conflict.country_b != country_b
+            or closing_conflict.aggressor != aggressor
+            or closing_conflict.defender != defender
+            or closing_conflict.aim_a != aim_a
+            or closing_conflict.aim_b != aim_b
+            or closing_conflict.war_capability_a_bps != expected_capability_a
+            or closing_conflict.war_capability_b_bps != expected_capability_b
+            or closing_conflict.opened_turn != opened_turn
+        ):
+            problems.append(
+                f"conflict {progression_row.conflict_id!r}: an immutable field (country pair, aggressor, "
+                "defender, authored aim, authored capability, or opened_turn) changed between "
+                "opening and closing state (group 47)"
+            )
+
+        if (
+            progression_row.closing_status != closing_conflict.status
+            or progression_row.closing_intensity_bps != closing_conflict.intensity_bps
+            or progression_row.closing_position_bps != closing_conflict.position_bps
+            or progression_row.closing_exhaustion_a_bps != closing_conflict.exhaustion_a_bps
+            or progression_row.closing_exhaustion_b_bps != closing_conflict.exhaustion_b_bps
+            or progression_row.closing_readiness_bps != closing_conflict.negotiation_readiness_bps
+            or progression_row.closing_ceasefire_run_turns != closing_conflict.ceasefire_run_turns
+            or progression_row.resolved_turn != closing_conflict.resolved_turn
+        ):
+            problems.append(
+                f"conflict {progression_row.conflict_id!r}: a closing_* field does not match "
+                "closing_state's real conflict (group 47)"
+            )
+
+        # ---- group 48/52: redraw + recompute, branching on the AUTHORITATIVE opening status
+        # (never the progression_row's own, possibly-tampered, opening_status claim -- already checked above)
+        if opening_status is ConflictStatus.ACTIVE:
+            jitter_rng = derive_rng(
+                opening_state.seed,
+                opening_state.turn,
+                f"foreign_conflict_progress:{progression_row.conflict_id}",
+            )
+            expected_jitter = jitter_rng.randint(-PROGRESS_JITTER_BPS, PROGRESS_JITTER_BPS)
+            if progression_row.position_jitter_bps != expected_jitter:
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: position_jitter_bps={progression_row.position_jitter_bps} "
+                    f"does not match the redrawn foreign_conflict_progress stream "
+                    f"({expected_jitter}) (group 48)"
+                )
+            expected_position = closing_position_bps(
+                opening_position_bps=opening_position,
+                opening_war_capability_a_bps=expected_capability_a or 0,
+                opening_war_capability_b_bps=expected_capability_b or 0,
+                opening_intensity_bps=opening_intensity,
+                position_jitter_bps=expected_jitter,
+            )
+            expected_gain = exhaustion_gain_bps(opening_intensity_bps=opening_intensity)
+            expected_exhaustion_a = min(
+                BPS_DENOMINATOR, max(0, opening_exhaustion_a + expected_gain)
+            )
+            expected_exhaustion_b = min(
+                BPS_DENOMINATOR, max(0, opening_exhaustion_b + expected_gain)
+            )
+            expected_avg = average_exhaustion_bps(
+                exhaustion_a_bps=expected_exhaustion_a, exhaustion_b_bps=expected_exhaustion_b
+            )
+            expected_raw_intensity = raw_closing_intensity_bps(
+                opening_intensity_bps=opening_intensity, closing_average_exhaustion_bps=expected_avg
+            )
+            expected_readiness = closing_readiness_bps(
+                closing_average_exhaustion_bps=expected_avg,
+                closing_position_bps_value=expected_position,
+            )
+
+            gate_open = not is_decisive(
+                closing_position_bps_value=expected_position
+            ) and ceasefire_gate_open(closing_readiness_bps_value=expected_readiness)
+            expected_termination_draw: int | None = None
+            if gate_open:
+                expected_termination_draw = derive_rng(
+                    opening_state.seed,
+                    opening_state.turn,
+                    f"foreign_conflict_termination:{progression_row.conflict_id}",
+                ).randrange(BPS_DENOMINATOR)
+            if progression_row.termination_draw != expected_termination_draw:
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: termination_draw={progression_row.termination_draw} "
+                    f"does not match the guard-correct redraw ({expected_termination_draw}) "
+                    "(group 48)"
+                )
+
+            if is_decisive(closing_position_bps_value=expected_position):
+                expected_status = ConflictStatus.DECIDED
+            elif gate_open:
+                assert expected_termination_draw is not None
+                if settles_rather_than_pauses(
+                    closing_readiness_bps_value=expected_readiness,
+                    termination_draw=expected_termination_draw,
+                ):
+                    expected_status = ConflictStatus.SETTLED
+                else:
+                    expected_status = ConflictStatus.CEASEFIRE
+            else:
+                expected_status = ConflictStatus.ACTIVE
+
+            expected_closing_intensity = apply_active_intensity_floor(
+                raw_intensity_bps=expected_raw_intensity, closing_status=expected_status
+            )
+            # group 52: the active-intensity floor -- every closing ACTIVE conflict's intensity
+            # must be >= MIN_ACTIVE_INTENSITY_BPS; terminal/ceasefire closes may legitimately sit
+            # below it (never confuse the two).
+            if (
+                expected_status is ConflictStatus.ACTIVE
+                and expected_closing_intensity < MIN_ACTIVE_INTENSITY_BPS
+            ):
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: recomputed closing ACTIVE intensity "
+                    f"{expected_closing_intensity} is below MIN_ACTIVE_INTENSITY_BPS "
+                    f"({MIN_ACTIVE_INTENSITY_BPS}) (group 52)"
+                )
+            if (
+                closing_conflict.status is ConflictStatus.ACTIVE
+                and closing_conflict.intensity_bps < MIN_ACTIVE_INTENSITY_BPS
+            ):
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: closing_state's real ACTIVE intensity "
+                    f"{closing_conflict.intensity_bps} is below MIN_ACTIVE_INTENSITY_BPS "
+                    f"({MIN_ACTIVE_INTENSITY_BPS}) (group 52)"
+                )
+
+            if (
+                progression_row.closing_status != expected_status
+                or progression_row.closing_position_bps != expected_position
+                or progression_row.closing_exhaustion_a_bps != expected_exhaustion_a
+                or progression_row.closing_exhaustion_b_bps != expected_exhaustion_b
+                or progression_row.closing_readiness_bps != expected_readiness
+                or progression_row.closing_intensity_bps != expected_closing_intensity
+                or progression_row.closing_ceasefire_run_turns != 0
+            ):
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: closing_* fields do not match the "
+                    "recomputed ACTIVE-branch progression formulas (group 48/52)"
+                )
+
+        else:  # opening_status is ConflictStatus.CEASEFIRE -- consumes no randomness at all
+            if progression_row.position_jitter_bps != 0:
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: a CEASEFIRE-opening progression_row consumes no jitter "
+                    f"draw and must store position_jitter_bps=0, got {progression_row.position_jitter_bps} "
+                    "(group 48)"
+                )
+            if progression_row.termination_draw is not None:
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: CEASEFIRE maintenance consumes no "
+                    f"termination draw, but termination_draw={progression_row.termination_draw} is stored "
+                    "(group 48)"
+                )
+
+            decayed_intensity = ceasefire_decayed_intensity_bps(
+                opening_intensity_bps=opening_intensity
+            )
+            expected_exhaustion_a = ceasefire_recovered_exhaustion_bps(
+                opening_exhaustion_bps=opening_exhaustion_a
+            )
+            expected_exhaustion_b = ceasefire_recovered_exhaustion_bps(
+                opening_exhaustion_bps=opening_exhaustion_b
+            )
+            expected_avg = average_exhaustion_bps(
+                exhaustion_a_bps=expected_exhaustion_a, exhaustion_b_bps=expected_exhaustion_b
+            )
+            expected_readiness = closing_readiness_bps(
+                closing_average_exhaustion_bps=expected_avg,
+                closing_position_bps_value=opening_position,  # frozen during a ceasefire
+            )
+            provisional_run_turns = opening_ceasefire_run_turns + 1
+            expected_status = ceasefire_closing_status(
+                closing_readiness_bps_value=expected_readiness,
+                closing_ceasefire_run_turns=provisional_run_turns,
+            )
+            expected_run_turns = (
+                0 if expected_status is ConflictStatus.ACTIVE else provisional_run_turns
+            )
+            expected_closing_intensity = ceasefire_closing_intensity_bps(
+                decayed_intensity_bps=decayed_intensity, closing_status=expected_status
+            )
+            # group 52: a CEASEFIRE -> ACTIVE breakdown must restart at or above the floor.
+            if (
+                expected_status is ConflictStatus.ACTIVE
+                and expected_closing_intensity < MIN_ACTIVE_INTENSITY_BPS
+            ):
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: a recomputed ceasefire breakdown restarts "
+                    f"at intensity {expected_closing_intensity}, below MIN_ACTIVE_INTENSITY_BPS "
+                    f"({MIN_ACTIVE_INTENSITY_BPS}) (group 52)"
+                )
+            if (
+                closing_conflict.status is ConflictStatus.ACTIVE
+                and closing_conflict.intensity_bps < MIN_ACTIVE_INTENSITY_BPS
+            ):
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: closing_state's real breakdown intensity "
+                    f"{closing_conflict.intensity_bps} is below MIN_ACTIVE_INTENSITY_BPS "
+                    f"({MIN_ACTIVE_INTENSITY_BPS}) (group 52)"
+                )
+
+            if (
+                progression_row.closing_status != expected_status
+                or progression_row.closing_position_bps != opening_position
+                or progression_row.closing_exhaustion_a_bps != expected_exhaustion_a
+                or progression_row.closing_exhaustion_b_bps != expected_exhaustion_b
+                or progression_row.closing_readiness_bps != expected_readiness
+                or progression_row.closing_intensity_bps != expected_closing_intensity
+                or progression_row.closing_ceasefire_run_turns != expected_run_turns
+            ):
+                problems.append(
+                    f"conflict {progression_row.conflict_id!r}: closing_* fields do not match the "
+                    "recomputed CEASEFIRE-maintenance formulas (group 48/52)"
+                )
+
+    # ---- Group 51: the security-anxiety causal chain, across BOTH reports ---------------
+    # Recomputed purely from authoritative state (closing conflicts + opening dyad exposure),
+    # never from either report -- so a self-consistent foreign-affairs report and a
+    # self-consistent political report that disagree with EACH OTHER both disagree with this
+    # independent recomputation, and both are caught.
+    exposure_by_pair = {
+        (d.country_a, d.country_b): d.player_security_exposure_bps for d in opening_world.dyads
+    }
+    uncapped_total = 0
+    for conflict in closing_world.conflicts:
+        if conflict.status is not ConflictStatus.ACTIVE:
+            continue
+        exposure = exposure_by_pair.get((conflict.country_a, conflict.country_b), 0)
+        if exposure == 0:
+            continue
+        uncapped_total += foreign_conflict_security_anxiety_bps(
+            exposure_bps=exposure, intensity_bps=conflict.intensity_bps
+        )
+    expected_security_contribution = aggregate_security_contribution_bps(
+        uncapped_total_bps=uncapped_total
+    )
+    if expected_security_contribution > 0:
+        problems.append(
+            "internal: recomputed security contribution "
+            f"{expected_security_contribution} is positive -- aggregate_security_contribution_bps "
+            "is expected to be negative-only by construction (group 51)"
+        )
+    political = report.political
+    if (
+        political is not None
+        and political.security_contribution_bps != expected_security_contribution
+    ):
+        problems.append(
+            f"political.security_contribution_bps={political.security_contribution_bps} does "
+            "not match the recomputed aggregate security contribution from closing_state's "
+            f"ACTIVE conflicts and opening_state's authored exposure ({expected_security_contribution}) "
+            "(group 51)"
+        )
 
     return problems
