@@ -67,6 +67,12 @@ CEASEFIRE_RECOVERY_BPS = 300
 CEASEFIRE_BREAKDOWN_BPS = 4_000
 CEASEFIRE_DURABILITY_TURNS = 4
 
+MAX_CONCURRENT_CONFLICTS = 2
+"""Frozen plan sec.10.1: global cap on simultaneously live conflicts, measured against a
+synthetic multi-dyad fixture (sec.10.5: 20 conflicts across five seeds, cap never exceeded).
+`SETTLED`/`DECIDED` are permanent history (sec.8.6) and occupy no capacity -- only `ACTIVE` and
+`CEASEFIRE` count."""
+
 
 class ConflictStatus(StrEnum):
     """`ACTIVE` and `CEASEFIRE` are reversible; `SETTLED` and `DECIDED` are terminal.
@@ -133,6 +139,13 @@ def dyad_weight_bps(*, tension_bps: int, grievance_bps: int) -> int:
 def passes_pressure_floor(*, raw_weight_bps: int) -> bool:
     """Whether a dyad's raw weight qualifies it as an outbreak candidate at all."""
     return raw_weight_bps >= MIN_OUTBREAK_WEIGHT_BPS
+
+
+def concurrency_capacity_available(*, live_conflict_count: int) -> bool:
+    """Whether another conflict may open this turn, against `MAX_CONCURRENT_CONFLICTS`.
+    `live_conflict_count` is the count of `ACTIVE`/`CEASEFIRE` conflicts only -- terminal
+    conflicts never occupy capacity (sec.8.6)."""
+    return live_conflict_count < MAX_CONCURRENT_CONFLICTS
 
 
 def outbreak_probability_bps(*, total_weight_bps: int) -> int:

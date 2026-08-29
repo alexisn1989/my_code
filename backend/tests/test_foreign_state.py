@@ -48,7 +48,7 @@ from pydantic import ValidationError
 from app.core.canonical_json import canonical_digest, canonical_dumps
 from app.core.errors import UnsupportedRulesetVersionError
 from app.saves import read_save_file
-from app.simulation.foreign_conflict import ConflictStatus, WarAim
+from app.simulation.foreign_conflict import MAX_CONCURRENT_CONFLICTS, ConflictStatus, WarAim
 from app.simulation.invariants import check_invariants
 from app.simulation.save_format import (
     SAVE_FORMAT_VERSION,
@@ -411,6 +411,105 @@ def test_conflict_resolved_turn_requires_terminal_status_is_caught_when_bypassed
     bad = _conflict().model_copy(update={"resolved_turn": 5})
     bypassed = _with_conflicts_bypassed(_valid_state(), (bad,))
     assert "conflict_resolved_turn_requires_terminal_status" in _codes(bypassed)
+
+
+# --- fix-forward 6b: the global concurrency cap, MAX_CONCURRENT_CONFLICTS -------
+# --- slot 7's own guard stops a legitimate campaign from ever REACHING three; ---
+# --- this is the backstop against a save that already CONTAINS three -----------
+
+
+def _concurrency_state(
+    profiles: dict[str, ForeignProfileState], conflicts: tuple[ForeignConflictState, ...]
+) -> GameState:
+    """A state with three independent foreign-profile pairs available, so up to three distinct
+    conflicts can be constructed without colliding on `conflict_id` or canonical pair order.
+    `conflicts` is passed straight through `WorldState`'s own real constructor, so every
+    conflict-level construction-time invariant (canonical id order, no duplicate ids, resolved
+    turn/status coherence) is already satisfied here -- only the concurrency count is new."""
+    return make_game_state(foreign_profiles=profiles, dyads=(), conflicts=conflicts)
+
+
+_CONCURRENCY_PROFILES = {
+    "alpha": _profile("Alpha", 5_000),
+    "beta": _profile("Beta", 5_000),
+    "gamma": _profile("Gamma", 5_000),
+    "delta": _profile("Delta", 5_000),
+    "epsilon": _profile("Epsilon", 5_000),
+    "zeta": _profile("Zeta", 5_000),
+}
+
+
+def _live_conflict(pair: tuple[str, str], *, status: ConflictStatus = ConflictStatus.ACTIVE):  # type: ignore[no-untyped-def]
+    country_a, country_b = pair
+    return _conflict(
+        conflict_id=f"{country_a}__{country_b}__t0",
+        country_a=country_a,
+        country_b=country_b,
+        aggressor=country_a,
+        defender=country_b,
+        status=status,
+    )
+
+
+def _terminal_conflict(pair: tuple[str, str]):  # type: ignore[no-untyped-def]
+    country_a, country_b = pair
+    return _conflict(
+        conflict_id=f"{country_a}__{country_b}__t0",
+        country_a=country_a,
+        country_b=country_b,
+        aggressor=country_a,
+        defender=country_b,
+        status=ConflictStatus.DECIDED,
+        resolved_turn=0,
+    )
+
+
+_PAIR_1 = ("alpha", "beta")
+_PAIR_2 = ("delta", "gamma")
+_PAIR_3 = ("epsilon", "zeta")
+
+
+@pytest.mark.parametrize("live_count", [0, 1, MAX_CONCURRENT_CONFLICTS])
+def test_up_to_the_cap_live_conflicts_are_accepted(live_count: int) -> None:
+    pairs = (_PAIR_1, _PAIR_2, _PAIR_3)[:live_count]
+    conflicts = tuple(_live_conflict(pair) for pair in pairs)
+    state = _concurrency_state(_CONCURRENCY_PROFILES, conflicts)
+    assert "foreign_conflict_concurrency_exceeded" not in _codes(state)
+
+
+def test_one_more_than_the_cap_live_conflicts_is_rejected() -> None:
+    """Uses `MAX_CONCURRENT_CONFLICTS` directly rather than a hardcoded `3`, so the test tracks
+    the shared constant instead of duplicating its value."""
+    pairs = (_PAIR_1, _PAIR_2, _PAIR_3)[: MAX_CONCURRENT_CONFLICTS + 1]
+    conflicts = tuple(_live_conflict(pair) for pair in pairs)
+    state = _concurrency_state(_CONCURRENCY_PROFILES, conflicts)
+    assert "foreign_conflict_concurrency_exceeded" in _codes(state)
+
+
+def test_any_number_of_settled_and_decided_conflicts_consumes_no_capacity() -> None:
+    conflicts = tuple(_terminal_conflict(pair) for pair in (_PAIR_1, _PAIR_2, _PAIR_3))
+    state = _concurrency_state(_CONCURRENCY_PROFILES, conflicts)
+    assert "foreign_conflict_concurrency_exceeded" not in _codes(state)
+
+
+def test_the_cap_plus_terminal_history_is_accepted() -> None:
+    """Two live conflicts (`MAX_CONCURRENT_CONFLICTS` at its current value of 2) plus a third,
+    unrelated pair's terminal history must not trip the cap -- only ACTIVE/CEASEFIRE count."""
+    assert MAX_CONCURRENT_CONFLICTS == 2, "this test's pair split assumes the current cap value"
+    live = (_live_conflict(_PAIR_1), _live_conflict(_PAIR_2))
+    terminal = (_terminal_conflict(_PAIR_3),)
+    state = _concurrency_state(_CONCURRENCY_PROFILES, live + terminal)
+    assert "foreign_conflict_concurrency_exceeded" not in _codes(state)
+
+
+def test_concurrency_check_is_insensitive_to_foreign_profiles_insertion_order() -> None:
+    pairs = (_PAIR_1, _PAIR_2, _PAIR_3)[: MAX_CONCURRENT_CONFLICTS + 1]
+    conflicts = tuple(_live_conflict(pair) for pair in pairs)
+    forward = _concurrency_state(_CONCURRENCY_PROFILES, conflicts)
+    reversed_profiles = dict(reversed(list(_CONCURRENCY_PROFILES.items())))
+    backward = _concurrency_state(reversed_profiles, conflicts)
+    assert _codes(forward) == _codes(backward)
+    assert "foreign_conflict_concurrency_exceeded" in _codes(forward)
 
 
 # --- scenario-content isolation: relative to c47fc82, only content_version, ---

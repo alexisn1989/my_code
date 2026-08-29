@@ -93,6 +93,7 @@ from app.simulation.foreign_conflict import (
     ceasefire_gate_open,
     closing_position_bps,
     closing_readiness_bps,
+    concurrency_capacity_available,
     dyad_weight_bps,
     exhaustion_gain_bps,
     initial_intensity_bps,
@@ -1875,11 +1876,14 @@ def _resolve_foreign_conflict_outbreak(ctx: PhaseContext) -> None:
     """External Wars Gate W1, slot 7 (`resolve_diplomacy_and_sanctions`): the outbreak draw.
 
     Runs every turn, whether or not a war starts (frozen plan sec.7/sec.11.1). A dyad is a
-    candidate iff `eligible` and no existing conflict for its pair is currently `ACTIVE` or
-    `CEASEFIRE` (sec.6.2 rule 2 -- a pair cannot fight two wars at once). At most one new conflict
-    per turn (sec.6.2 rule 3): one draw decides whether a war starts, a second decides which
-    eligible dyad, both from the same `foreign_conflict_outbreak` stream, in that order (sec.8.7)
-    -- the second draw is only ever made when the first says a war starts.
+    candidate iff `eligible`, no existing conflict for its pair is currently `ACTIVE` or
+    `CEASEFIRE` (sec.6.2 rule 2 -- a pair cannot fight two wars at once), and the global
+    `MAX_CONCURRENT_CONFLICTS` cap (sec.10.1) is not already reached -- at capacity no dyad is a
+    candidate this turn, though the occurrence draw is still made (it is unconditional; see
+    below) and cannot fire. At most one new conflict per turn (sec.6.2 rule 3): one draw decides
+    whether a war starts, a second decides which eligible dyad, both from the same
+    `foreign_conflict_outbreak` stream, in that order (sec.8.7) -- the second draw is only ever
+    made when the first says a war starts.
 
     A conflict created here is written straight into `ctx.state.world.conflicts` -- the one
     deliberate state mutation in this function, mirroring `_extract_resources`'s narrow exception
@@ -1893,11 +1897,19 @@ def _resolve_foreign_conflict_outbreak(ctx: PhaseContext) -> None:
         for conflict in world.conflicts
         if conflict.status in (ConflictStatus.ACTIVE, ConflictStatus.CEASEFIRE)
     }
+    # Fix-forward 6b (frozen plan sec.10.1/10.5): the global concurrency cap. A pair can host at
+    # most one live conflict (excluded_pairs, above), so len(excluded_pairs) is exactly the live
+    # count. At capacity, every dyad is excluded from candidacy this turn -- the candidate tuple
+    # is empty, total_weight_bps is 0, clamped_probability_bps is 0, and the occurrence draw
+    # below is still made and stored (it is unconditional) but cannot fire (occurred=False for
+    # any draw, since probability=0); the selection draw stays guarded by `if occurred:` and so
+    # is never made. No other code path below needs to change.
+    at_capacity = not concurrency_capacity_available(live_conflict_count=len(excluded_pairs))
 
     candidate_rows: list[ForeignConflictOutbreakCandidateRow] = []
     passing_dyads: list[ConflictDyadState] = []
     for dyad in world.dyads:
-        if not dyad.eligible or (dyad.country_a, dyad.country_b) in excluded_pairs:
+        if at_capacity or not dyad.eligible or (dyad.country_a, dyad.country_b) in excluded_pairs:
             continue
         weight = dyad_weight_bps(tension_bps=dyad.tension_bps, grievance_bps=dyad.grievance_bps)
         passed = passes_pressure_floor(raw_weight_bps=weight)

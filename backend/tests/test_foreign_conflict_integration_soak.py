@@ -16,11 +16,12 @@ proves exactly the properties named in the checkpoint:
  2. The 13th report is present every turn (already self-validating by construction -- every
     `ForeignAffairsReport`/`ForeignConflictProgressionRow` field validator in `report.py` runs
     on every `TurnReport` the real resolver builds).
- 3. Conflict concurrency never exceeds the scenario's own authored dyad count (each dyad can
-    host at most one live conflict at a time -- `state.py`'s own `ForeignConflictState.
+ 3. Conflict concurrency never exceeds `MAX_CONCURRENT_CONFLICTS` (fix-forward 6b), and in these
+    two single-dyad scenarios never exceeds the tighter authored-dyad-count bound either (each
+    dyad can host at most one live conflict at a time -- `state.py`'s own `ForeignConflictState.
     conflict_id` docstring: "a pair cannot re-fight while an existing conflict between them is
-    still ACTIVE or CEASEFIRE"). No named "MAX_CONCURRENT_CONFLICTS" constant exists in
-    `foreign_conflict.py`; the real, generically-true bound is the authored dyad count.
+    still ACTIVE or CEASEFIRE"). An earlier version of this file claimed no such constant
+    existed; that was a defect in the 6a audit, corrected in 6b, not a plan gap.
  4. Every conflict's terminal-status/`resolved_turn` legality holds turn by turn (already a
     Pydantic construction-time invariant; re-asserted directly here against the report).
  5. `validate_history` stays clean every turn, and the campaign either survives the full
@@ -39,7 +40,11 @@ from __future__ import annotations
 from app.content.scenarios import load_scenario_file
 from app.core.errors import GameAlreadyConcludedError
 from app.simulation.decisions import DecisionSet
-from app.simulation.foreign_conflict import TERMINAL_STATUSES, ConflictStatus
+from app.simulation.foreign_conflict import (
+    MAX_CONCURRENT_CONFLICTS,
+    TERMINAL_STATUSES,
+    ConflictStatus,
+)
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json, load_save_json
 from app.simulation.state import GameState
@@ -48,9 +53,12 @@ from tests.conftest import SCENARIO_DIR
 TURNS = 100
 
 # Each shipped scenario authors exactly one dyad today (verified directly against the YAML
-# content, not assumed) -- so the concurrency bound in item 3 is 1 for both scenarios exercised
-# here. If a future scenario authors more, this constant is the one place to update.
+# content, not assumed), which is a TIGHTER bound than MAX_CONCURRENT_CONFLICTS (fix-forward 6b)
+# since a single dyad can host at most one live conflict at a time. If a future scenario authors
+# more, this constant is the one place to update; it may never legitimately exceed
+# MAX_CONCURRENT_CONFLICTS.
 _AUTHORED_DYAD_COUNT = 1
+assert _AUTHORED_DYAD_COUNT <= MAX_CONCURRENT_CONFLICTS
 
 
 def _empty_decisions(state: GameState) -> DecisionSet:
@@ -91,12 +99,14 @@ def _assert_integrated_war_invariants(save: GameSave) -> None:
         if report.political.security_contribution_bps != 0:
             saw_nonzero_security_contribution = True
 
-        # Item 3: concurrency never exceeds the scenario's own authored dyad count.
+        # Item 3: concurrency never exceeds MAX_CONCURRENT_CONFLICTS (6b's global cap), and in
+        # these single-dyad scenarios never exceeds the tighter authored-dyad-count bound either.
         live_conflicts = [
             c
             for c in entry.state().world.conflicts
             if c.status in (ConflictStatus.ACTIVE, ConflictStatus.CEASEFIRE)
         ]
+        assert len(live_conflicts) <= MAX_CONCURRENT_CONFLICTS
         assert len(live_conflicts) <= _AUTHORED_DYAD_COUNT
 
         # Item 4: terminal-status/resolved_turn legality, re-checked directly against the

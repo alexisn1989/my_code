@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from app.core.errors import InvariantViolation
 from app.simulation.constitution import DecreeAuthority, Legislature, first_constitutional_violation
-from app.simulation.foreign_conflict import TERMINAL_STATUSES
+from app.simulation.foreign_conflict import MAX_CONCURRENT_CONFLICTS, TERMINAL_STATUSES
 from app.simulation.legislature import LegislativeChamber
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
@@ -1062,6 +1062,25 @@ def _check_foreign_conflicts(world: WorldState) -> list[InvariantViolation]:
                 message=(
                     f"world.conflicts is not in canonical conflict_id order: "
                     f"{conflict_id_sequence!r}"
+                ),
+            )
+        )
+
+    # Fix-forward 6b (frozen plan sec.10.1/10.5): the global concurrency cap. Slot 7's own guard
+    # (phases._resolve_foreign_conflict_outbreak) stops a legitimate campaign from ever opening a
+    # third conflict, but it cannot reject a tampered/rehashed save that already CONTAINS three --
+    # this is that backstop, mirroring every other "already enforced at construction, still
+    # checked here for a bypassed post-construction mutation" rule in this function.
+    live_conflict_count = sum(
+        1 for conflict in world.conflicts if conflict.status not in TERMINAL_STATUSES
+    )
+    if live_conflict_count > MAX_CONCURRENT_CONFLICTS:
+        violations.append(
+            InvariantViolation(
+                code="foreign_conflict_concurrency_exceeded",
+                message=(
+                    f"world.conflicts has {live_conflict_count} ACTIVE/CEASEFIRE conflicts, "
+                    f"exceeding MAX_CONCURRENT_CONFLICTS={MAX_CONCURRENT_CONFLICTS}"
                 ),
             )
         )
