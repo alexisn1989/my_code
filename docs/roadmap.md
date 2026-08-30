@@ -768,6 +768,74 @@ than assumed in advance.
   defects (raw enum values, a literal `"null"` render, indistinguishable "Details" buttons,
   `ToneValue`'s missing glyph) found and fixed alongside it.
 
+## External Wars — foreign actors and persistent conflicts (W1–W5)
+
+A separately-mandated track, sequenced independently of the numbered phases below. It supplies the
+foreign-actor and conflict substrate that Phase 6 (§16 diplomacy, §17 trade) and Phase 7 (§18
+military and war) will later build player-facing systems on top of. Each gate after W1 remains
+**nonbinding** and requires its own repository audit and implementation-ready plan before it starts.
+
+### Gate W1 — foreign actors and persistent conflicts — **complete**
+
+Frozen plan: `docs/plans/external-wars-w1-implementation-plan.md`. Architecture:
+`docs/adr/0016-external-wars-w1.md`. Calibration corrections:
+`docs/plans/external-wars-w1-calibration-erratum.md`. One `RULESET_VERSION` bump
+(`0.12.0 → 0.13.0`); save format stays `1`, with **no migration** — a 0.12.0 save has no dyads, and
+synthesising a peaceful world would assert a fact the save does not contain.
+
+**What the player gets.** Foreign wars now begin, escalate, exhaust themselves, pause in ceasefires,
+break down or settle, and end — entirely on their own, driven by seeded randomness, whether or not
+the player does anything. Wars between exposed neighbours create **security anxiety**, a real
+negative pressure on domestic legitimacy. The player can inspect every live and concluded conflict
+through `mandate inspect --state <save> --conflicts`. The player **cannot yet respond**: there is no
+diplomacy, no trade lever, no aid, no sanctions and no military option in this gate.
+
+- [x] **Authored foreign actors, disjoint from countries.** `WorldState.foreign_profiles`
+      (`display_name` + abstract `war_capability_bps`) is its own namespace, key-disjoint from
+      `world.countries`. Foreign actors are deliberately not `CountryState` objects, so no
+      population, treasury or economy is fabricated for a country the player never governs.
+      `neighbor` stays an ordinary country and is never dyad-eligible.
+- [x] **Authored bilateral dyads.** `ConflictDyadState` carries tension, grievance, eligibility,
+      explicit aggressor/defender, both war aims and the authored player security exposure.
+      Canonical lexicographic pair ordering is enforced and rejected-not-normalized; roles are never
+      inferred from that ordering, and adjacency is never inferred from ids or names.
+- [x] **Persistent conflict resolution** (`simulation/foreign_conflict.py`, slots 7/8/10/15). At
+      most one outbreak per turn from eligible non-active dyads within a global cap of two live
+      conflicts; intensity, position, per-side exhaustion and negotiation readiness progress each
+      turn; ceasefires mature into settlements or break back down. `SETTLED`/`DECIDED` are permanent
+      history and consume no concurrency capacity.
+- [x] **The thirteenth domain report.** `ForeignAffairsReport` completes the report set; the
+      all-present-or-all-absent completeness rule now rejects all **8,190** proper nonempty subsets.
+- [x] **Reconciliation groups 46–52 and the 21-case tamper matrix.** Every conflict figure is
+      re-derivable from stored inputs and checked against opening state, closing state, authored
+      content, capabilities, RNG streams, exposure and both floors. The matrix (named "16-case" in
+      the frozen plan, which then enumerates 21) proves a green hash chain *and* a distinguishing
+      semantic failure for each case.
+- [x] **Calibration, corrected forward.** Three measurement defects in the original scratch driver
+      were found and corrected without amending the frozen plan (see the erratum): 1-based turn
+      indexing against a turn-keyed RNG, floor-run episodes concatenated across ceasefires, and a
+      horizon-final ceasefire misclassified as indefinite. The honest 240-cell grid passes 27
+      configurations, and the frozen plan's own selection rules select
+      `MIN_ACTIVE_INTENSITY_BPS = 250`, `CEASEFIRE_RECOVERY_BPS = 200`,
+      `CEASEFIRE_BREAKDOWN_BPS = 4,500`, `CEASEFIRE_DURABILITY_TURNS = 3`.
+      `MIN_OUTBREAK_WEIGHT_BPS` stays 500.
+- [x] **Read-only CLI inspection.** `inspect --conflicts` plus six foreign-affairs reason renderers
+      and a turn-report block wired into both `_print_report` and `_cmd_history`.
+
+Deferred out of this gate by design, not omission: any player response whatsoever; mutable foreign
+relationships (tension and grievance are authored constants no formula changes); trade exposure,
+sanctions, humanitarian or military aid; war authorization and player armed forces; troop movement,
+tactical battles, casualties, occupation, annexation, colonies and insurgency; alliances, proxy wars
+and separatist recognition; any world-map or React presentation; and any universal victory or defeat
+arising from a foreign war.
+
+### Gates W2–W5 — not started
+
+- **W2 — explicit neutrality and mediation.** Not started.
+- **W3 — trade exposure and sanctions.** Not started.
+- **W4 — military capability, war authorization, joining and withdrawal.** Not started.
+- **W5 — frontend and world-map presentation.** Not started.
+
 ## Phase 4 — Persistence and API
 
 Scope: §29 (persistence), §30 (API design), §31 (security/integrity, non-auth items).

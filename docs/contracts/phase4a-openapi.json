@@ -1806,7 +1806,7 @@
   "info": {
     "summary": "Local, loopback-only interface to the MANDATE simulation engine.",
     "title": "MANDATE local game API",
-    "version": "0.12.0"
+    "version": "0.13.0"
   },
   "openapi": "3.1.0",
   "paths": {
