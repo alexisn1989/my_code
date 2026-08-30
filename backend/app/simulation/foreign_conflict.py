@@ -59,13 +59,20 @@ CEASEFIRE_THRESHOLD_BPS = 5_000
 SETTLEMENT_THRESHOLD_BPS = 7_500
 CEASEFIRE_INTENSITY_DECAY_BPS = 2_500
 
-MIN_ACTIVE_INTENSITY_BPS = 500
-"""The lowest floor that produced a passing configuration in the declared grid; 250 produced
-none. See the module docstring for why a floor is required at all."""
+MIN_ACTIVE_INTENSITY_BPS = 250
+"""The lowest floor that produces a passing configuration in the declared grid. See the module
+docstring for why a floor is required at all.
 
-CEASEFIRE_RECOVERY_BPS = 300
-CEASEFIRE_BREAKDOWN_BPS = 4_000
-CEASEFIRE_DURABILITY_TURNS = 4
+Frozen plan sec.10.1 recorded 500 here on the reasoning that "250 produced none". That rested on an
+invalid `no_indefinite_ceasefire` criterion which counted any conflict whose FINAL-turn status read
+`CEASEFIRE` -- a horizon right-censoring artifact, not a stuck ceasefire. Measured honestly (one
+uninterrupted `CEASEFIRE` episode exceeding `CEASEFIRE_DURABILITY_TURNS`), floor 250 has four
+passing configurations and the frozen selection order returns this row. See
+`docs/plans/external-wars-w1-calibration-erratum.md`."""
+
+CEASEFIRE_RECOVERY_BPS = 200
+CEASEFIRE_BREAKDOWN_BPS = 4_500
+CEASEFIRE_DURABILITY_TURNS = 3
 
 MAX_CONCURRENT_CONFLICTS = 2
 """Frozen plan sec.10.1: global cap on simultaneously live conflicts, measured against a

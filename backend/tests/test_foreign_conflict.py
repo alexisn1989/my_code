@@ -33,11 +33,11 @@ from app.simulation import government_survival as government_survival_module
 def test_the_approved_calibration_is_pinned() -> None:
     """The selected configuration from the declared 240-cell grid. If any of these drift, the
     measured behaviour the rest of this file asserts is no longer the behaviour being shipped."""
-    assert fc.MIN_ACTIVE_INTENSITY_BPS == 500
+    assert fc.MIN_ACTIVE_INTENSITY_BPS == 250
     assert fc.MIN_OUTBREAK_WEIGHT_BPS == 500
-    assert fc.CEASEFIRE_RECOVERY_BPS == 300
-    assert fc.CEASEFIRE_BREAKDOWN_BPS == 4_000
-    assert fc.CEASEFIRE_DURABILITY_TURNS == 4
+    assert fc.CEASEFIRE_RECOVERY_BPS == 200
+    assert fc.CEASEFIRE_BREAKDOWN_BPS == 4_500
+    assert fc.CEASEFIRE_DURABILITY_TURNS == 3
     assert fc.OUTBREAK_SCALE_BPS == 700
 
 
@@ -246,9 +246,13 @@ def test_a_clear_lead_makes_a_side_less_willing_to_negotiate_symmetrically() -> 
 
 
 def test_exhaustion_continues_increasing_while_active_at_the_floor() -> None:
-    """60 bps per turn at the floor. This single number is why the floor works: it is what keeps
-    readiness rising, and therefore what keeps the ceasefire path reachable."""
-    assert fc.exhaustion_gain_bps(opening_intensity_bps=fc.MIN_ACTIVE_INTENSITY_BPS) == 60
+    """30 bps per turn at the floor. This single number is why the floor works: it is what keeps
+    readiness rising, and therefore what keeps the ceasefire path reachable.
+
+    Was 60 when the floor was 500; halving the floor to 250 halves the gain. What matters is that
+    it stays strictly positive -- that is the anti-absorbing property, and it survives."""
+    assert fc.exhaustion_gain_bps(opening_intensity_bps=fc.MIN_ACTIVE_INTENSITY_BPS) == 30
+    assert fc.exhaustion_gain_bps(opening_intensity_bps=fc.MIN_ACTIVE_INTENSITY_BPS) > 0
     assert fc.exhaustion_gain_bps(opening_intensity_bps=0) == 0
 
 
@@ -257,7 +261,7 @@ def test_the_floor_applies_to_active_only() -> None:
         fc.apply_active_intensity_floor(
             raw_intensity_bps=0, closing_status=fc.ConflictStatus.ACTIVE
         )
-        == 500
+        == fc.MIN_ACTIVE_INTENSITY_BPS
     )
     for quiet_ending in (
         fc.ConflictStatus.CEASEFIRE,
@@ -282,19 +286,20 @@ def test_the_floor_never_raises_an_intensity_that_is_already_above_it() -> None:
 def test_a_ceasefire_may_decay_below_the_active_floor() -> None:
     """A ceasefire is precisely the claim that fighting has stopped, so the floor must not apply
     to it -- otherwise 'paused' and 'fighting' would be indistinguishable in the state."""
-    decayed = fc.ceasefire_decayed_intensity_bps(opening_intensity_bps=500)
-    assert decayed == 375
+    decayed = fc.ceasefire_decayed_intensity_bps(opening_intensity_bps=300)
+    assert decayed == 225
     assert (
         fc.ceasefire_closing_intensity_bps(
             decayed_intensity_bps=decayed, closing_status=fc.ConflictStatus.CEASEFIRE
         )
-        == 375
+        == 225
     )
-    assert fc.MIN_ACTIVE_INTENSITY_BPS > 375
+    assert fc.MIN_ACTIVE_INTENSITY_BPS > 225
 
 
 def test_a_ceasefire_that_breaks_down_restarts_at_or_above_the_floor() -> None:
-    decayed = fc.ceasefire_decayed_intensity_bps(opening_intensity_bps=500)
+    decayed = fc.ceasefire_decayed_intensity_bps(opening_intensity_bps=300)
+    assert decayed == 225, "the witness must genuinely sit below the floor for the clamp to bind"
     assert (
         fc.ceasefire_closing_intensity_bps(
             decayed_intensity_bps=decayed, closing_status=fc.ConflictStatus.ACTIVE
@@ -407,13 +412,20 @@ def test_the_old_absorbing_zero_intensity_state_is_reproducible_without_the_floo
 
 
 def test_the_floor_makes_that_state_impossible_and_restores_progress() -> None:
-    """The same starting conflict, with the floor. Exhaustion resumes at 60 bps/turn, readiness
-    rises monotonically, and the ceasefire gate is reached in a bounded number of turns."""
+    """The same starting conflict, with the floor. Exhaustion resumes at 30 bps/turn, readiness
+    rises monotonically, and the ceasefire gate is reached in a bounded number of turns.
+
+    Lowering the floor from 500 to 250 halves the at-floor exhaustion gain (60 -> 30 bps/turn), so
+    this deterministic liveness witness moves from 30 to 35 turns. Same seed and fixture; only the
+    timing drifts. The anti-absorbing and eventual-progress properties below are unchanged, and
+    they -- not the turn count -- are what this test exists to prove. A result above 35 is a new
+    discrepancy, not a bound to loosen further.
+    """
     history = _simulate_active(
         turns=200, opening_intensity=0, opening_exhaustion=4_000, apply_floor=True
     )
     assert history[-1].status is not fc.ConflictStatus.ACTIVE, "the conflict must terminate"
-    assert len(history) <= 30, f"progress must be prompt, took {len(history)} turns"
+    assert len(history) <= 35, f"progress must be prompt, took {len(history)} turns"
 
     active_turns = [turn for turn in history if turn.status is fc.ConflictStatus.ACTIVE]
     assert all(turn.intensity >= fc.MIN_ACTIVE_INTENSITY_BPS for turn in active_turns)
@@ -594,11 +606,11 @@ def _run_ceasefire(
 
 
 def test_a_ceasefire_breaks_down_naturally() -> None:
-    """Entering at exactly the ceasefire threshold, recovery of 300/turn drops readiness under
-    the 4,000 breakdown line on the fourth turn -- before durability can mature it."""
+    """Entering at exactly the ceasefire threshold, recovery of 200/turn drops readiness under
+    the 4,500 breakdown line on the third turn -- before durability can mature it."""
     status, turns, intensity = _run_ceasefire(entry_exhaustion=5_000)
     assert status is fc.ConflictStatus.ACTIVE
-    assert turns == 4
+    assert turns == 3
     assert intensity >= fc.MIN_ACTIVE_INTENSITY_BPS
 
 
@@ -616,21 +628,21 @@ def test_breakdown_is_evaluated_before_maturation() -> None:
     collapsed resumes fighting rather than settling."""
     assert (
         fc.ceasefire_closing_status(
-            closing_readiness_bps_value=3_999,
+            closing_readiness_bps_value=4_499,
             closing_ceasefire_run_turns=fc.CEASEFIRE_DURABILITY_TURNS,
         )
         is fc.ConflictStatus.ACTIVE
     )
     assert (
         fc.ceasefire_closing_status(
-            closing_readiness_bps_value=4_000,
+            closing_readiness_bps_value=4_500,
             closing_ceasefire_run_turns=fc.CEASEFIRE_DURABILITY_TURNS,
         )
         is fc.ConflictStatus.SETTLED
     )
     assert (
         fc.ceasefire_closing_status(
-            closing_readiness_bps_value=4_000,
+            closing_readiness_bps_value=4_500,
             closing_ceasefire_run_turns=fc.CEASEFIRE_DURABILITY_TURNS - 1,
         )
         is fc.ConflictStatus.CEASEFIRE
@@ -640,8 +652,8 @@ def test_breakdown_is_evaluated_before_maturation() -> None:
 def test_exhaustion_recovery_cannot_go_negative() -> None:
     assert fc.ceasefire_recovered_exhaustion_bps(opening_exhaustion_bps=100) == 0
     assert fc.ceasefire_recovered_exhaustion_bps(opening_exhaustion_bps=0) == 0
-    assert fc.ceasefire_recovered_exhaustion_bps(opening_exhaustion_bps=300) == 0
-    assert fc.ceasefire_recovered_exhaustion_bps(opening_exhaustion_bps=301) == 1
+    assert fc.ceasefire_recovered_exhaustion_bps(opening_exhaustion_bps=200) == 0
+    assert fc.ceasefire_recovered_exhaustion_bps(opening_exhaustion_bps=201) == 1
 
 
 # --- determinism and integer-only arithmetic -----------------------------------

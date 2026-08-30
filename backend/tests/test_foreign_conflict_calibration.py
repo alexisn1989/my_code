@@ -211,32 +211,32 @@ class TestCorrectedCalibrationMeasurements:
     def test_horizon_40_outbreak_frequency_and_campaign_shape(self) -> None:
         m = _measure(horizon=40)
         assert m["runs"] == 15
-        assert m["total"] == 16
+        assert m["total"] == 18
         assert m["quiet"] == 2
 
     def test_horizon_80_outbreak_frequency_and_campaign_shape(self) -> None:
         m = _measure(horizon=80)
         assert m["runs"] == 15
-        assert m["total"] == 26
+        assert m["total"] == 35
         assert m["quiet"] == 0
 
     def test_horizon_40_durations_completed_vs_right_censored(self) -> None:
         m = _measure(horizon=40)
         completed = m["completed"]
         censored = m["censored"]
-        assert len(completed) == 5
-        assert (completed[0], completed[len(completed) // 2], completed[-1]) == (14, 15, 37)
-        assert len(censored) == 11
-        assert (censored[0], censored[-1]) == (1, 40)
+        assert len(completed) == 10
+        assert (completed[0], completed[len(completed) // 2], completed[-1]) == (13, 14, 37)
+        assert len(censored) == 8
+        assert (censored[0], censored[-1]) == (1, 29)
 
     def test_horizon_80_durations_completed_vs_right_censored(self) -> None:
         m = _measure(horizon=80)
         completed = m["completed"]
         censored = m["censored"]
-        assert len(completed) == 15
-        assert (completed[0], completed[len(completed) // 2], completed[-1]) == (14, 15, 68)
-        assert len(censored) == 11
-        assert (censored[0], censored[-1]) == (4, 80)
+        assert len(completed) == 26
+        assert (completed[0], completed[len(completed) // 2], completed[-1]) == (13, 14, 37)
+        assert len(censored) == 9
+        assert (censored[0], censored[-1]) == (4, 69)
 
     def test_opened_by_40_terminal_by_80_cohort(self) -> None:
         opened_by_40 = terminal_by_80 = 0
@@ -254,42 +254,44 @@ class TestCorrectedCalibrationMeasurements:
                         opened_by_40 += 1
                         if c.status not in LIVE_STATUSES:  # type: ignore[attr-defined]
                             terminal_by_80 += 1
-        assert opened_by_40 == 16
-        assert terminal_by_80 == 11
+        assert opened_by_40 == 18
+        assert terminal_by_80 == 15
         # raw-integer form of the >=50% acceptance requirement, no float equality
         assert terminal_by_80 * 100 >= 50 * opened_by_40
 
     def test_horizon_40_status_ceasefire_and_intensity(self) -> None:
         m = _measure(horizon=40)
         sc = m["status_counts"]
-        assert (sc["decided"], sc["settled"], sc["active"], sc["ceasefire"]) == (1, 4, 10, 1)
-        assert m["breakdowns"] == 8
-        assert m["maturations"] == 4
-        assert (m["intensity_min"], m["intensity_median"], m["intensity_max"]) == (58, 2895, 6215)
-        assert m["floor_binds"] == 93
-        assert m["floor_run_max"] == 23
+        assert (sc["decided"], sc["settled"], sc["active"], sc["ceasefire"]) == (1, 9, 8, 0)
+        assert m["breakdowns"] == 6
+        assert m["maturations"] == 9
+        assert (m["intensity_min"], m["intensity_median"], m["intensity_max"]) == (0, 5128, 6215)
+        assert m["floor_binds"] == 37
+        assert m["floor_run_max"] == 19
         assert m["below_floor_active_closes"] == 0
         assert m["max_concurrency"] == 1
 
     def test_horizon_80_status_ceasefire_and_intensity(self) -> None:
         m = _measure(horizon=80)
         sc = m["status_counts"]
-        assert (sc["decided"], sc["settled"], sc["active"], sc["ceasefire"]) == (4, 11, 10, 1)
-        assert m["breakdowns"] == 21
-        assert m["maturations"] == 11
-        assert (m["intensity_min"], m["intensity_median"], m["intensity_max"]) == (7, 547, 6215)
-        assert m["floor_binds"] == 337
-        assert m["floor_run_max"] == 31
+        assert (sc["decided"], sc["settled"], sc["active"], sc["ceasefire"]) == (1, 25, 8, 1)
+        assert m["breakdowns"] == 15
+        assert m["maturations"] == 25
+        assert (m["intensity_min"], m["intensity_median"], m["intensity_max"]) == (0, 4645, 6215)
+        assert m["floor_binds"] == 132
+        assert m["floor_run_max"] == 27
         assert m["below_floor_active_closes"] == 0
         assert m["max_concurrency"] == 1
 
     def test_floor_run_is_disclosed_not_absorbing(self) -> None:
         """§10.8: exhaustion still accrues at the floor, so the long floor run is not the removed
-        absorbing state. trunc_div(500 * 1200 / 10_000) = 60 bps/turn."""
+        absorbing state. trunc_div(250 * 1200 / 10_000) = 30 bps/turn -- half of the 60 bps/turn
+        the old floor (500) produced, but still strictly positive, which is the property that
+        actually matters here."""
         from app.core.politics import trunc_div_toward_zero
 
         gain = trunc_div_toward_zero(fc.MIN_ACTIVE_INTENSITY_BPS * fc.EXHAUSTION_RATE_BPS, 10_000)
-        assert gain == 60
+        assert gain == 30
         assert gain > 0
 
 
@@ -298,9 +300,9 @@ class TestUnchangedCalibrationCategories:
 
     def test_security_anxiety_distribution(self) -> None:
         expected = {
-            "tiny_valid.yaml": (2000, -71, -63, -6),
-            "decree_state.yaml": (3000, -111, -9, -9),
-            "deficit_demo.yaml": (2000, -72, -6, -6),
+            "tiny_valid.yaml": (2000, -71, -63, -3),
+            "decree_state.yaml": (3000, -111, -93, -4),
+            "deficit_demo.yaml": (2000, -72, -67, -3),
         }
         for scenario, (exposure, exp_min, exp_med, exp_max) in expected.items():
             values: list[int] = []
@@ -443,7 +445,7 @@ class TestUnchangedCalibrationCategories:
                 for c in trace.conflicts:
                     seen.add(c.conflict_id)
             total += len(seen)
-        assert total == 29
+        assert total == 38
         assert max_concurrent == 2
         assert max_concurrent <= fc.MAX_CONCURRENT_CONFLICTS
 
@@ -544,12 +546,20 @@ _GRID_BREAKDOWNS = (3500, 4000, 4500, 5000)
 _GRID_DURABILITIES = (3, 4, 5)
 
 
-def _evaluate_grid_cell(floor: int) -> tuple[bool, dict[str, bool]]:
-    """One grid cell. Constants are already patched by the caller. Horizon 80, turns 0-79,
-    corrected floor-run definition is not needed here (the grid's own criteria don't use it)."""
-    cf_to_active = cf_to_settled = decided = settled = active = ceasefire = 0
+def _evaluate_grid_cell(floor: int, durability: int) -> tuple[bool, dict[str, bool]]:
+    """One grid cell. Constants are already patched by the caller. Horizon 80, turns 0-79.
+
+    `no_indefinite_ceasefire` uses the HONEST definition: a violation is one uninterrupted
+    `CEASEFIRE` episode that exceeds `durability`. A conflict whose ceasefire is still open at the
+    horizon is right-censored, not counted as indefinite, unless that open run has ALREADY exceeded
+    `durability`. Separate episodes (an `ACTIVE` interruption resets the run) are never concatenated.
+    The original grid counted any conflict whose FINAL-turn status merely read `CEASEFIRE` -- a
+    horizon-snapshot artifact that misclassified right-censored ceasefires as indefinite; see
+    `docs/plans/external-wars-w1-calibration-erratum.md`."""
+    cf_to_active = cf_to_settled = decided = settled = active = 0
     below_floor = stalled = ge_10_turns = 0
     opened_by_40 = terminal_by_80 = 0
+    honest_violations = 0
     for scenario in SCENARIO_FILES:
         for seed in CALIBRATION_SEEDS:
             base = load_scenario_file(SCENARIO_DIR / scenario).model_copy(
@@ -558,15 +568,22 @@ def _evaluate_grid_cell(floor: int) -> tuple[bool, dict[str, bool]]:
             traces = run_calibration(base, turns=80)
             seen: dict[str, object] = {}
             prev_exhaustion: dict[str, tuple[int, int]] = {}
+            ceasefire_runs: dict[str, int] = {}
             last_turn = traces[-1].turn
             for trace in traces:
-                for _conflict_id, opening, closing, intensity, _floor_applied in trace.progressions:
+                for conflict_id, opening, closing, intensity, _floor_applied in trace.progressions:
                     if closing == "active" and intensity < floor:
                         below_floor += 1
                     if opening == "ceasefire" and closing == "active":
                         cf_to_active += 1
                     if opening == "ceasefire" and closing == "settled":
                         cf_to_settled += 1
+                    if closing == "ceasefire":
+                        ceasefire_runs[conflict_id] = ceasefire_runs.get(conflict_id, 0) + 1
+                    else:
+                        run_length = ceasefire_runs.pop(conflict_id, 0)
+                        if run_length > durability:
+                            honest_violations += 1
                 for c in trace.conflicts:
                     if c.status is fc.ConflictStatus.ACTIVE and c.conflict_id in prev_exhaustion:
                         pa, _pb = prev_exhaustion[c.conflict_id]
@@ -574,13 +591,15 @@ def _evaluate_grid_cell(floor: int) -> tuple[bool, dict[str, bool]]:
                             stalled += 1
                     prev_exhaustion[c.conflict_id] = (c.exhaustion_a_bps, c.exhaustion_b_bps)
                     seen[c.conflict_id] = c
+            # runs still open at the horizon: right-censored, a violation only if already too long
+            for run_length in ceasefire_runs.values():
+                if run_length > durability:
+                    honest_violations += 1
             for c in seen.values():  # type: ignore[assignment]
                 if c.status in LIVE_STATUSES:  # type: ignore[attr-defined]
                     duration = last_turn - c.opened_turn + 1  # type: ignore[attr-defined]
                     if c.status is fc.ConflictStatus.ACTIVE:  # type: ignore[attr-defined]
                         active += 1
-                    else:
-                        ceasefire += 1
                 else:
                     duration = c.resolved_turn - c.opened_turn + 1  # type: ignore[attr-defined]
                     if c.status is fc.ConflictStatus.DECIDED:  # type: ignore[attr-defined]
@@ -594,7 +613,7 @@ def _evaluate_grid_cell(floor: int) -> tuple[bool, dict[str, bool]]:
                     if c.status not in LIVE_STATUSES:  # type: ignore[attr-defined]
                         terminal_by_80 += 1
     criteria = {
-        "no_indefinite_ceasefire": ceasefire == 0,
+        "no_indefinite_ceasefire": honest_violations == 0,
         "cf_to_settled_witness": cf_to_settled >= 1,
         "settled_reachable": settled >= 1,
         "terminal_ge_50pct": terminal_by_80 * 100 >= 50 * opened_by_40 if opened_by_40 else False,
@@ -625,53 +644,104 @@ class TestCalibrationGrid:
                             mp.setattr(fc, "CEASEFIRE_RECOVERY_BPS", recovery)
                             mp.setattr(fc, "CEASEFIRE_BREAKDOWN_BPS", breakdown)
                             mp.setattr(fc, "CEASEFIRE_DURABILITY_TURNS", durability)
-                            ok, _criteria = _evaluate_grid_cell(floor)
+                            ok, _criteria = _evaluate_grid_cell(floor, durability)
                         cells_evaluated += 1
                         if ok:
                             passing.append((floor, recovery, breakdown, durability))
 
         assert cells_evaluated == 240
-        # constants must be restored to the shipped values after every cell
-        assert fc.MIN_ACTIVE_INTENSITY_BPS == 500
-        assert fc.CEASEFIRE_RECOVERY_BPS == 300
-        assert fc.CEASEFIRE_BREAKDOWN_BPS == 4000
-        assert fc.CEASEFIRE_DURABILITY_TURNS == 4
+        # constants must be restored to the shipped (selected) values after every cell
+        assert fc.MIN_ACTIVE_INTENSITY_BPS == 250
+        assert fc.CEASEFIRE_RECOVERY_BPS == 200
+        assert fc.CEASEFIRE_BREAKDOWN_BPS == 4500
+        assert fc.CEASEFIRE_DURABILITY_TURNS == 3
 
         assert passing == [
+            (250, 200, 4500, 3),
             (250, 300, 4000, 4),
             (250, 400, 3500, 4),
+            (250, 400, 4000, 3),
+            (500, 200, 4500, 3),
+            (500, 200, 4500, 4),
+            (500, 300, 4000, 4),
             (500, 400, 3500, 4),
+            (500, 400, 4000, 3),
+            (750, 200, 4500, 3),
+            (750, 200, 4500, 4),
+            (750, 300, 4000, 4),
+            (750, 300, 4500, 3),
             (750, 400, 3500, 4),
+            (750, 400, 4000, 3),
+            (1000, 200, 4500, 4),
+            (1000, 300, 4000, 4),
+            (1000, 300, 4500, 3),
             (1000, 400, 3500, 4),
+            (1000, 400, 4000, 3),
+            (1000, 500, 4000, 3),
+            (1250, 200, 4500, 4),
             (1250, 300, 4000, 4),
+            (1250, 300, 4500, 3),
+            (1250, 400, 3500, 4),
             (1250, 400, 4000, 3),
+            (1250, 500, 3500, 4),
         ]
-        assert (500, 300, 4000, 4) not in passing
+        assert len(passing) == 27
+        assert (250, 200, 4500, 3) in passing
 
-    def test_shipped_configuration_is_a_documented_exception(self) -> None:
-        """(500, 300, 4000, 4) is the constants shipped in production today (unchanged by this
-        erratum). Under the corrected measurement it fails exactly one criterion --
-        `no_indefinite_ceasefire` -- and passes every other one, including both floor-safety
-        criteria. Ship it anyway, disclosed: this test guards that exact, narrow shape of failure
-        so any change to it (it starts passing, or a second criterion starts failing) is caught."""
+    def test_selected_configuration_is_the_honest_grid_winner(self) -> None:
+        """(250, 200, 4500, 3) is the constants shipped in production today. Under the honest
+        `no_indefinite_ceasefire` criterion it passes all nine grid criteria, and applying frozen
+        sec.10.7's selection order unchanged -- lowest floor, then fewest changed ceasefire
+        constants, then shorter durability, then smaller |recovery-200|, then smaller
+        |breakdown-3500| -- to the honest passing set picks this exact row: floor 250 now has four
+        candidates (not zero, as the old snapshot criterion wrongly implied), and this is the first
+        of them in the selection order."""
         with pytest.MonkeyPatch.context() as mp:
-            mp.setattr(fc, "MIN_ACTIVE_INTENSITY_BPS", 500)
-            mp.setattr(fc, "CEASEFIRE_RECOVERY_BPS", 300)
-            mp.setattr(fc, "CEASEFIRE_BREAKDOWN_BPS", 4000)
-            mp.setattr(fc, "CEASEFIRE_DURABILITY_TURNS", 4)
-            ok, criteria = _evaluate_grid_cell(500)
+            mp.setattr(fc, "MIN_ACTIVE_INTENSITY_BPS", 250)
+            mp.setattr(fc, "CEASEFIRE_RECOVERY_BPS", 200)
+            mp.setattr(fc, "CEASEFIRE_BREAKDOWN_BPS", 4500)
+            mp.setattr(fc, "CEASEFIRE_DURABILITY_TURNS", 3)
+            ok, criteria = _evaluate_grid_cell(250, 3)
 
-        assert fc.MIN_ACTIVE_INTENSITY_BPS == 500
-        assert fc.CEASEFIRE_RECOVERY_BPS == 300
-        assert fc.CEASEFIRE_BREAKDOWN_BPS == 4000
-        assert fc.CEASEFIRE_DURABILITY_TURNS == 4
+        assert fc.MIN_ACTIVE_INTENSITY_BPS == 250
+        assert fc.CEASEFIRE_RECOVERY_BPS == 200
+        assert fc.CEASEFIRE_BREAKDOWN_BPS == 4500
+        assert fc.CEASEFIRE_DURABILITY_TURNS == 3
 
-        assert ok is False
-        assert criteria["no_indefinite_ceasefire"] is False
+        assert ok is True
         for name, passed in criteria.items():
-            if name == "no_indefinite_ceasefire":
-                continue
-            assert passed is True, f"unexpected additional failure: {name}"
+            assert passed is True, f"unexpected failure: {name}"
+
+        candidates_at_floor_250 = [
+            (250, 200, 4500, 3),
+            (250, 300, 4000, 4),
+            (250, 400, 3500, 4),
+            (250, 400, 4000, 3),
+        ]
+        base_recovery, base_breakdown, base_durability = 200, 3500, 3
+
+        def changed_constants(candidate: tuple[int, int, int, int]) -> int:
+            _floor, recovery, breakdown, durability = candidate
+            return sum(
+                1
+                for got, base in (
+                    (recovery, base_recovery),
+                    (breakdown, base_breakdown),
+                    (durability, base_durability),
+                )
+                if got != base
+            )
+
+        winner = min(
+            candidates_at_floor_250,
+            key=lambda c: (
+                changed_constants(c),
+                c[3],
+                abs(c[1] - base_recovery),
+                abs(c[2] - base_breakdown),
+            ),
+        )
+        assert winner == (250, 200, 4500, 3)
 
     def test_zero_below_floor_and_zero_stalled_across_all_240(self) -> None:
         """Restated from the previous test's own per-cell criteria for a focused, independently
@@ -687,9 +757,32 @@ class TestCalibrationGrid:
                             mp.setattr(fc, "CEASEFIRE_RECOVERY_BPS", recovery)
                             mp.setattr(fc, "CEASEFIRE_BREAKDOWN_BPS", breakdown)
                             mp.setattr(fc, "CEASEFIRE_DURABILITY_TURNS", durability)
-                            _ok, criteria = _evaluate_grid_cell(floor)
+                            _ok, criteria = _evaluate_grid_cell(floor, durability)
                         assert criteria["zero_below_floor"] is True
                         assert criteria["zero_stalled"] is True
+
+    def test_no_continuous_ceasefire_episode_ever_exceeds_its_own_durability(self) -> None:
+        """The structural fact that makes the honest `no_indefinite_ceasefire` criterion
+        non-binding: `ceasefire_closing_status` evaluates breakdown before maturation and returns
+        `CEASEFIRE` only while the run is still shorter than `CEASEFIRE_DURABILITY_TURNS`, so a
+        continuous episode is bounded by construction. Verified directly, across all 240 cells,
+        rather than only inferred from the criterion passing."""
+        for floor in _GRID_FLOORS:
+            for recovery in _GRID_RECOVERIES:
+                for breakdown in _GRID_BREAKDOWNS:
+                    for durability in _GRID_DURABILITIES:
+                        with pytest.MonkeyPatch.context() as mp:
+                            mp.setattr(fc, "MIN_ACTIVE_INTENSITY_BPS", floor)
+                            mp.setattr(fc, "CEASEFIRE_RECOVERY_BPS", recovery)
+                            mp.setattr(fc, "CEASEFIRE_BREAKDOWN_BPS", breakdown)
+                            mp.setattr(fc, "CEASEFIRE_DURABILITY_TURNS", durability)
+                            _ok, criteria = _evaluate_grid_cell(floor, durability)
+                        assert criteria["no_indefinite_ceasefire"] is True, (
+                            f"floor={floor} recovery={recovery} breakdown={breakdown} "
+                            f"durability={durability}: an honest indefinite-ceasefire violation "
+                            f"occurred, contradicting the structural bound in "
+                            f"ceasefire_closing_status"
+                        )
 
 
 class TestCalibrationPerformance:
