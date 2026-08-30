@@ -59,6 +59,7 @@ from app.core.errors import (
 from app.core.money import format_money
 from app.saves import read_save_file, write_save_atomic
 from app.simulation.decisions import DecisionSet
+from app.simulation.foreign_conflict import TERMINAL_STATUSES, ConflictStatus, WarAim
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
 from app.simulation.legislative_voting import required_yes_seats
 from app.simulation.legislature import (
@@ -73,6 +74,7 @@ from app.simulation.report import (
     CoupUnrestReport,
     ElectionReport,
     FinanceReport,
+    ForeignAffairsReport,
     LaborMarketReport,
     LegislativeReport,
     PoliticalCapitalReport,
@@ -85,7 +87,14 @@ from app.simulation.report import (
     TurnReportEntry,
 )
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json, load_save_json
-from app.simulation.state import RESOURCE_UNITS, InstitutionState, PoliticalState
+from app.simulation.state import (
+    RESOURCE_UNITS,
+    ForeignConflictState,
+    ForeignProfileState,
+    InstitutionState,
+    PoliticalState,
+    WorldState,
+)
 
 # --- reason_id -> English rendering (presentation layer only; never stored) --
 
@@ -93,6 +102,23 @@ _TAX_FIELD_LABELS = {
     "personal_income_rate_bps": "Personal-income tax",
     "corporate_rate_bps": "Corporate tax",
     "consumption_rate_bps": "Consumption tax",
+}
+
+_CONFLICT_STATUS_LABELS = {
+    ConflictStatus.ACTIVE: "active",
+    ConflictStatus.CEASEFIRE: "ceasefire",
+    ConflictStatus.SETTLED: "settled",
+    ConflictStatus.DECIDED: "decided",
+}
+"""(External Wars W1) Stable display labels. Keyed by the enum member so a renamed enum *value*
+can never silently change presentation, and so no code path ever prints a raw
+`ConflictStatus.ACTIVE` repr."""
+
+_WAR_AIM_LABELS = {
+    WarAim.TERRITORIAL: "territorial",
+    WarAim.REGIME_CHANGE: "regime change",
+    WarAim.RESOURCE_ACCESS: "resource access",
+    WarAim.DETERRENCE: "deterrence",
 }
 
 
@@ -421,6 +447,63 @@ def _render_peaceful_liberalization_completed(params: dict[str, str | int]) -> s
     return f"Peaceful liberalization completed at turn {turn}: the incumbent won its first free election."
 
 
+def _conflict_status_label(value: object) -> str:
+    """(External Wars W1) A stored `closing_status` param is the enum's string *value*; map it
+    back through the enum so presentation goes through `_CONFLICT_STATUS_LABELS` like every other
+    status display. An unrecognised value raises `ValueError`, which `render_entry` already turns
+    into a visible fallback rather than a crash or a wrong label."""
+    return _CONFLICT_STATUS_LABELS[ConflictStatus(value)]
+
+
+def _render_foreign_conflict_outbreak(params: dict[str, str | int]) -> str:
+    return (
+        f"War broke out between {params['country_a']} and {params['country_b']} "
+        f"(aggressor {params['aggressor']}): conflict {params['conflict_id']}."
+    )
+
+
+def _render_foreign_conflict_progressed(params: dict[str, str | int]) -> str:
+    return (
+        f"Conflict {params['conflict_id']} continued "
+        f"({_conflict_status_label(params['closing_status'])}, intensity "
+        f"{_bps_to_percent_str(params['closing_intensity_bps'])})."
+    )
+
+
+def _render_foreign_conflict_ceasefire_entered(params: dict[str, str | int]) -> str:
+    return (
+        f"Conflict {params['conflict_id']} entered a ceasefire "
+        f"({_conflict_status_label(params['closing_status'])}, intensity "
+        f"{_bps_to_percent_str(params['closing_intensity_bps'])})."
+    )
+
+
+def _render_foreign_conflict_ceasefire_broke_down(params: dict[str, str | int]) -> str:
+    return (
+        f"The ceasefire in conflict {params['conflict_id']} broke down and fighting resumed "
+        f"({_conflict_status_label(params['closing_status'])}, intensity "
+        f"{_bps_to_percent_str(params['closing_intensity_bps'])})."
+    )
+
+
+def _render_foreign_conflict_terminated(params: dict[str, str | int]) -> str:
+    return (
+        f"Conflict {params['conflict_id']} ended "
+        f"({_conflict_status_label(params['closing_status'])}, closing intensity "
+        f"{_bps_to_percent_str(params['closing_intensity_bps'])})."
+    )
+
+
+def _render_foreign_security_anxiety_applied(params: dict[str, str | int]) -> str:
+    """The contribution is negative-only by construction (`simulation.legitimacy`), so this states
+    a legitimacy cost. It reports the applied figure and nothing else -- no trade, sanctions or
+    intervention consequence exists in W1."""
+    return (
+        "Foreign wars raised security anxiety: legitimacy "
+        f"{_format_bps_delta(int(params['security_contribution_bps']))}."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -452,6 +535,12 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "impeachment_succeeded": _render_impeachment_succeeded,
     "constitutional_amendment_enacted": _render_constitutional_amendment_enacted,
     "peaceful_liberalization_completed": _render_peaceful_liberalization_completed,
+    "foreign_conflict_outbreak": _render_foreign_conflict_outbreak,
+    "foreign_conflict_progressed": _render_foreign_conflict_progressed,
+    "foreign_conflict_ceasefire_entered": _render_foreign_conflict_ceasefire_entered,
+    "foreign_conflict_ceasefire_broke_down": _render_foreign_conflict_ceasefire_broke_down,
+    "foreign_conflict_terminated": _render_foreign_conflict_terminated,
+    "foreign_security_anxiety_applied": _render_foreign_security_anxiety_applied,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -666,6 +755,120 @@ def _print_baseline_relationships(politics: PoliticalState) -> None:
         )
 
 
+def _conflict_display_name(
+    country_id: str, foreign_profiles: dict[str, ForeignProfileState]
+) -> str:
+    """`Display Name (id)` when the id is an authored foreign profile, bare `id` otherwise.
+
+    The id is always shown so two actors that happen to share a display name stay distinguishable.
+    A conflict whose participant has no profile entry is invalid state, caught by
+    `validate_history`/invariants rather than normalised away here -- this falls back to the bare
+    id so `inspect` can still *report* on an invalid save (its whole point) instead of crashing.
+    """
+    profile = foreign_profiles.get(country_id)
+    if profile is None:
+        return country_id
+    return f"{profile.display_name} ({country_id})"
+
+
+def _print_one_conflict(conflict: ForeignConflictState, world: WorldState) -> None:
+    """One conflict's stored W1 facts. Every value is read from the conflict itself, except
+    display names (`foreign_profiles`) and security exposure (the originating dyad) -- neither is
+    ever inferred from an id, a name or adjacency."""
+    profiles = world.foreign_profiles
+    print(f"    {conflict.conflict_id}")
+    print(
+        f"      status:            {_CONFLICT_STATUS_LABELS[conflict.status]}"
+        f"   opened turn {conflict.opened_turn}"
+    )
+    # Roles are read from the explicit stored fields, NEVER inferred from canonical a/b ordering.
+    print(f"      aggressor:         {_conflict_display_name(conflict.aggressor, profiles)}")
+    print(f"      defender:          {_conflict_display_name(conflict.defender, profiles)}")
+    print(
+        f"      war aims:          "
+        f"{_conflict_display_name(conflict.country_a, profiles)}"
+        f" — {_WAR_AIM_LABELS[conflict.aim_a]}"
+    )
+    print(
+        f"                         "
+        f"{_conflict_display_name(conflict.country_b, profiles)}"
+        f" — {_WAR_AIM_LABELS[conflict.aim_b]}"
+    )
+    print(
+        f"      war capability:    "
+        f"A {_bps_to_percent_str(conflict.war_capability_a_bps)}"
+        f"   B {_bps_to_percent_str(conflict.war_capability_b_bps)}"
+    )
+    print(
+        f"      position:          {_format_bps_delta(conflict.position_bps)}"
+        "   (positive favours A, negative favours B)"
+    )
+    print(f"      intensity:         {_bps_to_percent_str(conflict.intensity_bps)}")
+    print(
+        f"      exhaustion:        "
+        f"A {_bps_to_percent_str(conflict.exhaustion_a_bps)}"
+        f"   B {_bps_to_percent_str(conflict.exhaustion_b_bps)}"
+    )
+    print(f"      readiness:         {_bps_to_percent_str(conflict.negotiation_readiness_bps)}")
+    if conflict.status is ConflictStatus.CEASEFIRE:
+        print(f"      ceasefire held:    {conflict.ceasefire_run_turns} turn(s)")
+    if conflict.status in TERMINAL_STATUSES:
+        print(f"      resolved:          turn {conflict.resolved_turn}")
+    # Authored player exposure lives on the originating dyad, not the conflict. A conflict whose
+    # dyad has been removed from authored content still renders; it simply has no exposure to
+    # report, which is stated rather than guessed at.
+    exposure = next(
+        (
+            dyad.player_security_exposure_bps
+            for dyad in world.dyads
+            if (dyad.country_a, dyad.country_b) == (conflict.country_a, conflict.country_b)
+        ),
+        None,
+    )
+    if exposure is None:
+        print("      player exposure:   (no authored dyad for this pair)")
+    else:
+        print(
+            f"      player exposure:   {_bps_to_percent_str(exposure)}"
+            "   (authored security exposure; W1 models no trade or economic exposure)"
+        )
+
+
+def _print_conflicts(world: WorldState) -> None:
+    """(External Wars W1, §14) `inspect --conflicts`: the current authoritative foreign-conflict
+    state, read directly from state. Strictly read-only observation -- no turn is resolved, no RNG
+    is consumed and nothing is written, so this can never change what the next resolved turn does.
+
+    Iterates `world.conflicts` in its stored order, which `WorldState` already validates to be
+    canonical `conflict_id` order; re-sorting here would hide a non-canonical save that the
+    validator is supposed to reject. Live and concluded conflicts are separated because the two
+    answer different questions -- what is happening now, and what already happened -- and terminal
+    conflicts are permanent history that stays inspectable rather than being filtered out for
+    consuming no concurrency capacity.
+
+    Shows only what W1 actually models. There is deliberately no mediation, neutrality, sanctions,
+    aid, trade, war authorization, join/withdraw, unit, casualty, territory or alliance display:
+    none of those exist in this gate, and rendering a placeholder for them would advertise
+    capabilities the player does not have.
+    """
+    live = [c for c in world.conflicts if c.status not in TERMINAL_STATUSES]
+    concluded = [c for c in world.conflicts if c.status in TERMINAL_STATUSES]
+
+    if not world.conflicts:
+        print("  foreign conflicts:   none — no foreign conflicts recorded")
+        return
+
+    print("  foreign conflicts:")
+    if live:
+        print(f"    live ({len(live)}):")
+        for conflict in live:
+            _print_one_conflict(conflict, world)
+    if concluded:
+        print(f"    concluded ({len(concluded)}):")
+        for conflict in concluded:
+            _print_one_conflict(conflict, world)
+
+
 def _cmd_inspect(args: argparse.Namespace) -> int:
     path = Path(args.state)
     save = _read_save(path)
@@ -814,6 +1017,12 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
             _print_baseline_relationships(politics)
         if args.institutions:
             _print_institutions(player.institutions)
+
+    # Deliberately OUTSIDE the `player.politics is not None` block above: foreign conflicts are
+    # world-level state between foreign actors, not player politics, so a save whose player has
+    # no politics block can still be asked about them.
+    if args.conflicts:
+        _print_conflicts(current.world)
 
     if problems:
         print(f"  integrity:           INVALID ({len(problems)} problem(s))")
@@ -1266,6 +1475,43 @@ def _print_constitutional_amendment_report(amendment: ConstitutionalAmendmentRep
         print("      qualifies as a liberalization transition: pending_liberalization set")
 
 
+def _print_foreign_affairs_report(foreign_affairs: ForeignAffairsReport) -> None:
+    """(External Wars W1, §14) This turn's outbreak draw and every live conflict's progression
+    row. Wired into BOTH `_print_report` and `_cmd_history`'s inline list from this single shared
+    helper -- never a second inline copy, the Phase 3A dual-wiring trap the frozen plan names
+    explicitly, and the reason every domain block since has been a shared function.
+
+    Progression rows are printed in `report.progressions` order, which `ForeignAffairsReport`
+    already validates to be canonical `conflict_id` order.
+    """
+    outbreak = foreign_affairs.outbreak
+    print("    foreign affairs:")
+    print(
+        f"      outbreak draw:     {outbreak.occurrence_draw} vs probability "
+        f"{_bps_to_percent_str(outbreak.clamped_probability_bps)} "
+        f"({len(outbreak.candidates)} eligible candidate(s))"
+    )
+    if outbreak.occurred:
+        print(f"      war broke out:     {outbreak.conflict_id}")
+    else:
+        print("      war broke out:     no")
+    for row in foreign_affairs.progressions:
+        transition = (
+            _CONFLICT_STATUS_LABELS[row.opening_status]
+            if row.opening_status is row.closing_status
+            else (
+                f"{_CONFLICT_STATUS_LABELS[row.opening_status]} -> "
+                f"{_CONFLICT_STATUS_LABELS[row.closing_status]}"
+            )
+        )
+        floor_note = " (intensity floor applied)" if row.active_intensity_floor_applied else ""
+        print(
+            f"      {row.conflict_id}: {transition}, intensity "
+            f"{_bps_to_percent_str(row.closing_intensity_bps)}, position "
+            f"{_format_bps_delta(row.closing_position_bps)}{floor_note}"
+        )
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
@@ -1294,6 +1540,8 @@ def _print_report(report: TurnReport) -> None:
         _print_election_report(report.election)
     if report.constitutional_amendment is not None:
         _print_constitutional_amendment_report(report.constitutional_amendment)
+    if report.foreign_affairs is not None:
+        _print_foreign_affairs_report(report.foreign_affairs)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -1431,6 +1679,11 @@ def _cmd_history(args: argparse.Namespace) -> int:
             # Same discipline again (Phase 3C, Gate 3C3): the SAME shared helper `_print_report`
             # uses.
             _print_constitutional_amendment_report(report.constitutional_amendment)
+        if report.foreign_affairs is not None:
+            # Same discipline again (External Wars W1): the SAME shared helper `_print_report`
+            # uses. The frozen plan calls this dual wiring out by name, so both call sites carry
+            # their own independent test.
+            _print_foreign_affairs_report(report.foreign_affairs)
     return 0
 
 
@@ -1488,6 +1741,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="also show every authored institution's strict-bps metrics (loyalty, power, "
         "competence, corruption), read directly from state (Phase 3C, Gate 3C2) -- the coup "
         "channel's own inputs",
+    )
+    p_inspect.add_argument(
+        "--conflicts",
+        action="store_true",
+        help="also show the current foreign conflicts between foreign actors (External Wars "
+        "Gate W1), read directly from state: status, opened turn, explicit aggressor and "
+        "defender, each side's authored war aim, position, intensity, exhaustion, negotiation "
+        "readiness, and the authored player security exposure of the originating dyad. "
+        "Read-only observation of wars the player does not fight in and cannot yet act on",
     )
     p_inspect.set_defaults(func=_cmd_inspect)
 

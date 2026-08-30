@@ -87,6 +87,18 @@ REASON_LABELS: dict[str, str] = {
     "impeachment_succeeded": "The impeachment succeeded.",
     "constitutional_amendment_enacted": "The constitution was amended.",
     "peaceful_liberalization_completed": "Peaceful liberalization completed.",
+    # External Wars W1. Labels only -- no endpoint, field, type or payload shape changes, and no
+    # OpenAPI change. These six ids are already emitted by the engine; before they were labelled
+    # here they reached clients as the `[reason_id]` placeholder `label_for` falls back to, which
+    # this module's own key-set assertion exists to prevent. Each states what happened between
+    # two FOREIGN actors and promises the player no action: W1 has no diplomacy, trade,
+    # intervention or military mechanics.
+    "foreign_conflict_outbreak": "A war broke out between two foreign countries.",
+    "foreign_conflict_progressed": "A foreign war continued.",
+    "foreign_conflict_ceasefire_entered": "A foreign war paused in a ceasefire.",
+    "foreign_conflict_ceasefire_broke_down": "A foreign ceasefire broke down.",
+    "foreign_conflict_terminated": "A foreign war ended.",
+    "foreign_security_anxiety_applied": "Foreign wars raised security anxiety at home.",
 }
 
 

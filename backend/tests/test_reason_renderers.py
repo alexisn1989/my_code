@@ -5,6 +5,8 @@ than a crash or a wrong display.
 
 from __future__ import annotations
 
+import pytest
+
 from app.cli import REASON_RENDERERS, render_entry
 from app.content.scenarios import load_scenario_file
 from app.simulation.decisions import (
@@ -153,6 +155,34 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "route": "legislative",
     },
     "peaceful_liberalization_completed": {"turn": 11},
+    # External Wars W1 (commit 10). Params are ids, enums and integers -- never prose.
+    "foreign_conflict_outbreak": {
+        "country_a": "kessia",
+        "country_b": "vetruska",
+        "aggressor": "vetruska",
+        "conflict_id": "kessia__vetruska__t7",
+    },
+    "foreign_conflict_progressed": {
+        "conflict_id": "kessia__vetruska__t7",
+        "closing_status": "active",
+        "closing_intensity_bps": 2_500,
+    },
+    "foreign_conflict_ceasefire_entered": {
+        "conflict_id": "kessia__vetruska__t7",
+        "closing_status": "ceasefire",
+        "closing_intensity_bps": 1_875,
+    },
+    "foreign_conflict_ceasefire_broke_down": {
+        "conflict_id": "kessia__vetruska__t7",
+        "closing_status": "active",
+        "closing_intensity_bps": 250,
+    },
+    "foreign_conflict_terminated": {
+        "conflict_id": "kessia__vetruska__t7",
+        "closing_status": "settled",
+        "closing_intensity_bps": 0,
+    },
+    "foreign_security_anxiety_applied": {"security_contribution_bps": -108},
 }
 
 
@@ -537,3 +567,78 @@ def test_a_mixed_turn_emits_both_the_vote_and_the_ledger_reason() -> None:
     assert ledger_entry.params["total_committed"] == 262
     assert ledger_entry.params["legislative_committed"] == 162
     assert ledger_entry.params["relationship_committed"] == 100
+
+
+# --- External Wars W1 (commit 10): the six foreign-affairs reason IDs ----------
+
+
+@pytest.mark.parametrize(
+    "reason_id",
+    [
+        "foreign_conflict_outbreak",
+        "foreign_conflict_progressed",
+        "foreign_conflict_ceasefire_entered",
+        "foreign_conflict_ceasefire_broke_down",
+        "foreign_conflict_terminated",
+        "foreign_security_anxiety_applied",
+    ],
+)
+def test_foreign_renderer_with_missing_params_falls_back_instead_of_raising(
+    reason_id: str,
+) -> None:
+    """Frozen plan §13 requires a missing-params fallback test per foreign reason ID: a malformed
+    stored entry must produce a visibly-labeled fallback, never a crash and never a wrong claim."""
+    entry = TurnReportEntry(category="foreign_affairs", reason_id=reason_id, params={})
+    rendered = render_entry(entry)
+    assert f"error rendering reason_id={reason_id!r}" in rendered
+
+
+def test_foreign_conflict_renderers_reject_an_unknown_status_visibly() -> None:
+    """A stored `closing_status` that is not a real `ConflictStatus` must fall back rather than
+    print an invented label."""
+    entry = TurnReportEntry(
+        category="foreign_affairs",
+        reason_id="foreign_conflict_progressed",
+        params={
+            "conflict_id": "kessia__vetruska__t7",
+            "closing_status": "surrendered",
+            "closing_intensity_bps": 100,
+        },
+    )
+    assert "error rendering reason_id='foreign_conflict_progressed'" in render_entry(entry)
+
+
+def test_foreign_security_anxiety_renders_a_negative_contribution_as_a_cost() -> None:
+    entry = TurnReportEntry(
+        category="foreign_affairs",
+        reason_id="foreign_security_anxiety_applied",
+        params={"security_contribution_bps": -108},
+    )
+    rendered = render_entry(entry)
+    assert "-1.08pp" in rendered
+    assert "security anxiety" in rendered
+
+
+def test_real_resolver_output_never_hits_the_fallback_foreign_affairs() -> None:
+    """The real-resolver emission test frozen plan §13 requires. Resolves far enough for
+    `decree_state` seed 42 to open a war, then proves every emitted foreign reason_id renders --
+    before commit 10 these hit `render_entry`'s fallback and printed a raw Python dict."""
+    state = load_scenario_file(SCENARIO_DIR / "decree_state.yaml").model_copy(update={"seed": 42})
+    seen: set[str] = set()
+    for _ in range(14):
+        decisions = DecisionSet(
+            expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
+        )
+        resolution = resolve_turn(state, decisions)
+        for entry in resolution.report.entries:
+            if entry.category == "foreign_affairs":
+                seen.add(entry.reason_id)
+                assert entry.reason_id in REASON_RENDERERS
+                rendered = render_entry(entry)
+                assert "unrendered" not in rendered
+                assert "error rendering" not in rendered
+        state = resolution.state
+
+    assert "foreign_conflict_outbreak" in seen
+    assert "foreign_conflict_progressed" in seen
+    assert "foreign_security_anxiety_applied" in seen
