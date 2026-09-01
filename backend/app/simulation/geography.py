@@ -51,16 +51,18 @@ SHAPE_POLYGON_CLOSING_VERTEX_REPEATED = "shape_polygon_closing_vertex_repeated"
 SHAPE_POLYGON_REPEATS_VERTEX = "shape_polygon_repeats_vertex"
 SHAPE_POLYGON_ZERO_AREA = "shape_polygon_zero_area"
 
-MAP_CONSTRUCTION_CODES: frozenset[str] = frozenset({
-    ROUTE_SELF_EDGE,
-    ROUTE_DUPLICATE,
-    ROUTE_NOT_CANONICAL,
-    SHAPE_ID_DUPLICATE,
-    SHAPE_NOT_CANONICAL,
-    SHAPE_POLYGON_CLOSING_VERTEX_REPEATED,
-    SHAPE_POLYGON_REPEATS_VERTEX,
-    SHAPE_POLYGON_ZERO_AREA,
-})
+MAP_CONSTRUCTION_CODES: frozenset[str] = frozenset(
+    {
+        ROUTE_SELF_EDGE,
+        ROUTE_DUPLICATE,
+        ROUTE_NOT_CANONICAL,
+        SHAPE_ID_DUPLICATE,
+        SHAPE_NOT_CANONICAL,
+        SHAPE_POLYGON_CLOSING_VERTEX_REPEATED,
+        SHAPE_POLYGON_REPEATS_VERTEX,
+        SHAPE_POLYGON_ZERO_AREA,
+    }
+)
 """Every construction code M0 can emit. `test_geography.py` asserts that each member is
 reachable by a real constructor call, so a code that stops firing fails the suite instead of
 lingering as dead documentation."""

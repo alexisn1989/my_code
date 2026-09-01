@@ -54,16 +54,21 @@ class TestEnums:
 
 class TestConstructionCodes:
     def test_map_construction_codes_contains_exactly_the_eight_named_constants(self) -> None:
-        assert frozenset({
-            ROUTE_SELF_EDGE,
-            ROUTE_DUPLICATE,
-            ROUTE_NOT_CANONICAL,
-            SHAPE_ID_DUPLICATE,
-            SHAPE_NOT_CANONICAL,
-            SHAPE_POLYGON_CLOSING_VERTEX_REPEATED,
-            SHAPE_POLYGON_REPEATS_VERTEX,
-            SHAPE_POLYGON_ZERO_AREA,
-        }) == MAP_CONSTRUCTION_CODES
+        assert (
+            frozenset(
+                {
+                    ROUTE_SELF_EDGE,
+                    ROUTE_DUPLICATE,
+                    ROUTE_NOT_CANONICAL,
+                    SHAPE_ID_DUPLICATE,
+                    SHAPE_NOT_CANONICAL,
+                    SHAPE_POLYGON_CLOSING_VERTEX_REPEATED,
+                    SHAPE_POLYGON_REPEATS_VERTEX,
+                    SHAPE_POLYGON_ZERO_AREA,
+                }
+            )
+            == MAP_CONSTRUCTION_CODES
+        )
 
     def test_every_construction_code_is_a_distinct_nonempty_string(self) -> None:
         assert len(MAP_CONSTRUCTION_CODES) == 8
