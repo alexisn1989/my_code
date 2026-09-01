@@ -70,6 +70,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
+from app.core.canonical_json import canonical_dumps
 from app.core.money import BPS_DENOMINATOR
 from app.core.politics import (
     RELATIONSHIP_DECAY_DENOMINATOR,
@@ -3095,3 +3096,53 @@ def reconcile_foreign_affairs_report(
         )
 
     return problems
+
+
+def reconcile_strategic_map_staticness(
+    *, opening_state: GameState, closing_state: GameState
+) -> list[str]:
+    """Group 53 -- the strategic map is authoritative authored content and is IMMUTABLE during a
+    campaign (Strategic Military Map, Gate M0).
+
+    No phase writes it, so ANY difference between a history entry's opening and closing map is
+    either an engine bug or a tampered save. Never raises: every failure is a returned problem
+    string, matching both existing reconcilers.
+
+    Takes no `report` argument. M0 adds no report, and a staticness check has nothing to compare
+    a report against -- inventing a parameter to look symmetrical would be dishonest signature
+    design.
+    """
+    opening_map = opening_state.world.strategic_map
+    closing_map = closing_state.world.strategic_map
+
+    # Unreachable in a valid 0.14.0 state -- `WorldState.strategic_map` is required, with no
+    # default and no `| None`. Guarded anyway: every comparison in this module is on
+    # already-parsed models, and a `model_construct`-bypassed or hand-corrupted instance could
+    # still smuggle `None` through. A problem string, not an AttributeError, is what "never
+    # raises" means here.
+    if closing_map is None:
+        return [
+            "strategic map missing from the closing state (the field is required; a state "
+            "that reached reconciliation without one is malformed)"
+        ]
+    if opening_map is None:
+        return [
+            "strategic map missing from the opening state (the field is required; a state "
+            "that reached reconciliation without one is malformed)"
+        ]
+
+    if opening_map.map_id != closing_map.map_id:
+        return [
+            "strategic map changed during turn resolution: opening map_id "
+            f"{opening_map.map_id!r} != closing map_id {closing_map.map_id!r}"
+        ]
+
+    opening_bytes = canonical_dumps(opening_map.model_dump(mode="json"))
+    closing_bytes = canonical_dumps(closing_map.model_dump(mode="json"))
+    if opening_bytes != closing_bytes:
+        return [
+            "strategic map changed during turn resolution: canonical map bytes differ (the "
+            "strategic map is authored, immutable content and no phase may write it)"
+        ]
+
+    return []

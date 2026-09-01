@@ -66,6 +66,7 @@ from app.simulation.invariants import check_invariants
 from app.simulation.reconciliation import (
     reconcile_foreign_affairs_report,
     reconcile_political_legislative_and_survival_report,
+    reconcile_strategic_map_staticness,
 )
 from app.simulation.report import TurnReport
 from app.simulation.resolver import resolve_turn
@@ -390,6 +391,20 @@ def validate_history(save: GameSave) -> list[str]:
                     opening_state=previous_state_model,
                     closing_state=state_model,
                     report=report_model,
+                )
+            )
+        # Strategic Military Map Gate M0, commit 5 (group 53): a third, independent entrypoint,
+        # deliberately in its OWN guard rather than nested in the block above -- it takes no
+        # `report` argument (staticness is a pure state-to-state property), so it must not be
+        # suppressed on a turn whose report_json happens to be malformed. A tampered map paired
+        # with a tampered report should still be caught here even though the report-dependent
+        # reconcilers above cannot run on that turn.
+        if index > 0 and previous_state_model is not None and state_model is not None:
+            problems.extend(
+                f"turn {entry.turn}: {problem}"
+                for problem in reconcile_strategic_map_staticness(
+                    opening_state=previous_state_model,
+                    closing_state=state_model,
                 )
             )
         if concluded_at is not None:
