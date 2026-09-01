@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.13.0"
+content_version: "0.14.0"
 seed: 42
 player_country_id: arken
 
@@ -44,6 +44,74 @@ dyads:
     aim_a: deterrence
     aim_b: territorial
     player_security_exposure_bps: 2000
+
+# Strategic Military Map Gate M0: the campaign's defining map. Presentation-only
+# fields (centroid_x/centroid_y/label_anchor, polygon vertices) are read by the map
+# projection and renderer only -- no formula, phase or RNG stream may reference them.
+strategic_map:
+  map_id: arken_basin
+  capital_theater_id: arken_capital
+  theaters:
+    arken_capital:
+      display_name: Arken Capital Region
+      kind: land
+      owner: {kind: player_country, country_id: arken}
+      presentation: {centroid_x: 1900, centroid_y: 3200, label_anchor: center}
+    arken_coast:
+      display_name: Arken Coast
+      kind: coastal
+      owner: {kind: player_country, country_id: arken}
+      presentation: {centroid_x: 1200, centroid_y: 5200, label_anchor: w}
+    arken_north:
+      display_name: Northern March
+      kind: land
+      owner: {kind: player_country, country_id: arken}
+      presentation: {centroid_x: 2200, centroid_y: 1900, label_anchor: n}
+    kessia_south:
+      display_name: Southern Kessia
+      kind: land
+      owner: {kind: foreign_profile, foreign_profile_id: kessia}
+      presentation: {centroid_x: 5400, centroid_y: 3800, label_anchor: center}
+    vetruska_frontier:
+      display_name: Vetruskan Frontier
+      kind: land
+      owner: {kind: foreign_profile, foreign_profile_id: vetruska}
+      presentation: {centroid_x: 8200, centroid_y: 3500, label_anchor: e}
+  routes:
+  - {from_theater: arken_capital, to_theater: arken_coast, kind: land}
+  - {from_theater: arken_capital, to_theater: arken_north, kind: land}
+  - {from_theater: arken_coast, to_theater: arken_capital, kind: land}
+  - {from_theater: arken_north, to_theater: arken_capital, kind: land}
+  - {from_theater: arken_north, to_theater: kessia_south, kind: land}
+  - {from_theater: kessia_south, to_theater: arken_north, kind: land}
+  - {from_theater: kessia_south, to_theater: vetruska_frontier, kind: land}
+  - {from_theater: vetruska_frontier, to_theater: kessia_south, kind: land}
+  shapes:
+  - shape_id: shape_arken
+    owner: {kind: player_country, country_id: arken}
+    polygon:
+    - [500, 2000]
+    - [2200, 1200]
+    - [3800, 2000]
+    - [3600, 5200]
+    - [1800, 6200]
+    - [500, 4800]
+  - shape_id: shape_kessia
+    owner: {kind: foreign_profile, foreign_profile_id: kessia}
+    polygon:
+    - [4200, 1800]
+    - [6200, 1500]
+    - [6800, 3600]
+    - [5600, 5400]
+    - [4100, 4400]
+  - shape_id: shape_vetruska
+    owner: {kind: foreign_profile, foreign_profile_id: vetruska}
+    polygon:
+    - [7200, 1800]
+    - [9200, 2200]
+    - [9400, 4600]
+    - [7800, 5200]
+    - [7000, 3600]
 
 countries:
   - id: arken

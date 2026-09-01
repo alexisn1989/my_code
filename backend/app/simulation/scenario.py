@@ -40,6 +40,7 @@ from app.simulation.state import (
     CountryState,
     ForeignProfileState,
     GameState,
+    StrategicMapState,
     WorldState,
 )
 
@@ -64,6 +65,10 @@ class ScenarioDefinition(BaseModel):
     dyads: list[ConflictDyadState] = []
     """External Wars Gate W1: authored bilateral relationships (`ConflictDyadState`'s
     docstring)."""
+    strategic_map: StrategicMapState
+    """Strategic Military Map Gate M0: the campaign's defining map (`StrategicMapState`'s
+    docstring). Required, matching `WorldState.strategic_map` -- every scenario authors its own
+    map; there is no default map to fall back to."""
 
 
 def _parse(source: str, raw_text: str) -> ScenarioDefinition:
@@ -115,6 +120,7 @@ def _to_game_state(source: str, scenario: ScenarioDefinition) -> GameState:
             # rejects a non-canonically-ordered tuple rather than silently normalizing it
             # (reject-not-normalize, matching `resource_deposits`'s policy).
             dyads=tuple(scenario.dyads),
+            strategic_map=scenario.strategic_map,
         ),
     )
 

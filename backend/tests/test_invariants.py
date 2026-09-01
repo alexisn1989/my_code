@@ -150,9 +150,15 @@ def test_incorrect_player_country_reference_is_a_violation_not_a_finance_check()
     state = make_game_state(countries={"a": country}, player_country_id="a")
     state.world.player_country_id = "does-not-exist"
 
+    # Strategic Military Map Gate M0: `make_game_state`'s default map's capital is owned by
+    # a `PlayerCountryRef(country_id="a")` -- genuinely correct at construction time. Mutating
+    # `player_country_id` alone (not the map) desyncs that reference for real, so
+    # `map_player_ref_not_player` firing here is a second GENUINE violation, not a false
+    # positive -- the property this test actually guards (no misleading
+    # `player_finance_required`) still holds alongside it.
     violations = check_invariants(state)
     codes = {v.code for v in violations}
-    assert codes == {"unknown_player_country"}
+    assert codes == {"unknown_player_country", "map_player_ref_not_player"}
 
 
 def test_player_finance_uses_the_shared_finance_factory() -> None:

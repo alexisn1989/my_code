@@ -1,17 +1,20 @@
 """Tests for `app.simulation.geography` — the strategic map's pure enums, identifier/coordinate
-types, construction-layer error codes and the two pure helpers (Strategic Military Map, Gate M0
-commit 3).
+types, construction-layer error codes and the two pure helpers (Strategic Military Map, Gate M0),
+plus the construction-validator tests for `RouteState`/`CountryShapeState`/`StrategicMapState`.
 
-The Pydantic models that USE these types (`RouteState`, `CountryShapeState`, `StrategicMapState`)
-live in `app.simulation.state` and land in a later commit; their construction-validator tests are
-appended to this file once those models exist, matching the plan's test-matrix mapping of every
-map construction code to `test_geography.py`.
+Those three Pydantic models live in `app.simulation.state`, not here (`geography.py` cannot
+import them without a circular import -- see `DirectedEdge`'s docstring), but their tests live in
+this file per the plan's test-matrix mapping of every map construction code to
+`test_geography.py`.
 """
 
 from __future__ import annotations
 
 import math
 import random
+
+import pytest
+from pydantic import ValidationError
 
 from app.simulation.geography import (
     MAP_CONSTRUCTION_CODES,
@@ -29,6 +32,15 @@ from app.simulation.geography import (
     TheaterKind,
     outgoing_and_incoming,
     shoelace_doubled_area,
+)
+from app.simulation.state import (
+    CountryShapeState,
+    ForeignProfileRef,
+    PlayerCountryRef,
+    RouteState,
+    StrategicMapState,
+    TheaterPresentation,
+    TheaterState,
 )
 
 
@@ -175,3 +187,276 @@ class TestOutgoingAndIncoming:
 class TestGridBounds:
     def test_map_grid_max_is_ten_thousand(self) -> None:
         assert MAP_GRID_MAX == 10_000
+
+
+# ===========================================================================
+# Construction-validator tests for RouteState/CountryShapeState/StrategicMapState
+# (Strategic Military Map, Gate M0 commit 4).
+# ===========================================================================
+
+
+def _presentation() -> TheaterPresentation:
+    return TheaterPresentation(centroid_x=1, centroid_y=1, label_anchor=LabelAnchor.CENTER)
+
+
+def _theater(owner_country_id: str = "arken") -> TheaterState:
+    return TheaterState(
+        display_name="Capital",
+        kind=TheaterKind.LAND,
+        owner=PlayerCountryRef(country_id=owner_country_id),
+        presentation=_presentation(),
+    )
+
+
+def _shape(shape_id: str = "s", owner_country_id: str = "arken") -> CountryShapeState:
+    return CountryShapeState(
+        shape_id=shape_id,
+        owner=PlayerCountryRef(country_id=owner_country_id),
+        polygon=((0, 0), (10, 0), (10, 10), (0, 10)),
+    )
+
+
+class TestRouteSelfEdge:
+    def test_self_edge_route_is_rejected_with_the_route_self_edge_code(self) -> None:
+        with pytest.raises(ValidationError) as exc_info:
+            RouteState(from_theater="a", to_theater="a", kind=RouteKind.LAND)
+        assert ROUTE_SELF_EDGE in str(exc_info.value)
+
+    def test_distinct_endpoints_are_accepted(self) -> None:
+        route = RouteState(from_theater="a", to_theater="b", kind=RouteKind.LAND)
+        assert route.from_theater == "a"
+        assert route.to_theater == "b"
+
+
+class TestPlayerCountryRefAndForeignProfileRef:
+    def test_player_country_ref_default_kind(self) -> None:
+        assert PlayerCountryRef(country_id="arken").kind == "player_country"
+
+    def test_foreign_profile_ref_default_kind(self) -> None:
+        assert ForeignProfileRef(foreign_profile_id="kessia").kind == "foreign_profile"
+
+
+class TestPolygonConstructionCodes:
+    def test_repeated_closing_vertex_is_rejected(self) -> None:
+        with pytest.raises(ValidationError) as exc_info:
+            CountryShapeState(
+                shape_id="s",
+                owner=PlayerCountryRef(country_id="arken"),
+                polygon=((0, 0), (10, 0), (10, 10), (0, 0)),
+            )
+        assert SHAPE_POLYGON_CLOSING_VERTEX_REPEATED in str(exc_info.value)
+
+    def test_duplicate_consecutive_vertex_is_rejected(self) -> None:
+        with pytest.raises(ValidationError) as exc_info:
+            CountryShapeState(
+                shape_id="s",
+                owner=PlayerCountryRef(country_id="arken"),
+                polygon=((0, 0), (5, 0), (5, 0), (10, 10)),
+            )
+        assert SHAPE_POLYGON_REPEATS_VERTEX in str(exc_info.value)
+
+    def test_zero_area_collinear_polygon_is_rejected(self) -> None:
+        with pytest.raises(ValidationError) as exc_info:
+            CountryShapeState(
+                shape_id="s",
+                owner=PlayerCountryRef(country_id="arken"),
+                polygon=((0, 0), (5, 0), (10, 0)),
+            )
+        assert SHAPE_POLYGON_ZERO_AREA in str(exc_info.value)
+
+    def test_fewer_than_three_vertices_is_a_pydantic_error(self) -> None:
+        with pytest.raises(ValidationError):
+            CountryShapeState(
+                shape_id="s",
+                owner=PlayerCountryRef(country_id="arken"),
+                polygon=((0, 0), (10, 0)),
+            )
+
+    def test_coordinate_out_of_range_is_a_pydantic_error(self) -> None:
+        with pytest.raises(ValidationError):
+            CountryShapeState(
+                shape_id="s",
+                owner=PlayerCountryRef(country_id="arken"),
+                polygon=((0, 0), (10, 0), (10, 10_001)),
+            )
+
+    def test_valid_polygon_is_accepted(self) -> None:
+        shape = CountryShapeState(
+            shape_id="s",
+            owner=PlayerCountryRef(country_id="arken"),
+            polygon=((0, 0), (10, 0), (10, 10), (0, 10)),
+        )
+        assert len(shape.polygon) == 4
+
+    def test_rings_differing_only_by_rotation_both_load_and_differ_in_stored_bytes(self) -> None:
+        original = CountryShapeState(
+            shape_id="s",
+            owner=PlayerCountryRef(country_id="arken"),
+            polygon=((0, 0), (10, 0), (10, 10), (0, 10)),
+        )
+        rotated = CountryShapeState(
+            shape_id="s",
+            owner=PlayerCountryRef(country_id="arken"),
+            polygon=((10, 0), (10, 10), (0, 10), (0, 0)),
+        )
+        assert original.polygon != rotated.polygon  # no rotation normalization
+
+    def test_winding_is_stored_as_authored_not_normalized(self) -> None:
+        ccw = CountryShapeState(
+            shape_id="s",
+            owner=PlayerCountryRef(country_id="arken"),
+            polygon=((0, 0), (10, 0), (10, 10), (0, 10)),
+        )
+        cw = CountryShapeState(
+            shape_id="s",
+            owner=PlayerCountryRef(country_id="arken"),
+            polygon=tuple(reversed(ccw.polygon)),
+        )
+        assert ccw.polygon != cw.polygon  # both loaded; neither was reordered
+
+
+class TestMapLevelDuplicateVsOrderingCodes:
+    def test_route_duplicate_fires_without_tripping_ordering(self) -> None:
+        # (a,b),(a,b) is already sorted, so ONLY the duplicate check can fire.
+        with pytest.raises(ValidationError) as exc_info:
+            StrategicMapState(
+                map_id="m",
+                capital_theater_id="a",
+                theaters={"a": _theater(), "b": _theater()},
+                routes=(
+                    RouteState(from_theater="a", to_theater="b", kind=RouteKind.LAND),
+                    RouteState(from_theater="a", to_theater="b", kind=RouteKind.LAND),
+                ),
+                shapes=(_shape(),),
+            )
+        message = str(exc_info.value)
+        assert ROUTE_DUPLICATE in message
+        assert ROUTE_NOT_CANONICAL not in message
+
+    def test_route_not_canonical_fires_without_any_duplicate(self) -> None:
+        # (b,a) then (a,b): two DISTINCT pairs, out of order -- no duplicate exists.
+        with pytest.raises(ValidationError) as exc_info:
+            StrategicMapState(
+                map_id="m",
+                capital_theater_id="a",
+                theaters={"a": _theater(), "b": _theater()},
+                routes=(
+                    RouteState(from_theater="b", to_theater="a", kind=RouteKind.LAND),
+                    RouteState(from_theater="a", to_theater="b", kind=RouteKind.LAND),
+                ),
+                shapes=(_shape(),),
+            )
+        message = str(exc_info.value)
+        assert ROUTE_NOT_CANONICAL in message
+        assert ROUTE_DUPLICATE not in message
+
+    def test_shape_id_duplicate_fires_without_tripping_ordering(self) -> None:
+        # ['s_a', 's_a'] is already sorted, so ONLY the duplicate check can fire.
+        with pytest.raises(ValidationError) as exc_info:
+            StrategicMapState(
+                map_id="m",
+                capital_theater_id="a",
+                theaters={"a": _theater()},
+                shapes=(_shape("s_a"), _shape("s_a")),
+            )
+        message = str(exc_info.value)
+        assert SHAPE_ID_DUPLICATE in message
+        assert SHAPE_NOT_CANONICAL not in message
+
+    def test_shape_not_canonical_fires_without_any_duplicate(self) -> None:
+        # ['s_b', 's_a']: two DISTINCT ids, out of order -- no duplicate exists.
+        with pytest.raises(ValidationError) as exc_info:
+            StrategicMapState(
+                map_id="m",
+                capital_theater_id="a",
+                theaters={"a": _theater()},
+                shapes=(_shape("s_b"), _shape("s_a")),
+            )
+        message = str(exc_info.value)
+        assert SHAPE_NOT_CANONICAL in message
+        assert SHAPE_ID_DUPLICATE not in message
+
+    def test_multiple_island_shapes_for_one_owner_are_accepted(self) -> None:
+        state_map = StrategicMapState(
+            map_id="m",
+            capital_theater_id="a",
+            theaters={"a": _theater()},
+            shapes=(_shape("s_a"), _shape("s_b")),
+        )
+        assert len(state_map.shapes) == 2
+
+
+class TestConstructionCodeReachability:
+    """Confirms every member of `MAP_CONSTRUCTION_CODES` is reachable by a real constructor
+    call -- so a code that stops firing fails this suite rather than lingering as dead
+    documentation, per `MAP_CONSTRUCTION_CODES`'s own docstring."""
+
+    def test_all_eight_codes_are_reachable(self) -> None:
+        reached: set[str] = set()
+
+        try:
+            RouteState(from_theater="a", to_theater="a", kind=RouteKind.LAND)
+        except ValidationError:
+            reached.add(ROUTE_SELF_EDGE)
+
+        for polygon, code in (
+            (((0, 0), (10, 0), (10, 10), (0, 0)), SHAPE_POLYGON_CLOSING_VERTEX_REPEATED),
+            (((0, 0), (5, 0), (5, 0), (10, 10)), SHAPE_POLYGON_REPEATS_VERTEX),
+            (((0, 0), (5, 0), (10, 0)), SHAPE_POLYGON_ZERO_AREA),
+        ):
+            try:
+                CountryShapeState(
+                    shape_id="s", owner=PlayerCountryRef(country_id="arken"), polygon=polygon
+                )
+            except ValidationError:
+                reached.add(code)
+
+        try:
+            StrategicMapState(
+                map_id="m",
+                capital_theater_id="a",
+                theaters={"a": _theater(), "b": _theater()},
+                routes=(
+                    RouteState(from_theater="a", to_theater="b", kind=RouteKind.LAND),
+                    RouteState(from_theater="a", to_theater="b", kind=RouteKind.LAND),
+                ),
+                shapes=(_shape(),),
+            )
+        except ValidationError:
+            reached.add(ROUTE_DUPLICATE)
+
+        try:
+            StrategicMapState(
+                map_id="m",
+                capital_theater_id="a",
+                theaters={"a": _theater(), "b": _theater()},
+                routes=(
+                    RouteState(from_theater="b", to_theater="a", kind=RouteKind.LAND),
+                    RouteState(from_theater="a", to_theater="b", kind=RouteKind.LAND),
+                ),
+                shapes=(_shape(),),
+            )
+        except ValidationError:
+            reached.add(ROUTE_NOT_CANONICAL)
+
+        try:
+            StrategicMapState(
+                map_id="m",
+                capital_theater_id="a",
+                theaters={"a": _theater()},
+                shapes=(_shape("s_a"), _shape("s_a")),
+            )
+        except ValidationError:
+            reached.add(SHAPE_ID_DUPLICATE)
+
+        try:
+            StrategicMapState(
+                map_id="m",
+                capital_theater_id="a",
+                theaters={"a": _theater()},
+                shapes=(_shape("s_b"), _shape("s_a")),
+            )
+        except ValidationError:
+            reached.add(SHAPE_NOT_CANONICAL)
+
+        assert reached == MAP_CONSTRUCTION_CODES

@@ -18,6 +18,7 @@ constraints and are checked separately by `simulation.invariants`.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Annotated, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -44,6 +45,23 @@ from app.core.quantity import (
 )
 from app.simulation.constitution import ConstitutionState, Legislature
 from app.simulation.foreign_conflict import TERMINAL_STATUSES, ConflictStatus, WarAim
+from app.simulation.geography import (
+    ROUTE_DUPLICATE,
+    ROUTE_NOT_CANONICAL,
+    ROUTE_SELF_EDGE,
+    SHAPE_ID_DUPLICATE,
+    SHAPE_NOT_CANONICAL,
+    SHAPE_POLYGON_CLOSING_VERTEX_REPEATED,
+    SHAPE_POLYGON_REPEATS_VERTEX,
+    SHAPE_POLYGON_ZERO_AREA,
+    LabelAnchor,
+    RouteKind,
+    StrictDisplayName,
+    StrictGridCoord,
+    StrictMapId,
+    TheaterKind,
+    shoelace_doubled_area,
+)
 from app.simulation.legislature import GovernmentRole, LegislativeChamber
 
 _STRICT_CONFIG = ConfigDict(extra="forbid", validate_assignment=True)
@@ -1149,6 +1167,207 @@ class ForeignConflictState(BaseModel):
         return self
 
 
+class PlayerCountryRef(BaseModel):
+    """Ownership by the player's own country. Resolves through `WorldState.countries`."""
+
+    model_config = _STRICT_CONFIG
+
+    kind: Literal["player_country"] = "player_country"
+    country_id: StrictMapId
+
+
+class ForeignProfileRef(BaseModel):
+    """Ownership by a W1 foreign actor. Resolves through `WorldState.foreign_profiles`.
+
+    Grants that profile no population, treasury, economy or politics -- a foreign profile stays
+    exactly what W1 made it, and owning map area does not upgrade it into a country.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    kind: Literal["foreign_profile"] = "foreign_profile"
+    foreign_profile_id: StrictMapId
+
+
+SovereignRef: TypeAlias = Annotated[
+    PlayerCountryRef | ForeignProfileRef, Field(discriminator="kind")
+]
+"""A tagged reference into the two EXISTING authoritative namespaces (Strategic Military Map,
+Gate M0).
+
+Deliberately NOT a third actor registry: a registry could disagree with `countries` /
+`foreign_profiles` about who exists and what they are called, and there would be no principled
+answer to which one is right. Discriminated on `kind`, matching every other tagged union in this
+codebase.
+"""
+
+
+class TheaterPresentation(BaseModel):
+    """Presentation only.
+
+    Read by the map projection and by the renderer; by NO formula, and by no validator that
+    decides legality. Enforced structurally by `test_map_presentation_boundary.py` and
+    behaviourally by `test_map_presentation_neutrality.py`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    centroid_x: StrictGridCoord
+    centroid_y: StrictGridCoord
+    label_anchor: LabelAnchor
+
+
+class TheaterState(BaseModel):
+    """One strategic theater: a military operating area, NOT a simulated province.
+
+    It has no population, budget, election, approval, tax base or city economy, and never will --
+    that is the Cities & Provinces expansion boundary.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    display_name: StrictDisplayName
+    kind: TheaterKind
+    owner: SovereignRef
+    presentation: TheaterPresentation
+
+    # NOTE: no `id` field. The `StrategicMapState.theaters` dict KEY is authoritative, so key and
+    # value can never disagree -- the same discipline as `ForeignProfileState` above.
+
+
+class RouteState(BaseModel):
+    """One DIRECTED mechanical adjacency (Strategic Military Map, Gate M0).
+
+    Two-way passage is TWO rows. There is no implicit symmetry, because implicit reciprocity is
+    exactly how a deliberately one-way or impassable-in-return edge silently becomes passable.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    from_theater: StrictMapId
+    to_theater: StrictMapId
+    kind: RouteKind
+
+    @model_validator(mode="after")
+    def _not_a_self_edge(self) -> RouteState:
+        """Emits `ROUTE_SELF_EDGE`."""
+        if self.from_theater == self.to_theater:
+            raise ValueError(
+                f"{ROUTE_SELF_EDGE}: route is a self-edge on theater {self.from_theater!r}"
+            )
+        return self
+
+
+class CountryShapeState(BaseModel):
+    """An authored fictional political outline (Strategic Military Map, Gate M0).
+
+    Presentation only. Polygon contact NEVER creates mechanical adjacency; only `RouteState`
+    does. Two shapes may share a border pixel-for-pixel and still have no route between their
+    theaters, and that is a legal, meaningful map.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    shape_id: StrictMapId
+    owner: SovereignRef
+    polygon: tuple[tuple[StrictGridCoord, StrictGridCoord], ...] = Field(min_length=3)
+
+    @model_validator(mode="after")
+    def _polygon_is_well_formed(self) -> CountryShapeState:
+        """Emits `SHAPE_POLYGON_CLOSING_VERTEX_REPEATED`, `SHAPE_POLYGON_REPEATS_VERTEX` or
+        `SHAPE_POLYGON_ZERO_AREA`.
+
+        Vertex representation: an OPEN RING stored in AUTHORED ORDER. The closing vertex is
+        implicit; repeating the first vertex at the end is REJECTED rather than trimmed, so there
+        is exactly one representation of a given ring outline.
+
+        NO rotation normalization and NO winding normalization is performed. Starting vertex and
+        winding direction are stored as authored, and two rings that differ only by rotation are
+        DIFFERENT authored values that serialize to different bytes.
+        """
+        if self.polygon[0] == self.polygon[-1]:
+            raise ValueError(
+                f"{SHAPE_POLYGON_CLOSING_VERTEX_REPEATED}: polygon repeats its first vertex "
+                f"as a closing vertex; rings are open"
+            )
+        for first, second in zip(self.polygon, self.polygon[1:], strict=False):
+            if first == second:
+                raise ValueError(
+                    f"{SHAPE_POLYGON_REPEATS_VERTEX}: polygon has a duplicate consecutive "
+                    f"vertex {first!r}"
+                )
+        if shoelace_doubled_area(self.polygon) == 0:
+            raise ValueError(f"{SHAPE_POLYGON_ZERO_AREA}: polygon encloses zero area")
+        return self
+
+
+class StrategicMapState(BaseModel):
+    """The authoritative strategic map (Strategic Military Map, Gate M0).
+
+    IMMUTABLE during a campaign: no M0 phase writes it, and `reconcile_strategic_map_staticness`
+    proves it byte-identical across every resolved turn.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    map_id: StrictMapId
+    capital_theater_id: StrictMapId
+    theaters: dict[StrictMapId, TheaterState] = Field(min_length=1)
+    """The authoritative theater registry, keyed by theater id.
+
+    The KEY is annotated `StrictMapId`, not bare `str`: the dict key is the authoritative
+    identifier (TheaterState carries no `id` field), so it must enforce exactly the same
+    nonempty / strict-string / max-length-64 rules as every other map identifier. A bare
+    `dict[str, ...]` would accept an empty key, a coerced non-string key, or a 4,000-character
+    key, and the fault would only surface later -- and only by accident -- if some route happened
+    to reference it. Validating the key at construction means an invalid key is impossible to
+    store, not merely likely to be noticed.
+    """
+    routes: tuple[RouteState, ...] = ()
+    shapes: tuple[CountryShapeState, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _routes_unique_and_ordered(self) -> StrategicMapState:
+        """Emits `ROUTE_DUPLICATE` or `ROUTE_NOT_CANONICAL`.
+
+        Two SEPARATE failures with two separate codes. Duplicates are checked FIRST and
+        independently of ordering, so each is reachable on its own: a duplicated pair such as
+        (a,b),(a,b) is already sorted and trips ONLY the duplicate check, while two distinct
+        pairs in the wrong order trip ONLY the ordering check.
+
+        Non-canonical order is REJECTED, never normalized -- the repository-wide rule for every
+        ordered collection.
+        """
+        keys = [(r.from_theater, r.to_theater, r.kind.value) for r in self.routes]
+        if len(set(keys)) != len(keys):
+            raise ValueError(f"{ROUTE_DUPLICATE}: duplicate route(s) in the map: {keys!r}")
+        if keys != sorted(keys):
+            raise ValueError(
+                f"{ROUTE_NOT_CANONICAL}: routes are not in canonical (from, to, kind) "
+                f"order: {keys!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _shapes_unique_and_ordered(self) -> StrategicMapState:
+        """Emits `SHAPE_ID_DUPLICATE` or `SHAPE_NOT_CANONICAL`.
+
+        Two SEPARATE failures, for the same reason as routes and reachable independently:
+        ['s_a', 's_a'] is sorted and trips ONLY the duplicate check; ['s_b', 's_a'] has no
+        duplicate and trips ONLY the ordering check.
+        """
+        shape_ids = [s.shape_id for s in self.shapes]
+        if len(set(shape_ids)) != len(shape_ids):
+            raise ValueError(
+                f"{SHAPE_ID_DUPLICATE}: duplicate shape_id(s) in the map: {shape_ids!r}"
+            )
+        if shape_ids != sorted(shape_ids):
+            raise ValueError(
+                f"{SHAPE_NOT_CANONICAL}: shapes are not in canonical shape_id order: {shape_ids!r}"
+            )
+        return self
+
+
 class WorldState(BaseModel):
     """All countries in the game world, plus which one the player controls.
 
@@ -1172,6 +1391,15 @@ class WorldState(BaseModel):
     `resource_deposits`' policy (ADR 0007 R3), not `sectors`' normalize-on-reorder one."""
     conflicts: tuple[ForeignConflictState, ...] = Field(default_factory=tuple)
     """Canonical by `conflict_id`, **reject-not-normalize**."""
+    strategic_map: StrategicMapState
+    """The campaign's defining strategic map (Strategic Military Map, Gate M0). REQUIRED: no
+    default, no `| None`.
+
+    A valid 0.14.0 game carries its map or fails construction. There is deliberately no synthetic
+    fallback map hidden inside the model -- a fallback would mean a save could silently lose its
+    map and still load, which is precisely the failure `reconcile_strategic_map_staticness` exists
+    to detect.
+    """
 
     @model_validator(mode="after")
     def _dyads_are_unique_and_canonically_ordered(self) -> WorldState:
@@ -1203,7 +1431,7 @@ class WorldState(BaseModel):
         return self
 
 
-RULESET_VERSION = "0.13.0"
+RULESET_VERSION = "0.14.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -1267,7 +1495,17 @@ consumed and could start a war a 0.12.0 turn's decisions never anticipated; `Tur
 from twelve reports to thirteen -- `foreign_affairs: ForeignAffairsReport` -- with no data in a
 0.12.0 save to reconstruct it from: a 0.12.0 turn never evaluated a foreign-conflict outbreak or
 progression at all. **No migration**: a 0.12.0 save has no dyads; synthesising a peaceful world
-would assert a fact the save does not contain. `SAVE_FORMAT_VERSION` stays `1`.
+would assert a fact the save does not contain. `SAVE_FORMAT_VERSION` stays `1`), and
+`docs/adr/0017-strategic-military-map-m0.md` (bumped `"0.13.0" -> "0.14.0"` for Strategic Military
+Map Gate M0: `WorldState` gains a REQUIRED `strategic_map: StrategicMapState`, with no map
+authored in any 0.13.0 save to backfill it from -- synthesising one would assert authored content
+(theater names, ownership, geometry) the save never contained, and there is no principled way to
+choose it. Unlike every prior bump, this one changes NO turn-resolution behavior at all: M0 adds
+no phase, no formula, no RNG stream and no report -- `reconcile_strategic_map_staticness` proves
+the map byte-identical across every resolved turn, so replaying 0.13.0-authored decisions under
+0.14.0 rules produces the identical turn. The bump exists purely because the new field is
+required, matching the schema-shape rationale of every ruleset bump above rather than a
+behavior-change one. `SAVE_FORMAT_VERSION` stays `1`.
 """
 
 

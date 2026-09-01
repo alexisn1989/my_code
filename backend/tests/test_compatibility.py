@@ -39,6 +39,12 @@ PHASE3B2B_SAVE_PATH = FIXTURES_DIR / "phase3b2b_save_ruleset_0.11.0.json"
 never wired into a rejection test here -- a pre-existing gap, not a Phase 3C defect, left flagged
 rather than silently bundled into this fix (the same "note, don't bundle" discipline
 `test_legislative_neutrality.py`'s TEST-1 note already documents elsewhere in this codebase)."""
+STRATEGIC_MAP_M0_SAVE_PATH = FIXTURES_DIR / "strategic_map_m0_save_ruleset_0.13.0.json"
+"""Frozen by the unmodified `"0.13.0"` engine (Strategic Military Map, Gate M0 commit 2) --
+before `strategic_map` existed as a concept, let alone a required field. This is the only save
+this build will ever be able to prove pre-parse rejection against for that missing field: once
+the `"0.14.0"` bump landed, every subsequently-generated `"0.13.0"` save became impossible to
+produce."""
 
 SCENARIOS_DIR = Path(__file__).resolve().parents[2] / "data" / "scenarios"
 
@@ -412,12 +418,14 @@ def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
     3C3 added too: a real `resolve_turn` call produces all twelve top-level Phase-3C reports,
     including `constitutional_amendment`, still true today even though `RULESET_VERSION` has
     since moved on again (External Wars Gate W1 bumped `"0.12.0" -> "0.13.0"` for its own,
-    unrelated thirteenth report) -- no *further* Phase-3C-specific bump was ever required."""
+    unrelated thirteenth report, and Strategic Military Map Gate M0 bumped `"0.13.0" -> "0.14.0"`
+    for a required map field with no report or turn-resolution change at all) -- no *further*
+    Phase-3C-specific bump was ever required."""
     from app.simulation.decisions import DecisionSet
     from app.simulation.resolver import resolve_turn
 
     state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
-    assert state.ruleset_version == RULESET_VERSION == "0.13.0"
+    assert state.ruleset_version == RULESET_VERSION == "0.14.0"
     decisions = DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
     )
@@ -455,7 +463,7 @@ def test_scenario_content_version_is_current(scenario_name: str) -> None:
     since it changes field TYPES (float -> strict bps) as well as adding/removing whole rows --
     not a case a line-level text rebuild can express cleanly."""
     state = load_scenario_file(SCENARIOS_DIR / scenario_name)
-    assert state.content_version == "0.13.0"
+    assert state.content_version == "0.14.0"
 
 
 @pytest.mark.parametrize(
@@ -546,3 +554,27 @@ def test_every_bloc_baseline_equals_its_opening_relationship(scenario_name: str)
                 f"{scenario_name}: {party.id}/{bloc.id} authored baseline does not match opening "
                 "relationship"
             )
+
+
+# --- Strategic Military Map Gate M0: the authentic 0.13.0 fixture is rejected --
+# --- before its (map-less) payload is ever parsed as current-shape state ------
+
+
+def test_frozen_strategic_map_m0_save_fixture_declares_the_old_ruleset_version() -> None:
+    raw = json.loads(STRATEGIC_MAP_M0_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.13.0"
+    assert raw["ruleset_version"] != RULESET_VERSION
+
+
+def test_strategic_map_m0_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
+    """Gate M0: rejected specifically via the ruleset-version gate, before `WorldState`
+    construction ever has a chance to fail on the missing required `strategic_map` field with a
+    raw `ValidationError` deep inside `GameState` validation -- the identical "clean rejection,
+    not an ugly crash" property every prior ruleset-version gate proves for its own fixture."""
+    raw_text = read_save_file(STRATEGIC_MAP_M0_SAVE_PATH)
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(raw_text, source=str(STRATEGIC_MAP_M0_SAVE_PATH))
+
+    message = str(exc_info.value)
+    assert "0.13.0" in message
+    assert RULESET_VERSION in message

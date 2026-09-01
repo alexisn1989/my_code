@@ -15,6 +15,7 @@ from app.simulation.constitution import (
     Legislature,
     TerritorialOrganization,
 )
+from app.simulation.geography import LabelAnchor, TheaterKind
 from app.simulation.legislature import GovernmentRole, LegislativeChamber
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
@@ -23,6 +24,7 @@ from app.simulation.state import (
     ChamberState,
     ConflictDyadState,
     ConstitutionState,
+    CountryShapeState,
     CountryState,
     EconomicBaselineState,
     EconomyState,
@@ -34,6 +36,7 @@ from app.simulation.state import (
     LegislativeBlocState,
     LegislatureState,
     PartyState,
+    PlayerCountryRef,
     PoliticalState,
     PopulationGroupState,
     ResourceCategory,
@@ -42,8 +45,11 @@ from app.simulation.state import (
     SectorCategory,
     SectorState,
     SpendingPlanState,
+    StrategicMapState,
     TaxBaseCoefficients,
     TaxPolicyState,
+    TheaterPresentation,
+    TheaterState,
     TreasuryState,
     WorldState,
 )
@@ -417,6 +423,39 @@ def make_country(
     )
 
 
+def make_minimal_strategic_map(player_country_id: str) -> StrategicMapState:
+    """A minimal, valid, one-theater strategic map (Strategic Military Map, Gate M0) owned by
+    `player_country_id`.
+
+    Written explicitly here rather than defaulted inside `StrategicMapState` -- the model has no
+    default map, on purpose (an absent map must fail construction, not silently synthesize one).
+    Every `make_game_state` call authors this same trivial map unless it passes its own, matching
+    how `countries` already works: a caller who needs real map content passes `world` directly.
+    """
+    capital_id = "capital"
+    return StrategicMapState(
+        map_id=f"{player_country_id}_test_map",
+        capital_theater_id=capital_id,
+        theaters={
+            capital_id: TheaterState(
+                display_name="Capital Region",
+                kind=TheaterKind.LAND,
+                owner=PlayerCountryRef(country_id=player_country_id),
+                presentation=TheaterPresentation(
+                    centroid_x=5_000, centroid_y=5_000, label_anchor=LabelAnchor.CENTER
+                ),
+            )
+        },
+        shapes=(
+            CountryShapeState(
+                shape_id=f"shape_{player_country_id}",
+                owner=PlayerCountryRef(country_id=player_country_id),
+                polygon=((4_000, 4_000), (6_000, 4_000), (6_000, 6_000), (4_000, 6_000)),
+            ),
+        ),
+    )
+
+
 def make_game_state(
     *,
     seed: int = 7,
@@ -427,6 +466,7 @@ def make_game_state(
     foreign_profiles: dict[str, ForeignProfileState] | None = None,
     dyads: tuple[ConflictDyadState, ...] = (),
     conflicts: tuple[ForeignConflictState, ...] = (),
+    strategic_map: StrategicMapState | None = None,
 ) -> GameState:
     """Build a minimal, valid `GameState` for unit tests that don't need YAML.
 
@@ -439,6 +479,11 @@ def make_game_state(
 
     `foreign_profiles`/`dyads`/`conflicts` (External Wars Gate W1) default to empty, matching
     `WorldState`'s own defaults, so every existing call site is unaffected.
+
+    `strategic_map` (Strategic Military Map, Gate M0) defaults to a minimal one-theater map owned
+    by `player_country_id`, via `make_minimal_strategic_map` -- `WorldState.strategic_map` has no
+    default of its own, so every existing call site needs an explicit map from somewhere, and
+    this is that somewhere.
     """
     if countries is None:
         politics = (
@@ -453,7 +498,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id, politics=politics)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.13.0",
+        content_version="0.14.0",
         seed=seed,
         turn=turn,
         state_version=state_version,
@@ -463,6 +508,7 @@ def make_game_state(
             foreign_profiles=foreign_profiles or {},
             dyads=dyads,
             conflicts=conflicts,
+            strategic_map=strategic_map or make_minimal_strategic_map(player_country_id),
         ),
     )
 

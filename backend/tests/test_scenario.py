@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.content.scenarios import load_scenario_file
+from app.core.canonical_json import canonical_digest
 from app.core.errors import ScenarioValidationError
 from app.simulation.scenario import load_scenario_text
 from app.simulation.state import ResourceCategory
@@ -155,3 +156,26 @@ def test_scenario_unknown_resource_category_rejected(tiny_valid_scenario_path: P
 
     with pytest.raises(ScenarioValidationError):
         load_scenario_text(broken, source="broken.yaml")
+
+
+# --- Strategic Military Map Gate M0: exact authored geometry, pinned ----------
+#
+# Each digest is the canonical-JSON BLAKE2b digest of the loaded scenario's
+# `strategic_map` (via `app.core.canonical_json.canonical_digest`), recorded at
+# authoring time. Any accidental edit to a theater, route or shape -- including
+# reordering, a moved centroid, or a changed vertex -- changes the digest and
+# fails this test, rather than silently drifting.
+_STRATEGIC_MAP_DIGEST_BLAKE2B: dict[str, str] = {
+    "tiny_valid.yaml": "4224643b62655296e07b7a033751ffec4e1c04a2982a1bf38603c1d42c7f11c1",
+    "decree_state.yaml": "516beb9fd5117b84cc3c0b6e4381fd40da6e86ce2246a0267e913636d45f457c",
+    "deficit_demo.yaml": "23ad68a04b47195dd2b57cda012ad1974301b5eca0d675b0034307fd5c496e4b",
+}
+
+
+@pytest.mark.parametrize(
+    "scenario_file", ["tiny_valid.yaml", "decree_state.yaml", "deficit_demo.yaml"]
+)
+def test_strategic_map_geometry_digest_is_pinned(scenario_file: str) -> None:
+    state = load_scenario_file(SCENARIO_DIR / scenario_file)
+    digest = canonical_digest(state.world.strategic_map.model_dump(mode="json"))
+    assert digest == _STRATEGIC_MAP_DIGEST_BLAKE2B[scenario_file]

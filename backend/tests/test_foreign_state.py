@@ -326,6 +326,7 @@ def test_dyad_duplicate_pair_is_caught_by_check_invariants_when_construction_is_
             player_country_id=base.world.player_country_id,
             foreign_profiles=base.world.foreign_profiles,
             dyads=(_dyad(), _dyad()),
+            strategic_map=base.world.strategic_map,
         )
     bypassed = _with_dyads_bypassed(base, (_dyad(), _dyad()))
     assert "dyad_duplicate_pair" in _codes(bypassed)
@@ -513,7 +514,7 @@ def test_concurrency_check_is_insensitive_to_foreign_profiles_insertion_order() 
 
 
 # --- scenario-content isolation: relative to c47fc82, only content_version, ---
-# --- foreign_profiles and dyads may have changed -------------------------------
+# --- foreign_profiles, dyads (W1) and strategic_map (M0) may have changed -----
 
 
 @pytest.mark.parametrize(
@@ -522,15 +523,18 @@ def test_concurrency_check_is_insensitive_to_foreign_profiles_insertion_order() 
 def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> None:
     """Everything else in the scenario -- countries (including `neighbor`), and every economic,
     fiscal, political, constitutional and calibration field -- is byte-identical to the
-    pre-W1 (`c47fc82`) authored content once `content_version`/`foreign_profiles`/`dyads` are
-    removed from both sides. The pre-W1 side is a stable literal recorded at authoring time
-    (module-level `_PRE_W1_SCENARIO_DIGEST_BLAKE2B`); this test performs no git invocation."""
+    pre-W1 (`c47fc82`) authored content once `content_version`/`foreign_profiles`/`dyads`/
+    `strategic_map` are removed from both sides. `strategic_map` (Strategic Military Map, Gate
+    M0) is excluded for the identical reason W1's two paths are: it is new authored content this
+    gate added, not something the pre-W1 baseline ever had an opinion on. The pre-W1 side is a
+    stable literal recorded at authoring time (module-level `_PRE_W1_SCENARIO_DIGEST_BLAKE2B`);
+    this test performs no git invocation."""
     with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
         current = yaml.safe_load(handle)
     stripped = {
         key: value
         for key, value in current.items()
-        if key not in ("content_version", "foreign_profiles", "dyads")
+        if key not in ("content_version", "foreign_profiles", "dyads", "strategic_map")
     }
     assert canonical_digest(stripped) == _PRE_W1_SCENARIO_DIGEST_BLAKE2B[scenario_file]
 
@@ -541,9 +545,10 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
 def test_every_scenario_has_exactly_the_w1_paths_present(scenario_file: str) -> None:
     with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
         current = yaml.safe_load(handle)
-    assert current["content_version"] == "0.13.0"
+    assert current["content_version"] == "0.14.0"
     assert isinstance(current["foreign_profiles"], dict) and len(current["foreign_profiles"]) == 2
     assert isinstance(current["dyads"], list) and len(current["dyads"]) == 1
+    assert isinstance(current["strategic_map"], dict)
 
 
 # --- save compatibility: the authentic commit-2 fixture must be rejected ------
@@ -581,7 +586,7 @@ def test_phase4a_save_compatibility_is_checked_before_any_entry_payload_is_parse
 
 
 def test_ruleset_and_save_format_versions_are_current() -> None:
-    assert RULESET_VERSION == "0.13.0"
+    assert RULESET_VERSION == "0.14.0"
     assert SAVE_FORMAT_VERSION == 1
 
 
@@ -589,4 +594,4 @@ def test_no_migration_path_exists_for_the_pre_w1_ruleset() -> None:
     """`SUPPORTED_RULESET_VERSIONS` names exactly one version -- the current one. A migration
     path would need a second, older version present in this set; there is none, and no
     foreign-conflict state is ever synthesized for a save that predates it."""
-    assert frozenset({"0.13.0"}) == SUPPORTED_RULESET_VERSIONS
+    assert frozenset({"0.14.0"}) == SUPPORTED_RULESET_VERSIONS

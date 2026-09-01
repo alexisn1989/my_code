@@ -22,9 +22,12 @@ from app.simulation.legislature import LegislativeChamber
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
     CountryState,
+    ForeignProfileRef,
     GameState,
+    PlayerCountryRef,
     ResourceCategory,
     SectorCategory,
+    SovereignRef,
     WorldState,
 )
 
@@ -1088,6 +1091,163 @@ def _check_foreign_conflicts(world: WorldState) -> list[InvariantViolation]:
     return violations
 
 
+def _sovereign_ref_violation(ref: SovereignRef, world: WorldState) -> tuple[str, str] | None:
+    """One shared sovereign-reference rule (Strategic Military Map, Gate M0 sec.9.1), applied
+    identically to a theater owner and to a shape owner -- there is exactly one definition of
+    what makes a `SovereignRef` valid, not one per context.
+
+    Returns `(code, detail)` for a bad reference, or `None` if `ref` resolves legitimately.
+    """
+    if isinstance(ref, PlayerCountryRef):
+        if ref.country_id not in world.countries:
+            return (
+                "map_owner_country_unknown",
+                f"player_country_id {ref.country_id!r} is not a key of world.countries",
+            )
+        if ref.country_id != world.player_country_id:
+            return (
+                "map_player_ref_not_player",
+                f"{ref.country_id!r} is a world.countries id but not world.player_country_id "
+                f"({world.player_country_id!r})",
+            )
+        return None
+    if isinstance(ref, ForeignProfileRef):
+        if ref.foreign_profile_id not in world.foreign_profiles:
+            return (
+                "map_owner_profile_unknown",
+                f"foreign_profile_id {ref.foreign_profile_id!r} is not a key of "
+                f"world.foreign_profiles",
+            )
+        return None
+    return None
+
+
+def _owner_key(ref: SovereignRef) -> tuple[str, str]:
+    """A hashable identity for a `SovereignRef`, used to group theaters/shapes by owner without
+    relying on Pydantic model equality (which is structural but not hashable by default here)."""
+    if isinstance(ref, PlayerCountryRef):
+        return ("player_country", ref.country_id)
+    return ("foreign_profile", ref.foreign_profile_id)
+
+
+def _check_strategic_map(world: WorldState) -> list[InvariantViolation]:
+    """Strategic Military Map Gate M0 structural backstops, mirroring `_check_foreign_conflicts`'
+    role: every rule here is already enforced at every legitimate construction/assignment path by
+    `TheaterState`/`RouteState`/`CountryShapeState`/`StrategicMapState`'s own Pydantic validators,
+    but all four are mutable, so a nested assignment after construction can desynchronize an
+    already-valid `StrategicMapState` without re-running those validators. This is the
+    every-turn, bypassed-construction backstop.
+
+    Emits exactly eight reachable codes: `route_endpoint_unknown`, `map_owner_country_unknown`,
+    `map_player_ref_not_player`, `map_owner_profile_unknown`, `shape_missing_for_owner`,
+    `map_capital_unknown`, `map_capital_not_player_owned`, `player_land_component_disconnected`.
+    """
+    violations: list[InvariantViolation] = []
+    strategic_map = world.strategic_map
+
+    for route in strategic_map.routes:
+        for theater_id in (route.from_theater, route.to_theater):
+            if theater_id not in strategic_map.theaters:
+                violations.append(
+                    InvariantViolation(
+                        code="route_endpoint_unknown",
+                        message=(
+                            f"route {route.from_theater!r} -> {route.to_theater!r} references "
+                            f"unknown theater {theater_id!r}"
+                        ),
+                    )
+                )
+
+    for theater_id, theater in strategic_map.theaters.items():
+        problem = _sovereign_ref_violation(theater.owner, world)
+        if problem is not None:
+            code, detail = problem
+            violations.append(
+                InvariantViolation(code=code, message=f"theater {theater_id!r}: {detail}")
+            )
+
+    for shape in strategic_map.shapes:
+        problem = _sovereign_ref_violation(shape.owner, world)
+        if problem is not None:
+            code, detail = problem
+            violations.append(
+                InvariantViolation(code=code, message=f"shape {shape.shape_id!r}: {detail}")
+            )
+
+    theater_owner_keys = {_owner_key(theater.owner) for theater in strategic_map.theaters.values()}
+    shape_owner_keys = {_owner_key(shape.owner) for shape in strategic_map.shapes}
+    for missing_key in sorted(theater_owner_keys - shape_owner_keys):
+        violations.append(
+            InvariantViolation(
+                code="shape_missing_for_owner",
+                message=f"owner {missing_key!r} has a theater but no CountryShapeState",
+            )
+        )
+
+    if strategic_map.capital_theater_id not in strategic_map.theaters:
+        violations.append(
+            InvariantViolation(
+                code="map_capital_unknown",
+                message=(
+                    f"capital_theater_id {strategic_map.capital_theater_id!r} is not a key of "
+                    f"strategic_map.theaters"
+                ),
+            )
+        )
+    else:
+        capital = strategic_map.theaters[strategic_map.capital_theater_id]
+        if not isinstance(capital.owner, PlayerCountryRef):
+            violations.append(
+                InvariantViolation(
+                    code="map_capital_not_player_owned",
+                    message=(
+                        f"capital theater {strategic_map.capital_theater_id!r} is not owned by "
+                        f"a PlayerCountryRef"
+                    ),
+                )
+            )
+        elif capital.owner.country_id == world.player_country_id:
+            # Only attempt connectivity when the capital itself resolves to a legitimate player
+            # theater -- an unresolved/misowned capital already reported above, and a BFS from a
+            # capital that isn't really the player's would report misleading unreachability.
+            player_theater_ids = {
+                theater_id
+                for theater_id, theater in strategic_map.theaters.items()
+                if isinstance(theater.owner, PlayerCountryRef)
+                and theater.owner.country_id == world.player_country_id
+            }
+            player_edges: dict[str, set[str]] = {tid: set() for tid in player_theater_ids}
+            for route in strategic_map.routes:
+                if (
+                    route.from_theater in player_theater_ids
+                    and route.to_theater in player_theater_ids
+                ):
+                    player_edges[route.from_theater].add(route.to_theater)
+
+            reached = {strategic_map.capital_theater_id}
+            frontier = [strategic_map.capital_theater_id]
+            while frontier:
+                current = frontier.pop()
+                for neighbor in player_edges.get(current, ()):
+                    if neighbor not in reached:
+                        reached.add(neighbor)
+                        frontier.append(neighbor)
+
+            for unreached in sorted(player_theater_ids - reached):
+                violations.append(
+                    InvariantViolation(
+                        code="player_land_component_disconnected",
+                        message=(
+                            f"player theater {unreached!r} is not reachable from capital "
+                            f"{strategic_map.capital_theater_id!r} using only player-owned "
+                            f"routes"
+                        ),
+                    )
+                )
+
+    return violations
+
+
 def check_invariants(state: GameState) -> list[InvariantViolation]:
     """Return every invariant violation found in `state`. Empty list means valid.
 
@@ -1162,5 +1322,6 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
         violations.extend(_check_legislature(country, is_player=is_player))
 
     violations.extend(_check_foreign_conflicts(state.world))
+    violations.extend(_check_strategic_map(state.world))
 
     return violations

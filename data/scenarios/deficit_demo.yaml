@@ -25,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.13.0"
+content_version: "0.14.0"
 seed: 99
 player_country_id: strapped
 
@@ -51,6 +51,72 @@ dyads:
     aim_a: deterrence
     aim_b: resource_access
     player_security_exposure_bps: 2000
+
+# Strategic Military Map Gate M0: the campaign's defining map. Presentation-only
+# fields (centroid_x/centroid_y/label_anchor, polygon vertices) are read by the map
+# projection and renderer only -- no formula, phase or RNG stream may reference them.
+strategic_map:
+  map_id: tolvane_strait
+  capital_theater_id: home_capital
+  theaters:
+    home_capital:
+      display_name: Capital Region
+      kind: land
+      owner: {kind: player_country, country_id: strapped}
+      presentation: {centroid_x: 1800, centroid_y: 3200, label_anchor: center}
+    home_lowlands:
+      display_name: Lowlands
+      kind: land
+      owner: {kind: player_country, country_id: strapped}
+      presentation: {centroid_x: 2500, centroid_y: 2000, label_anchor: n}
+    home_port:
+      display_name: Port District
+      kind: coastal
+      owner: {kind: player_country, country_id: strapped}
+      presentation: {centroid_x: 1300, centroid_y: 5300, label_anchor: w}
+    marnil_march:
+      display_name: Marnil March
+      kind: land
+      owner: {kind: foreign_profile, foreign_profile_id: marnil}
+      presentation: {centroid_x: 5500, centroid_y: 3400, label_anchor: center}
+    tolvane_isle:
+      display_name: Tolvane Isle
+      kind: coastal
+      owner: {kind: foreign_profile, foreign_profile_id: tolvane}
+      presentation: {centroid_x: 8600, centroid_y: 6800, label_anchor: s}
+  routes:
+  - {from_theater: home_capital, to_theater: home_lowlands, kind: land}
+  - {from_theater: home_capital, to_theater: home_port, kind: land}
+  - {from_theater: home_lowlands, to_theater: home_capital, kind: land}
+  - {from_theater: home_lowlands, to_theater: marnil_march, kind: land}
+  - {from_theater: home_port, to_theater: home_capital, kind: land}
+  - {from_theater: marnil_march, to_theater: home_lowlands, kind: land}
+  shapes:
+  - shape_id: shape_marnil
+    owner: {kind: foreign_profile, foreign_profile_id: marnil}
+    polygon:
+    - [4500, 2000]
+    - [6500, 1700]
+    - [7000, 4000]
+    - [5700, 5400]
+    - [4400, 4300]
+  - shape_id: shape_strapped
+    owner: {kind: player_country, country_id: strapped}
+    polygon:
+    - [700, 1800]
+    - [2900, 1300]
+    - [3900, 2900]
+    - [3300, 5800]
+    - [1400, 6300]
+    - [600, 4400]
+  - shape_id: shape_tolvane
+    owner: {kind: foreign_profile, foreign_profile_id: tolvane}
+    polygon:
+    - [8000, 5800]
+    - [9100, 5600]
+    - [9500, 7000]
+    - [8600, 7900]
+    - [7900, 7000]
 
 countries:
   - id: strapped

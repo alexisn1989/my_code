@@ -39,7 +39,7 @@
 schema_version: 1
 scenario_id: decree_state
 name: "Decree State Fixture"
-content_version: "0.13.0"
+content_version: "0.14.0"
 seed: 77
 player_country_id: valdrun
 
@@ -65,6 +65,74 @@ dyads:
     aim_a: deterrence
     aim_b: regime_change
     player_security_exposure_bps: 3000
+
+# Strategic Military Map Gate M0: the campaign's defining map. Presentation-only
+# fields (centroid_x/centroid_y/label_anchor, polygon vertices) are read by the map
+# projection and renderer only -- no formula, phase or RNG stream may reference them.
+strategic_map:
+  map_id: valdrun_reach
+  capital_theater_id: valdrun_capital
+  theaters:
+    marnil_border:
+      display_name: Marnil Borderland
+      kind: land
+      owner: {kind: foreign_profile, foreign_profile_id: marnil}
+      presentation: {centroid_x: 5700, centroid_y: 3600, label_anchor: center}
+    sorrend_plain:
+      display_name: Sorrend Plain
+      kind: land
+      owner: {kind: foreign_profile, foreign_profile_id: sorrend}
+      presentation: {centroid_x: 8400, centroid_y: 4000, label_anchor: e}
+    valdrun_capital:
+      display_name: Valdrun Capital Region
+      kind: land
+      owner: {kind: player_country, country_id: valdrun}
+      presentation: {centroid_x: 1900, centroid_y: 3000, label_anchor: center}
+    valdrun_east:
+      display_name: Eastern Valdrun
+      kind: land
+      owner: {kind: player_country, country_id: valdrun}
+      presentation: {centroid_x: 3300, centroid_y: 4200, label_anchor: s}
+    valdrun_highlands:
+      display_name: Valdrun Highlands
+      kind: land
+      owner: {kind: player_country, country_id: valdrun}
+      presentation: {centroid_x: 2400, centroid_y: 1700, label_anchor: n}
+  routes:
+  - {from_theater: marnil_border, to_theater: sorrend_plain, kind: land}
+  - {from_theater: marnil_border, to_theater: valdrun_east, kind: land}
+  - {from_theater: sorrend_plain, to_theater: marnil_border, kind: land}
+  - {from_theater: valdrun_capital, to_theater: valdrun_east, kind: land}
+  - {from_theater: valdrun_capital, to_theater: valdrun_highlands, kind: land}
+  - {from_theater: valdrun_east, to_theater: marnil_border, kind: land}
+  - {from_theater: valdrun_east, to_theater: valdrun_capital, kind: land}
+  - {from_theater: valdrun_highlands, to_theater: valdrun_capital, kind: land}
+  shapes:
+  - shape_id: shape_marnil
+    owner: {kind: foreign_profile, foreign_profile_id: marnil}
+    polygon:
+    - [4600, 2200]
+    - [6600, 1800]
+    - [7200, 4200]
+    - [5800, 5600]
+    - [4500, 4600]
+  - shape_id: shape_sorrend
+    owner: {kind: foreign_profile, foreign_profile_id: sorrend}
+    polygon:
+    - [7600, 2400]
+    - [9400, 2800]
+    - [9500, 5200]
+    - [8000, 5800]
+    - [7400, 4200]
+  - shape_id: shape_valdrun
+    owner: {kind: player_country, country_id: valdrun}
+    polygon:
+    - [800, 1500]
+    - [3000, 1000]
+    - [4000, 2600]
+    - [3400, 5600]
+    - [1500, 6400]
+    - [600, 4200]
 
 countries:
   - id: valdrun
