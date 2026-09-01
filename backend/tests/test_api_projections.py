@@ -18,6 +18,7 @@ from app.api.projections import (
     TurnResultProjection,
     build_dashboard,
     build_decision_options,
+    build_strategic_map,
     build_turn_result,
     format_bps_percent,
     format_signed_bps_points,
@@ -27,8 +28,19 @@ from app.api.projections import (
 from app.cli import REASON_RENDERERS
 from app.content.scenarios import load_scenario_file
 from app.simulation.decisions import DecisionSet
+from app.simulation.geography import LabelAnchor, TheaterKind
 from app.simulation.history import GameSave, advance_game, new_game
 from app.simulation.save_format import SAVE_FORMAT_VERSION
+from app.simulation.state import (
+    CountryShapeState,
+    GameState,
+    PlayerCountryRef,
+    RouteState,
+    StrategicMapState,
+    TheaterPresentation,
+    TheaterState,
+)
+from tests.conftest import make_game_state
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCENARIO_DIR = REPO_ROOT / "data" / "scenarios"
@@ -299,3 +311,158 @@ def test_projections_expose_no_raw_engine_payloads() -> None:
     for payload in payloads:
         for forbidden in ("state_json", "report_json", "decisions_json", "entry_hash", "dev"):
             assert forbidden not in payload, f"{forbidden} leaked into a projection"
+
+
+# --- Strategic map projection (Strategic Military Map, Gate M0 commit 6) ------
+
+
+def _tiny_valid_state() -> GameState:
+    from app.content.scenarios import load_scenario_file
+
+    return load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+
+
+class TestStrategicMapOrdering:
+    def test_theaters_sorted_by_theater_id(self) -> None:
+        projection = build_strategic_map(_tiny_valid_state())
+        ids = [t.theater_id for t in projection.theaters]
+        assert ids == sorted(ids)
+
+    def test_routes_sorted_by_from_then_to(self) -> None:
+        projection = build_strategic_map(_tiny_valid_state())
+        pairs = [(r.from_theater_id, r.to_theater_id) for r in projection.routes]
+        assert pairs == sorted(pairs)
+
+    def test_shapes_sorted_by_shape_id(self) -> None:
+        projection = build_strategic_map(_tiny_valid_state())
+        ids = [s.shape_id for s in projection.shapes]
+        assert ids == sorted(ids)
+
+    def test_outgoing_and_incoming_lists_are_sorted(self) -> None:
+        projection = build_strategic_map(_tiny_valid_state())
+        for theater in projection.theaters:
+            assert list(theater.outgoing_theater_ids) == sorted(theater.outgoing_theater_ids)
+            assert list(theater.incoming_theater_ids) == sorted(theater.incoming_theater_ids)
+
+
+class TestStrategicMapDirectedRoutes:
+    def test_reciprocal_pair_collapses_to_one_bidirectional_row(self) -> None:
+        projection = build_strategic_map(_tiny_valid_state())
+        # tiny_valid's four unordered pairs are all reciprocal (frozen plan sec.5.1).
+        assert len(projection.routes) == 4
+        assert all(r.bidirectional for r in projection.routes)
+
+    def test_outgoing_and_incoming_reproduce_the_full_directed_graph(self) -> None:
+        state = _tiny_valid_state()
+        projection = build_strategic_map(state)
+        raw_routes = state.world.strategic_map.routes
+        for theater in projection.theaters:
+            expected_out = sorted(
+                {r.to_theater for r in raw_routes if r.from_theater == theater.theater_id}
+            )
+            expected_in = sorted(
+                {r.from_theater for r in raw_routes if r.to_theater == theater.theater_id}
+            )
+            assert list(theater.outgoing_theater_ids) == expected_out
+            assert list(theater.incoming_theater_ids) == expected_in
+
+    def test_a_one_way_pair_emits_its_authored_direction_never_flipped(self) -> None:
+        map_state = StrategicMapState(
+            map_id="m",
+            capital_theater_id="a",
+            theaters={
+                "a": TheaterState(
+                    display_name="A",
+                    kind=TheaterKind.LAND,
+                    owner=PlayerCountryRef(country_id="testland"),
+                    presentation=TheaterPresentation(
+                        centroid_x=1, centroid_y=1, label_anchor=LabelAnchor.CENTER
+                    ),
+                ),
+                "b": TheaterState(
+                    display_name="B",
+                    kind=TheaterKind.LAND,
+                    owner=PlayerCountryRef(country_id="testland"),
+                    presentation=TheaterPresentation(
+                        centroid_x=2, centroid_y=2, label_anchor=LabelAnchor.CENTER
+                    ),
+                ),
+            },
+            # ONLY b -> a exists: the reachable "one-way" case (§5.3's note: every shipped
+            # scenario's pairs are reciprocal, so this case is exercised in a direct fixture).
+            routes=(RouteState(from_theater="b", to_theater="a", kind="land"),),
+            shapes=(
+                CountryShapeState(
+                    shape_id="s",
+                    owner=PlayerCountryRef(country_id="testland"),
+                    polygon=((0, 0), (10, 0), (10, 10), (0, 10)),
+                ),
+            ),
+        )
+        state = make_game_state(strategic_map=map_state)
+        projection = build_strategic_map(state)
+        assert len(projection.routes) == 1
+        route = projection.routes[0]
+        assert route.bidirectional is False
+        # Authored direction (b -> a) preserved exactly -- never flipped for determinism.
+        assert route.from_theater_id == "b"
+        assert route.to_theater_id == "a"
+
+
+class TestStrategicMapOwnerResolution:
+    def test_player_owned_theater_resolves_owner_fields(self) -> None:
+        projection = build_strategic_map(_tiny_valid_state())
+        capital = next(t for t in projection.theaters if t.theater_id == "arken_capital")
+        assert capital.owner_id == "arken"
+        assert capital.owner_namespace == "player_country"
+        assert capital.owner_display_name == "Republic of Arken"
+        assert capital.is_player_owned is True
+
+    def test_foreign_owned_theater_resolves_owner_fields(self) -> None:
+        projection = build_strategic_map(_tiny_valid_state())
+        foreign = next(t for t in projection.theaters if t.theater_id == "kessia_south")
+        assert foreign.owner_id == "kessia"
+        assert foreign.owner_namespace == "foreign_profile"
+        assert foreign.owner_display_name == "Kessia"
+        assert foreign.is_player_owned is False
+
+    def test_shape_owner_resolution_matches_theater_owner_resolution(self) -> None:
+        projection = build_strategic_map(_tiny_valid_state())
+        shape = next(s for s in projection.shapes if s.shape_id == "shape_kessia")
+        assert shape.owner_id == "kessia"
+        assert shape.owner_namespace == "foreign_profile"
+        assert shape.owner_display_name == "Kessia"
+
+
+class TestStrategicMapCapital:
+    def test_exactly_one_theater_is_the_capital(self) -> None:
+        projection = build_strategic_map(_tiny_valid_state())
+        capitals = [t for t in projection.theaters if t.is_capital]
+        assert len(capitals) == 1
+        assert capitals[0].theater_id == projection.capital_theater_id
+        assert capitals[0].theater_id == "arken_capital"
+
+
+class TestStrategicMapPresentationPassthrough:
+    def test_centroid_and_label_anchor_pass_through_unchanged(self) -> None:
+        projection = build_strategic_map(_tiny_valid_state())
+        capital = next(t for t in projection.theaters if t.theater_id == "arken_capital")
+        assert capital.centroid_x == 1900
+        assert capital.centroid_y == 3200
+        assert capital.label_anchor == "center"
+
+    def test_polygon_is_emitted_in_stored_authored_order(self) -> None:
+        state = _tiny_valid_state()
+        projection = build_strategic_map(state)
+        shape = next(s for s in projection.shapes if s.shape_id == "shape_arken")
+        raw_shape = next(s for s in state.world.strategic_map.shapes if s.shape_id == "shape_arken")
+        assert shape.polygon == raw_shape.polygon
+
+
+class TestStrategicMapDoesNotMutate:
+    def test_build_strategic_map_does_not_mutate_state(self) -> None:
+        state = _tiny_valid_state()
+        before = state.model_dump(mode="json")
+        build_strategic_map(state)
+        after = state.model_dump(mode="json")
+        assert before == after

@@ -914,7 +914,7 @@
       },
       "MapProjection": {
         "additionalProperties": false,
-        "description": "Presentation only. The engine has no province, region, or spatial state.",
+        "description": "The dashboard's national-tint summary card -- a single colour value, not a map of\nanything. No theater, border or geometry lives here.\n\nThe real read-only strategic map (theaters, directed routes, authored political shapes) is a\nseparate projection, `StrategicMapProjection` below, served at `GET /api/game/map/strategic`.\nKept as a distinct type rather than folded together: this one is a dashboard summary widget,\nthe other is a full spatial projection, and conflating them would make neither easy to reason\nabout.",
         "properties": {
           "note": {
             "title": "Note",
@@ -1598,6 +1598,223 @@
         "title": "SpendingUpdate",
         "type": "object"
       },
+      "StrategicMapProjection": {
+        "additionalProperties": false,
+        "description": "The whole read-only strategic map (Strategic Military Map, Gate M0). Contains no order,\nno command, no pending action and no affordance for one.",
+        "properties": {
+          "capital_theater_id": {
+            "title": "Capital Theater Id",
+            "type": "string"
+          },
+          "map_id": {
+            "title": "Map Id",
+            "type": "string"
+          },
+          "routes": {
+            "items": {
+              "$ref": "#/components/schemas/StrategicRouteProjection"
+            },
+            "title": "Routes",
+            "type": "array"
+          },
+          "shapes": {
+            "items": {
+              "$ref": "#/components/schemas/StrategicShapeProjection"
+            },
+            "title": "Shapes",
+            "type": "array"
+          },
+          "theaters": {
+            "items": {
+              "$ref": "#/components/schemas/StrategicTheaterProjection"
+            },
+            "title": "Theaters",
+            "type": "array"
+          }
+        },
+        "required": [
+          "map_id",
+          "capital_theater_id",
+          "theaters",
+          "routes",
+          "shapes"
+        ],
+        "title": "StrategicMapProjection",
+        "type": "object"
+      },
+      "StrategicRouteProjection": {
+        "additionalProperties": false,
+        "description": "One DISPLAY edge (Strategic Military Map, Gate M0). Reciprocal directed pairs are\ncollapsed into a single row so the map draws one line, never two overlapping ones.",
+        "properties": {
+          "bidirectional": {
+            "title": "Bidirectional",
+            "type": "boolean"
+          },
+          "from_theater_id": {
+            "title": "From Theater Id",
+            "type": "string"
+          },
+          "to_theater_id": {
+            "title": "To Theater Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_theater_id",
+          "to_theater_id",
+          "bidirectional"
+        ],
+        "title": "StrategicRouteProjection",
+        "type": "object"
+      },
+      "StrategicShapeProjection": {
+        "additionalProperties": false,
+        "description": "One authored political outline (Strategic Military Map, Gate M0). Presentation only;\nnever implies adjacency.",
+        "properties": {
+          "owner_display_name": {
+            "title": "Owner Display Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "owner_namespace": {
+            "enum": [
+              "player_country",
+              "foreign_profile"
+            ],
+            "title": "Owner Namespace",
+            "type": "string"
+          },
+          "polygon": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Polygon",
+            "type": "array"
+          },
+          "shape_id": {
+            "title": "Shape Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "shape_id",
+          "owner_id",
+          "owner_namespace",
+          "owner_display_name",
+          "polygon"
+        ],
+        "title": "StrategicShapeProjection",
+        "type": "object"
+      },
+      "StrategicTheaterProjection": {
+        "additionalProperties": false,
+        "description": "One theater, fully resolved for display (Strategic Military Map, Gate M0). The client\nrenders these fields and derives nothing: ownership, capital status and directed adjacency\nall arrive resolved.",
+        "properties": {
+          "centroid_x": {
+            "title": "Centroid X",
+            "type": "integer"
+          },
+          "centroid_y": {
+            "title": "Centroid Y",
+            "type": "integer"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "incoming_theater_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Incoming Theater Ids",
+            "type": "array"
+          },
+          "is_capital": {
+            "title": "Is Capital",
+            "type": "boolean"
+          },
+          "is_player_owned": {
+            "title": "Is Player Owned",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "land",
+              "coastal"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label_anchor": {
+            "enum": [
+              "n",
+              "s",
+              "e",
+              "w",
+              "center"
+            ],
+            "title": "Label Anchor",
+            "type": "string"
+          },
+          "outgoing_theater_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Outgoing Theater Ids",
+            "type": "array"
+          },
+          "owner_display_name": {
+            "title": "Owner Display Name",
+            "type": "string"
+          },
+          "owner_id": {
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "owner_namespace": {
+            "enum": [
+              "player_country",
+              "foreign_profile"
+            ],
+            "title": "Owner Namespace",
+            "type": "string"
+          },
+          "theater_id": {
+            "title": "Theater Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "theater_id",
+          "display_name",
+          "kind",
+          "owner_id",
+          "owner_namespace",
+          "owner_display_name",
+          "is_player_owned",
+          "is_capital",
+          "centroid_x",
+          "centroid_y",
+          "label_anchor",
+          "outgoing_theater_ids",
+          "incoming_theater_ids"
+        ],
+        "title": "StrategicTheaterProjection",
+        "type": "object"
+      },
       "TermLimitTarget": {
         "additionalProperties": false,
         "description": "Replace or abolish the executive term limit.",
@@ -1806,7 +2023,7 @@
   "info": {
     "summary": "Local, loopback-only interface to the MANDATE simulation engine.",
     "title": "MANDATE local game API",
-    "version": "0.13.0"
+    "version": "0.14.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1929,6 +2146,25 @@
           }
         },
         "summary": "Load Game"
+      }
+    },
+    "/api/game/map/strategic": {
+      "get": {
+        "description": "The read-only strategic map: theaters, directed routes and authored political shapes.\n\nRead-only, like `/game/state` -- captures `session.current_save` once and never takes the\nmutation boundary. Presentation only: selecting a theater in the client queues nothing, and\nthis endpoint never draws RNG, resolves a turn or writes state.",
+        "operationId": "get_strategic_map_api_game_map_strategic_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategicMapProjection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Strategic Map"
       }
     },
     "/api/game/new": {

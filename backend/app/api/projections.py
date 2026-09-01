@@ -29,13 +29,23 @@ from app.core.money import BPS_DENOMINATOR, format_money
 from app.core.politics import RELATIONSHIP_INVESTMENT_CAP
 from app.simulation.constitution import DecreeAuthority, ExecutiveSelection, ExecutiveSystem
 from app.simulation.decisions import BudgetDecision, ConstitutionalAmendmentDecision
+from app.simulation.geography import outgoing_and_incoming
 from app.simulation.legislative_voting import (
     CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
 )
 from app.simulation.legislature import LegislativeOutcome, ProposalRoute
 from app.simulation.report import TurnReport
-from app.simulation.state import GameState, OutcomeBucket, PoliticalState, SpendingCategory
+from app.simulation.state import (
+    GameState,
+    OutcomeBucket,
+    PlayerCountryRef,
+    PoliticalState,
+    RouteState,
+    SovereignRef,
+    SpendingCategory,
+    StrategicMapState,
+)
 
 Tone = Literal["positive", "negative", "caution", "neutral"]
 Direction = Literal["up", "down", "unchanged"]
@@ -184,7 +194,15 @@ class GoalCard(BaseModel):
 
 
 class MapProjection(BaseModel):
-    """Presentation only. The engine has no province, region, or spatial state."""
+    """The dashboard's national-tint summary card -- a single colour value, not a map of
+    anything. No theater, border or geometry lives here.
+
+    The real read-only strategic map (theaters, directed routes, authored political shapes) is a
+    separate projection, `StrategicMapProjection` below, served at `GET /api/game/map/strategic`.
+    Kept as a distinct type rather than folded together: this one is a dashboard summary widget,
+    the other is a full spatial projection, and conflating them would make neither easy to reason
+    about.
+    """
 
     model_config = _STRICT
 
@@ -192,6 +210,80 @@ class MapProjection(BaseModel):
     tint_metric_label: str
     tint_value_bps: int
     note: str
+
+
+class StrategicTheaterProjection(BaseModel):
+    """One theater, fully resolved for display (Strategic Military Map, Gate M0). The client
+    renders these fields and derives nothing: ownership, capital status and directed adjacency
+    all arrive resolved."""
+
+    model_config = _STRICT
+
+    theater_id: str
+    display_name: str
+    kind: Literal["land", "coastal"]
+    owner_id: str
+    owner_namespace: Literal["player_country", "foreign_profile"]
+    owner_display_name: str
+    is_player_owned: bool
+    is_capital: bool
+    centroid_x: int
+    centroid_y: int
+    label_anchor: Literal["n", "s", "e", "w", "center"]
+    outgoing_theater_ids: tuple[str, ...]
+    """Theaters reachable FROM this one in one step. Sorted. Server-derived by
+    `geography.outgoing_and_incoming`."""
+    incoming_theater_ids: tuple[str, ...]
+    """Theaters from which this one is reachable in one step. Sorted. Server-derived.
+
+    Two fields, not one merged `connected_theater_ids`: with a single merged list the client
+    cannot tell A->B from B->A from A<->B, and the whole point of storing directed routes is lost
+    the moment the projection flattens them.
+    """
+
+
+class StrategicRouteProjection(BaseModel):
+    """One DISPLAY edge (Strategic Military Map, Gate M0). Reciprocal directed pairs are
+    collapsed into a single row so the map draws one line, never two overlapping ones."""
+
+    model_config = _STRICT
+
+    from_theater_id: str
+    to_theater_id: str
+    bidirectional: bool
+    """True iff BOTH directed rows exist in authoritative state.
+
+    When False, `from_theater_id` -> `to_theater_id` is the ONE authored direction, emitted as
+    authored -- it is never reordered for determinism, because reordering it would destroy the
+    only information the field carries.
+    """
+
+
+class StrategicShapeProjection(BaseModel):
+    """One authored political outline (Strategic Military Map, Gate M0). Presentation only;
+    never implies adjacency."""
+
+    model_config = _STRICT
+
+    shape_id: str
+    owner_id: str
+    owner_namespace: Literal["player_country", "foreign_profile"]
+    owner_display_name: str
+    polygon: tuple[tuple[int, int], ...]
+    """Open ring, emitted in stored authored order. No rotation or winding normalization."""
+
+
+class StrategicMapProjection(BaseModel):
+    """The whole read-only strategic map (Strategic Military Map, Gate M0). Contains no order,
+    no command, no pending action and no affordance for one."""
+
+    model_config = _STRICT
+
+    map_id: str
+    capital_theater_id: str
+    theaters: tuple[StrategicTheaterProjection, ...]
+    routes: tuple[StrategicRouteProjection, ...]
+    shapes: tuple[StrategicShapeProjection, ...]
 
 
 class TerminalSummary(BaseModel):
@@ -850,7 +942,10 @@ def build_dashboard(state: GameState, report: TurnReport | None) -> DashboardPro
         map=MapProjection(
             tint_metric_label="Legitimacy",
             tint_value_bps=politics.legitimacy_bps,
-            note="This map shows national identity only. No province-level mechanics exist.",
+            note=(
+                "This is a national identity tint, not a geographic map. No province-level "
+                "mechanics exist."
+            ),
         ),
         terminal=_terminal_summary(politics),
     )
@@ -915,6 +1010,125 @@ def _build_goal(politics: PoliticalState, report: TurnReport | None) -> GoalCard
     if ranked:
         return GoalCard(headline=f"Your priority: {ranked[0].headline}", detail=ranked[0].detail)
     return GoalCard(headline="Nothing is pressing. Consider how to use your political capital.")
+
+
+# --------------------------------------------------------------------------
+# Strategic map -- read-only, Strategic Military Map Gate M0
+# --------------------------------------------------------------------------
+
+
+def _resolve_owner(
+    owner: SovereignRef, state: GameState
+) -> tuple[str, Literal["player_country", "foreign_profile"], str, bool]:
+    """`(owner_id, owner_namespace, owner_display_name, is_player_owned)` for one `SovereignRef`.
+
+    The one shared resolution used for both theater owners and shape owners (mirrors the shared
+    invariant rule in `simulation.invariants._sovereign_ref_violation`) -- state invariants
+    already guarantee the reference resolves, so there is no defensive fallback text here.
+    """
+    if isinstance(owner, PlayerCountryRef):
+        country = state.world.countries[owner.country_id]
+        return owner.country_id, "player_country", country.name, True
+    profile = state.world.foreign_profiles[owner.foreign_profile_id]
+    return owner.foreign_profile_id, "foreign_profile", profile.display_name, False
+
+
+def _build_strategic_theaters(
+    strategic_map: StrategicMapState, state: GameState
+) -> tuple[StrategicTheaterProjection, ...]:
+    theaters = []
+    for theater_id, theater in strategic_map.theaters.items():
+        owner_id, owner_namespace, owner_display_name, is_player_owned = _resolve_owner(
+            theater.owner, state
+        )
+        outgoing, incoming = outgoing_and_incoming(theater_id, strategic_map.routes)
+        theaters.append(
+            StrategicTheaterProjection(
+                theater_id=theater_id,
+                display_name=theater.display_name,
+                kind=theater.kind.value,
+                owner_id=owner_id,
+                owner_namespace=owner_namespace,
+                owner_display_name=owner_display_name,
+                is_player_owned=is_player_owned,
+                is_capital=(theater_id == strategic_map.capital_theater_id),
+                centroid_x=theater.presentation.centroid_x,
+                centroid_y=theater.presentation.centroid_y,
+                label_anchor=theater.presentation.label_anchor.value,
+                outgoing_theater_ids=outgoing,
+                incoming_theater_ids=incoming,
+            )
+        )
+    return tuple(sorted(theaters, key=lambda t: t.theater_id))
+
+
+def _build_strategic_routes(
+    routes: tuple[RouteState, ...],
+) -> tuple[StrategicRouteProjection, ...]:
+    """Collapse directed rows into display rows (frozen plan sec.11.1).
+
+    A pair with both directed rows collapses to one row `from=min(a,b), to=max(a,b),
+    bidirectional=True`; a pair with exactly one directed row is emitted EXACTLY as authored,
+    `bidirectional=False`, never flipped -- reordering a one-way row would destroy the only
+    information it carries.
+    """
+    directed_pairs = {(r.from_theater, r.to_theater) for r in routes}
+    seen_unordered: set[frozenset[str]] = set()
+    projections = []
+    for from_theater, to_theater in directed_pairs:
+        pair_key = frozenset((from_theater, to_theater))
+        if pair_key in seen_unordered:
+            continue
+        seen_unordered.add(pair_key)
+        reverse_exists = (to_theater, from_theater) in directed_pairs
+        if reverse_exists:
+            low, high = sorted((from_theater, to_theater))
+            projections.append(
+                StrategicRouteProjection(
+                    from_theater_id=low, to_theater_id=high, bidirectional=True
+                )
+            )
+        else:
+            projections.append(
+                StrategicRouteProjection(
+                    from_theater_id=from_theater, to_theater_id=to_theater, bidirectional=False
+                )
+            )
+    return tuple(sorted(projections, key=lambda r: (r.from_theater_id, r.to_theater_id)))
+
+
+def _build_strategic_shapes(
+    strategic_map: StrategicMapState, state: GameState
+) -> tuple[StrategicShapeProjection, ...]:
+    shapes = []
+    for shape in strategic_map.shapes:
+        owner_id, owner_namespace, owner_display_name, _is_player_owned = _resolve_owner(
+            shape.owner, state
+        )
+        shapes.append(
+            StrategicShapeProjection(
+                shape_id=shape.shape_id,
+                owner_id=owner_id,
+                owner_namespace=owner_namespace,
+                owner_display_name=owner_display_name,
+                polygon=shape.polygon,
+            )
+        )
+    return tuple(sorted(shapes, key=lambda s: s.shape_id))
+
+
+def build_strategic_map(state: GameState) -> StrategicMapProjection:
+    """The whole read-only strategic map, resolved for display. Pure: reads `state` only, never
+    mutates it, never draws RNG. Every collection is emitted in server-sorted (and therefore
+    insertion-order-independent) order except `polygon`, which stays in stored authored order."""
+    strategic_map = state.world.strategic_map
+    return StrategicMapProjection(
+        map_id=strategic_map.map_id,
+        capital_theater_id=strategic_map.capital_theater_id,
+        theaters=_build_strategic_theaters(strategic_map, state),
+        routes=_build_strategic_routes(strategic_map.routes),
+        shapes=_build_strategic_shapes(strategic_map, state),
+    )
 
 
 def build_turn_result(state: GameState, report: TurnReport) -> TurnResultProjection:

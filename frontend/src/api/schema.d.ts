@@ -98,6 +98,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/game/map/strategic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Strategic Map
+         * @description The read-only strategic map: theaters, directed routes and authored political shapes.
+         *
+         *     Read-only, like `/game/state` -- captures `session.current_save` once and never takes the
+         *     mutation boundary. Presentation only: selecting a theater in the client queues nothing, and
+         *     this endpoint never draws RNG, resolves a turn or writes state.
+         */
+        get: operations["get_strategic_map_api_game_map_strategic_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/game/new": {
         parameters: {
             query?: never;
@@ -680,7 +704,14 @@ export interface components {
         };
         /**
          * MapProjection
-         * @description Presentation only. The engine has no province, region, or spatial state.
+         * @description The dashboard's national-tint summary card -- a single colour value, not a map of
+         *     anything. No theater, border or geometry lives here.
+         *
+         *     The real read-only strategic map (theaters, directed routes, authored political shapes) is a
+         *     separate projection, `StrategicMapProjection` below, served at `GET /api/game/map/strategic`.
+         *     Kept as a distinct type rather than folded together: this one is a dashboard summary widget,
+         *     the other is a full spatial projection, and conflating them would make neither easy to reason
+         *     about.
          */
         MapProjection: {
             /** Note */
@@ -990,6 +1021,102 @@ export interface components {
             category: components["schemas"]["SpendingCategory"];
         };
         /**
+         * StrategicMapProjection
+         * @description The whole read-only strategic map (Strategic Military Map, Gate M0). Contains no order,
+         *     no command, no pending action and no affordance for one.
+         */
+        StrategicMapProjection: {
+            /** Capital Theater Id */
+            capital_theater_id: string;
+            /** Map Id */
+            map_id: string;
+            /** Routes */
+            routes: components["schemas"]["StrategicRouteProjection"][];
+            /** Shapes */
+            shapes: components["schemas"]["StrategicShapeProjection"][];
+            /** Theaters */
+            theaters: components["schemas"]["StrategicTheaterProjection"][];
+        };
+        /**
+         * StrategicRouteProjection
+         * @description One DISPLAY edge (Strategic Military Map, Gate M0). Reciprocal directed pairs are
+         *     collapsed into a single row so the map draws one line, never two overlapping ones.
+         */
+        StrategicRouteProjection: {
+            /** Bidirectional */
+            bidirectional: boolean;
+            /** From Theater Id */
+            from_theater_id: string;
+            /** To Theater Id */
+            to_theater_id: string;
+        };
+        /**
+         * StrategicShapeProjection
+         * @description One authored political outline (Strategic Military Map, Gate M0). Presentation only;
+         *     never implies adjacency.
+         */
+        StrategicShapeProjection: {
+            /** Owner Display Name */
+            owner_display_name: string;
+            /** Owner Id */
+            owner_id: string;
+            /**
+             * Owner Namespace
+             * @enum {string}
+             */
+            owner_namespace: "player_country" | "foreign_profile";
+            /** Polygon */
+            polygon: [
+                number,
+                number
+            ][];
+            /** Shape Id */
+            shape_id: string;
+        };
+        /**
+         * StrategicTheaterProjection
+         * @description One theater, fully resolved for display (Strategic Military Map, Gate M0). The client
+         *     renders these fields and derives nothing: ownership, capital status and directed adjacency
+         *     all arrive resolved.
+         */
+        StrategicTheaterProjection: {
+            /** Centroid X */
+            centroid_x: number;
+            /** Centroid Y */
+            centroid_y: number;
+            /** Display Name */
+            display_name: string;
+            /** Incoming Theater Ids */
+            incoming_theater_ids: string[];
+            /** Is Capital */
+            is_capital: boolean;
+            /** Is Player Owned */
+            is_player_owned: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "land" | "coastal";
+            /**
+             * Label Anchor
+             * @enum {string}
+             */
+            label_anchor: "n" | "s" | "e" | "w" | "center";
+            /** Outgoing Theater Ids */
+            outgoing_theater_ids: string[];
+            /** Owner Display Name */
+            owner_display_name: string;
+            /** Owner Id */
+            owner_id: string;
+            /**
+             * Owner Namespace
+             * @enum {string}
+             */
+            owner_namespace: "player_country" | "foreign_profile";
+            /** Theater Id */
+            theater_id: string;
+        };
+        /**
          * TermLimitTarget
          * @description Replace or abolish the executive term limit.
          */
@@ -1182,6 +1309,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_strategic_map_api_game_map_strategic_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrategicMapProjection"];
                 };
             };
         };

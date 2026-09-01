@@ -53,7 +53,9 @@ from .projections import (
     ResolveResponse,
     SaveSummary,
     ScenarioSummary,
+    StrategicMapProjection,
     build_dashboard,
+    build_strategic_map,
     build_turn_result,
 )
 from .save_registry import (
@@ -265,6 +267,18 @@ def get_state(request: Request) -> DashboardProjection:
     """The bare dashboard shape -- never a narrative about what changed."""
     save = _session(request).current_save
     return build_dashboard(save.current_state(), save.entries[-1].report())
+
+
+@router.get("/game/map/strategic", response_model=StrategicMapProjection)
+def get_strategic_map(request: Request) -> StrategicMapProjection:
+    """The read-only strategic map: theaters, directed routes and authored political shapes.
+
+    Read-only, like `/game/state` -- captures `session.current_save` once and never takes the
+    mutation boundary. Presentation only: selecting a theater in the client queues nothing, and
+    this endpoint never draws RNG, resolves a turn or writes state.
+    """
+    save = _session(request).current_save
+    return build_strategic_map(save.current_state())
 
 
 @router.get("/game/decision-options", response_model=DecisionOptionsProjection)

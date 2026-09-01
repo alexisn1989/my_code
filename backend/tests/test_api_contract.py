@@ -151,6 +151,56 @@ def test_state_exposes_no_raw_engine_payload(client: TestClient) -> None:
 
 
 # --------------------------------------------------------------------------
+# Strategic map -- read-only (Strategic Military Map, Gate M0 commit 6)
+# --------------------------------------------------------------------------
+
+
+def test_strategic_map_before_any_game_is_a_distinct_404(client: TestClient) -> None:
+    """Same shape as `/game/state`'s no-active-session behaviour -- there is deliberately no
+    `present: false` flag, because a loaded game can never lack a map (frozen plan sec.11.3)."""
+    response = client.get("/api/game/map/strategic")
+
+    assert response.status_code == 404
+    assert response.json()["type"] == "no_active_session"
+
+
+def test_strategic_map_matches_the_authored_tiny_valid_scenario(client: TestClient) -> None:
+    _new_game(client, scenario_id="tiny_valid")
+
+    body = client.get("/api/game/map/strategic").json()
+
+    assert body["map_id"] == "arken_basin"
+    assert body["capital_theater_id"] == "arken_capital"
+    assert len(body["theaters"]) == 5
+    assert len(body["shapes"]) == 3
+    theater_ids = [t["theater_id"] for t in body["theaters"]]
+    assert theater_ids == sorted(theater_ids)
+    capital = next(t for t in body["theaters"] if t["theater_id"] == "arken_capital")
+    assert capital["is_capital"] is True
+    assert capital["owner_display_name"] == "Republic of Arken"
+
+
+def test_strategic_map_exposes_no_raw_engine_payload(client: TestClient) -> None:
+    _new_game(client, scenario_id="tiny_valid")
+
+    raw = client.get("/api/game/map/strategic").text
+
+    for forbidden in ("state_json", "report_json", "decisions_json", "entry_hash"):
+        assert forbidden not in raw
+
+
+def test_strategic_map_does_not_change_after_resolving_a_turn(client: TestClient) -> None:
+    _new_game(client, scenario_id="tiny_valid")
+    before = client.get("/api/game/map/strategic").json()
+
+    resolve_response = client.post("/api/game/resolve", json={"revision": "0.0", "decisions": []})
+    assert resolve_response.status_code == 200, resolve_response.text
+
+    after = client.get("/api/game/map/strategic").json()
+    assert after == before
+
+
+# --------------------------------------------------------------------------
 # Decision options -- the legal-move envelope (frozen plan Sec 4.6)
 # --------------------------------------------------------------------------
 
