@@ -11,6 +11,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useLoadGame, useNewGame, useResolve } from "../../api/queries";
 import { StrategicMapScreen } from "./StrategicMapScreen";
 import { SessionProvider, useSession } from "../../state/SessionContext";
 
@@ -139,6 +140,94 @@ const ONE_WAY_MAP = {
   ],
   shapes: [],
 };
+
+const DECREE_MAP = {
+  map_id: "decree_state_map",
+  capital_theater_id: "throne",
+  theaters: [
+    {
+      theater_id: "throne",
+      display_name: "Throne Theater",
+      kind: "land",
+      is_capital: true,
+      is_player_owned: true,
+      owner_id: "player",
+      owner_namespace: "player_country",
+      owner_display_name: "The Decree State",
+      centroid_x: 0,
+      centroid_y: 0,
+      label_anchor: "center",
+      outgoing_theater_ids: [],
+      incoming_theater_ids: [],
+    },
+  ],
+  routes: [],
+  shapes: [],
+};
+
+function dashboard(revision: string, overrides: Record<string, unknown> = {}) {
+  return {
+    revision,
+    country_name: "Testland",
+    turn: 1,
+    next_election_label: "Turn 8",
+    government_form: "Parliamentary republic",
+    political_capital: { display: "120", current: 120, capacity: 200, committed_this_turn: 0 },
+    alerts: [],
+    goal: { headline: "Hold the coalition together", detail: null },
+    map: { note: "No spatial state.", presentation_only: true, tint_metric_label: "Legitimacy", tint_value_bps: 6200 },
+    concerns: {
+      money: { label: "Money", headline: "Stable", direction: "unchanged", tone: "neutral", delta_text: null, detail_screen: "economy" },
+      legitimacy: { label: "Legitimacy", headline: "Solid", direction: "unchanged", tone: "neutral", delta_text: null, detail_screen: "government" },
+      legislature: { label: "Legislature", headline: "Comfortable", direction: "unchanged", tone: "neutral", delta_text: null, detail_screen: "legislature" },
+      constitution: { label: "Constitution", headline: "Stable", direction: "unchanged", tone: "neutral", delta_text: null, detail_screen: "constitution" },
+      survival: { label: "Survival", headline: "Secure", direction: "unchanged", tone: "neutral", delta_text: null, detail_screen: "relationships" },
+    },
+    terminal: null,
+    ...overrides,
+  };
+}
+
+/** Drives the REAL `useNewGame`/`useLoadGame`/`useResolve` mutations (not a
+ * hand-rolled cache write) alongside the real `StrategicMapScreen`, so the
+ * five-row loaded-game-identity table (frozen plan §12/§13, "C5") is proven
+ * through the actual production wiring, not re-implemented in the test. */
+function Harness() {
+  const { revision, setRevision } = useSession();
+  const newGame = useNewGame();
+  const loadGame = useLoadGame();
+  const resolve = useResolve();
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => newGame.mutate({ scenarioId: "tiny_valid" }, { onSuccess: (d) => setRevision(d.revision) })}
+      >
+        Start tiny_valid
+      </button>
+      <button
+        type="button"
+        onClick={() => loadGame.mutate({ saveId: "save-decree" }, { onSuccess: (d) => setRevision(d.revision) })}
+      >
+        Load decree_state
+      </button>
+      <button
+        type="button"
+        disabled={revision === null}
+        onClick={() =>
+          revision !== null &&
+          resolve.mutate(
+            { revision, decisions: [] },
+            { onSuccess: (response) => setRevision(response.dashboard.revision) },
+          )
+        }
+      >
+        Resolve turn
+      </button>
+      <StrategicMapScreen navigate={vi.fn()} />
+    </div>
+  );
+}
 
 function renderScreen(map: unknown, options?: { revision?: string | null }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -302,5 +391,151 @@ describe("StrategicMapScreen: rendering and selection", () => {
       expect(button.getAttribute("aria-label") ?? "").not.toMatch(forbidden);
     }
     expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
+  });
+
+  it("no raw ids or raw owner-namespace enum text are exposed to players", async () => {
+    renderScreen(RECIPROCAL_MAP);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Capital Theater — Land, Republic of Arken, capital" }),
+    );
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Routes out" })).toBeInTheDocument());
+
+    const body = document.body.textContent ?? "";
+    expect(body).not.toMatch(/player_country|foreign_profile/);
+    // The raw theater id "frontier" (lowercase, whole word) must never appear on its own --
+    // only the resolved display name "Frontier Theater" may.
+    expect(body).not.toMatch(/\bfrontier\b/);
+  });
+
+  it("conveys terminal (concluded) campaigns as still fully inspectable -- inspection is not an action", async () => {
+    // The screen never fetches or branches on `/api/game/state`'s `terminal`
+    // field at all -- it reads the map only, so a concluded campaign is
+    // exactly as inspectable as an active one, structurally, not by a
+    // special case that could be forgotten later.
+    renderScreen(RECIPROCAL_MAP);
+    expect(await screen.findByText("Capital Theater — Land, Republic of Arken, capital")).toBeInTheDocument();
+    expect(screen.getByText("Frontier Theater — Coastal, Republic of Veskara")).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes("/api/game/state"))).toBe(
+      false,
+    );
+  });
+
+  it("the map-artwork panel is hidden below 900px; the info-bearing theater list/detail carries no such hiding class", async () => {
+    renderScreen(RECIPROCAL_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const mapPlaceholder = screen.getByText(/Map artwork is not part of this gate/);
+    expect(mapPlaceholder.className).toMatch(/\bhidden\b/);
+    expect(mapPlaceholder.className).toMatch(/min-\[900px\]:block/);
+
+    const theaterListHeading = screen.getByRole("heading", { name: "Theaters" });
+    const theaterPanel = theaterListHeading.closest("section");
+    expect(theaterPanel?.className ?? "").not.toMatch(/\bhidden\b/);
+    expect(theaterPanel?.className ?? "").not.toMatch(/min-\[900px\]/);
+  });
+});
+
+describe("StrategicMapScreen: loaded-game identity (frozen plan §12/§13 'C5' five-row table)", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function renderHarness() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    let mapFetchCount = 0;
+    let currentMap: unknown = RECIPROCAL_MAP;
+
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/game/new") && init?.method === "POST") {
+        currentMap = RECIPROCAL_MAP;
+        return Promise.resolve(jsonResponse(dashboard("rev-tiny-1")));
+      }
+      if (url.includes("/api/game/load") && init?.method === "POST") {
+        const body: unknown = JSON.parse(String(init.body));
+        currentMap = (body as { save_id: string }).save_id === "save-decree" ? DECREE_MAP : RECIPROCAL_MAP;
+        return Promise.resolve(
+          jsonResponse(dashboard((body as { save_id: string }).save_id === "save-decree" ? "rev-decree-1" : "rev-tiny-1")),
+        );
+      }
+      if (url.includes("/api/game/resolve") && init?.method === "POST") {
+        return Promise.resolve(
+          jsonResponse({
+            dashboard: dashboard("rev-tiny-2"),
+            turnResult: { turn: 1, outcome_headline: "It passed", outcome_tone: "positive" },
+          }),
+        );
+      }
+      if (url.includes("/api/game/map/strategic")) {
+        mapFetchCount += 1;
+        return Promise.resolve(jsonResponse(currentMap));
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    const rendered = render(
+      <QueryClientProvider client={client}>
+        <SessionProvider>
+          <Harness />
+        </SessionProvider>
+      </QueryClientProvider>,
+    );
+
+    return { ...rendered, getMapFetchCount: () => mapFetchCount };
+  }
+
+  it("creating a new game invalidates the strategic-map query and fetches the new map", async () => {
+    renderHarness();
+    fireEvent.click(screen.getByRole("button", { name: "Start tiny_valid" }));
+    expect(await screen.findByText("Capital Theater — Land, Republic of Arken, capital")).toBeInTheDocument();
+  });
+
+  it("loading a different save invalidates the query and cannot retain the prior map", async () => {
+    renderHarness();
+    fireEvent.click(screen.getByRole("button", { name: "Start tiny_valid" }));
+    expect(await screen.findByText("Capital Theater — Land, Republic of Arken, capital")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Load decree_state" }));
+    expect(await screen.findByText("Throne Theater — Land, The Decree State, capital")).toBeInTheDocument();
+    // The prior tiny_valid map's theater must not survive on screen.
+    expect(screen.queryByText(/Capital Theater/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Frontier Theater/)).not.toBeInTheDocument();
+  });
+
+  it("selection state clears when the loaded game changes", async () => {
+    renderHarness();
+    fireEvent.click(screen.getByRole("button", { name: "Start tiny_valid" }));
+    const theaterButton = await screen.findByRole("button", {
+      name: "Capital Theater — Land, Republic of Arken, capital",
+    });
+    fireEvent.click(theaterButton);
+    expect(theaterButton).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: "Capital Theater" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Load decree_state" }));
+    await screen.findByText("Throne Theater — Land, The Decree State, capital");
+
+    // No theater id from the prior map survives as a selection into the new one.
+    expect(screen.queryByRole("heading", { name: "Capital Theater" })).not.toBeInTheDocument();
+    expect(screen.getByText("Select a theater to see its detail.")).toBeInTheDocument();
+  });
+
+  it("resolving an ordinary turn does NOT refetch the immutable map", async () => {
+    const { getMapFetchCount } = renderHarness();
+    fireEvent.click(screen.getByRole("button", { name: "Start tiny_valid" }));
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    await waitFor(() => expect(getMapFetchCount()).toBe(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Resolve turn" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Resolve turn" })).not.toBeDisabled());
+
+    // Give any (incorrect) refetch a chance to happen before asserting it didn't.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(getMapFetchCount()).toBe(1);
+    expect(screen.getByText("Capital Theater — Land, Republic of Arken, capital")).toBeInTheDocument();
   });
 });
