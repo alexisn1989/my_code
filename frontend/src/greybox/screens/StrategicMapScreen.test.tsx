@@ -1062,6 +1062,26 @@ describe("StrategicMapScreen: labels, legend and the accessibility split", () =>
     });
   });
 
+  it("does not clip labels that their authored anchor pushes past the edge of the grid", async () => {
+    // Found in the Gate 9 browser walkthrough, not here: an SVG viewport clips by default, so
+    // "Arken Coast" (anchor w near x=1,200) and "Vetruskan Frontier" (anchor e near x=8,200)
+    // rendered as "n Coast" and "Vetruskan F". jsdom computes no layout, so this pins the two
+    // structural facts that let the browser paint them in full -- the grid-exact viewBox is kept,
+    // and the viewport no longer clips -- with the screenshots as the visual evidence.
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const svg = svgOf(container);
+    expect(svg.getAttribute("viewBox")).toBe("0 0 10000 10000");
+    expect(svg.getAttribute("class") ?? "").toMatch(/\boverflow-visible\b/);
+
+    // A west-anchored label near the left edge genuinely lands outside the grid: that is exactly
+    // the case the clipping used to eat, so the fixture must really contain one.
+    const westLabel = container.querySelector('[data-theater-label="coast"]');
+    expect(westLabel?.getAttribute("text-anchor")).toBe("end");
+    expect(Number(westLabel?.getAttribute("x"))).toBeLessThan(1000);
+  });
+
   it("keeps the SVG out of the accessibility tree and out of keyboard traversal entirely", async () => {
     const { container } = renderScreen(SVG_MAP);
     await screen.findByText("Capital Theater — Land, Republic of Arken, capital");

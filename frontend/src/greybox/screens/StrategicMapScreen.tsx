@@ -322,13 +322,22 @@ export function StrategicMapScreen(_props: ScreenProps) {
           data-testid="strategic-map-visual"
           className="hidden min-[900px]:block min-[900px]:w-1/2 min-[900px]:shrink-0"
         >
-          <div className="rounded border border-navy-800 bg-navy-900 p-3">
+          {/* The horizontal padding is not decoration: it is the gutter the labels overflow INTO
+              (see the `overflow-visible` note on the SVG below), so a name anchored at the edge of
+              the grid still lands inside this panel's own border. */}
+          <div className="rounded border border-navy-800 bg-navy-900 px-16 py-6">
             <svg
               viewBox={MAP_VIEWBOX}
               aria-hidden="true"
               focusable="false"
               data-testid="strategic-map-svg"
-              className="block h-auto w-full"
+              // `overflow-visible` matters: a theater whose authored `label_anchor` points outward
+              // near the edge of the grid puts its label PAST the 0..10,000 viewBox -- "Arken
+              // Coast" (anchor w at x=1,200) and "Vetruskan Frontier" (anchor e at x=8,200) both
+              // do. An SVG viewport clips by default, which silently truncated those names to
+              // "n Coast" and "Vetruskan F". The viewBox stays exactly the authored grid, as the
+              // map's own coordinate system must; only the clipping goes.
+              className="block h-auto w-full overflow-visible"
             >
               <defs>
                 {FOREIGN_SHAPE_STYLES.map((style, index) => (
