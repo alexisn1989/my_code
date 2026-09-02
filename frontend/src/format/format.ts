@@ -67,3 +67,60 @@ export function wrapIndex(index: number, delta: number, length: number): number 
 export function nextGeneration(previous: number | undefined): number {
   return (previous ?? 0) + 1;
 }
+
+/** One authored strategic-map label anchor (`StrategicTheaterProjection.label_anchor`,
+ * Strategic Military Map Gate M0). Declared here rather than imported from `../api/schema` so
+ * this module keeps its zero-import purity; TypeScript still checks the two unions are
+ * assignable at the call site, so a contract change cannot drift past unnoticed. */
+export type LabelAnchorValue = "n" | "s" | "e" | "w" | "center";
+
+/** The SVG `text-anchor` values this module emits. */
+export type SvgTextAnchor = "start" | "middle" | "end";
+
+/** How far, in authored grid units, a theater label sits from its own node. The strategic map
+ * is authored on a 0..10,000 grid (backend `geography.MAP_GRID_MAX`) and the SVG `viewBox`
+ * matches it 1:1, so this is a grid distance, not a pixel one. */
+const LABEL_OFFSET_UNITS = 330;
+
+/**
+ * Where one theater's label goes, given its node position and its authored `label_anchor`.
+ *
+ * The anchor names a side of the node ("n" = the label sits above it), and the returned
+ * `textAnchor` keeps the text growing AWAY from the node rather than back across it, so an
+ * east-anchored label starts at its point and a west-anchored one ends at it.
+ *
+ * This is the ONLY place the map's coordinate offset arithmetic happens: the screen component
+ * may not compute `x ± offset` inline (`format-boundary.test.ts` walks its real AST and fails on
+ * any arithmetic `BinaryExpression` outside `src/format/**`).
+ */
+export function labelOffsetPosition(
+  x: number,
+  y: number,
+  anchor: LabelAnchorValue,
+): { x: number; y: number; textAnchor: SvgTextAnchor } {
+  switch (anchor) {
+    case "n":
+      return { x, y: y - LABEL_OFFSET_UNITS, textAnchor: "middle" };
+    case "s":
+      return { x, y: y + LABEL_OFFSET_UNITS, textAnchor: "middle" };
+    case "e":
+      return { x: x + LABEL_OFFSET_UNITS, y, textAnchor: "start" };
+    case "w":
+      return { x: x - LABEL_OFFSET_UNITS, y, textAnchor: "end" };
+    case "center":
+      return { x, y, textAnchor: "middle" };
+  }
+}
+
+/**
+ * Wraps `position` into a `paletteSize`-long presentation palette.
+ *
+ * Used to hand each distinct map owner a visual style from a fixed palette: the caller sorts its
+ * owners deterministically first, so the same map always produces the same assignment regardless
+ * of the order the server happened to emit its collections in. `paletteSize` must be non-zero --
+ * every palette in the codebase is a non-empty literal array, so there is no runtime branch here
+ * for a case that cannot occur.
+ */
+export function paletteIndex(position: number, paletteSize: number): number {
+  return position % paletteSize;
+}

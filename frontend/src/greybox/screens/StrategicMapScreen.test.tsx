@@ -1,17 +1,25 @@
 /**
- * Strategic Military Map Gate M0 commit 7 -- coverage for the accessible
- * read-only screen: loading/error states, theater rendering, selection and
+ * Strategic Military Map Gate M0 -- coverage for the accessible read-only
+ * screen: loading/error states, theater rendering, selection and
  * live-region announcement, resolved (not raw) Routes out/in lists, a
  * one-way edge's asymmetric lists, and the structural negative assertion
  * that no order/deployment/unit affordance exists anywhere in the tree.
+ *
+ * Commit 7a adds the real SVG map's own battery: authored polygons and their
+ * per-OWNER (never per-position) styling, hatch overlays, route lines with
+ * direction arrows, theater nodes at authored centroids, the capital marker,
+ * node/list selection synchronisation in both directions, the label-anchor
+ * helper's five pinned cases, and the accessibility split that keeps the SVG
+ * out of keyboard traversal entirely.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLoadGame, useNewGame, useResolve } from "../../api/queries";
+import { labelOffsetPosition } from "../../format/format";
 import { StrategicMapScreen } from "./StrategicMapScreen";
 import { SessionProvider, useSession } from "../../state/SessionContext";
 
@@ -420,13 +428,13 @@ describe("StrategicMapScreen: rendering and selection", () => {
     );
   });
 
-  it("the map-artwork panel is hidden below 900px; the info-bearing theater list/detail carries no such hiding class", async () => {
+  it("the visual map panel is hidden below 900px; the info-bearing theater list/detail carries no such hiding class", async () => {
     renderScreen(RECIPROCAL_MAP);
     await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
 
-    const mapPlaceholder = screen.getByText(/Map artwork is not part of this gate/);
-    expect(mapPlaceholder.className).toMatch(/\bhidden\b/);
-    expect(mapPlaceholder.className).toMatch(/min-\[900px\]:block/);
+    const visualPanel = screen.getByTestId("strategic-map-visual");
+    expect(visualPanel.className).toMatch(/\bhidden\b/);
+    expect(visualPanel.className).toMatch(/min-\[900px\]:block/);
 
     const theaterListHeading = screen.getByRole("heading", { name: "Theaters" });
     const theaterPanel = theaterListHeading.closest("section");
@@ -537,5 +545,592 @@ describe("StrategicMapScreen: loaded-game identity (frozen plan §12/§13 'C5' f
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(getMapFetchCount()).toBe(1);
     expect(screen.getByText("Capital Theater — Land, Republic of Arken, capital")).toBeInTheDocument();
+  });
+});
+
+// --- Commit 7a: the real SVG map ------------------------------------------
+//
+// `SVG_MAP` is deliberately richer than the fixtures above: two islands owned by ONE foreign
+// sovereign (so per-owner styling is distinguishable from per-shape styling), a second, distinct
+// foreign sovereign, land AND coastal theaters, all five label anchors, a capital, and both a
+// reciprocal and a one-way route.
+
+const SVG_MAP = {
+  map_id: "svg_fixture",
+  capital_theater_id: "capital",
+  theaters: [
+    {
+      theater_id: "capital",
+      display_name: "Capital Theater",
+      kind: "land",
+      is_capital: true,
+      is_player_owned: true,
+      owner_id: "arken",
+      owner_namespace: "player_country",
+      owner_display_name: "Republic of Arken",
+      centroid_x: 1900,
+      centroid_y: 3200,
+      label_anchor: "center",
+      outgoing_theater_ids: ["coast", "north_march"],
+      incoming_theater_ids: ["coast", "north_march"],
+    },
+    {
+      theater_id: "coast",
+      display_name: "Arken Coast",
+      kind: "coastal",
+      is_capital: false,
+      is_player_owned: true,
+      owner_id: "arken",
+      owner_namespace: "player_country",
+      owner_display_name: "Republic of Arken",
+      centroid_x: 1200,
+      centroid_y: 5200,
+      label_anchor: "w",
+      outgoing_theater_ids: ["capital"],
+      incoming_theater_ids: ["capital"],
+    },
+    {
+      theater_id: "kessia_south",
+      display_name: "Southern Kessia",
+      kind: "land",
+      is_capital: false,
+      is_player_owned: false,
+      owner_id: "kessia",
+      owner_namespace: "foreign_profile",
+      owner_display_name: "Kessia",
+      centroid_x: 5400,
+      centroid_y: 3800,
+      label_anchor: "s",
+      outgoing_theater_ids: ["vetruska_frontier"],
+      incoming_theater_ids: ["north_march", "vetruska_frontier"],
+    },
+    {
+      theater_id: "north_march",
+      display_name: "Northern March",
+      kind: "land",
+      is_capital: false,
+      is_player_owned: true,
+      owner_id: "arken",
+      owner_namespace: "player_country",
+      owner_display_name: "Republic of Arken",
+      centroid_x: 2200,
+      centroid_y: 1900,
+      label_anchor: "n",
+      outgoing_theater_ids: ["capital", "kessia_south"],
+      incoming_theater_ids: ["capital"],
+    },
+    {
+      theater_id: "vetruska_frontier",
+      display_name: "Vetruskan Frontier",
+      kind: "land",
+      is_capital: false,
+      is_player_owned: false,
+      owner_id: "vetruska",
+      owner_namespace: "foreign_profile",
+      owner_display_name: "Vetruska",
+      centroid_x: 8200,
+      centroid_y: 3500,
+      label_anchor: "e",
+      outgoing_theater_ids: ["kessia_south"],
+      incoming_theater_ids: ["kessia_south"],
+    },
+  ],
+  routes: [
+    { from_theater_id: "capital", to_theater_id: "coast", bidirectional: true },
+    { from_theater_id: "capital", to_theater_id: "north_march", bidirectional: true },
+    { from_theater_id: "kessia_south", to_theater_id: "vetruska_frontier", bidirectional: true },
+    // One-way, authored north_march -> kessia_south. Never flipped, never inferred.
+    { from_theater_id: "north_march", to_theater_id: "kessia_south", bidirectional: false },
+  ],
+  shapes: [
+    {
+      shape_id: "shape_a_kessia_east",
+      owner_id: "kessia",
+      owner_namespace: "foreign_profile",
+      owner_display_name: "Kessia",
+      polygon: [
+        [4200, 1800],
+        [6200, 1500],
+        [6800, 3600],
+        [5600, 5400],
+        [4100, 4400],
+      ],
+    },
+    {
+      shape_id: "shape_b_arken",
+      owner_id: "arken",
+      owner_namespace: "player_country",
+      owner_display_name: "Republic of Arken",
+      polygon: [
+        [500, 2000],
+        [2200, 1200],
+        [3800, 2000],
+        [3600, 5200],
+        [1800, 6200],
+        [500, 4800],
+      ],
+    },
+    {
+      // A SECOND island for the SAME sovereign as `shape_a_kessia_east`.
+      shape_id: "shape_c_kessia_west",
+      owner_id: "kessia",
+      owner_namespace: "foreign_profile",
+      owner_display_name: "Kessia",
+      polygon: [
+        [4300, 6000],
+        [5200, 5900],
+        [5400, 7000],
+        [4500, 7400],
+      ],
+    },
+    {
+      shape_id: "shape_d_vetruska",
+      owner_id: "vetruska",
+      owner_namespace: "foreign_profile",
+      owner_display_name: "Vetruska",
+      polygon: [
+        [7200, 1800],
+        [9200, 2200],
+        [9400, 4600],
+        [7800, 5200],
+        [7000, 3600],
+      ],
+    },
+  ],
+};
+
+/** A map whose route names a theater the same response does not contain. */
+const BROKEN_ROUTE_MAP = {
+  ...SVG_MAP,
+  routes: [
+    ...SVG_MAP.routes,
+    { from_theater_id: "capital", to_theater_id: "theater_that_does_not_exist", bidirectional: false },
+  ],
+};
+
+function svgOf(container: HTMLElement): SVGSVGElement {
+  const svg = container.querySelector("svg");
+  if (svg === null) {
+    throw new Error("no strategic-map SVG rendered");
+  }
+  return svg as unknown as SVGSVGElement;
+}
+
+function pointsOf(polygon: readonly (readonly number[])[]): string {
+  return polygon.map(([x, y]) => `${x},${y}`).join(" ");
+}
+
+describe("StrategicMapScreen: SVG shapes and owner styling", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders one SVG on the authored 0..10,000 grid", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+    expect(svgOf(container).getAttribute("viewBox")).toBe("0 0 10000 10000");
+  });
+
+  it("renders exactly one base polygon per projected shape, in authored vertex order", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const bases = container.querySelectorAll("[data-shape-base]");
+    expect(bases).toHaveLength(SVG_MAP.shapes.length);
+
+    for (const shape of SVG_MAP.shapes) {
+      const element = container.querySelector(`[data-shape-base="${shape.shape_id}"]`);
+      expect(element).not.toBeNull();
+      // Joined, never sorted/rotated/normalized: the authored ring exactly as stored.
+      expect(element?.getAttribute("points")).toBe(pointsOf(shape.polygon));
+    }
+  });
+
+  it("renders a hatch overlay for every foreign shape and none for the player's", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const foreignShapes = SVG_MAP.shapes.filter((s) => s.owner_namespace === "foreign_profile");
+    expect(container.querySelectorAll("[data-shape-hatch]")).toHaveLength(foreignShapes.length);
+    expect(container.querySelector('[data-shape-hatch="shape_b_arken"]')).toBeNull();
+
+    for (const shape of foreignShapes) {
+      const overlay = container.querySelector(`[data-shape-hatch="${shape.shape_id}"]`);
+      expect(overlay?.getAttribute("fill")).toMatch(/^url\(#mandate-map-hatch-\d+\)$/);
+      // The overlay carries the SAME authored ring as its base polygon.
+      expect(overlay?.getAttribute("points")).toBe(pointsOf(shape.polygon));
+    }
+  });
+
+  it("distinguishes player from foreign territory on two channels: fill AND hatch", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const playerFill = container
+      .querySelector('[data-shape-base="shape_b_arken"]')
+      ?.getAttribute("fill");
+    const foreignFill = container
+      .querySelector('[data-shape-base="shape_a_kessia_east"]')
+      ?.getAttribute("fill");
+
+    expect(playerFill).toBeTruthy();
+    expect(foreignFill).toBeTruthy();
+    expect(playerFill).not.toBe(foreignFill);
+    expect(container.querySelector('[data-shape-hatch="shape_b_arken"]')).toBeNull();
+    expect(container.querySelector('[data-shape-hatch="shape_a_kessia_east"]')).not.toBeNull();
+  });
+
+  it("gives every shape of one sovereign exactly one style, and different sovereigns different ones", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const fillOf = (shapeId: string) =>
+      container.querySelector(`[data-shape-base="${shapeId}"]`)?.getAttribute("fill");
+    const hatchOf = (shapeId: string) =>
+      container.querySelector(`[data-shape-hatch="${shapeId}"]`)?.getAttribute("fill");
+
+    // Two islands, one sovereign -- identical fill AND identical hatch.
+    expect(fillOf("shape_a_kessia_east")).toBe(fillOf("shape_c_kessia_west"));
+    expect(hatchOf("shape_a_kessia_east")).toBe(hatchOf("shape_c_kessia_west"));
+
+    // Two different foreign sovereigns -- distinguishable on both channels.
+    expect(fillOf("shape_a_kessia_east")).not.toBe(fillOf("shape_d_vetruska"));
+    expect(hatchOf("shape_a_kessia_east")).not.toBe(hatchOf("shape_d_vetruska"));
+  });
+
+  it("assigns identical owner styles when the response's collections arrive in a different order", async () => {
+    const first = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+    const before = SVG_MAP.shapes.map((shape) => ({
+      shape_id: shape.shape_id,
+      fill: first.container
+        .querySelector(`[data-shape-base="${shape.shape_id}"]`)
+        ?.getAttribute("fill"),
+      hatch: first.container
+        .querySelector(`[data-shape-hatch="${shape.shape_id}"]`)
+        ?.getAttribute("fill"),
+    }));
+    first.unmount();
+
+    const reordered = {
+      ...SVG_MAP,
+      theaters: [...SVG_MAP.theaters].reverse(),
+      shapes: [...SVG_MAP.shapes].reverse(),
+    };
+    const second = renderScreen(reordered);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+    const after = SVG_MAP.shapes.map((shape) => ({
+      shape_id: shape.shape_id,
+      fill: second.container
+        .querySelector(`[data-shape-base="${shape.shape_id}"]`)
+        ?.getAttribute("fill"),
+      hatch: second.container
+        .querySelector(`[data-shape-hatch="${shape.shape_id}"]`)
+        ?.getAttribute("fill"),
+    }));
+
+    expect(after).toEqual(before);
+  });
+});
+
+describe("StrategicMapScreen: SVG routes", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders exactly one line per projected route row, with endpoints at the authored centroids", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const lines = container.querySelectorAll("[data-route]");
+    expect(lines).toHaveLength(SVG_MAP.routes.length);
+
+    const centroids = new Map(
+      SVG_MAP.theaters.map((t) => [t.theater_id, { x: t.centroid_x, y: t.centroid_y }]),
+    );
+    for (const route of SVG_MAP.routes) {
+      const line = container.querySelector(
+        `[data-route="${route.from_theater_id}->${route.to_theater_id}"]`,
+      );
+      expect(line).not.toBeNull();
+      const from = centroids.get(route.from_theater_id);
+      const to = centroids.get(route.to_theater_id);
+      expect(line?.getAttribute("x1")).toBe(String(from?.x));
+      expect(line?.getAttribute("y1")).toBe(String(from?.y));
+      expect(line?.getAttribute("x2")).toBe(String(to?.x));
+      expect(line?.getAttribute("y2")).toBe(String(to?.y));
+    }
+  });
+
+  it("draws a reciprocal route once, with an arrow at each end", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    // The contract collapses the reciprocal pair to one row; the map draws one line, not two.
+    expect(container.querySelectorAll('[data-route="capital->coast"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-route="coast->capital"]')).toHaveLength(0);
+
+    const line = container.querySelector('[data-route="capital->coast"]');
+    expect(line?.getAttribute("data-route-bidirectional")).toBe("true");
+    expect(line?.getAttribute("marker-end")).toBe("url(#mandate-map-route-arrow-end)");
+    expect(line?.getAttribute("marker-start")).toBe("url(#mandate-map-route-arrow-start)");
+  });
+
+  it("keeps a one-way route's authored direction and gives it a single end arrow", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    // Authored north_march -> kessia_south. The reverse is never emitted or inferred.
+    const line = container.querySelector('[data-route="north_march->kessia_south"]');
+    expect(line).not.toBeNull();
+    expect(container.querySelector('[data-route="kessia_south->north_march"]')).toBeNull();
+
+    const north = SVG_MAP.theaters.find((t) => t.theater_id === "north_march");
+    const kessia = SVG_MAP.theaters.find((t) => t.theater_id === "kessia_south");
+    expect(line?.getAttribute("x1")).toBe(String(north?.centroid_x));
+    expect(line?.getAttribute("x2")).toBe(String(kessia?.centroid_x));
+
+    expect(line?.getAttribute("data-route-bidirectional")).toBe("false");
+    expect(line?.getAttribute("marker-end")).toBe("url(#mandate-map-route-arrow-end)");
+    expect(line?.getAttribute("marker-start")).toBeNull();
+  });
+
+  it("refuses to draw a partial map when a route names a theater the response does not contain", async () => {
+    const { container } = renderScreen(BROKEN_ROUTE_MAP);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/inconsistent/i);
+    expect(alert.textContent).toMatch(/theater_that_does_not_exist/);
+
+    // No partial map: no SVG, no theater list, nothing silently omitted.
+    expect(container.querySelector("svg")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Theaters" })).not.toBeInTheDocument();
+  });
+});
+
+describe("StrategicMapScreen: SVG nodes, capital marker and selection sync", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("renders one node per theater, at its own authored centroid, with land and coastal drawn differently", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const nodes = container.querySelectorAll("[data-theater-node]");
+    expect(nodes).toHaveLength(SVG_MAP.theaters.length);
+
+    for (const theater of SVG_MAP.theaters) {
+      const node = container.querySelector(`[data-theater-node="${theater.theater_id}"]`);
+      expect(node?.getAttribute("data-centroid-x")).toBe(String(theater.centroid_x));
+      expect(node?.getAttribute("data-centroid-y")).toBe(String(theater.centroid_y));
+    }
+
+    // Kind is legible without colour: a coastal theater is a square, a land theater a circle.
+    expect(container.querySelector('[data-theater-node="coast"]')?.tagName.toLowerCase()).toBe(
+      "rect",
+    );
+    expect(container.querySelector('[data-theater-node="capital"]')?.tagName.toLowerCase()).toBe(
+      "circle",
+    );
+  });
+
+  it("renders exactly one capital marker, on the capital theater", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const markers = container.querySelectorAll("[data-capital-marker]");
+    expect(markers).toHaveLength(1);
+    expect(markers[0]?.getAttribute("data-capital-marker")).toBe(SVG_MAP.capital_theater_id);
+  });
+
+  it("selects the matching list row when an SVG node is clicked", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    const listButton = await screen.findByRole("button", {
+      name: "Southern Kessia — Land, Kessia",
+    });
+    expect(listButton).toHaveAttribute("aria-pressed", "false");
+
+    const node = container.querySelector('[data-theater-node="kessia_south"]');
+    expect(node).not.toBeNull();
+    fireEvent.click(node as Element);
+
+    expect(listButton).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: "Southern Kessia" })).toBeInTheDocument();
+  });
+
+  it("selects the matching SVG node when a list row is clicked, and again when one is focused", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    const clicked = await screen.findByRole("button", { name: "Southern Kessia — Land, Kessia" });
+
+    fireEvent.click(clicked);
+    expect(
+      container.querySelector('[data-theater-node="kessia_south"]')?.getAttribute("data-selected"),
+    ).toBe("true");
+    expect(container.querySelector('[data-selection-marker="kessia_south"]')).not.toBeNull();
+
+    // Keyboard traversal moves focus, and focus alone moves the map's selection -- so tabbing
+    // through the list drives the picture without any pointer.
+    const focused = screen.getByRole("button", { name: "Vetruskan Frontier — Land, Vetruska" });
+    fireEvent.focus(focused);
+    expect(
+      container
+        .querySelector('[data-theater-node="vetruska_frontier"]')
+        ?.getAttribute("data-selected"),
+    ).toBe("true");
+    expect(
+      container.querySelector('[data-theater-node="kessia_south"]')?.getAttribute("data-selected"),
+    ).toBe("false");
+    expect(container.querySelectorAll("[data-selection-marker]")).toHaveLength(1);
+  });
+
+  it("changes the selected node's own styling deterministically", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const node = () => container.querySelector('[data-theater-node="capital"]');
+    const unselectedFill = node()?.getAttribute("fill");
+    const unselectedRadius = node()?.getAttribute("r");
+
+    fireEvent.click(node() as Element);
+
+    expect(node()?.getAttribute("fill")).not.toBe(unselectedFill);
+    expect(node()?.getAttribute("r")).not.toBe(unselectedRadius);
+    expect(node()?.getAttribute("data-selected")).toBe("true");
+  });
+});
+
+describe("StrategicMapScreen: labels, legend and the accessibility split", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("labels every theater by its display name, positioned by its authored anchor", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    for (const theater of SVG_MAP.theaters) {
+      const label = container.querySelector(`[data-theater-label="${theater.theater_id}"]`);
+      expect(label?.textContent).toBe(theater.display_name);
+
+      const expected = labelOffsetPosition(
+        theater.centroid_x,
+        theater.centroid_y,
+        theater.label_anchor as Parameters<typeof labelOffsetPosition>[2],
+      );
+      expect(label?.getAttribute("x")).toBe(String(expected.x));
+      expect(label?.getAttribute("y")).toBe(String(expected.y));
+      expect(label?.getAttribute("text-anchor")).toBe(expected.textAnchor);
+    }
+  });
+
+  it("pins every label-anchor case of the offset helper", () => {
+    // North sits above the node, south below, east to its right, west to its left, and centre on
+    // it -- with the text growing AWAY from the node in each case, never back across it.
+    expect(labelOffsetPosition(1000, 2000, "n")).toEqual({
+      x: 1000,
+      y: 1670,
+      textAnchor: "middle",
+    });
+    expect(labelOffsetPosition(1000, 2000, "s")).toEqual({
+      x: 1000,
+      y: 2330,
+      textAnchor: "middle",
+    });
+    expect(labelOffsetPosition(1000, 2000, "e")).toEqual({
+      x: 1330,
+      y: 2000,
+      textAnchor: "start",
+    });
+    expect(labelOffsetPosition(1000, 2000, "w")).toEqual({ x: 670, y: 2000, textAnchor: "end" });
+    expect(labelOffsetPosition(1000, 2000, "center")).toEqual({
+      x: 1000,
+      y: 2000,
+      textAnchor: "middle",
+    });
+  });
+
+  it("keeps the SVG out of the accessibility tree and out of keyboard traversal entirely", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const svg = svgOf(container);
+    expect(svg.getAttribute("aria-hidden")).toBe("true");
+    expect(svg.getAttribute("focusable")).toBe("false");
+    // Not one tab stop inside the picture: the list is the whole keyboard surface.
+    expect(svg.querySelectorAll("[tabindex]")).toHaveLength(0);
+    expect(svg.querySelectorAll("button, a, input, select, textarea")).toHaveLength(0);
+  });
+
+  it("states the map's vocabulary in a real, visible, non-SVG legend", async () => {
+    renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const legend = screen.getByTestId("strategic-map-legend");
+    expect(legend.tagName.toLowerCase()).not.toBe("svg");
+    expect(legend.closest("svg")).toBeNull();
+    expect(legend.getAttribute("aria-hidden")).toBeNull();
+
+    const text = legend.textContent ?? "";
+    expect(text).toMatch(/Your territory/);
+    expect(text).toMatch(/Foreign territory/);
+    expect(text).toMatch(/hatch/i);
+    expect(text).toMatch(/arrowhead/i);
+    expect(text).toMatch(/Capital/);
+    expect(text).toMatch(/Selected/);
+  });
+
+  it("adds no military order, movement, unit, deployment or combat affordance", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+    fireEvent.click(container.querySelector('[data-theater-node="capital"]') as Element);
+
+    const forbidden = /\b(order|deploy|deployment|move|movement|unit|troop|combat|attack)\b/i;
+    for (const control of screen.getAllByRole("button")) {
+      expect(control.textContent ?? "").not.toMatch(forbidden);
+      expect(control.getAttribute("aria-label") ?? "").not.toMatch(forbidden);
+    }
+    expect(screen.queryAllByRole("menuitem")).toHaveLength(0);
+    expect(container.querySelectorAll("form, input, select, textarea")).toHaveLength(0);
+  });
+
+  it("keeps the complete textual route information available in the narrow, SVG-free layout", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    const listButton = await screen.findByRole("button", {
+      name: "Northern March — Land, Republic of Arken",
+    });
+    fireEvent.click(listButton);
+
+    // The panel that the <900px breakpoint hides is the one holding the SVG and its legend...
+    const visualPanel = screen.getByTestId("strategic-map-visual");
+    expect(visualPanel.className).toMatch(/\bhidden\b/);
+    expect(svgOf(container).closest('[data-testid="strategic-map-visual"]')).toBe(visualPanel);
+    expect(screen.getByTestId("strategic-map-legend").closest('[data-testid="strategic-map-visual"]')).toBe(
+      visualPanel,
+    );
+
+    // ...and everything directional survives it, in words, in the always-visible column.
+    const detail = screen.getByRole("heading", { name: "Northern March" }).closest("section");
+    expect(detail?.className ?? "").not.toMatch(/\bhidden\b/);
+    expect(within(detail as HTMLElement).getByRole("heading", { name: "Routes out" })).toBeInTheDocument();
+    expect(within(detail as HTMLElement).getByRole("heading", { name: "Routes in" })).toBeInTheDocument();
+    expect(within(detail as HTMLElement).getByText("Southern Kessia")).toBeInTheDocument();
+    // "Capital Theater" is legitimately in BOTH lists here (Northern March routes out to it and
+    // in from it), so it is expected more than once.
+    expect(within(detail as HTMLElement).getAllByText("Capital Theater").length).toBe(2);
+    expect(within(detail as HTMLElement).getByText("Land")).toBeInTheDocument();
+    expect(within(detail as HTMLElement).getByText("Republic of Arken")).toBeInTheDocument();
   });
 });
