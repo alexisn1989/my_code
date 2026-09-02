@@ -148,6 +148,36 @@ def test_export_import_export_is_byte_identical_with_real_resource_endowments() 
     assert any(d.extracted > 0 for d in latest_report.resources.deposits)
 
 
+def test_save_reload_preserves_the_strategic_map_identically() -> None:
+    """Strategic Military Map Gate M0 commit 8, sec.13 "Save/reload map identity": beyond the
+    whole-save byte-identity the tests above already prove, this checks the map SPECIFICALLY, at
+    the object level rather than only as JSON bytes -- every theater (including its nested
+    `SovereignRef` owner and `TheaterPresentation`), every route and every shape survives a real
+    export -> import round trip as the exact same Pydantic value, using `tiny_valid`'s real
+    multi-theater, multi-route, multi-shape map rather than `make_game_state`'s trivial
+    one-theater default.
+    """
+    state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
+    original_map = state.world.strategic_map
+    save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
+    for _ in range(3):
+        current = save.current_state()
+        decisions = DecisionSet(
+            expected_turn=current.turn, expected_state_version=current.state_version, decisions=[]
+        )
+        save = advance_game(save, decisions)
+
+    reloaded = load_save_json(dump_save_json(save), source="test")
+    reloaded_map = reloaded.current_state().world.strategic_map
+
+    assert reloaded_map == original_map
+    assert reloaded_map.map_id == original_map.map_id
+    assert reloaded_map.capital_theater_id == original_map.capital_theater_id
+    assert list(reloaded_map.theaters) == list(original_map.theaters)
+    assert reloaded_map.routes == original_map.routes
+    assert reloaded_map.shapes == original_map.shapes
+
+
 def test_export_import_export_preserves_entry_count_and_head_hash() -> None:
     save = _fresh_save()
     for _ in range(4):
