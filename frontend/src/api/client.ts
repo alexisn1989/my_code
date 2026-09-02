@@ -32,6 +32,10 @@ export type PolicyCardEffect = Schemas["PolicyCardEffect"];
 export type PolicyCardChamberRequirement = Schemas["PolicyCardChamberRequirement"];
 export type BudgetDecision = Schemas["BudgetDecision"];
 export type ConstitutionalAmendmentDecision = Schemas["ConstitutionalAmendmentDecision"];
+export type StrategicMapProjection = Schemas["StrategicMapProjection"];
+export type StrategicTheaterProjection = Schemas["StrategicTheaterProjection"];
+export type StrategicRouteProjection = Schemas["StrategicRouteProjection"];
+export type StrategicShapeProjection = Schemas["StrategicShapeProjection"];
 
 /** A raw, unvalidated decision payload. The server's own reject-not-normalize
  * validators are the only authority on whether one is legal; this client
@@ -93,4 +97,6 @@ export const api = {
     request(`/api/game/history/${turn}`),
 
   listSaves: (): Promise<SaveSummary[]> => request("/api/saves"),
+
+  getStrategicMap: (): Promise<StrategicMapProjection> => request("/api/game/map/strategic"),
 };

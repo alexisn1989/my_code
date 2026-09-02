@@ -78,6 +78,7 @@ function NationalHeader() {
 
 function GreyboxShell() {
   const [screenId, setScreenId] = useState<ScreenId>(INITIAL_SCREEN);
+  const { revision } = useSession();
   const dismissedHelp = useDraftStore((state) => state.dismissedHelp);
   const dismissHelp = useDraftStore((state) => state.dismissHelp);
   const glossaryOpen = useDraftStore((state) => state.glossaryOpen);
@@ -138,18 +139,23 @@ function GreyboxShell() {
       <div className="flex flex-col gap-6 px-6 py-6 lg:flex-row">
         <nav aria-label="Screens" className="lg:w-56 lg:shrink-0">
           <ul className="flex flex-wrap gap-2 lg:flex-col">
-            {SCREENS.map((entry) => (
-              <li key={entry.id}>
-                <button
-                  type="button"
-                  aria-current={entry.id === screenId ? "page" : undefined}
-                  onClick={() => setScreenId(entry.id)}
-                  className="w-full rounded border border-navy-800 px-3 py-2 text-left text-sm aria-[current=page]:border-gold-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
-                >
-                  {entry.label}
-                </button>
-              </li>
-            ))}
+            {SCREENS.map((entry) => {
+              const disabled = (entry.requiresActiveGame ?? false) && revision === null;
+              return (
+                <li key={entry.id}>
+                  <button
+                    type="button"
+                    aria-current={entry.id === screenId ? "page" : undefined}
+                    disabled={disabled}
+                    title={disabled ? "Load or start a game to view the strategic map." : undefined}
+                    onClick={disabled ? undefined : () => setScreenId(entry.id)}
+                    className="w-full rounded border border-navy-800 px-3 py-2 text-left text-sm aria-[current=page]:border-gold-500 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                  >
+                    {entry.label}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </nav>
 

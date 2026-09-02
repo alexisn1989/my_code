@@ -95,6 +95,45 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
 
+const STRATEGIC_MAP = {
+  map_id: "tiny_valid",
+  capital_theater_id: "capital",
+  theaters: [
+    {
+      theater_id: "capital",
+      display_name: "Capital Theater",
+      kind: "land",
+      is_capital: true,
+      is_player_owned: true,
+      owner_id: "player",
+      owner_namespace: "player_country",
+      owner_display_name: "Testland",
+      centroid_x: 0,
+      centroid_y: 0,
+      label_anchor: "center",
+      outgoing_theater_ids: ["frontier"],
+      incoming_theater_ids: ["frontier"],
+    },
+    {
+      theater_id: "frontier",
+      display_name: "Frontier Theater",
+      kind: "coastal",
+      is_capital: false,
+      is_player_owned: false,
+      owner_id: "neighbor",
+      owner_namespace: "foreign_profile",
+      owner_display_name: "Republic of Veskara",
+      centroid_x: 10,
+      centroid_y: 10,
+      label_anchor: "n",
+      outgoing_theater_ids: ["capital"],
+      incoming_theater_ids: ["capital"],
+    },
+  ],
+  routes: [{ from_theater_id: "capital", to_theater_id: "frontier", bidirectional: true }],
+  shapes: [],
+};
+
 function mockFullApp() {
   vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -106,6 +145,7 @@ function mockFullApp() {
     if (url.includes("/api/game/state")) return Promise.resolve(jsonResponse(ACTIVE_DASHBOARD));
     if (url.includes("/api/game/decision-options")) return Promise.resolve(jsonResponse(DECISION_OPTIONS));
     if (url.includes("/api/game/history")) return Promise.resolve(jsonResponse([]));
+    if (url.includes("/api/game/map/strategic")) return Promise.resolve(jsonResponse(STRATEGIC_MAP));
     throw new Error(`unexpected fetch: ${url}`);
   });
 }
@@ -170,6 +210,60 @@ describe("GreyboxApp: keyboard navigation and aria-current across all eleven scr
       expect(currentButtons).toHaveLength(1);
       expect(currentButtons[0]).toBe(button);
     }
+  });
+});
+
+describe("GreyboxApp: Strategic map nav entry is gated on an active game", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    mockFullApp();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("is disabled with an explanatory label before any game is loaded", async () => {
+    renderApp();
+    const nav = await screen.findByRole("navigation", { name: "Screens" });
+    const button = within(nav).getByRole("button", { name: "Strategic map" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "Load or start a game to view the strategic map.");
+  });
+
+  it("becomes enabled, keyboard-activatable, and reaches the screen once a game is loaded", async () => {
+    renderApp();
+    await startGameFromTitle();
+    const nav = await screen.findByRole("navigation", { name: "Screens" });
+    const button = within(nav).getByRole("button", { name: "Strategic map" });
+    expect(button).not.toBeDisabled();
+
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-current", "page");
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { level: 2, name: "Strategic map" })).toBeInTheDocument(),
+    );
+  });
+
+  it("keyboard traversal of the theater list selects a theater and announces the live-region text verbatim", async () => {
+    renderApp();
+    await startGameFromTitle();
+    const nav = await screen.findByRole("navigation", { name: "Screens" });
+    fireEvent.click(within(nav).getByRole("button", { name: "Strategic map" }));
+
+    const theaterButton = await screen.findByRole("button", {
+      name: "Capital Theater — Land, Testland, capital",
+    });
+    // A native <button> is Tab-reachable and Enter/Space-activatable with no
+    // custom key handler -- `fireEvent.click` is what that keypress
+    // ultimately dispatches.
+    fireEvent.click(theaterButton);
+    expect(theaterButton).toHaveAttribute("aria-pressed", "true");
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Capital Theater, land, owned by Testland, 1 routes out, 1 routes in"),
+      ).toBeInTheDocument(),
+    );
   });
 });
 

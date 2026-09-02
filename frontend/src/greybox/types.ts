@@ -10,7 +10,8 @@
 export type Tone = "positive" | "negative" | "caution" | "neutral";
 export type Direction = "up" | "down" | "unchanged";
 
-/** The eleven navigable screens (frozen plan Sec 8.1) plus the chrome-level
+/** The eleven navigable screens (frozen plan Sec 8.1), plus Strategic map
+ * (Strategic Military Map Gate M0, Sec 12/15 step 7), plus the chrome-level
  * Glossary, which `registry.ts` deliberately does not list as a navigation
  * entry -- see that file's own docstring. */
 export type ScreenId =
@@ -24,5 +25,6 @@ export type ScreenId =
   | "decisions"
   | "result"
   | "history"
+  | "strategic-map"
   | "terminal"
   | "glossary";

@@ -4,10 +4,11 @@
  * not part of the generated API contract, so it does not belong under
  * `src/api/`).
  *
- * ELEVEN entries, not twelve, for the same reason Gate 4A0 established: the
+ * TWELVE entries, not thirteen, for the same reason Gate 4A0 established: the
  * frozen plan's own §8.1 lists the main-tab bar as eight items (Dashboard ·
  * Government · Economy · Legislature · Constitution · Relationships ·
- * Decisions · History) and separately, in §9, describes Glossary as
+ * Decisions · History), Strategic Military Map Gate M0 §12/§15 step 7 adds a
+ * ninth (Strategic map), and separately, in §9, describes Glossary as
  * "a static reference panel, reachable from the persistent chrome, not a
  * modal that blocks the game" -- i.e. a chrome-level toggle, never a peer
  * navigation tab. `GlossaryScreen` stays outside this list and is rendered by
@@ -30,6 +31,7 @@ import { DashboardScreen } from "./screens/DashboardScreen";
 import { DecisionsScreen } from "./screens/DecisionsScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
 import { ResultScreen } from "./screens/ResultScreen";
+import { StrategicMapScreen } from "./screens/StrategicMapScreen";
 import { TerminalScreen } from "./screens/TerminalScreen";
 import { TitleScreen } from "./screens/TitleScreen";
 import { UnavailableScreen } from "./screens/UnavailableScreen";
@@ -47,6 +49,11 @@ export interface ScreenDefinition {
   heading: string;
   component: ComponentType<ScreenProps>;
   showsGameplayChrome: boolean;
+  /** True only for the Strategic map entry: the nav control is disabled,
+   * with an explanatory label, whenever no game is loaded (`revision ===
+   * null`). Optional and unset for the other ten entries -- no behavior
+   * change for them. */
+  requiresActiveGame?: boolean;
 }
 
 function unavailable(heading: string): ComponentType<ScreenProps> {
@@ -127,6 +134,14 @@ export const SCREENS: readonly ScreenDefinition[] = [
     heading: "History",
     component: HistoryScreen,
     showsGameplayChrome: true,
+  },
+  {
+    id: "strategic-map",
+    label: "Strategic map",
+    heading: "Strategic map",
+    component: StrategicMapScreen,
+    showsGameplayChrome: true,
+    requiresActiveGame: true,
   },
   {
     id: "terminal",

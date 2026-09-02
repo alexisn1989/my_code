@@ -59,3 +59,11 @@ export function formatCommitted(committed: number, opening: number): string {
 export function wrapIndex(index: number, delta: number, length: number): number {
   return (index + delta + length) % length;
 }
+
+/** Bumps the client-side "loaded game" generation counter
+ * (`gameGenerationQueryKey`, `src/api/queries.ts`) by one. Not display
+ * formatting, but arithmetic all the same, so it lives here per the format
+ * boundary rather than inline at the call site. */
+export function nextGeneration(previous: number | undefined): number {
+  return (previous ?? 0) + 1;
+}

@@ -27,6 +27,7 @@ import {
   type ResolveResponse,
   type SaveSummary,
 } from "./client";
+import { nextGeneration } from "../format/format";
 
 /** No game loaded yet -- distinct from "loading" or "errored". Callers branch
  * on this via `NoActiveSessionError`, not on a magic revision value. */
@@ -91,6 +92,44 @@ export function useHistory(options?: { enabled?: boolean }) {
     queryKey: historyQueryKey(),
     queryFn: api.listHistory,
     enabled: options?.enabled ?? true,
+  });
+}
+
+/**
+ * No API response carries a stable "which loaded game is this" identity --
+ * `revision` changes on every resolve, which is exactly why it is the WRONG
+ * key for campaign-static data like the strategic map (keying on it would
+ * refetch the map every turn for no reason). This is a small client-side
+ * monotonic counter instead: bumped only by `useNewGame`/`useLoadGame`'s
+ * `onSuccess` below (never `useResolve`'s), using the existing cache
+ * mechanism (`setQueryData`), not a second cache.
+ */
+export function gameGenerationQueryKey() {
+  return ["gameGeneration"] as const;
+}
+
+export function useGameGeneration() {
+  return useQuery({
+    queryKey: gameGenerationQueryKey(),
+    queryFn: () => 0,
+    initialData: 0,
+  });
+}
+
+/** The strategic map is authored, immutable content for the loaded campaign
+ * (frozen plan Sec 12): it never changes after a game is started or loaded,
+ * so it is keyed on the generation counter above, not `revision`, and
+ * `staleTime: Infinity` documents that it is never refetched on its own. */
+export function strategicMapQueryKey(generation: number) {
+  return ["strategicMap", generation] as const;
+}
+
+export function useStrategicMap(generation: number, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: strategicMapQueryKey(generation),
+    queryFn: api.getStrategicMap,
+    enabled: options?.enabled ?? true,
+    staleTime: Infinity,
   });
 }
 
@@ -186,6 +225,7 @@ export function useNewGame(): UseMutationResult<
       queryClient.setQueryData(dashboardQueryKey(dashboard.revision), dashboard);
       queryClient.invalidateQueries({ queryKey: savesQueryKey() });
       queryClient.invalidateQueries({ queryKey: historyQueryKey() });
+      queryClient.setQueryData(gameGenerationQueryKey(), nextGeneration);
     },
   });
 }
@@ -209,6 +249,7 @@ export function useLoadGame(): UseMutationResult<
     onSuccess: (dashboard) => {
       queryClient.setQueryData(dashboardQueryKey(dashboard.revision), dashboard);
       queryClient.invalidateQueries({ queryKey: historyQueryKey() });
+      queryClient.setQueryData(gameGenerationQueryKey(), nextGeneration);
     },
   });
 }

@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   dashboardQueryKey,
   decisionOptionsQueryKey,
+  gameGenerationQueryKey,
   historyQueryKey,
   liveTurnResultQueryKey,
   savesQueryKey,
@@ -109,6 +110,22 @@ describe("useResolve", () => {
     expect(client.getQueryData(dashboardQueryKey(NEW_REVISION))).toBeUndefined();
     expect(client.getQueryData(liveTurnResultQueryKey())).toBeUndefined();
   });
+
+  it("does NOT bump the game generation counter -- the strategic map must not refetch on turn resolution", async () => {
+    const client = makeClient();
+    client.setQueryData(gameGenerationQueryKey(), 1);
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, { turnResult: TURN_RESULT, dashboard: DASHBOARD_AFTER }),
+    );
+
+    const { result } = renderHook(() => useResolve(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ revision: OLD_REVISION, decisions: [] });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(client.getQueryData(gameGenerationQueryKey())).toBe(1);
+  });
 });
 
 describe("useLoadGame", () => {
@@ -153,6 +170,19 @@ describe("useLoadGame", () => {
 
     expect(client.getQueryData(dashboardQueryKey(NEW_REVISION))).toEqual(DASHBOARD_AFTER);
   });
+
+  it("bumps the game generation counter on success", async () => {
+    const client = makeClient();
+    client.setQueryData(gameGenerationQueryKey(), 1);
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, DASHBOARD_AFTER));
+
+    const { result } = renderHook(() => useLoadGame(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ saveId: "save-1" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(client.getQueryData(gameGenerationQueryKey())).toBe(2);
+  });
 });
 
 describe("useNewGame", () => {
@@ -176,5 +206,18 @@ describe("useNewGame", () => {
     expect(client.getQueryData(dashboardQueryKey(OLD_REVISION))).toEqual(DASHBOARD_BEFORE);
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: savesQueryKey() });
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: historyQueryKey() });
+  });
+
+  it("bumps the game generation counter on success", async () => {
+    const client = makeClient();
+    client.setQueryData(gameGenerationQueryKey(), 1);
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, DASHBOARD_BEFORE));
+
+    const { result } = renderHook(() => useNewGame(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ scenarioId: "scenario-1" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(client.getQueryData(gameGenerationQueryKey())).toBe(2);
   });
 });
