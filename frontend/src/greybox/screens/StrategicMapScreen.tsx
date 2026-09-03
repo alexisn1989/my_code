@@ -64,6 +64,42 @@ function theaterListItemLabel(theater: StrategicTheaterProjection): string {
 /** The authored grid, 1:1. Backend `geography.MAP_GRID_MAX` is 10,000 on both axes. */
 const MAP_VIEWBOX = "0 0 10000 10000";
 
+// --- Map ground, frame and decoration --------------------------------------
+//
+// Chart furniture, and nothing more. The engine authors five theaters, a handful of directed
+// routes and one open ring per sovereign; it authors no coastline, terrain, river, city, road or
+// border. So this layer adds a ground, a frame, a decorative grid and a compass -- presentation
+// that makes the authored content read as a strategic map -- and invents no geography whatsoever.
+// The grid is coordinate paper, not a graticule of anything: it carries no degrees, no
+// coordinates and no distances, and the screen states in words that it is schematic.
+
+const SEA_FILL = "var(--color-navy-950)";
+const GRID_LINE = "var(--color-navy-800)";
+const GRID_LINE_WIDTH = 10;
+/** Interior grid lines only, every 1,250 units. Literal positions: no arithmetic in this file. */
+const GRID_POSITIONS = [1250, 2500, 3750, 5000, 6250, 7500, 8750] as const;
+
+const FRAME_LINE = "var(--color-navy-800)";
+const FRAME_WIDTH = 40;
+const INSET_FRAME_LINE = "var(--color-gold-600)";
+const INSET_FRAME_WIDTH = 12;
+const INSET_FRAME_ORIGIN = 130;
+const INSET_FRAME_SIDE = 9740;
+/** Corner index ticks on the inset frame, drawn as one static path. */
+const CORNER_TICKS_PATH = [
+  "M 130 520 L 130 130 L 520 130",
+  "M 9480 130 L 9870 130 L 9870 520",
+  "M 9870 9480 L 9870 9870 L 9480 9870",
+  "M 520 9870 L 130 9870 L 130 9480",
+].join(" ");
+
+/** Presentation only: the compass enters no state, no API payload and no mechanic. */
+const COMPASS_RADIUS = 260;
+const COMPASS_NORTH_POINTS = "0,-205 78,60 0,15 -78,60";
+const COMPASS_SOUTH_POINTS = "0,205 78,-60 0,-15 -78,-60";
+const COMPASS_LABEL_Y = -330;
+const COMPASS_LABEL_SIZE = 190;
+
 /** The one player country's territory: solid, no hatch (`--color-gold-600`). */
 const PLAYER_SHAPE_FILL = "var(--color-gold-600)";
 
@@ -81,9 +117,17 @@ const FOREIGN_SHAPE_STYLES = [
   { fill: "var(--color-accent-red-600)", hatchPatternId: "mandate-map-hatch-1" },
 ] as const;
 
-const SHAPE_BORDER = "var(--color-navy-800)";
-const SHAPE_BORDER_WIDTH = 22;
-const SHAPE_FILL_OPACITY = 0.55;
+/** The AUTHORED BOUNDARY of a political shape -- not a coastline. The engine authors a political
+ * outline per sovereign and says nothing about where land meets water, so neither does this. The
+ * outer stroke is a darker halo that separates the shape from the ground; the inner one is the
+ * boundary itself. */
+const SHAPE_OUTLINE_HALO = "var(--color-navy-950)";
+const SHAPE_OUTLINE_HALO_WIDTH = 90;
+const SHAPE_OUTLINE_PLAYER = "var(--color-gold-500)";
+const SHAPE_OUTLINE_FOREIGN = "var(--color-parchment-200)";
+const SHAPE_OUTLINE_WIDTH = 26;
+const SHAPE_OUTLINE_OPACITY = 0.75;
+const SHAPE_FILL_OPACITY = 0.62;
 
 const HATCH_LINE = "var(--color-parchment-200)";
 const HATCH_LINE_WIDTH = 26;
@@ -99,31 +143,42 @@ const ROUTE_LINE_WIDTH = 18;
 const ROUTE_ARROW_END_ID = "mandate-map-route-arrow-end";
 const ROUTE_ARROW_START_ID = "mandate-map-route-arrow-start";
 
+// A theater marker is a neutral map location symbol: a dark disc with a bright outer ring. Land
+// and coastal differ by an inner glyph (a dot for land, a small square for coastal), which is a
+// restrained difference that never becomes the only carrier of the fact -- the list row and the
+// detail panel both say "Land" or "Coastal" in words.
 const NODE_FILL = "var(--color-navy-950)";
-const NODE_STROKE = "var(--color-parchment-100)";
-const NODE_STROKE_WIDTH = 26;
-const NODE_RADIUS = 120;
-const NODE_RADIUS_SELECTED = 190;
-/** A coastal theater is drawn as a square, a land theater as a circle: kind is legible without
- * colour. The offsets are the negative half-sides, written as literals so no arithmetic is
- * needed to centre the square on its own centroid. */
-const COASTAL_SIDE = 240;
-const COASTAL_ORIGIN = -120;
-const COASTAL_SIDE_SELECTED = 380;
-const COASTAL_ORIGIN_SELECTED = -190;
+const NODE_RING = "var(--color-parchment-100)";
+const NODE_RING_WIDTH = 26;
+const NODE_RADIUS = 130;
+const NODE_RADIUS_SELECTED = 200;
+const NODE_GLYPH_RADIUS = 46;
+const NODE_GLYPH_SQUARE = 74;
+const NODE_GLYPH_SQUARE_ORIGIN = -37;
+/** A generous, invisible pointer target. It is centred on the very same authored centroid as the
+ * marker, so an easier click changes nothing about the coordinate the node represents. */
+const NODE_HIT_RADIUS = 380;
 
 const SELECTED_FILL = "var(--color-gold-500)";
 const SELECTED_STROKE = "var(--color-gold-500)";
-const SELECTION_RING_RADIUS = 420;
-const SELECTION_RING_WIDTH = 22;
-const SELECTION_RING_DASH = "70 60";
+const SELECTION_RING_RADIUS = 430;
+const SELECTION_RING_WIDTH = 26;
+const SELECTION_RING_DASH = "78 62";
 
+/** A five-point star on the capital, drawn once as a static shape and translated to the
+ * authoritative capital theater's own centroid -- so the star introduces no coordinate of its
+ * own. Capital status is stated in words as well; the star is never its only representation. */
 const CAPITAL_MARKER_COLOR = "var(--color-gold-500)";
-const CAPITAL_RING_RADIUS = 290;
-const CAPITAL_RING_WIDTH = 26;
+const CAPITAL_STAR_POINTS =
+  "0,-210 49,-68 200,-65 80,26 123,170 0,84 -123,170 -80,26 -200,-65 -49,-68";
+const CAPITAL_STAR_OUTLINE = "var(--color-navy-950)";
+const CAPITAL_STAR_OUTLINE_WIDTH = 34;
 
 const LABEL_COLOR = "var(--color-parchment-100)";
-const LABEL_FONT_SIZE = 260;
+const LABEL_HALO = "var(--color-navy-950)";
+const LABEL_HALO_WIDTH = 60;
+const LABEL_FONT_SIZE = 250;
+const LABEL_LETTER_SPACING = 26;
 
 // --- Owner styling ---------------------------------------------------------
 
@@ -326,6 +381,17 @@ export function StrategicMapScreen(_props: ScreenProps) {
               (see the `overflow-visible` note on the SVG below), so a name anchored at the edge of
               the grid still lands inside this panel's own border. */}
           <div className="rounded border border-navy-800 bg-navy-900 px-16 py-6">
+            {/* Real, accessible text -- not SVG -- so the map's own caveat is never trapped inside
+                the aria-hidden picture. */}
+            <p className="font-[family-name:var(--font-display)] text-sm uppercase tracking-[0.2em] text-parchment-100">
+              Strategic theater map
+            </p>
+            <p
+              data-testid="strategic-map-caveat"
+              className="mb-4 text-xs italic text-parchment-200/60"
+            >
+              Schematic — not to geographic scale
+            </p>
             <svg
               viewBox={MAP_VIEWBOX}
               aria-hidden="true"
@@ -381,8 +447,91 @@ export function StrategicMapScreen(_props: ScreenProps) {
                 </marker>
               </defs>
 
-              {/* Layer 1 -- base political polygons, in authored vertex order. */}
+              {/* Layer 0 -- the ground, its frame and its decorative coordinate grid. Chart
+                  furniture only: the grid is ruled paper, carrying no degrees, no coordinates and
+                  no distances, and the caption above says in words that the map is schematic. */}
+              <g data-layer="ground">
+                <rect
+                  data-map-sea="true"
+                  x={0}
+                  y={0}
+                  width={10000}
+                  height={10000}
+                  fill={SEA_FILL}
+                />
+                <g data-map-graticule="true">
+                  {GRID_POSITIONS.map((position) => (
+                    <line
+                      key={`v-${position}`}
+                      data-grid-line="vertical"
+                      x1={position}
+                      y1={0}
+                      x2={position}
+                      y2={10000}
+                      stroke={GRID_LINE}
+                      strokeWidth={GRID_LINE_WIDTH}
+                    />
+                  ))}
+                  {GRID_POSITIONS.map((position) => (
+                    <line
+                      key={`h-${position}`}
+                      data-grid-line="horizontal"
+                      x1={0}
+                      y1={position}
+                      x2={10000}
+                      y2={position}
+                      stroke={GRID_LINE}
+                      strokeWidth={GRID_LINE_WIDTH}
+                    />
+                  ))}
+                </g>
+                <rect
+                  data-map-frame="outer"
+                  x={0}
+                  y={0}
+                  width={10000}
+                  height={10000}
+                  fill="none"
+                  stroke={FRAME_LINE}
+                  strokeWidth={FRAME_WIDTH}
+                />
+                <rect
+                  data-map-frame="inset"
+                  x={INSET_FRAME_ORIGIN}
+                  y={INSET_FRAME_ORIGIN}
+                  width={INSET_FRAME_SIDE}
+                  height={INSET_FRAME_SIDE}
+                  fill="none"
+                  stroke={INSET_FRAME_LINE}
+                  strokeOpacity={0.35}
+                  strokeWidth={INSET_FRAME_WIDTH}
+                />
+                <path
+                  data-map-frame="corners"
+                  d={CORNER_TICKS_PATH}
+                  fill="none"
+                  stroke={INSET_FRAME_LINE}
+                  strokeOpacity={0.6}
+                  strokeWidth={INSET_FRAME_WIDTH}
+                />
+              </g>
+
+              {/* Layer 1 -- the authored political shapes, in authored vertex order. Two strokes:
+                  a dark halo that lifts the shape off the ground, and the authored boundary
+                  itself. Neither is a coastline -- the engine authors a political outline and
+                  says nothing about land meeting water. */}
               <g data-layer="shapes">
+                {data.shapes.map((shape) => (
+                  <polygon
+                    key={`halo-${shape.shape_id}`}
+                    data-shape-halo={shape.shape_id}
+                    points={polygonPoints(shape)}
+                    fill="none"
+                    stroke={SHAPE_OUTLINE_HALO}
+                    strokeWidth={SHAPE_OUTLINE_HALO_WIDTH}
+                    strokeLinejoin="round"
+                  />
+                ))}
                 {data.shapes.map((shape) => (
                   <polygon
                     key={shape.shape_id}
@@ -392,8 +541,14 @@ export function StrategicMapScreen(_props: ScreenProps) {
                     points={polygonPoints(shape)}
                     fill={styleForShape(shape, ownerStyles).fill}
                     fillOpacity={SHAPE_FILL_OPACITY}
-                    stroke={SHAPE_BORDER}
-                    strokeWidth={SHAPE_BORDER_WIDTH}
+                    stroke={
+                      shape.owner_namespace === FOREIGN_NAMESPACE
+                        ? SHAPE_OUTLINE_FOREIGN
+                        : SHAPE_OUTLINE_PLAYER
+                    }
+                    strokeOpacity={SHAPE_OUTLINE_OPACITY}
+                    strokeWidth={SHAPE_OUTLINE_WIDTH}
+                    strokeLinejoin="round"
                   />
                 ))}
               </g>
@@ -452,36 +607,48 @@ export function StrategicMapScreen(_props: ScreenProps) {
               <g data-layer="nodes">
                 {data.theaters.map((theater) => {
                   const isSelected = theater.theater_id === selectedTheaterId;
-                  const shared = {
-                    "data-theater-node": theater.theater_id,
-                    "data-theater-kind": theater.kind,
-                    "data-centroid-x": String(theater.centroid_x),
-                    "data-centroid-y": String(theater.centroid_y),
-                    "data-selected": isSelected ? "true" : "false",
-                    fill: isSelected ? SELECTED_FILL : NODE_FILL,
-                    stroke: isSelected ? SELECTED_STROKE : NODE_STROKE,
-                    strokeWidth: NODE_STROKE_WIDTH,
-                    onClick: () => setSelectedTheaterId(theater.theater_id),
-                    style: { cursor: "pointer" },
-                  };
-                  return theater.kind === "coastal" ? (
-                    <rect
+                  return (
+                    <g
                       key={theater.theater_id}
-                      {...shared}
+                      data-theater-node={theater.theater_id}
+                      data-theater-kind={theater.kind}
+                      data-centroid-x={String(theater.centroid_x)}
+                      data-centroid-y={String(theater.centroid_y)}
+                      data-selected={isSelected ? "true" : "false"}
                       transform={`translate(${theater.centroid_x} ${theater.centroid_y})`}
-                      x={isSelected ? COASTAL_ORIGIN_SELECTED : COASTAL_ORIGIN}
-                      y={isSelected ? COASTAL_ORIGIN_SELECTED : COASTAL_ORIGIN}
-                      width={isSelected ? COASTAL_SIDE_SELECTED : COASTAL_SIDE}
-                      height={isSelected ? COASTAL_SIDE_SELECTED : COASTAL_SIDE}
-                    />
-                  ) : (
-                    <circle
-                      key={theater.theater_id}
-                      {...shared}
-                      cx={theater.centroid_x}
-                      cy={theater.centroid_y}
-                      r={isSelected ? NODE_RADIUS_SELECTED : NODE_RADIUS}
-                    />
+                      onClick={() => setSelectedTheaterId(theater.theater_id)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      {/* Invisible, generous pointer target on the very same centroid: an easier
+                          click, not a different coordinate. */}
+                      <circle r={NODE_HIT_RADIUS} fill="transparent" />
+                      <circle
+                        data-node-marker={theater.theater_id}
+                        r={isSelected ? NODE_RADIUS_SELECTED : NODE_RADIUS}
+                        fill={NODE_FILL}
+                        stroke={isSelected ? SELECTED_STROKE : NODE_RING}
+                        strokeWidth={NODE_RING_WIDTH}
+                      />
+                      {/* Kind glyph: a dot for a land theater, a small square for a coastal one.
+                          Restrained, and never the only carrier -- the list row and the detail
+                          panel both say "Land" or "Coastal" in words. */}
+                      {theater.kind === "coastal" ? (
+                        <rect
+                          data-node-glyph="coastal"
+                          x={NODE_GLYPH_SQUARE_ORIGIN}
+                          y={NODE_GLYPH_SQUARE_ORIGIN}
+                          width={NODE_GLYPH_SQUARE}
+                          height={NODE_GLYPH_SQUARE}
+                          fill={isSelected ? SELECTED_FILL : NODE_RING}
+                        />
+                      ) : (
+                        <circle
+                          data-node-glyph="land"
+                          r={NODE_GLYPH_RADIUS}
+                          fill={isSelected ? SELECTED_FILL : NODE_RING}
+                        />
+                      )}
+                    </g>
                   );
                 })}
               </g>
@@ -493,15 +660,15 @@ export function StrategicMapScreen(_props: ScreenProps) {
                 {data.theaters
                   .filter((theater) => theater.is_capital)
                   .map((theater) => (
-                    <circle
+                    <polygon
                       key={theater.theater_id}
                       data-capital-marker={theater.theater_id}
-                      cx={theater.centroid_x}
-                      cy={theater.centroid_y}
-                      r={CAPITAL_RING_RADIUS}
-                      fill="none"
-                      stroke={CAPITAL_MARKER_COLOR}
-                      strokeWidth={CAPITAL_RING_WIDTH}
+                      points={CAPITAL_STAR_POINTS}
+                      transform={`translate(${theater.centroid_x} ${theater.centroid_y})`}
+                      fill={CAPITAL_MARKER_COLOR}
+                      stroke={CAPITAL_STAR_OUTLINE}
+                      strokeWidth={CAPITAL_STAR_OUTLINE_WIDTH}
+                      strokeLinejoin="round"
                       pointerEvents="none"
                     />
                   ))}
@@ -537,13 +704,55 @@ export function StrategicMapScreen(_props: ScreenProps) {
                       textAnchor={position.textAnchor}
                       dominantBaseline="middle"
                       fill={LABEL_COLOR}
+                      stroke={LABEL_HALO}
+                      strokeWidth={LABEL_HALO_WIDTH}
                       fontSize={LABEL_FONT_SIZE}
                       pointerEvents="none"
+                      // `paint-order="stroke"` puts the halo UNDER the glyphs, so the stroke
+                      // reads as a backing plate that keeps a name legible over hatching or a
+                      // route line, instead of thickening the letters themselves. Set as the SVG
+                      // presentation ATTRIBUTE rather than an inline style: jsdom's CSS engine
+                      // does not implement the `paint-order` property and silently drops it from
+                      // a style object, which would leave this untestable.
+                      paintOrder="stroke"
+                      style={{
+                        fontFamily: "var(--font-display)",
+                        textTransform: "uppercase",
+                        letterSpacing: LABEL_LETTER_SPACING,
+                      }}
                     >
                       {theater.display_name}
                     </text>
                   );
                 })}
+              </g>
+
+              {/* Layer 7 -- the compass. Presentation only: it enters no state, no API payload
+                  and no mechanic, and it carries no coordinate, degree or distance. */}
+              <g data-map-compass="true" transform="translate(9250 1150)" pointerEvents="none">
+                <circle
+                  r={COMPASS_RADIUS}
+                  fill={SEA_FILL}
+                  fillOpacity={0.85}
+                  stroke={NODE_RING}
+                  strokeOpacity={0.35}
+                  strokeWidth={GRID_LINE_WIDTH}
+                />
+                <polygon points={COMPASS_NORTH_POINTS} fill={NODE_RING} />
+                <polygon points={COMPASS_SOUTH_POINTS} fill={NODE_RING} fillOpacity={0.28} />
+                <text
+                  x={0}
+                  y={COMPASS_LABEL_Y}
+                  textAnchor="middle"
+                  fontSize={COMPASS_LABEL_SIZE}
+                  fill={LABEL_COLOR}
+                  stroke={LABEL_HALO}
+                  strokeWidth={LABEL_HALO_WIDTH}
+                  paintOrder="stroke"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  N
+                </text>
               </g>
             </svg>
           </div>
@@ -555,21 +764,40 @@ export function StrategicMapScreen(_props: ScreenProps) {
             className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded border border-navy-800 bg-navy-900 p-3 text-xs text-parchment-200/80"
           >
             <dt className="text-parchment-200/60">Your territory</dt>
-            <dd>Solid fill, no hatching.</dd>
+            <dd>Gold fill, solid, with no hatching.</dd>
             <dt className="text-parchment-200/60">Foreign territory</dt>
-            <dd>Darker fill with diagonal hatching; each foreign state hatches at its own angle.</dd>
-            <dt className="text-parchment-200/60">Theater shape</dt>
-            <dd>Circle for a land theater, square for a coastal one.</dd>
-            <dt className="text-parchment-200/60">Routes</dt>
             <dd>
-              A line per route: one arrowhead for a one-way route, an arrowhead at both ends for a
-              two-way one. &ldquo;Routes out&rdquo; and &ldquo;Routes in&rdquo; below state the same
-              directions in words.
+              A darker fill under diagonal hatching; each foreign state keeps its own fill and its
+              own hatch angle.
+            </dd>
+            <dt className="text-parchment-200/60">Hatching</dt>
+            <dd>Marks territory that is not yours. Ownership is also named in the list below.</dd>
+            <dt className="text-parchment-200/60">One-way route</dt>
+            <dd>
+              <span aria-hidden="true">→</span> A line with a single arrowhead, at the end it leads
+              to.
+            </dd>
+            <dt className="text-parchment-200/60">Two-way route</dt>
+            <dd>
+              <span aria-hidden="true">↔</span> A line with an arrowhead at both ends.
+              &ldquo;Routes out&rdquo; and &ldquo;Routes in&rdquo; state every direction in words.
+            </dd>
+            <dt className="text-parchment-200/60">Theater marker</dt>
+            <dd>
+              A ringed dot: a solid centre for a land theater, a small square for a coastal one.
             </dd>
             <dt className="text-parchment-200/60">Capital</dt>
-            <dd>Ringed marker on the capital theater.</dd>
-            <dt className="text-parchment-200/60">Selected</dt>
-            <dd>Dashed ring, and the enlarged node.</dd>
+            <dd>
+              <span aria-hidden="true">★</span> A star on the capital theater, which the detail
+              panel also states as &ldquo;Capital: Yes&rdquo;.
+            </dd>
+            <dt className="text-parchment-200/60">Selected theater</dt>
+            <dd>A dashed gold ring and an enlarged marker. Selecting only inspects.</dd>
+            <dt className="text-parchment-200/60">Grid and compass</dt>
+            <dd>
+              Drawn to read as a map. The layout is schematic: it shows which theaters connect, not
+              where they are.
+            </dd>
           </dl>
         </div>
 

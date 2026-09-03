@@ -935,22 +935,91 @@ describe("StrategicMapScreen: SVG nodes, capital marker and selection sync", () 
       expect(node?.getAttribute("data-centroid-y")).toBe(String(theater.centroid_y));
     }
 
-    // Kind is legible without colour: a coastal theater is a square, a land theater a circle.
-    expect(container.querySelector('[data-theater-node="coast"]')?.tagName.toLowerCase()).toBe(
-      "rect",
-    );
-    expect(container.querySelector('[data-theater-node="capital"]')?.tagName.toLowerCase()).toBe(
-      "circle",
-    );
+    // Kind is legible without colour: a coastal theater's marker carries a square glyph, a land
+    // theater's a round one.
+    expect(
+      container.querySelector('[data-theater-node="coast"] [data-node-glyph]')?.getAttribute("data-node-glyph"),
+    ).toBe("coastal");
+    expect(
+      container.querySelector('[data-theater-node="capital"] [data-node-glyph]')?.getAttribute("data-node-glyph"),
+    ).toBe("land");
   });
 
-  it("renders exactly one capital marker, on the capital theater", async () => {
+  it("draws a map ground, a decorative grid, a frame and a compass -- and claims no geography", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    expect(container.querySelector("[data-map-sea]")).not.toBeNull();
+    expect(container.querySelectorAll("[data-grid-line]").length).toBeGreaterThan(0);
+    expect(container.querySelector('[data-map-frame="outer"]')).not.toBeNull();
+    expect(container.querySelector('[data-map-frame="inset"]')).not.toBeNull();
+
+    const compass = container.querySelector("[data-map-compass]");
+    expect(compass).not.toBeNull();
+    expect(compass?.textContent).toBe("N");
+    // Decorative only: it takes no pointer input and sits inside the aria-hidden picture.
+    expect(compass?.getAttribute("pointer-events")).toBe("none");
+    expect(compass?.closest("svg")?.getAttribute("aria-hidden")).toBe("true");
+
+    // The map states its own honesty, in real text outside the SVG.
+    const caveat = screen.getByTestId("strategic-map-caveat");
+    expect(caveat.closest("svg")).toBeNull();
+    expect(caveat.textContent).toBe("Schematic — not to geographic scale");
+
+    // No claim of geographic accuracy anywhere: no scale bar, no distances, no coordinates.
+    const body = document.body.textContent ?? "";
+    expect(body).not.toMatch(/\bkm\b|\bmiles\b|latitude|longitude|°/i);
+  });
+
+  it("draws the authored boundary as its own stroke over a separating halo", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    for (const shape of SVG_MAP.shapes) {
+      const halo = container.querySelector(`[data-shape-halo="${shape.shape_id}"]`);
+      const base = container.querySelector(`[data-shape-base="${shape.shape_id}"]`);
+      // Same authored ring, three times over (halo, fill, hatch) -- never a smoothed or
+      // regenerated one.
+      expect(halo?.getAttribute("points")).toBe(pointsOf(shape.polygon));
+      expect(halo?.getAttribute("fill")).toBe("none");
+      expect(Number(halo?.getAttribute("stroke-width"))).toBeGreaterThan(
+        Number(base?.getAttribute("stroke-width")),
+      );
+    }
+
+    // Player and foreign boundaries are drawn in different inks, on top of the fill difference.
+    const playerStroke = container
+      .querySelector('[data-shape-base="shape_b_arken"]')
+      ?.getAttribute("stroke");
+    const foreignStroke = container
+      .querySelector('[data-shape-base="shape_a_kessia_east"]')
+      ?.getAttribute("stroke");
+    expect(playerStroke).not.toBe(foreignStroke);
+  });
+
+  it("renders exactly one capital star, translated onto the capital theater's own centroid", async () => {
     const { container } = renderScreen(SVG_MAP);
     await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
 
     const markers = container.querySelectorAll("[data-capital-marker]");
     expect(markers).toHaveLength(1);
-    expect(markers[0]?.getAttribute("data-capital-marker")).toBe(SVG_MAP.capital_theater_id);
+    const star = markers[0];
+    expect(star?.getAttribute("data-capital-marker")).toBe(SVG_MAP.capital_theater_id);
+
+    // A static five-point star (ten vertices), placed by translating to the authoritative
+    // capital's centroid -- so the marker introduces no coordinate of its own.
+    expect(star?.tagName.toLowerCase()).toBe("polygon");
+    expect((star?.getAttribute("points") ?? "").trim().split(/\s+/)).toHaveLength(10);
+    const capital = SVG_MAP.theaters.find((t) => t.is_capital);
+    expect(star?.getAttribute("transform")).toBe(
+      `translate(${capital?.centroid_x} ${capital?.centroid_y})`,
+    );
+
+    // Never the star alone: capital status is also stated in words, in the detail panel.
+    fireEvent.click(screen.getByRole("button", { name: "Capital Theater — Land, Republic of Arken, capital" }));
+    const detail = screen.getByRole("heading", { name: "Capital Theater" }).closest("section");
+    expect(within(detail as HTMLElement).getByText("Capital")).toBeInTheDocument();
+    expect(within(detail as HTMLElement).getByText("Yes")).toBeInTheDocument();
   });
 
   it("selects the matching list row when an SVG node is clicked", async () => {
@@ -998,14 +1067,34 @@ describe("StrategicMapScreen: SVG nodes, capital marker and selection sync", () 
     await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
 
     const node = () => container.querySelector('[data-theater-node="capital"]');
-    const unselectedFill = node()?.getAttribute("fill");
-    const unselectedRadius = node()?.getAttribute("r");
+    const marker = () => container.querySelector('[data-node-marker="capital"]');
+    const unselectedStroke = marker()?.getAttribute("stroke");
+    const unselectedRadius = marker()?.getAttribute("r");
 
     fireEvent.click(node() as Element);
 
-    expect(node()?.getAttribute("fill")).not.toBe(unselectedFill);
-    expect(node()?.getAttribute("r")).not.toBe(unselectedRadius);
+    expect(marker()?.getAttribute("stroke")).not.toBe(unselectedStroke);
+    expect(marker()?.getAttribute("r")).not.toBe(unselectedRadius);
     expect(node()?.getAttribute("data-selected")).toBe("true");
+  });
+
+  it("gives every node a generous pointer target centred on the very same authored centroid", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    for (const theater of SVG_MAP.theaters) {
+      const group = container.querySelector(`[data-theater-node="${theater.theater_id}"]`);
+      // The whole marker group is translated to the authored centroid, so the invisible hit
+      // circle at its local origin is centred on exactly that coordinate -- an easier click, not
+      // a different position.
+      expect(group?.getAttribute("transform")).toBe(
+        `translate(${theater.centroid_x} ${theater.centroid_y})`,
+      );
+      const hit = group?.querySelector('circle[fill="transparent"]');
+      expect(hit).not.toBeNull();
+      const marker = container.querySelector(`[data-node-marker="${theater.theater_id}"]`);
+      expect(Number(hit?.getAttribute("r"))).toBeGreaterThan(Number(marker?.getAttribute("r")));
+    }
   });
 });
 
@@ -1055,9 +1144,12 @@ describe("StrategicMapScreen: labels, legend and the accessibility split", () =>
       textAnchor: "start",
     });
     expect(labelOffsetPosition(1000, 2000, "w")).toEqual({ x: 670, y: 2000, textAnchor: "end" });
+    // "center" means no side preferred, NOT printed over the symbol: a label sitting exactly on
+    // its node hid the marker, and on the capital hid the star (found in the Gate 9 preview pass),
+    // so a centre label drops clear of the tallest symbol drawn at a node.
     expect(labelOffsetPosition(1000, 2000, "center")).toEqual({
       x: 1000,
-      y: 2000,
+      y: 2380,
       textAnchor: "middle",
     });
   });
@@ -1103,13 +1195,44 @@ describe("StrategicMapScreen: labels, legend and the accessibility split", () =>
     expect(legend.closest("svg")).toBeNull();
     expect(legend.getAttribute("aria-hidden")).toBeNull();
 
+    // Every symbol the map draws is explained in WORDS, not merely shown as a colour swatch.
     const text = legend.textContent ?? "";
     expect(text).toMatch(/Your territory/);
     expect(text).toMatch(/Foreign territory/);
-    expect(text).toMatch(/hatch/i);
+    expect(text).toMatch(/Hatching/);
+    expect(text).toMatch(/One-way route/);
+    expect(text).toMatch(/Two-way route/);
     expect(text).toMatch(/arrowhead/i);
+    expect(text).toMatch(/Theater marker/);
     expect(text).toMatch(/Capital/);
-    expect(text).toMatch(/Selected/);
+    expect(text).toMatch(/star/i);
+    expect(text).toMatch(/Selected theater/);
+    expect(text).toMatch(/Grid and compass/);
+    // ...and the glyphs it uses are marked decorative, so a screen reader hears the words only.
+    for (const glyph of legend.querySelectorAll("span")) {
+      expect(glyph.getAttribute("aria-hidden")).toBe("true");
+    }
+  });
+
+  it("renders map labels as display names in atlas typography, never as raw ids", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    for (const theater of SVG_MAP.theaters) {
+      const label = container.querySelector(`[data-theater-label="${theater.theater_id}"]`);
+      // The DISPLAY name is the text; uppercasing is styling, so the underlying string -- and
+      // therefore what any reader copies out -- stays exactly what the server sent.
+      expect(label?.textContent).toBe(theater.display_name);
+      expect(label?.textContent).not.toBe(theater.theater_id);
+      const style = label?.getAttribute("style") ?? "";
+      expect(style).toMatch(/text-transform:\s*uppercase/);
+      expect(label?.getAttribute("paint-order")).toBe("stroke");
+      // A halo behind the glyphs is what keeps a name readable over hatching or a route line.
+      expect(Number(label?.getAttribute("stroke-width"))).toBeGreaterThan(0);
+    }
+
+    const svgText = [...container.querySelectorAll("svg text")].map((t) => t.textContent).join(" ");
+    expect(svgText).not.toMatch(/player_country|foreign_profile/);
   });
 
   it("adds no military order, movement, unit, deployment or combat affordance", async () => {

@@ -83,6 +83,16 @@ export type SvgTextAnchor = "start" | "middle" | "end";
 const LABEL_OFFSET_UNITS = 330;
 
 /**
+ * How far a CENTRE-anchored label drops below its own node.
+ *
+ * A centre anchor means "no side preferred", not "printed on top of the symbol": placing the text
+ * exactly on the node hid the marker, and on the capital hid the star entirely (caught in the
+ * Gate 9 preview pass). Slightly larger than the directional offset because a centre label has to
+ * clear the capital star, which is the tallest symbol drawn at a node.
+ */
+const LABEL_CENTRE_DROP_UNITS = 380;
+
+/**
  * Where one theater's label goes, given its node position and its authored `label_anchor`.
  *
  * The anchor names a side of the node ("n" = the label sits above it), and the returned
@@ -108,7 +118,7 @@ export function labelOffsetPosition(
     case "w":
       return { x: x - LABEL_OFFSET_UNITS, y, textAnchor: "end" };
     case "center":
-      return { x, y, textAnchor: "middle" };
+      return { x, y: y + LABEL_CENTRE_DROP_UNITS, textAnchor: "middle" };
   }
 }
 
