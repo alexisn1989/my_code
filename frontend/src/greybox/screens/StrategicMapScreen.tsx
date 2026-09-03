@@ -398,12 +398,25 @@ export function StrategicMapScreen(_props: ScreenProps) {
               focusable="false"
               data-testid="strategic-map-svg"
               // `overflow-visible` matters: a theater whose authored `label_anchor` points outward
-              // near the edge of the grid puts its label PAST the 0..10,000 viewBox -- "Arken
-              // Coast" (anchor w at x=1,200) and "Vetruskan Frontier" (anchor e at x=8,200) both
-              // do. An SVG viewport clips by default, which silently truncated those names to
-              // "n Coast" and "Vetruskan F". The viewBox stays exactly the authored grid, as the
-              // map's own coordinate system must; only the clipping goes.
-              className="block h-auto w-full overflow-visible"
+              // near the edge of the grid puts its label PAST the 0..10,000 viewBox -- "Port
+              // District" (anchor w at x=2,100) runs left of x=0 once its 13 characters are laid
+              // out at this font size. An SVG viewport clips by default, which silently truncated
+              // such names mid-word. The viewBox stays exactly the authored grid, as the map's own
+              // coordinate system must; only the clipping goes.
+              //
+              // The height cap is what keeps the framed map above the fold. The 500px comes from
+              // measurement, not estimation: at 1440x900 in a real browser, 326px of application
+              // chrome sits above this column and 156px of non-SVG content sits inside it (the
+              // heading, the caveat, the panel's padding, and the collapsed legend disclosure),
+              // leaving 18px of margin. The cap only binds on a short viewport: the square is
+              // 442px wide in this column, so from about 942px of viewport height the width binds
+              // first and this stops applying rather than stretching anything. Measured: 400px
+              // tall at 1440x900, 442px at both 1440x1080 and 1440x1200.
+              //
+              // The SVG keeps `w-full`, so `preserveAspectRatio` letterboxes the square drawing
+              // inside the capped box rather than distorting it -- the authored grid is never
+              // cropped or stretched to make the layout fit.
+              className="block h-auto max-h-[calc(100dvh-500px)] w-full overflow-visible"
             >
               <defs>
                 {FOREIGN_SHAPE_STYLES.map((style, index) => (
@@ -758,47 +771,59 @@ export function StrategicMapScreen(_props: ScreenProps) {
           </div>
 
           {/* Real, non-SVG legend: the drawing's vocabulary stated in words, so no meaning rests
-              on colour (or on the picture) alone. */}
-          <dl
-            data-testid="strategic-map-legend"
-            className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded border border-navy-800 bg-navy-900 p-3 text-xs text-parchment-200/80"
-          >
-            <dt className="text-parchment-200/60">Your territory</dt>
-            <dd>Gold fill, solid, with no hatching.</dd>
-            <dt className="text-parchment-200/60">Foreign territory</dt>
-            <dd>
-              A darker fill under diagonal hatching; each foreign state keeps its own fill and its
-              own hatch angle.
-            </dd>
-            <dt className="text-parchment-200/60">Hatching</dt>
-            <dd>Marks territory that is not yours. Ownership is also named in the list below.</dd>
-            <dt className="text-parchment-200/60">One-way route</dt>
-            <dd>
-              <span aria-hidden="true">→</span> A line with a single arrowhead, at the end it leads
-              to.
-            </dd>
-            <dt className="text-parchment-200/60">Two-way route</dt>
-            <dd>
-              <span aria-hidden="true">↔</span> A line with an arrowhead at both ends.
-              &ldquo;Routes out&rdquo; and &ldquo;Routes in&rdquo; state every direction in words.
-            </dd>
-            <dt className="text-parchment-200/60">Theater marker</dt>
-            <dd>
-              A ringed dot: a solid centre for a land theater, a small square for a coastal one.
-            </dd>
-            <dt className="text-parchment-200/60">Capital</dt>
-            <dd>
-              <span aria-hidden="true">★</span> A star on the capital theater, which the detail
-              panel also states as &ldquo;Capital: Yes&rdquo;.
-            </dd>
-            <dt className="text-parchment-200/60">Selected theater</dt>
-            <dd>A dashed gold ring and an enlarged marker. Selecting only inspects.</dd>
-            <dt className="text-parchment-200/60">Grid and compass</dt>
-            <dd>
-              Drawn to read as a map. The layout is schematic: it shows which theaters connect, not
-              where they are.
-            </dd>
-          </dl>
+              on colour (or on the picture) alone.
+
+              It is a disclosure, and collapsed by default, because at 1440x900 the framed map and
+              the nine expanded definitions cannot both clear the fold: the column has 574px to
+              spend and the open legend alone wants 298px, which would leave a square map about
+              162px tall -- roughly 4px lettering, since a label is LABEL_FONT_SIZE/10,000 of the
+              rendered height. Collapsing costs nothing that is not recoverable by one keypress on
+              the summary, and the definitions describe a picture that is `aria-hidden` anyway:
+              ownership, routes and capital status are each stated again in the theater list and
+              the detail panel, which is where a screen-reader user meets them regardless. */}
+          <details className="mt-3 rounded border border-navy-800 bg-navy-900 p-3">
+            <summary className="cursor-pointer text-xs text-parchment-200/70">Map legend</summary>
+            <dl
+              data-testid="strategic-map-legend"
+              className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-parchment-200/80"
+            >
+              <dt className="text-parchment-200/60">Your territory</dt>
+              <dd>Gold fill, solid, with no hatching.</dd>
+              <dt className="text-parchment-200/60">Foreign territory</dt>
+              <dd>
+                A darker fill under diagonal hatching; each foreign state keeps its own fill and
+                its own hatch angle.
+              </dd>
+              <dt className="text-parchment-200/60">Hatching</dt>
+              <dd>Marks territory that is not yours. Ownership is also named in the list below.</dd>
+              <dt className="text-parchment-200/60">One-way route</dt>
+              <dd>
+                <span aria-hidden="true">→</span> A line with a single arrowhead, at the end it
+                leads to.
+              </dd>
+              <dt className="text-parchment-200/60">Two-way route</dt>
+              <dd>
+                <span aria-hidden="true">↔</span> A line with an arrowhead at both ends.
+                &ldquo;Routes out&rdquo; and &ldquo;Routes in&rdquo; state every direction in words.
+              </dd>
+              <dt className="text-parchment-200/60">Theater marker</dt>
+              <dd>
+                A ringed dot: a solid centre for a land theater, a small square for a coastal one.
+              </dd>
+              <dt className="text-parchment-200/60">Capital</dt>
+              <dd>
+                <span aria-hidden="true">★</span> A star on the capital theater, which the detail
+                panel also states as &ldquo;Capital: Yes&rdquo;.
+              </dd>
+              <dt className="text-parchment-200/60">Selected theater</dt>
+              <dd>A dashed gold ring and an enlarged marker. Selecting only inspects.</dd>
+              <dt className="text-parchment-200/60">Grid and compass</dt>
+              <dd>
+                Drawn to read as a map. The layout is schematic: it shows which theaters connect,
+                not where they are.
+              </dd>
+            </dl>
+          </details>
         </div>
 
         <div className="flex flex-1 flex-col gap-6">

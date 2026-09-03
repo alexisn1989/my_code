@@ -1186,7 +1186,12 @@ describe("StrategicMapScreen: labels, legend and the accessibility split", () =>
     expect(svg.querySelectorAll("button, a, input, select, textarea")).toHaveLength(0);
   });
 
-  it("states the map's vocabulary in a real, visible, non-SVG legend", async () => {
+  it("states the map's vocabulary in a real, non-SVG legend behind a disclosure", async () => {
+    // Deliberately NOT called "visible": the legend ships inside a `<details>` that is collapsed
+    // by default (see the layout note on the element), so while it is closed a browser removes
+    // these definitions from the rendered accessibility tree. What this case proves is that the
+    // words exist, are real DOM text rather than SVG, and are not hidden from assistive
+    // technology by an `aria-hidden` of their own. The open state is proved separately below.
     renderScreen(SVG_MAP);
     await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
 
@@ -1212,6 +1217,95 @@ describe("StrategicMapScreen: labels, legend and the accessibility split", () =>
     for (const glyph of legend.querySelectorAll("span")) {
       expect(glyph.getAttribute("aria-hidden")).toBe("true");
     }
+  });
+
+  const LEGEND_TERMS = [
+    "Your territory",
+    "Foreign territory",
+    "Hatching",
+    "One-way route",
+    "Two-way route",
+    "Theater marker",
+    "Capital",
+    "Selected theater",
+    "Grid and compass",
+  ];
+
+  it("keeps the legend collapsed by default, behind a focusable summary named Map legend", async () => {
+    renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const disclosure = screen.getByTestId("strategic-map-legend").closest("details");
+    expect(disclosure).not.toBeNull();
+    expect((disclosure as HTMLDetailsElement).open).toBe(false);
+
+    const summary = within(disclosure as HTMLElement).getByText("Map legend");
+    expect(summary.tagName.toLowerCase()).toBe("summary");
+    // A `<summary>` is focusable without a tabindex of its own; proving it here is what makes the
+    // collapsed state defensible, since the definitions are unreachable until it is activated.
+    summary.focus();
+    expect(document.activeElement).toBe(summary);
+
+    // Closed, the definitions are in the DOM but not rendered -- stated plainly rather than
+    // papered over. Nothing the map conveys is lost: ownership, routes and capital status are
+    // each repeated in the theater list and the detail panel.
+    for (const term of LEGEND_TERMS) {
+      expect(within(disclosure as HTMLElement).getByText(term)).not.toBeVisible();
+    }
+  });
+
+  it("reveals every legend term and definition once the summary is activated, and hides them again", async () => {
+    renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const disclosure = screen.getByTestId("strategic-map-legend").closest("details") as HTMLDetailsElement;
+    const summary = within(disclosure).getByText("Map legend");
+
+    // jsdom implements the element's activation behaviour but not the browser's key-to-activation
+    // mapping, so the KEYBOARD path (Tab to the summary, press Enter) is proved in the real
+    // browser by the pre-Gate-9 preflight. What is proved here is the consequence of activation.
+    summary.focus();
+    fireEvent.click(summary);
+
+    expect(disclosure.open).toBe(true);
+    expect(document.activeElement).toBe(summary);
+    for (const term of LEGEND_TERMS) {
+      expect(within(disclosure).getByText(term)).toBeVisible();
+    }
+    // Definitions, not just the terms: the words that carry the meaning.
+    expect(within(disclosure).getByText("Gold fill, solid, with no hatching.")).toBeVisible();
+    expect(
+      within(disclosure).getByText(/Marks territory that is not yours/),
+    ).toBeVisible();
+
+    fireEvent.click(summary);
+    expect(disclosure.open).toBe(false);
+    expect(within(disclosure).getByText("Your territory")).not.toBeVisible();
+  });
+
+  it("never exposes a raw underscore identifier as a heading or player-facing text", async () => {
+    // R2. The screen does not violate this today; the case exists so it cannot start to.
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(/^Strategic map$/);
+    for (const heading of screen.getAllByRole("heading")) {
+      expect(heading.textContent ?? "").not.toMatch(/[a-z]+_[a-z]+/);
+    }
+
+    // Selecting a theater must not surface its id either -- the detail panel is titled by name.
+    fireEvent.click(screen.getByRole("button", { name: /Southern Kessia/ }));
+    for (const heading of screen.getAllByRole("heading")) {
+      expect(heading.textContent ?? "").not.toMatch(/[a-z]+_[a-z]+/);
+    }
+
+    // And no raw map, scenario or theater id reaches the rendered text at all. `svg_fixture`,
+    // `kessia_south` and `north_march` are the fixture's own ids, so this is not vacuous.
+    const visibleText = container.textContent ?? "";
+    for (const rawId of ["svg_fixture", "kessia_south", "north_march"]) {
+      expect(visibleText).not.toContain(rawId);
+    }
+    expect(visibleText).toMatch(/Southern Kessia/);
   });
 
   it("renders map labels as display names in atlas typography, never as raw ids", async () => {
