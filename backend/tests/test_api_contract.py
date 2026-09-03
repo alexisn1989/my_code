@@ -172,7 +172,11 @@ def test_strategic_map_matches_the_authored_tiny_valid_scenario(client: TestClie
     assert body["map_id"] == "arken_basin"
     assert body["capital_theater_id"] == "arken_capital"
     assert len(body["theaters"]) == 5
-    assert len(body["shapes"]) == 3
+    # Four, not three, since the fictional-geography revision: `shape_arken_isles` was authored
+    # into `tiny_valid` as an approved decorative shape (revision sec.3 item 1, and the shape-count
+    # table in sec.4 records tiny_valid 3 -> 4). It creates no theater, route or mechanic, which is
+    # why the theater count above is unmoved.
+    assert len(body["shapes"]) == 4
     theater_ids = [t["theater_id"] for t in body["theaters"]]
     assert theater_ids == sorted(theater_ids)
     capital = next(t for t in body["theaters"] if t["theater_id"] == "arken_capital")

@@ -63,27 +63,27 @@ strategic_map:
       display_name: Capital Region
       kind: land
       owner: {kind: player_country, country_id: strapped}
-      presentation: {centroid_x: 1800, centroid_y: 3200, label_anchor: center}
+      presentation: {centroid_x: 2650, centroid_y: 4700, label_anchor: w}
     home_lowlands:
       display_name: Lowlands
       kind: land
       owner: {kind: player_country, country_id: strapped}
-      presentation: {centroid_x: 2500, centroid_y: 2000, label_anchor: n}
+      presentation: {centroid_x: 3750, centroid_y: 3150, label_anchor: n}
     home_port:
       display_name: Port District
       kind: coastal
       owner: {kind: player_country, country_id: strapped}
-      presentation: {centroid_x: 1300, centroid_y: 5300, label_anchor: w}
+      presentation: {centroid_x: 2100, centroid_y: 4150, label_anchor: w}
     marnil_march:
       display_name: Marnil March
       kind: land
       owner: {kind: foreign_profile, foreign_profile_id: marnil}
-      presentation: {centroid_x: 5500, centroid_y: 3400, label_anchor: center}
+      presentation: {centroid_x: 5400, centroid_y: 4300, label_anchor: e}
     tolvane_isle:
       display_name: Tolvane Isle
       kind: coastal
       owner: {kind: foreign_profile, foreign_profile_id: tolvane}
-      presentation: {centroid_x: 8600, centroid_y: 6800, label_anchor: s}
+      presentation: {centroid_x: 8450, centroid_y: 7150, label_anchor: s}
   routes:
   - {from_theater: home_capital, to_theater: home_lowlands, kind: land}
   - {from_theater: home_capital, to_theater: home_port, kind: land}
@@ -95,28 +95,98 @@ strategic_map:
   - shape_id: shape_marnil
     owner: {kind: foreign_profile, foreign_profile_id: marnil}
     polygon:
-    - [4500, 2000]
-    - [6500, 1700]
-    - [7000, 4000]
-    - [5700, 5400]
-    - [4400, 4300]
+    - [4350, 1700]
+    - [4700, 1400]
+    - [5050, 1600]
+    - [5300, 1250]
+    - [5450, 1750]
+    - [5750, 1900]
+    - [6000, 1500]
+    - [6300, 1350]
+    - [6600, 1600]
+    - [6850, 2000]
+    - [7000, 2600]
+    - [6820, 3200]
+    - [7050, 3800]
+    - [6880, 4400]
+    - [7100, 5000]
+    - [6900, 5550]
+    - [6600, 5950]
+    - [6250, 6150]
+    - [5950, 6500]
+    - [5850, 7050]
+    - [6050, 7500]
+    - [5750, 7800]
+    - [5450, 7500]
+    - [5550, 7000]
+    - [5350, 6600]
+    - [5000, 6750]
+    - [4800, 6500]
+    - [4520, 6400]
+    - [4700, 5900]
+    - [4480, 5300]
+    - [4650, 4700]
+    - [4420, 4100]
+    - [4600, 3500]
+    - [4380, 2900]
+    - [4520, 2300]
   - shape_id: shape_strapped
     owner: {kind: player_country, country_id: strapped}
     polygon:
-    - [700, 1800]
-    - [2900, 1300]
-    - [3900, 2900]
-    - [3300, 5800]
-    - [1400, 6300]
-    - [600, 4400]
+    - [4350, 1700]
+    - [4050, 1400]
+    - [3600, 1250]
+    - [3150, 1500]
+    - [2750, 1300]
+    - [2350, 1550]
+    - [1950, 1400]
+    - [1600, 1750]
+    - [1750, 2250]
+    - [1350, 2600]
+    - [1500, 3050]
+    - [1950, 3250]
+    - [2250, 3600]
+    - [1850, 3850]
+    - [1400, 3700]
+    - [1150, 4100]
+    - [1300, 4600]
+    - [1050, 5050]
+    - [1250, 5550]
+    - [1050, 6000]
+    - [1400, 6400]
+    - [1800, 6750]
+    - [2250, 6900]
+    - [2650, 6700]
+    - [3050, 6950]
+    - [3450, 6800]
+    - [3850, 7000]
+    - [4250, 6750]
+    - [4520, 6400]
+    - [4700, 5900]
+    - [4480, 5300]
+    - [4650, 4700]
+    - [4420, 4100]
+    - [4600, 3500]
+    - [4380, 2900]
+    - [4520, 2300]
   - shape_id: shape_tolvane
     owner: {kind: foreign_profile, foreign_profile_id: tolvane}
     polygon:
-    - [8000, 5800]
-    - [9100, 5600]
-    - [9500, 7000]
-    - [8600, 7900]
-    - [7900, 7000]
+    - [7900, 6350]
+    - [8350, 6200]
+    - [8750, 6400]
+    - [9100, 6250]
+    - [9300, 6600]
+    - [9350, 7050]
+    - [9150, 7450]
+    - [9300, 7850]
+    - [8950, 8100]
+    - [8500, 7950]
+    - [8100, 8150]
+    - [7800, 7850]
+    - [7650, 7400]
+    - [7800, 6900]
+    - [7600, 6600]
 
 countries:
   - id: strapped

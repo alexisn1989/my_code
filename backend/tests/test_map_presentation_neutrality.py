@@ -25,9 +25,9 @@ from tests.history_tamper_helpers import advance_n
 
 _TURNS = 5
 _COORD_OFFSET = 500
-"""Added to every centroid/vertex coordinate. `tiny_valid`'s largest authored coordinate is 9,400
-(`shape_vetruska`'s [9400, 4600] vertex); +500 keeps every translated value within the map's own
-0..10,000 grid (`geography.MAP_GRID_MAX`)."""
+"""Added to every centroid/vertex coordinate. `tiny_valid`'s largest authored coordinate is 9,380
+(`shape_vetruska`'s [9380, 5000] vertex, since the fictional-geography revision); +500 keeps every
+translated value within the map's own 0..10,000 grid (`geography.MAP_GRID_MAX`)."""
 
 _ANCHOR_CYCLE: dict[LabelAnchor, LabelAnchor] = {
     LabelAnchor.CENTER: LabelAnchor.NORTH,

@@ -166,9 +166,9 @@ def test_scenario_unknown_resource_category_rejected(tiny_valid_scenario_path: P
 # reordering, a moved centroid, or a changed vertex -- changes the digest and
 # fails this test, rather than silently drifting.
 _STRATEGIC_MAP_DIGEST_BLAKE2B: dict[str, str] = {
-    "tiny_valid.yaml": "4224643b62655296e07b7a033751ffec4e1c04a2982a1bf38603c1d42c7f11c1",
-    "decree_state.yaml": "516beb9fd5117b84cc3c0b6e4381fd40da6e86ce2246a0267e913636d45f457c",
-    "deficit_demo.yaml": "23ad68a04b47195dd2b57cda012ad1974301b5eca0d675b0034307fd5c496e4b",
+    "tiny_valid.yaml": "920b3a149f909267d9fa82eb564b77dc5fc1c51758152aa28ee6f09faf78281e",
+    "decree_state.yaml": "a4480c83d1d6f298baf7c7e3711d748b3f21b7336bf0bce5a4438cfa51fd6e99",
+    "deficit_demo.yaml": "d542a2cf42b1451b234c36871cc80a9cae5a4724954d57feb32a126a172ff067",
 }
 
 

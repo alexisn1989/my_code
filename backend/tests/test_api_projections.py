@@ -445,11 +445,16 @@ class TestStrategicMapCapital:
 
 class TestStrategicMapPresentationPassthrough:
     def test_centroid_and_label_anchor_pass_through_unchanged(self) -> None:
+        """The literals are `arken_capital`'s AUTHORED presentation, taken from the approved
+        geometry tables in `docs/plans/strategic-map-m0-fictional-geography-revision.md` §4.1 --
+        not copied from whatever this projection happened to emit. That is the whole point: if the
+        projection ever started transforming a centroid instead of passing it through, these three
+        assertions are what would notice."""
         projection = build_strategic_map(_tiny_valid_state())
         capital = next(t for t in projection.theaters if t.theater_id == "arken_capital")
-        assert capital.centroid_x == 1900
-        assert capital.centroid_y == 3200
-        assert capital.label_anchor == "center"
+        assert capital.centroid_x == 2200
+        assert capital.centroid_y == 3250
+        assert capital.label_anchor == "n"
 
     def test_polygon_is_emitted_in_stored_authored_order(self) -> None:
         state = _tiny_valid_state()
