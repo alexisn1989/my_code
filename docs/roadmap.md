@@ -836,6 +836,71 @@ arising from a foreign war.
 - **W4 — military capability, war authorization, joining and withdrawal.** Not started.
 - **W5 — frontend and world-map presentation.** Not started.
 
+## Strategic military map (M0–M5)
+
+A separately-mandated track, sequenced independently of the numbered phases below. It supplies the
+territorial substrate that Phase 6 (§16 diplomacy, §17 trade) and Phase 7 (§18 military and war)
+will later build player-facing systems on top of. Each gate after M0 remains **nonbinding** and
+requires its own repository audit and implementation-ready plan before it starts.
+
+### Gate M0 — authoritative read-only strategic map — **complete**
+
+Frozen plan: `docs/plans/strategic-military-map-m0-implementation-plan.md`. Architecture:
+`docs/adr/0017-strategic-map-m0.md`. Geometry revision:
+`docs/plans/strategic-map-m0-fictional-geography-revision.md`, with reporting corrections in
+`docs/plans/strategic-map-m0-fictional-geography-revision-erratum.md`. One `RULESET_VERSION` bump
+(`0.13.0 → 0.14.0`); save format stays `1`, with **no migration** — a 0.13.0 save has no map, and
+synthesising geography would assert a fact the save does not contain. The authentic 0.13.0 fixture
+is rejected at the ruleset-version gate with an actionable error, before its map-free payload is
+parsed.
+
+**What the player gets.** A real map of the theaters their country and its neighbours hold, readable
+either as a picture or entirely as text. The player **cannot yet act on it**: selecting a theater
+inspects it and nothing more. There are no units, no orders, no movement and no combat in this gate.
+
+- [x] **Authoritative fictional geography for all three scenarios.** Arken Basin (`tiny_valid`),
+      Valdrun Reach (`decree_state`) and Tolvane Strait (`deficit_demo`) carry deliberately authored,
+      reviewed and approved coastlines stored as scenario data. Not real-world cartography, and never
+      invented at runtime. `shape_arken_isles` is decorative player-owned geography that creates no
+      mechanic; Marnil is byte-identical across the two scenarios that share it; Tolvane stays an
+      isolated, routeless island.
+- [x] **Deterministic state, validation, reconciliation and tamper detection.** Required
+      `WorldState.strategic_map`; open polygon rings in authored order on an integer `0..10000` grid;
+      canonical ordering rejected-not-normalized; directed routes keep their authored direction;
+      eight state invariants; Group 53 map-staticness reconciliation with rehashed tamper coverage.
+      Presentation values may move the state and save hashes but provably cannot move a turn report,
+      an RNG outcome or any non-map closing state, and dictionary insertion order is semantically
+      irrelevant. LAND-route containment is decided exactly in rational arithmetic rather than by
+      point sampling, with negative controls that genuinely fail.
+- [x] **Read-only API.** `GET /api/game/map/strategic`, with deterministic owner-name resolution.
+      Reciprocal rows collapse for display only; per-theater incoming/outgoing adjacency keeps both
+      directions. The projection is byte-identical across a resolved turn.
+- [x] **Accessible responsive frontend.** Inline SVG on the unchanged `0 0 10000 10000` viewBox —
+      solid player fill, deterministic foreign hatching, routes, nodes, labels, capital marker and
+      compass — as redundant presentation over a theater list and detail panel that remain the
+      accessible source of truth. Click, list and keyboard selection stay synchronized with a polite
+      live region. Collapsible legend; list-only fallback below 900px; no raw underscore identifiers
+      in player-facing text.
+- [x] **Gate 9 real-browser evidence.** Three 1440×900 desktop walkthroughs and an 820×900 narrow
+      fallback, driven through a production build served by the real backend with no mocked network
+      responses, plus the real HTTP GUI smoke across all three scenarios. All shipped routes are
+      reciprocal, so one-way direction retention is proved by a synthetic projection test and is not
+      attributed to browser evidence. Screenshot hashes and both evidence corrections are recorded in
+      ADR 0017.
+
+**Prerequisite for M1.** Before troop icons or movement orders, M1 must first provide a larger
+interaction-focused map surface **or** deterministic zoom/pan, with larger effective labels and
+appropriate pointer and keyboard hit targets. The shipped 400–442px SVG is adequate for M0's
+read-only overview and too compact for interactive unit movement. M0 deliberately designs none of
+M1's unit schema, combat, movement costs or military branches.
+
+### Gates M1–M5 — not started
+
+Not started, and deliberately not scoped here: no mandate has yet divided this work into gates, and
+assigning topics to gate numbers would be design. What is known is what M0 excluded and therefore
+still owes — troop units and orders, movement, combat, occupation and annexation, provinces, cities,
+terrain, resources and military bases — each to be scoped by its own audited plan.
+
 ## Phase 4 — Persistence and API
 
 Scope: §29 (persistence), §30 (API design), §31 (security/integrity, non-auth items).
