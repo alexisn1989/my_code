@@ -144,3 +144,47 @@ def outgoing_and_incoming(
     outgoing = sorted({r.to_theater for r in routes if r.from_theater == theater_id})
     incoming = sorted({r.from_theater for r in routes if r.to_theater == theater_id})
     return tuple(outgoing), tuple(incoming)
+
+
+class KindedDirectedEdge(DirectedEdge, Protocol):
+    """`DirectedEdge` plus the route kind.
+
+    Extends the existing protocol rather than replacing it, and for the same reason `DirectedEdge`
+    exists at all: this module is imported BY `state.py`, so it can never name `RouteState` --
+    see `DirectedEdge`'s own docstring above. `RouteState` satisfies this structurally, and
+    `RouteKind` is defined in this same module, so nothing new is imported.
+    """
+
+    @property
+    def kind(self) -> RouteKind: ...
+
+
+def land_destinations_from(
+    theater_id: StrictMapId,
+    routes: Sequence[KindedDirectedEdge],
+) -> tuple[StrictMapId, ...]:
+    """Sorted destinations reachable by exactly ONE authored outgoing LAND route.
+
+    Kind-aware sibling of `outgoing_and_incoming`, which returns ids only and so cannot answer
+    this question. Deliberately narrow, and every restriction is structural rather than asserted:
+
+    - only rows whose `from_theater` is `theater_id` are inspected, so an incoming-only route is
+      never read as outgoing and a reciprocal pair stays two separate directional facts;
+    - only `RouteKind.LAND` rows qualify;
+    - the result is a set, so duplicate rows cannot duplicate a destination;
+    - the result is sorted, so route order cannot affect output;
+    - exactly one edge is traversed. There is no traversal loop here at all -- no BFS, no
+      multi-hop, no undirected adjacency -- and adding one would be a different function.
+
+    Reads AUTHORED route rows. The API projection collapses a reciprocal pair into one
+    `bidirectional` display row; that is presentation, and legality is never decided from it.
+    """
+    return tuple(
+        sorted(
+            {
+                route.to_theater
+                for route in routes
+                if route.from_theater == theater_id and route.kind == RouteKind.LAND
+            }
+        )
+    )
