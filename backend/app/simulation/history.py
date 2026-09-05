@@ -65,6 +65,7 @@ from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
 from app.simulation.reconciliation import (
     reconcile_foreign_affairs_report,
+    reconcile_formation_movement,
     reconcile_political_legislative_and_survival_report,
     reconcile_strategic_map_staticness,
 )
@@ -405,6 +406,27 @@ def validate_history(save: GameSave) -> list[str]:
                 for problem in reconcile_strategic_map_staticness(
                     opening_state=previous_state_model,
                     closing_state=state_model,
+                )
+            )
+        # Military Movement, commit 5 (group 54): a fourth independent entrypoint. It needs the
+        # report, so it sits in the report-guarded shape of the first block rather than the
+        # state-only shape above -- but it is its own call, not an extension of any existing
+        # reconciler, and it tolerates `decisions_model is None` internally (skipping only the
+        # checks that genuinely need a submitted order) exactly as the first block's reconciler
+        # does.
+        if (
+            index > 0
+            and previous_state_model is not None
+            and state_model is not None
+            and report_model is not None
+        ):
+            problems.extend(
+                f"turn {entry.turn}: {problem}"
+                for problem in reconcile_formation_movement(
+                    opening_state=previous_state_model,
+                    closing_state=state_model,
+                    decisions=decisions_model,
+                    report=report_model,
                 )
             )
         if concluded_at is not None:

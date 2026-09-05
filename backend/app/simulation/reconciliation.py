@@ -155,8 +155,10 @@ from app.simulation.legitimacy import (
     aggregate_security_contribution_bps,
     foreign_conflict_security_anxiety_bps,
 )
-from app.simulation.report import ConstitutionalAmendmentReport, TurnReport
+from app.simulation.report import ConstitutionalAmendmentReport, MovementReport, TurnReport
 from app.simulation.state import (
+    FormationBranch,
+    FormationState,
     GameState,
     LegislatureState,
     OutcomeBucket,
@@ -3146,3 +3148,282 @@ def reconcile_strategic_map_staticness(
         ]
 
     return []
+
+
+# ---- Group 54: formation movement, state <-> decisions <-> report -------------------------
+
+_MOVEMENT_ENTRY_PARAMS_TO_ROW_FIELDS: dict[str, str] = {
+    "formation_id": "formation_id",
+    "formation_display_name": "display_name",
+    "branch": "branch",
+    "origin_theater_id": "origin_theater_id",
+    "origin_theater_display_name": "origin_theater_display_name",
+    "destination_theater_id": "destination_theater_id",
+    "destination_theater_display_name": "destination_theater_display_name",
+}
+"""The canonical `formation_moved` params, mapped to the `FormationMovementRow` field each must
+equal. Declared once, as data, so group 54's agreement check cannot silently omit a field: adding
+a param without adding it here fails the key-set test in `tests/test_military_movement.py`, and
+omitting a field from this table would let a tamper test pass, which is exactly why each of the
+seven has its own single-field tamper control."""
+
+
+def _player_formations(state: GameState) -> dict[str, FormationState] | None:
+    """The player country's formations, or `None` when the country or its military is missing.
+
+    `None` is unreachable in a valid 0.15.0 state -- `player_military_state_required` (invariants)
+    runs before and after every resolution. Guarded anyway, for the same reason
+    `reconcile_strategic_map_staticness` guards a missing map: this module compares already-parsed
+    models, and a tampered save must produce a problem string, not an AttributeError.
+    """
+    country = state.world.countries.get(state.world.player_country_id)
+    if country is None or country.military is None:
+        return None
+    return dict(country.military.formations)
+
+
+def reconcile_formation_movement(
+    *,
+    opening_state: GameState,
+    closing_state: GameState,
+    decisions: DecisionSet | None,
+    report: TurnReport,
+) -> list[str]:
+    """Group 54 -- every formation transition is ordered, applied once and reported once.
+
+    Proves the three records of one turn's movement agree: the submitted `DecisionSet`, the
+    opening->closing state transition, and the `MovementReport` with its paired `formation_moved`
+    entries. A movement can therefore never be reported differently by the report, the API
+    projection and the CLI, because all three derive from one row and its paired entry and those
+    two are proven identical here.
+
+    Returns problem strings, never raises, matching every existing reconciler.
+
+    `decisions` may legitimately be `None` (a malformed `decisions_json` already recorded its own
+    problem upstream). Only the checks that genuinely need a submitted order are skipped then;
+    every state-to-state and report-to-state check still runs, so a tampered movement paired with
+    an unparseable decision payload is still caught.
+    """
+    problems: list[str] = []
+
+    movement = report.movement
+    if movement is None:
+        return [
+            "movement report missing from a resolved turn (every resolved turn emits one, empty "
+            "on a quiet turn; a report that reached reconciliation without one is malformed) "
+            "(group 54)"
+        ]
+
+    opening_formations = _player_formations(opening_state)
+    closing_formations = _player_formations(closing_state)
+    if opening_formations is None or closing_formations is None:
+        return [
+            "player military state missing from the opening or closing state (the field is "
+            "required from ruleset 0.15.0; a state that reached reconciliation without one is "
+            "malformed) (group 54)"
+        ]
+
+    # ---- 4. the formation roster is closed: none appeared, disappeared or was renamed away ----
+    if set(opening_formations) != set(closing_formations):
+        appeared = sorted(set(closing_formations) - set(opening_formations))
+        disappeared = sorted(set(opening_formations) - set(closing_formations))
+        problems.append(
+            "the set of formation ids changed during turn resolution: appeared="
+            f"{appeared!r}, disappeared={disappeared!r} (movement relocates formations and "
+            "creates or destroys none) (group 54)"
+        )
+
+    ordered_destinations: dict[str, str] = {}
+    if decisions is not None:
+        decision = decisions.military_movement_decision()
+        if decision is not None:
+            ordered_destinations = {
+                order.formation_id: order.destination_theater_id for order in decision.orders
+            }
+
+    shared_ids = sorted(set(opening_formations) & set(closing_formations))
+    transitions: dict[str, tuple[str, str]] = {}
+    for formation_id in shared_ids:
+        opening = opening_formations[formation_id]
+        closing = closing_formations[formation_id]
+
+        # ---- 5. identity never changes during movement resolution -------------------------
+        if opening.display_name != closing.display_name:
+            problems.append(
+                f"formation {formation_id!r} display_name changed during turn resolution: "
+                f"{opening.display_name!r} -> {closing.display_name!r} (movement relocates a "
+                "formation and never renames it) (group 54)"
+            )
+        if opening.branch != closing.branch:
+            # `getattr(..., "value", ...)`, not `.value`: a tampered save can carry a branch that
+            # is not a `FormationBranch` member at all -- `FormationBranch` has exactly one
+            # member, so that is the ONLY form a mutated branch can take -- and this reconciler's
+            # contract is to return a problem string, never to raise.
+            problems.append(
+                f"formation {formation_id!r} branch changed during turn resolution: "
+                f"{getattr(opening.branch, 'value', opening.branch)!r} -> "
+                f"{getattr(closing.branch, 'value', closing.branch)!r} (movement relocates a "
+                "formation and never re-roles it) (group 54)"
+            )
+
+        if opening.location_theater_id == closing.location_theater_id:
+            # ---- 1. an unordered formation stays put; an ordered one must actually move ----
+            if formation_id in ordered_destinations:
+                problems.append(
+                    f"formation {formation_id!r} was ordered to "
+                    f"{ordered_destinations[formation_id]!r} but did not move (it is still in "
+                    f"{opening.location_theater_id!r}); an accepted order is always applied "
+                    "(group 54)"
+                )
+            continue
+
+        transitions[formation_id] = (
+            opening.location_theater_id,
+            closing.location_theater_id,
+        )
+
+        # ---- 2. a moved formation was ordered to move ------------------------------------
+        if decisions is None:
+            continue
+        if formation_id not in ordered_destinations:
+            problems.append(
+                f"formation {formation_id!r} moved from {opening.location_theater_id!r} to "
+                f"{closing.location_theater_id!r} with no submitted order naming it (a formation "
+                "never relocates on its own) (group 54)"
+            )
+            continue
+        # ---- 3. it moved to exactly where it was ordered ---------------------------------
+        if closing.location_theater_id != ordered_destinations[formation_id]:
+            problems.append(
+                f"formation {formation_id!r} was ordered to "
+                f"{ordered_destinations[formation_id]!r} but ended in "
+                f"{closing.location_theater_id!r} (group 54)"
+            )
+
+    problems.extend(_movement_row_problems(opening_state, movement, transitions))
+    problems.extend(_movement_entry_problems(report, movement))
+
+    # ---- 8. the map is authored, immutable content -------------------------------------
+    # Group 53 proves this independently and in far more detail; asserted here too so a bug that
+    # disabled one group is not masked by the other. Deliberately a cheap identity/bytes check
+    # rather than a second copy of group 53's reasoning.
+    problems.extend(
+        f"{problem} (also reported by group 54)"
+        for problem in reconcile_strategic_map_staticness(
+            opening_state=opening_state, closing_state=closing_state
+        )
+    )
+
+    return problems
+
+
+def _movement_row_problems(
+    opening_state: GameState,
+    movement: MovementReport,
+    transitions: dict[str, tuple[str, str]],
+) -> list[str]:
+    """Checks 6, 7 and row-level faithfulness: rows and real transitions are in bijection, and
+    every field of every row matches the authoritative state it claims to describe.
+
+    Names are resolved from the OPENING map. The choice is immaterial -- check 8 proves the two
+    maps are byte-identical -- and it is the map the resolver snapshotted from.
+    """
+    problems: list[str] = []
+    rows_by_id = {row.formation_id: row for row in movement.movements}
+    opening_formations = _player_formations(opening_state) or {}
+    theaters = opening_state.world.strategic_map.theaters
+
+    # ---- 7. every row describes a real transition ------------------------------------
+    for formation_id in sorted(set(rows_by_id) - set(transitions)):
+        problems.append(
+            f"movement report contains a row for formation {formation_id!r}, which did not "
+            "change theater during this turn (group 54)"
+        )
+    # ---- 6. every real transition is reported ----------------------------------------
+    for formation_id in sorted(set(transitions) - set(rows_by_id)):
+        origin, destination = transitions[formation_id]
+        problems.append(
+            f"formation {formation_id!r} moved from {origin!r} to {destination!r} but the "
+            "movement report contains no row for it (an applied movement is always reported) "
+            "(group 54)"
+        )
+
+    for formation_id in sorted(set(rows_by_id) & set(transitions)):
+        row = rows_by_id[formation_id]
+        origin, destination = transitions[formation_id]
+        formation = opening_formations[formation_id]
+
+        expected: dict[str, object] = {
+            "origin_theater_id": origin,
+            "destination_theater_id": destination,
+            "display_name": formation.display_name,
+            "branch": formation.branch,
+            "origin_theater_display_name": (
+                theaters[origin].display_name if origin in theaters else None
+            ),
+            "destination_theater_display_name": (
+                theaters[destination].display_name if destination in theaters else None
+            ),
+        }
+        for field_name, expected_value in expected.items():
+            actual = getattr(row, field_name)
+            if actual != expected_value:
+                problems.append(
+                    f"movement row for formation {formation_id!r} reports {field_name}="
+                    f"{actual!r} but the authoritative value is {expected_value!r} (group 54)"
+                )
+    return problems
+
+
+def _movement_entry_problems(report: TurnReport, movement: MovementReport) -> list[str]:
+    """Checks 9, 10 and 11: the `formation_moved` entries and the movement rows are one record
+    written twice, so no surface can report a movement the others do not.
+
+    A quiet turn needs no special case: zero rows and zero entries satisfy every check below,
+    which is exactly the statement that a quiet turn has neither.
+    """
+    problems: list[str] = []
+    entries = [entry for entry in report.entries if entry.reason_id == "formation_moved"]
+
+    # ---- 9. equal cardinality -- no duplicate entry, no missing one -------------------
+    if len(entries) != len(movement.movements):
+        problems.append(
+            f"the turn report carries {len(entries)} 'formation_moved' entr(ies) but the movement "
+            f"report carries {len(movement.movements)} row(s); an applied movement is recorded "
+            "exactly once in each (group 54)"
+        )
+        return problems
+
+    rows_by_id = {row.formation_id: row for row in movement.movements}
+    for entry in entries:
+        if entry.category != "military":
+            problems.append(
+                f"'formation_moved' entry carries category {entry.category!r}, expected 'military'"
+                " (group 54)"
+            )
+        formation_id = entry.params.get("formation_id")
+        row = rows_by_id.get(str(formation_id))
+        if row is None:
+            problems.append(
+                f"'formation_moved' entry names formation {formation_id!r}, which has no row in "
+                "the movement report (group 54)"
+            )
+            continue
+        # ---- 10. every entry's seven params equal its row's seven fields --------------
+        if set(entry.params) != set(_MOVEMENT_ENTRY_PARAMS_TO_ROW_FIELDS):
+            problems.append(
+                f"'formation_moved' entry for {formation_id!r} carries params "
+                f"{sorted(entry.params)!r}, expected exactly "
+                f"{sorted(_MOVEMENT_ENTRY_PARAMS_TO_ROW_FIELDS)!r} (group 54)"
+            )
+            continue
+        for param, field_name in _MOVEMENT_ENTRY_PARAMS_TO_ROW_FIELDS.items():
+            row_value = getattr(row, field_name)
+            expected = row_value.value if isinstance(row_value, FormationBranch) else row_value
+            if entry.params[param] != expected:
+                problems.append(
+                    f"'formation_moved' entry for {formation_id!r} reports {param}="
+                    f"{entry.params[param]!r} but its movement row carries {expected!r} "
+                    "(group 54)"
+                )
+    return problems

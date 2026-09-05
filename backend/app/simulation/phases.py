@@ -187,9 +187,11 @@ from app.simulation.report import (
     ForeignConflictOutbreakCandidateRow,
     ForeignConflictOutbreakReport,
     ForeignConflictProgressionRow,
+    FormationMovementRow,
     ImpeachmentChannelReport,
     LaborMarketReport,
     LegislativeReport,
+    MovementReport,
     PartyElectionStanceReport,
     PhaseStatus,
     PoliticalCapitalReport,
@@ -228,9 +230,11 @@ from app.simulation.state import (
     ConflictDyadState,
     EconomicBaselineState,
     ForeignConflictState,
+    FormationState,
     GameState,
     LegislativeBlocState,
     LegislatureState,
+    MilitaryState,
     OutcomeBucket,
     PendingLiberalizationState,
     RemovalReason,
@@ -522,6 +526,15 @@ class PhaseContext:
     foreign_affairs_report: ForeignAffairsReport | None = None
     """Set by `generate_turn_report` (slot 15) from `foreign_outbreak_report` and
     `foreign_progression_rows`; `resolver.py` copies this onto the final `TurnReport`."""
+    movement_rows: tuple[FormationMovementRow, ...] = ()
+    """Set by `_apply_military_movement` (slot 8, Military Movement commit 5), in the same step
+    that applies the movement and appends its `formation_moved` entries; read by slot 15 (report
+    assembly). Stays `()` on a turn with no movement decision, which is what makes a quiet turn's
+    `MovementReport` present and empty rather than absent."""
+    movement_report: MovementReport | None = None
+    """Set by `generate_turn_report` (slot 15) from `movement_rows`; `resolver.py` copies this onto
+    the final `TurnReport`. Assembled at slot 15 like every other report, never built by the phase
+    that produced its rows."""
     _current_phase_id: str | None = field(default=None, repr=False)
 
     def rng(self, stream: str) -> random.Random:
@@ -2205,6 +2218,113 @@ def _progress_ceasefire_conflict(
     return updated, row
 
 
+def _apply_military_movement(ctx: PhaseContext) -> None:
+    """Military Movement commit 5, slot 8 (`resolve_military_movement_and_combat`), FIRST substep.
+
+    Applies this turn's already-validated movement orders. Legality is NOT re-decided here:
+    `resolver._validate_decision_set` has already run `movement_order_problems` and aborted the
+    whole turn if any order was illegal, so every order reaching this function is legal by
+    construction. Re-checking would create a second legality implementation, which is exactly what
+    `simulation.military` exists to prevent.
+
+    **Atomic, and deliberately collection-oriented even though ruleset 0.15.0 permits one order.**
+    Every formation replacement, report row and reason entry is built COMPLETELY, into local
+    variables, before anything is published. Only then is the player's `military.formations`
+    mapping replaced -- once, wholesale -- followed by the context output. No exception path can
+    therefore leave a moved formation without its row and entry, or a row without its move: either
+    all three land together or none of them do and the turn aborts with state untouched.
+
+    Consumes no randomness. There is no `ctx.rng(...)` call here and no new stream, so this substep
+    cannot perturb any existing stream's draws (`derive_rng` namespaces on seed/turn/stream).
+
+    This slice has no consequence of location: no combat, cost, readiness, supply, transit, foreign
+    entry or partial movement. A formation is in a different theater afterwards, and nothing else
+    in the engine reads that fact yet.
+    """
+    decision = ctx.decisions.military_movement_decision()
+    if decision is None:
+        # A turn with no movement reads and writes NO military state at all, so it behaves exactly
+        # as it did before this commit. Returns before touching the world.
+        return
+
+    world = ctx.state.world
+    player = world.countries[world.player_country_id]
+    military = player.military
+    assert military is not None, (
+        "player_military_state_required (invariants) runs before resolve_turn, and "
+        "movement_order_problems rejects every order against a country with no military state"
+    )
+    strategic_map = world.strategic_map
+
+    # --- build everything first; publish nothing yet -------------------------
+    moved_formations: dict[str, FormationState] = {}
+    rows: list[FormationMovementRow] = []
+    entries: list[TurnReportEntry] = []
+
+    for order in decision.orders:
+        formation = military.formations[order.formation_id]
+        origin = strategic_map.theaters[formation.location_theater_id]
+        destination = strategic_map.theaters[order.destination_theater_id]
+
+        # ONE snapshot feeds the new state, the row and the entry, so the three cannot disagree
+        # about what moved or about the names under which it is reported (frozen plan sec.7.4.1).
+        moved_formations[order.formation_id] = formation.model_copy(
+            update={"location_theater_id": order.destination_theater_id}
+        )
+        rows.append(
+            FormationMovementRow(
+                formation_id=order.formation_id,
+                display_name=formation.display_name,
+                branch=formation.branch,
+                origin_theater_id=formation.location_theater_id,
+                origin_theater_display_name=origin.display_name,
+                destination_theater_id=order.destination_theater_id,
+                destination_theater_display_name=destination.display_name,
+            )
+        )
+        entries.append(
+            TurnReportEntry(
+                category="military",
+                reason_id="formation_moved",
+                params={
+                    "formation_id": order.formation_id,
+                    "formation_display_name": formation.display_name,
+                    "branch": formation.branch.value,
+                    "origin_theater_id": formation.location_theater_id,
+                    "origin_theater_display_name": origin.display_name,
+                    "destination_theater_id": order.destination_theater_id,
+                    "destination_theater_display_name": destination.display_name,
+                },
+            )
+        )
+
+    # --- publish: one mapping replacement, then the context output -----------
+    player.military = MilitaryState(
+        formations={
+            formation_id: moved_formations.get(formation_id, formation)
+            for formation_id, formation in military.formations.items()
+        }
+    )
+    ctx.movement_rows = tuple(sorted(rows, key=lambda row: row.formation_id))
+    ctx.report_entries.extend(entries)
+
+
+def _resolve_military_movement_and_combat(ctx: PhaseContext) -> None:
+    """Slot 8's handler: player movement first, then the unchanged W1 progression.
+
+    A composite rather than a call bolted onto the top of
+    `_resolve_foreign_conflict_progression`: that function is named for foreign conflict, and
+    making it also apply player movement would make its name dishonest. `PHASE_ORDER`'s fifteen
+    ids, their order and their contract are untouched -- only the handler bound to slot 8 changes,
+    and slot 9 (`apply_casualties_occupation_disruption_war_costs`) remains `_noop`.
+
+    Movement runs FIRST so the W1 substep, and every later slot, observes final positions; slots
+    1-7 observed opening positions. No phase runs between the two substeps.
+    """
+    _apply_military_movement(ctx)
+    _resolve_foreign_conflict_progression(ctx)
+
+
 def _resolve_foreign_conflict_progression(ctx: PhaseContext) -> None:
     """External Wars Gate W1, slot 8 (`resolve_military_movement_and_combat`): every still-live
     conflict (opening status `ACTIVE` or `CEASEFIRE`) progresses or maintains exactly once,
@@ -3408,6 +3528,13 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
         progressions=ctx.foreign_progression_rows,
     )
 
+    # (Military Movement, commit 5) Wraps slot 8's already-snapshotted rows -- never recomputed
+    # here, and never re-resolved from current state. Built unconditionally, so a quiet turn gets a
+    # present-and-empty report rather than `None`: see `MovementReport`'s own docstring for why
+    # `movement=None` alongside thirteen present reports is exactly what the completeness rule
+    # rejects.
+    ctx.movement_report = MovementReport(movements=ctx.movement_rows)
+
     # (Phase 3B1) Appended LAST, after every other phase and after this slot's own legislative
     # entries, so `turn_resolved` stays the final line of every report exactly as it was before
     # Phase 3B1 -- it closes the turn, so nothing may follow it.
@@ -3619,7 +3746,7 @@ PHASE_ORDER: tuple[tuple[str, PhaseHandler], ...] = (
     ),
     ("resolve_public_services_and_infrastructure", _noop),
     ("resolve_diplomacy_and_sanctions", _resolve_foreign_conflict_outbreak),
-    ("resolve_military_movement_and_combat", _resolve_foreign_conflict_progression),
+    ("resolve_military_movement_and_combat", _resolve_military_movement_and_combat),
     ("apply_casualties_occupation_disruption_war_costs", _noop),
     (
         "update_group_welfare_approval_trust_radicalization",

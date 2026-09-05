@@ -51,6 +51,7 @@ from app.simulation.legislative_voting import (
     tax_policy_change,
 )
 from app.simulation.legislature import AmendmentThreshold, ProposalRoute
+from app.simulation.military import movement_order_problems
 from app.simulation.phases import (
     _compute_proposed_spending_plan,
     _compute_proposed_tax_policy,
@@ -96,7 +97,25 @@ def _require_no_structural_problem(state: GameState, decision_set: DecisionSet) 
     and route legality -- not just the single decree-availability check this
     function used to make on its own. Affordability is deliberately NOT part of
     this check; see `decision_preflight`'s own docstring.
+
+    (Military Movement, commit 5) Movement legality is checked HERE, through
+    `movement_order_problems`, and NOT through `decision_preflight`. That module
+    documents itself as an API-layer *mirror* of the resolver's semantics, kept
+    honest by parity tests; movement needs no mirror, because `/preview` and
+    `/resolve` call one shared function in `app/simulation/military.py` and so
+    cannot drift in the first place. The stable code travels in the message --
+    `movement_order_problems` guarantees each message begins with it -- so the
+    reason reaches the client through the existing `DecisionSetError` envelope
+    with no new `PreviewProjection` field and therefore no contract drift.
+
+    Preview still mutates nothing on this path: this function reads the captured
+    immutable state and raises before any scoring runs, and `/preview` never
+    takes the mutation boundary, writes a save, or appends a history entry.
     """
+    movement_problems = movement_order_problems(state, decision_set)
+    if movement_problems:
+        raise DecisionSetError("; ".join(problem.message for problem in movement_problems))
+
     problem = first_decision_problem(state, decision_set)
     if problem is not None:
         raise DecisionSetError(problem.message)

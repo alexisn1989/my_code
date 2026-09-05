@@ -77,6 +77,7 @@ from app.simulation.report import (
     ForeignAffairsReport,
     LaborMarketReport,
     LegislativeReport,
+    MovementReport,
     PoliticalCapitalReport,
     PoliticalRelationshipReport,
     PoliticalReport,
@@ -504,6 +505,21 @@ def _render_foreign_security_anxiety_applied(params: dict[str, str | int]) -> st
     )
 
 
+def _render_formation_moved(params: dict[str, str | int]) -> str:
+    """(Military Movement, commit 5) The whole content of an applied movement, in one sentence.
+
+    Composed exclusively from the entry's own stored display-name params -- never from current
+    state, and never falling back to a raw id. That is the point of snapshotting both theater
+    display names into the entry and its `FormationMovementRow`: a turn from ten turns ago renders
+    the names it was resolved under, exactly as `build_turn_result` promises.
+    """
+    return (
+        f"{params['formation_display_name']} moved from "
+        f"{params['origin_theater_display_name']} to "
+        f"{params['destination_theater_display_name']}."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -541,6 +557,7 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "foreign_conflict_ceasefire_broke_down": _render_foreign_conflict_ceasefire_broke_down,
     "foreign_conflict_terminated": _render_foreign_conflict_terminated,
     "foreign_security_anxiety_applied": _render_foreign_security_anxiety_applied,
+    "formation_moved": _render_formation_moved,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -1512,6 +1529,25 @@ def _print_foreign_affairs_report(foreign_affairs: ForeignAffairsReport) -> None
         )
 
 
+def _print_movement_report(movement: MovementReport) -> None:
+    """(Military Movement, commit 5) The QUIET sentence, and nothing else.
+
+    Wired into BOTH `_print_report` and `_cmd_history`'s inline list from this single shared
+    helper -- never a second inline copy, the same discipline as `_print_foreign_affairs_report`
+    above.
+
+    **Prints nothing for a nonempty report, deliberately.** Both CLI paths render `report.entries`
+    FIRST and the per-report blocks second, and every applied movement is already one
+    `formation_moved` entry rendered by `_render_formation_moved`. A block that also printed
+    applied movements would print the identical sentence twice in each path. `_print_foreign_
+    affairs_report` legitimately prints alongside its entries because its block carries genuinely
+    different content -- draws, probabilities, intensities -- while a movement's sentence IS its
+    whole content, so a second block here would be duplication, not detail.
+    """
+    if movement.movements == ():
+        print("    No formations moved.")
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
@@ -1542,6 +1578,8 @@ def _print_report(report: TurnReport) -> None:
         _print_constitutional_amendment_report(report.constitutional_amendment)
     if report.foreign_affairs is not None:
         _print_foreign_affairs_report(report.foreign_affairs)
+    if report.movement is not None:
+        _print_movement_report(report.movement)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -1684,6 +1722,11 @@ def _cmd_history(args: argparse.Namespace) -> int:
             # uses. The frozen plan calls this dual wiring out by name, so both call sites carry
             # their own independent test.
             _print_foreign_affairs_report(report.foreign_affairs)
+        if report.movement is not None:
+            # Same discipline again (Military Movement, commit 5): the SAME shared helper
+            # `_print_report` uses. Applied movements are printed by the entry loop above, in both
+            # paths; this block only ever prints the quiet sentence.
+            _print_movement_report(report.movement)
     return 0
 
 

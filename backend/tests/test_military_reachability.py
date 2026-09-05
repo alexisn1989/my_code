@@ -453,20 +453,27 @@ class TestDeterminismAndPurity:
 
 
 # --------------------------------------------------------------------------
-# Atomicity guard: commit 4 accepts no new player action
+# Atomicity: commit 5 accepts and applies movement in the SAME commit
 # --------------------------------------------------------------------------
 
 
-class TestCommitFourAddsNoAcceptedPlayerAction:
-    """Structural, not textual.
+class TestMovementIsAcceptedAndAppliedTogether:
+    """Commit 4's guard asserted the ABSENCE of every symbol commit 5 adds. Commit 5 makes those
+    assertions false by design, so the guard is not deleted -- it is turned around to assert the
+    property it was protecting.
 
-    The frozen plan and this module's own docstrings NAME every symbol commit 5 will add, so a
-    substring scan over source would fire on prose. These assertions ask the real modules what
-    they actually expose instead, which prose cannot influence.
+    The defect it existed to prevent was never "these symbols exist". It was a state in which a
+    player could submit a valid `military_movement` decision, have it ACCEPTED, and have the turn
+    resolve with the order silently discarded. So the replacement proves acceptance and
+    application are inseparable: the union accepts the decision, and the same resolution applies
+    it to state, reports it in `MovementReport`, and records it as a `formation_moved` entry.
+
+    Structural, not textual -- it asks the real modules what they expose, so prose in a docstring
+    or a frozen plan cannot make it pass or fail.
     """
 
-    def test_the_decision_union_has_not_grown(self) -> None:
-        """Reads the real `Decision` alias: `Annotated[A | B | C, FieldInfo(discriminator=...)]`,
+    def test_the_decision_union_has_grown_by_exactly_one_kind(self) -> None:
+        """Reads the real `Decision` alias: `Annotated[A | B | C | D, FieldInfo(discriminator=...)]`,
         so the members are the args of the union inside the annotation."""
         import typing
 
@@ -474,37 +481,45 @@ class TestCommitFourAddsNoAcceptedPlayerAction:
 
         members = typing.get_args(typing.get_args(Decision)[0])
         kinds = {member.model_fields["kind"].default for member in members}
-        assert kinds == {"bloc_relationship_investment", "budget", "constitutional_amendment"}
-        assert "military_movement" not in kinds
+        assert kinds == {
+            "bloc_relationship_investment",
+            "budget",
+            "constitutional_amendment",
+            "military_movement",
+        }
 
-    def test_no_movement_decision_models_exist(self) -> None:
+    def test_military_movement_sorts_last_so_no_existing_canonical_order_changes(self) -> None:
+        """Canonical kind order is ascending by `kind`. If `"military_movement"` did not sort
+        last, every already-serialised multi-kind `decisions_json` would digest differently."""
+        existing = ["bloc_relationship_investment", "budget", "constitutional_amendment"]
+        assert sorted([*existing, "military_movement"]) == [*existing, "military_movement"]
+
+    def test_the_decision_models_and_accessor_exist(self) -> None:
         import app.simulation.decisions as decisions_module
-
-        for symbol in ("MilitaryMovementDecision", "FormationMovementOrder"):
-            assert not hasattr(decisions_module, symbol), symbol
-
-    def test_decision_set_has_no_movement_accessor(self) -> None:
         from app.simulation.decisions import DecisionSet
 
-        assert not hasattr(DecisionSet, "military_movement_decision")
+        for symbol in ("MilitaryMovementDecision", "FormationMovementOrder"):
+            assert hasattr(decisions_module, symbol), symbol
+        assert hasattr(DecisionSet, "military_movement_decision")
 
-    def test_no_movement_report_exists(self) -> None:
+    def test_the_movement_report_is_the_fourteenth_turn_report_field(self) -> None:
         import app.simulation.report as report_module
 
-        assert not hasattr(report_module, "MovementReport")
-        assert "movement" not in report_module.TurnReport.model_fields
+        assert hasattr(report_module, "MovementReport")
+        assert "movement" in report_module.TurnReport.model_fields
 
-    def test_no_movement_reconciler_exists(self) -> None:
+    def test_the_movement_reconciler_exists(self) -> None:
         import app.simulation.reconciliation as reconciliation_module
 
-        assert not any(
-            name.startswith("reconcile_formation") for name in dir(reconciliation_module)
-        )
+        assert hasattr(reconciliation_module, "reconcile_formation_movement")
 
-    def test_no_military_endpoint_is_routed(self) -> None:
-        """Asks the generated OpenAPI document for the served paths rather than walking
-        `app.routes`, which mixes `Route` and `_IncludedRouter` objects and has no uniform
-        `.path`."""
+    def test_no_military_endpoint_is_routed_yet(self) -> None:
+        """Unchanged from commit 4, and still true: `/api/game/military` is commit 6's work, and
+        commit 5 introduces no endpoint, no projection model and therefore no contract delta.
+
+        Asks the generated OpenAPI document for the served paths rather than walking `app.routes`,
+        which mixes `Route` and `_IncludedRouter` objects and has no uniform `.path`.
+        """
         from app.api.main import ApiSettings, create_app
 
         app = create_app(ApiSettings(serve_spa=False))
@@ -512,30 +527,80 @@ class TestCommitFourAddsNoAcceptedPlayerAction:
         assert paths, "expected a non-empty path set; an empty one would pass vacuously"
         assert not any("military" in path for path in paths), sorted(paths)
 
-    def test_the_classifier_is_not_reachable_from_the_resolver(self) -> None:
-        """The strongest single statement of commit 4's boundary: nothing in turn resolution can
-        call this yet, so no submitted decision can be affected by it."""
-        import app.simulation.phases as phases_module
+    def test_the_legality_rule_is_now_reachable_from_the_resolver(self) -> None:
+        """Commit 4 asserted the opposite: nothing in turn resolution could reach this module, so
+        no submitted decision could be affected by it. Commit 5 is precisely the commit that wires
+        it in, and the same AST scan proves the wiring exists rather than assuming it."""
         import app.simulation.resolver as resolver_module
 
-        for module in (resolver_module, phases_module):
-            source = Path(inspect.getfile(module)).read_text(encoding="utf-8")
-            tree = ast.parse(source)
-            imported: list[str] = []
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module:
-                    imported.append(node.module)
-            assert "app.simulation.military" not in imported, module.__name__
-
-    def test_the_guard_actually_fires_a_self_check(self) -> None:
-        """Anti-vacuity, in the style of `test_map_presentation_boundary.py`: the same import scan
-        run against a module that DOES import `app.simulation.military` must detect it. Without
-        this, the assertions above would pass just as happily if the scan were broken."""
-        synthetic = "from app.simulation.military import classify_destinations\n"
-        tree = ast.parse(synthetic)
+        source = Path(inspect.getfile(resolver_module)).read_text(encoding="utf-8")
         imported = [
             node.module
-            for node in ast.walk(tree)
+            for node in ast.walk(ast.parse(source))
             if isinstance(node, ast.ImportFrom) and node.module
         ]
         assert "app.simulation.military" in imported
+
+    def test_the_scan_actually_fires_a_self_check(self) -> None:
+        """Anti-vacuity, kept from commit 4 and inverted with it: the same import scan run against
+        a module that does NOT import `app.simulation.military` must fail to find it. Without
+        this, the assertion above would pass just as happily if the scan were broken."""
+        synthetic = "from app.simulation.geography import RouteKind\n"
+        imported = [
+            node.module
+            for node in ast.walk(ast.parse(synthetic))
+            if isinstance(node, ast.ImportFrom) and node.module
+        ]
+        assert "app.simulation.military" not in imported
+
+    @pytest.mark.parametrize("scenario_file", _SCENARIO_FILES)
+    def test_an_accepted_order_is_applied_and_reported_in_the_same_resolution(
+        self, scenario_file: str
+    ) -> None:
+        """THE atomicity property, end to end and per scenario: one accepted order produces one
+        moved formation, one `MovementReport` row and one `formation_moved` entry.
+
+        No accepted movement is silently ignored, and none is reported without being applied.
+        """
+        from app.simulation.decisions import (
+            DecisionSet,
+            FormationMovementOrder,
+            MilitaryMovementDecision,
+        )
+        from app.simulation.resolver import resolve_turn
+
+        country_id, formation_id, capital, flanks, _ = SCENARIO_SHAPE[scenario_file]
+        state = load_scenario_file(SCENARIOS_DIR / scenario_file)
+        destination = flanks[0]
+
+        resolution = resolve_turn(
+            state,
+            DecisionSet(
+                expected_turn=state.turn,
+                expected_state_version=state.state_version,
+                decisions=(
+                    MilitaryMovementDecision(
+                        orders=(
+                            FormationMovementOrder(
+                                formation_id=formation_id,
+                                destination_theater_id=destination,
+                            ),
+                        )
+                    ),
+                ),
+            ),
+        )
+
+        military = resolution.state.world.countries[country_id].military
+        assert military is not None
+        assert military.formations[formation_id].location_theater_id == destination
+
+        movement = resolution.report.movement
+        assert movement is not None
+        assert [row.formation_id for row in movement.movements] == [formation_id]
+        assert movement.movements[0].origin_theater_id == capital
+        assert movement.movements[0].destination_theater_id == destination
+
+        entries = [e for e in resolution.report.entries if e.reason_id == "formation_moved"]
+        assert len(entries) == 1
+        assert entries[0].category == "military"

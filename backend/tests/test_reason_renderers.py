@@ -183,6 +183,17 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "closing_intensity_bps": 0,
     },
     "foreign_security_anxiety_applied": {"security_contribution_bps": -108},
+    # Military Movement, commit 5. All seven canonical params, so this sample also pins that the
+    # renderer composes its sentence from the STORED display names and never from an id.
+    "formation_moved": {
+        "formation_id": "arken_first_army",
+        "formation_display_name": "First Army of Arken",
+        "branch": "army",
+        "origin_theater_id": "arken_capital",
+        "origin_theater_display_name": "Arken Capital Region",
+        "destination_theater_id": "arken_north",
+        "destination_theater_display_name": "Northern March",
+    },
 }
 
 

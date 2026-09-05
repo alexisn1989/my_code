@@ -32,6 +32,7 @@ from app.core.errors import (
 )
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
+from app.simulation.military import movement_order_problems
 from app.simulation.phases import PhaseContext, run_phases
 from app.simulation.reconciliation import reconcile_political_legislative_and_survival_report
 from app.simulation.report import TurnReport, TurnReportDevMeta
@@ -58,6 +59,12 @@ def _validate_decision_set(state: GameState, decisions: DecisionSet) -> None:
             f"stale decision set: expected_state_version={decisions.expected_state_version} "
             f"but state.state_version={state.state_version}"
         )
+    # (Military Movement, commit 5) Layer 3 -- the AUTHORITATIVE legality gate. Delegates every
+    # ownership and reachability question to `movement_order_problems`, which is the same function
+    # `/api/game/preview` calls, so the two can never disagree about what is legal or about why.
+    # Each problem's message begins with its own stable code, so the code survives into the
+    # `DecisionSetError` -> `TurnResolutionError` message a client actually receives.
+    problems.extend(problem.message for problem in movement_order_problems(state, decisions))
     if problems:
         raise DecisionSetError("; ".join(problems))
 
@@ -128,6 +135,7 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
         legislative=ctx.legislative_report,
         political_capital=ctx.political_capital_report,
         political_relationship=ctx.political_relationship_report,
+        movement=ctx.movement_report,
         election=ctx.election_report,
         coup_unrest=ctx.coup_unrest_report,
         constitutional_amendment=ctx.constitutional_amendment_report,

@@ -109,6 +109,11 @@ REASON_LABELS: dict[str, str] = {
     "foreign_conflict_ceasefire_broke_down": "A foreign ceasefire broke down.",
     "foreign_conflict_terminated": "A foreign war ended.",
     "foreign_security_anxiety_applied": "Foreign wars raised security anxiety at home.",
+    # Military Movement, commit 5. A STATIC label, like every entry above: the parameterised
+    # sentence is composed by each surface from the entry's seven `params`, which travel unchanged
+    # through the existing generic `DriverItem`. No new endpoint, projection model, field or
+    # payload shape -- and therefore no OpenAPI change.
+    "formation_moved": "A formation moved.",
 }
 
 
@@ -1279,4 +1284,11 @@ def _unchanged_statements(report: TurnReport) -> tuple[str, ...]:
         lines.append("No election was held this turn.")
     if report.constitutional_amendment is None:
         lines.append("The constitution is unchanged.")
+    # (Military Movement, commit 5) A quiet turn says so HERE, in the "what did not change"
+    # channel, rather than by fabricating a driver or a ledger row for a thing that did not
+    # happen. Note the condition is an EMPTY report, not a missing one: `movement` is present on
+    # every resolved turn, and `movement is None` means the report predates this commit's fields
+    # entirely, which is not the same statement as "nothing moved".
+    if report.movement is not None and report.movement.movements == ():
+        lines.append("No formations moved.")
     return tuple(lines)

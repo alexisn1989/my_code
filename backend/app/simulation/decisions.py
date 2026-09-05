@@ -42,8 +42,9 @@ from app.simulation.constitution import (
     StrictTermCount,
     StrictTurnInterval,
 )
+from app.simulation.geography import StrictMapId
 from app.simulation.legislature import ProposalRoute
-from app.simulation.state import SpendingCategory
+from app.simulation.state import SpendingCategory, StrictFormationId
 
 _STRICT_CONFIG = ConfigDict(extra="forbid")
 
@@ -362,8 +363,146 @@ class BlocRelationshipInvestmentDecision(BaseModel):
         return self
 
 
+# --- Military movement (Military Movement vertical slice, commit 5) ---------
+#
+# STABLE, ASSERTABLE shape codes, following `geography.MAP_CONSTRUCTION_CODES` exactly: every
+# custom construction `ValueError` below begins with its code followed by ": ", so a test asserts
+# the code that actually reaches the caller rather than a docstring or a validator's own name.
+# Pydantic wraps the message but preserves it verbatim, so `code in str(exc)` is a true statement
+# about emitted behaviour -- and the same property is what lets `/preview` and `/resolve` surface
+# the code at their public boundaries without a new response field.
+
+MOVEMENT_ORDERS_EMPTY = "military_movement_orders_empty"
+MOVEMENT_DUPLICATE_FORMATION = "military_movement_duplicate_formation"
+MOVEMENT_ORDERS_NOT_CANONICAL = "military_movement_orders_not_canonical"
+MOVEMENT_TOO_MANY_ORDERS = "military_movement_too_many_orders"
+
+MOVEMENT_SHAPE_CODES: frozenset[str] = frozenset(
+    {
+        MOVEMENT_ORDERS_EMPTY,
+        MOVEMENT_DUPLICATE_FORMATION,
+        MOVEMENT_ORDERS_NOT_CANONICAL,
+        MOVEMENT_TOO_MANY_ORDERS,
+    }
+)
+"""Every shape-only code `MilitaryMovementDecision` can emit. Each is proven independently
+reachable by a real constructor call in `tests/test_military_movement.py`, so a code that stops
+firing fails the suite instead of lingering as dead documentation."""
+
+MOVEMENT_ORDERS_PER_DECISION = 1
+"""Ruleset 0.15.0 accepts one order per turn. The cap lives in a VALIDATOR, never in the shape:
+raising it in a later ruleset changes this constant and one test matrix, and does not migrate a
+decision shape, re-issue a discriminator or invalidate any saved `decisions_json`. Callers already
+iterate `orders`, so none of them changes either."""
+
+
+class FormationMovementOrder(BaseModel):
+    """One formation's destination for this turn.
+
+    Reuses `StrictFormationId` (`state.py`) and `StrictMapId` (`geography.py`) rather than minting
+    a second, structurally identical theater alias -- `StrictMapId` is the authoritative alias for
+    every theater id in `state.py`, and a parallel one would be two names for one concept.
+
+    State-independent by construction: whether the formation exists, whether the theater exists,
+    and whether the move is legal are all resolution-time questions answered once, by
+    `military.movement_order_problems`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    formation_id: StrictFormationId
+    destination_theater_id: StrictMapId
+
+
+class MilitaryMovementDecision(BaseModel):
+    """The player's military instruction for the turn (Military Movement, commit 5).
+
+    Discriminated `"military_movement"` rather than `"formation_movement"` on extension grounds:
+    later slices add naval transit and air sorties, which are also formation movements but are not
+    interchangeable with land redeployment. This kind can grow order variants inside itself;
+    `formation_movement` would force sibling kinds and split one player intention across three
+    union members and three one-per-kind validators.
+
+    Four shape-only codes, in a deliberate precedence -- empty, duplicate, noncanonical, cap --
+    because Pydantic runs `mode="after"` validators in definition order and an overlapping payload
+    must report the same code every time:
+
+    - duplicate precedes noncanonical because `[a, a]` IS sorted, so reporting it as an ordering
+      problem would be wrong;
+    - the cap is last so a two-order payload that is *also* malformed reports the malformation
+      rather than the ruleset limit, which is the more actionable of the two.
+
+    Canonical order is REJECTED, never normalized -- the same rule as
+    `_decisions_are_in_canonical_kind_order` below, and for its reason: this tuple is serialized
+    into `decisions_json` and hash-covered, so two semantically identical sets listed in different
+    orders would digest differently.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    kind: Literal["military_movement"] = "military_movement"
+    orders: tuple[FormationMovementOrder, ...]
+
+    @model_validator(mode="after")
+    def _orders_are_not_empty(self) -> MilitaryMovementDecision:
+        """An empty decision is rejected rather than accepted as a quiet turn.
+
+        A quiet turn submits NO `MilitaryMovementDecision` at all; an empty one is a client bug,
+        and accepting it would make two different payloads mean the same thing. Deliberately a
+        validator rather than `Field(min_length=1)`: the field constraint emits Pydantic's generic
+        `too_short` message, which carries no stable code for `/preview` and `/resolve` to surface.
+        """
+        if not self.orders:
+            raise ValueError(
+                f"{MOVEMENT_ORDERS_EMPTY}: a military movement decision must carry at least one "
+                "order; submit no decision at all for a turn with no movement"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _no_duplicate_formation_ids(self) -> MilitaryMovementDecision:
+        """Two orders for one formation ARE the contradiction, with one destination per formation.
+
+        Runs BEFORE the ordering check, unlike `BlocRelationshipInvestmentDecision`'s pair, because
+        a duplicated id is already in sorted order and would otherwise be misreported as an
+        ordering problem.
+        """
+        ids = [order.formation_id for order in self.orders]
+        if len(set(ids)) != len(ids):
+            duplicates = sorted(
+                {formation_id for formation_id in ids if ids.count(formation_id) > 1}
+            )
+            raise ValueError(
+                f"{MOVEMENT_DUPLICATE_FORMATION}: a formation may be ordered to exactly one "
+                f"destination per turn, got repeated {duplicates}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _orders_are_in_canonical_formation_order(self) -> MilitaryMovementDecision:
+        ids = [order.formation_id for order in self.orders]
+        if ids != sorted(ids):
+            raise ValueError(
+                f"{MOVEMENT_ORDERS_NOT_CANONICAL}: orders must be sorted ascending by "
+                f"formation_id, got {ids!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _at_most_one_order_in_this_ruleset(self) -> MilitaryMovementDecision:
+        if len(self.orders) > MOVEMENT_ORDERS_PER_DECISION:
+            raise ValueError(
+                f"{MOVEMENT_TOO_MANY_ORDERS}: ruleset 0.15.0 accepts at most "
+                f"{MOVEMENT_ORDERS_PER_DECISION} movement order per turn, got {len(self.orders)}"
+            )
+        return self
+
+
 Decision: TypeAlias = Annotated[
-    BudgetDecision | BlocRelationshipInvestmentDecision | ConstitutionalAmendmentDecision,
+    BudgetDecision
+    | BlocRelationshipInvestmentDecision
+    | ConstitutionalAmendmentDecision
+    | MilitaryMovementDecision,
     Field(discriminator="kind"),
 ]
 """The tagged decision union this module's header anticipated (Phase 3B2A).
@@ -420,6 +559,17 @@ class DecisionSet(BaseModel):
             None,
         )
 
+    def military_movement_decision(self) -> MilitaryMovementDecision | None:
+        """The submitted movement decision, or `None`. Unique by
+        `_at_most_one_military_movement_decision`.
+
+        Identity-based like every accessor above, never `decisions[0]`: `"military_movement"` sorts
+        LAST of the four kinds, so on a turn carrying a budget and a movement the movement is at
+        index 1, and on a turn carrying only a movement it is at index 0. A positional read would
+        be right by accident in one case and wrong in the other.
+        """
+        return next((d for d in self.decisions if isinstance(d, MilitaryMovementDecision)), None)
+
     @model_validator(mode="after")
     def _at_most_one_budget_decision(self) -> DecisionSet:
         """(Phase 3B2A) Counts budget-kind members, not tuple length.
@@ -458,6 +608,19 @@ class DecisionSet(BaseModel):
             raise ValueError(
                 "at most one constitutional-amendment decision may appear in a DecisionSet, "
                 f"got {amendments}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _at_most_one_military_movement_decision(self) -> DecisionSet:
+        """One decision carries every order (see `MilitaryMovementDecision`), so a second one could
+        only duplicate or contradict the first -- and the per-decision duplicate-formation rule
+        could not see across two decisions to detect it."""
+        movements = sum(1 for d in self.decisions if isinstance(d, MilitaryMovementDecision))
+        if movements > 1:
+            raise ValueError(
+                f"at most one military-movement decision may appear in a DecisionSet, "
+                f"got {movements}"
             )
         return self
 

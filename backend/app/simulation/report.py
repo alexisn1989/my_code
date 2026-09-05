@@ -116,6 +116,7 @@ from app.simulation.foreign_conflict import (
     raw_closing_intensity_bps,
     select_candidate_index,
 )
+from app.simulation.geography import StrictMapId
 from app.simulation.government_survival import (
     AMENDMENT_PRESSURE_PER_AXIS_BY_DIFFICULTY_BPS,
     BASE_COUP_ATTEMPT_RISK_BPS,
@@ -164,10 +165,12 @@ from app.simulation.relationships import RELATIONSHIP_CEILING_BPS, RELATIONSHIP_
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
+    FormationBranch,
     RemovalReason,
     ResourceCategory,
     SectorCategory,
     SpendingPlanState,
+    StrictFormationId,
     TaxBaseCoefficients,
     TaxBaseState,
     TaxPolicyState,
@@ -3889,6 +3892,63 @@ class ForeignAffairsReport(BaseModel):
         return self
 
 
+class FormationMovementRow(BaseModel):
+    """One APPLIED formation transition (Military Movement, commit 5).
+
+    Seven fields, and the redundancy between ids and display names is deliberate:
+
+    - the **ids** support reconciliation and machine-readable auditing (Group 54);
+    - the **display names** support standalone historical rendering.
+
+    Both theater display names are snapshotted by the resolver from the authoritative strategic map
+    at the moment the order is applied. Carrying only the ids would have contradicted the promise
+    that a historical turn renders from the report written when it happened -- a renderer would
+    have had to resolve names from CURRENT state, which is exactly what `build_turn_result`'s
+    docstring forbids, and raw ids would otherwise have become fallback player-facing text.
+
+    There is no status field: every row in this report is, by construction, an applied movement. A
+    rejected order never reaches a report, because a resolved turn means every submitted order was
+    legal (`resolver._validate_decision_set` aborts the turn otherwise).
+    """
+
+    model_config = _STRICT_CONFIG
+
+    formation_id: StrictFormationId
+    display_name: str
+    branch: FormationBranch
+    origin_theater_id: StrictMapId
+    origin_theater_display_name: str
+    destination_theater_id: StrictMapId
+    destination_theater_display_name: str
+
+
+class MovementReport(BaseModel):
+    """The 14th domain report: this turn's applied formation movements, if any.
+
+    Built for EVERY resolved turn. A quiet turn carries `movements=()` -- present and empty, never
+    `None` -- matching the distinction `ForeignAffairsReport` already documents between an absent
+    report (the audit chain is broken) and a present-but-empty one (the chain ran and nothing
+    happened). `TurnReport`'s completeness rule below depends on that: thirteen reports present
+    alongside `movement=None` is exactly the proper subset it exists to reject.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    movements: tuple[FormationMovementRow, ...] = ()
+
+    @model_validator(mode="after")
+    def _movements_are_canonically_ordered(self) -> MovementReport:
+        """Canonical by `formation_id`, rejected rather than sorted -- the same reject-not-normalize
+        rule as `ForeignAffairsReport._progressions_are_canonically_ordered`, and for the same
+        reason: this report is serialized into `report_json` and hash-covered."""
+        ids = [row.formation_id for row in self.movements]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"duplicate formation_id(s) in movements: {ids!r}")
+        if ids != sorted(ids):
+            raise ValueError(f"movements are not in canonical formation_id order: {ids!r}")
+        return self
+
+
 class TurnReport(BaseModel):
     """The full report produced by one `resolve_turn` call."""
 
@@ -3959,16 +4019,23 @@ class TurnReport(BaseModel):
     with no candidates and no live conflicts at all — an outbreak row with zero candidates and an
     empty `progressions` tuple is still a valid, complete report. Slots 7 (outbreak) and 8
     (progression); assembled at slot 15; see `phases.py`."""
+    movement: MovementReport | None = None
+    """`None` only when the movement substep did not run (never for a successful Military Movement
+    commit-5+ turn on a valid player state — `simulation.invariants` requires player military state
+    before resolution can even begin). Built for every resolved turn, including turns with no
+    movement at all — an empty `movements` tuple is still a valid, complete report. Slot 8, before
+    the W1 progression; assembled at slot 15; see `phases.py`."""
 
     @model_validator(mode="after")
-    def _all_thirteen_domain_reports_are_all_present_or_all_absent(
+    def _all_fourteen_domain_reports_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
         """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1, Phase 3B2A,
-        Phase 3B2B, Phase 3C Gate 3C1, Gate 3C2, Gate 3C3, and External Wars Gate W1): a partial
-        combination of these thirteen player-economy/politics/foreign-affairs reports would
-        represent a broken audit chain (e.g. production ran but derivation silently didn't) —
-        reject it outright rather than accepting whatever subset happens to be present.
+        Phase 3B2B, Phase 3C Gate 3C1, Gate 3C2, Gate 3C3, External Wars Gate W1, and Military
+        Movement commit 5): a partial combination of these fourteen
+        player-economy/politics/foreign-affairs/military reports would represent a broken audit
+        chain (e.g. production ran but derivation silently didn't) — reject it outright rather
+        than accepting whatever subset happens to be present.
         """
         present = (
             self.labor_market is not None,
@@ -3984,16 +4051,17 @@ class TurnReport(BaseModel):
             self.coup_unrest is not None,
             self.constitutional_amendment is not None,
             self.foreign_affairs is not None,
+            self.movement is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
                 "labor_market, resources, production, tax_base_derivation, finance, political, "
                 "legislative, political_capital, political_relationship, election, coup_unrest, "
-                "constitutional_amendment, and foreign_affairs must be all present or all absent "
-                "on a TurnReport — got "
+                "constitutional_amendment, foreign_affairs, and movement must be all present or "
+                "all absent on a TurnReport — got "
                 f"present={present} (labor_market, resources, production, tax_base_derivation, "
                 "finance, political, legislative, political_capital, political_relationship, "
-                "election, coup_unrest, constitutional_amendment, foreign_affairs)"
+                "election, coup_unrest, constitutional_amendment, foreign_affairs, movement)"
             )
         return self
 
