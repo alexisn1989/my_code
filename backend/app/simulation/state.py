@@ -965,6 +965,70 @@ class PoliticalState(BaseModel):
         return self
 
 
+StrictFormationId: TypeAlias = Annotated[str, Field(strict=True, min_length=1, max_length=64)]
+"""A formation's stable identifier, and its OWN namespace.
+
+Structurally identical to `geography.StrictMapId` -- strict, 1..64, no character-set constraint,
+so no separator may be assumed absent from an id -- but deliberately a distinct alias: a formation
+is not a map object, and a future rename or widening of one must not silently move the other.
+Theater ids on military models keep `StrictMapId`, the type `TheaterState`'s own keys and every
+route endpoint already use.
+"""
+
+
+class FormationBranch(StrEnum):
+    """M0 of the movement slice ships ARMY only.
+
+    `NAVY`/`AIR_FORCE` are deliberately ABSENT rather than declared-and-unused. `RouteKind` has a
+    single member, `LAND`, and `TheaterKind` only `LAND`/`COASTAL`, so a naval or air branch would
+    advertise reachability the shipped map cannot express -- the same reason M0 declined to declare
+    `SEA`/`AIR_REGION` before anything consumed them.
+    """
+
+    ARMY = "army"
+
+
+class FormationState(BaseModel):
+    """One abstract military formation.
+
+    Exactly three fields. No status, strength, manpower, readiness, supply, equipment, commander or
+    experience: no mechanic in this slice reads any of them, and unread state is a promise the
+    engine does not keep (ADR 0016's own reason for excluding `belligerence_bps`).
+
+    There is no `owner` field and no `formation_id` field. Ownership comes from the containing
+    `CountryState`, and identity from the `MilitaryState.formations` key -- the same rule
+    `ForeignProfileState` and `TheaterState` already follow, so key and value can never disagree.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    display_name: str
+    branch: FormationBranch
+    location_theater_id: StrictMapId
+
+
+class MilitaryState(BaseModel):
+    """A country's formations, keyed by `StrictFormationId`.
+
+    `MilitaryState(formations={})` is a valid, explicit empty military -- a country that has the
+    dimension modelled but no formations in it. That is deliberately distinct from
+    `CountryState.military is None`, which means the dimension is not modelled for that country at
+    all. Collapsing the two would erase a distinction the invariants rely on.
+
+    No invariant requires a non-empty mapping: the shipped scenarios each author one formation, but
+    the state model permits none.
+
+    Formations live here and NOT in `StrategicMapState`, because
+    `reconciliation.reconcile_strategic_map_staticness` (Group 53) requires the map's canonical
+    bytes to be identical between a turn's opening and closing state. A position stored inside the
+    map would break that guarantee the first time anything moved.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    formations: dict[StrictFormationId, FormationState]
+
+
 class CountryState(BaseModel):
     """A single country: player-controlled or AI-controlled.
 
@@ -988,6 +1052,14 @@ class CountryState(BaseModel):
     politics for a country with no economy to derive performance from
     (`non_player_politics_not_supported`). Required for the player, enforced by
     `player_politics_required`, mirroring `player_finance_required`/`player_economy_required`."""
+    military: MilitaryState | None = None
+    """Optional on the model, REQUIRED for the player by invariant — the established pattern every
+    country sub-model above already follows. `player_military_state_required` enforces it, and is
+    named apart from the pre-existing `player_military_institution_required`, which concerns the
+    entirely separate `InstitutionState(id="military")` row the coup-risk formula reads.
+
+    A non-player country may keep `military=None`. Making the field required on the model would
+    force every future AI country to author one."""
 
 
 class ForeignProfileState(BaseModel):
@@ -1431,7 +1503,7 @@ class WorldState(BaseModel):
         return self
 
 
-RULESET_VERSION = "0.14.0"
+RULESET_VERSION = "0.15.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -1506,6 +1578,16 @@ the map byte-identical across every resolved turn, so replaying 0.13.0-authored 
 0.14.0 rules produces the identical turn. The bump exists purely because the new field is
 required, matching the schema-shape rationale of every ruleset bump above rather than a
 behavior-change one. `SAVE_FORMAT_VERSION` stays `1`.
+
+Bumped `"0.14.0" -> "0.15.0"` for the Military Movement vertical slice, commit 3
+(`docs/plans/military-movement-vertical-slice-implementation-plan.md`): `CountryState` gains
+`military: MilitaryState | None`, and the PLAYER's is required by
+`player_military_state_required`. A 0.14.0 save has no formations, and synthesising a roster would
+assert authored content -- names, branch, starting theater -- the save never contained, exactly the
+reasoning of the M0 bump above. Like M0, this bump changes NO turn-resolution behavior: commit 3
+adds no decision, no phase, no formula, no RNG stream and no report, so replaying 0.14.0-authored
+decisions under 0.15.0 rules produces the identical turn. `SAVE_FORMAT_VERSION` stays `1`, and no
+migration is fabricated.
 """
 
 

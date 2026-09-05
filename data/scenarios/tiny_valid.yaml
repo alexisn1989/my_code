@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.14.0"
+content_version: "0.15.0"
 seed: 42
 player_country_id: arken
 
@@ -576,6 +576,15 @@ countries:
                 baseline_government_relationship_bps: 2000
                 tax_preference_bps: -1000
                 spending_preference_bps: 3000
+    # Military Movement vertical slice, commit 3: the approved roster. Exactly one
+    # abstract Army formation, starting in this country's own capital theater. No
+    # manpower, strength or equipment is stated or implied.
+    military:
+      formations:
+        arken_first_army:
+          display_name: First Army of Arken
+          branch: army
+          location_theater_id: arken_capital
 
   - id: neighbor
     name: "Neighboring State"

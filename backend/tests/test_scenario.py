@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.content.scenarios import load_scenario_file
-from app.core.canonical_json import canonical_digest
+from app.core.canonical_json import canonical_digest, canonical_dumps
 from app.core.errors import ScenarioValidationError
 from app.simulation.scenario import load_scenario_text
 from app.simulation.state import ResourceCategory
@@ -179,3 +179,24 @@ def test_strategic_map_geometry_digest_is_pinned(scenario_file: str) -> None:
     state = load_scenario_file(SCENARIO_DIR / scenario_file)
     digest = canonical_digest(state.world.strategic_map.model_dump(mode="json"))
     assert digest == _STRATEGIC_MAP_DIGEST_BLAKE2B[scenario_file]
+
+
+@pytest.mark.parametrize(
+    "scenario_file", ["tiny_valid.yaml", "decree_state.yaml", "deficit_demo.yaml"]
+)
+def test_authoring_a_military_roster_did_not_move_the_map_digest(scenario_file: str) -> None:
+    """Military Movement commit 3 authored a `military:` block into each scenario's player
+    country and left the map alone, so these pinned digests are deliberately UNCHANGED.
+
+    Worth its own case rather than relying on the pin above: the digests cover `strategic_map`
+    only, so an edit that reached the map while adding a roster would move them, and reading the
+    pin as "still passing" is easy to mistake for "nothing was checked". The assertion here is
+    that the formations live outside the digested subtree at all.
+    """
+    state = load_scenario_file(SCENARIO_DIR / scenario_file)
+    military = state.world.countries[state.world.player_country_id].military
+    assert military is not None and len(military.formations) == 1
+
+    map_payload = state.world.strategic_map.model_dump(mode="json")
+    assert "military" not in canonical_dumps(map_payload)
+    assert canonical_digest(map_payload) == _STRATEGIC_MAP_DIGEST_BLAKE2B[scenario_file]

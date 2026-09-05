@@ -46,6 +46,13 @@ this build will ever be able to prove pre-parse rejection against for that missi
 the `"0.14.0"` bump landed, every subsequently-generated `"0.13.0"` save became impossible to
 produce."""
 
+MILITARY_MOVEMENT_SAVE_PATH = FIXTURES_DIR / "military_movement_save_ruleset_0.14.0.json"
+"""Frozen by the unmodified `"0.14.0"` engine (Military Movement vertical slice, commit 2) --
+after `strategic_map` became required but before `CountryState.military` existed. Like the
+`"0.13.0"` fixture above, it is the only save this build will ever be able to prove pre-parse
+rejection against for its own missing field: once the `"0.15.0"` bump landed, a `"0.14.0"` save
+became impossible to produce."""
+
 SCENARIOS_DIR = Path(__file__).resolve().parents[2] / "data" / "scenarios"
 
 
@@ -425,7 +432,7 @@ def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
     from app.simulation.resolver import resolve_turn
 
     state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
-    assert state.ruleset_version == RULESET_VERSION == "0.14.0"
+    assert state.ruleset_version == RULESET_VERSION == "0.15.0"
     decisions = DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
     )
@@ -463,7 +470,7 @@ def test_scenario_content_version_is_current(scenario_name: str) -> None:
     since it changes field TYPES (float -> strict bps) as well as adding/removing whole rows --
     not a case a line-level text rebuild can express cleanly."""
     state = load_scenario_file(SCENARIOS_DIR / scenario_name)
-    assert state.content_version == "0.14.0"
+    assert state.content_version == "0.15.0"
 
 
 @pytest.mark.parametrize(
@@ -578,3 +585,66 @@ def test_strategic_map_m0_save_is_rejected_with_an_actionable_ruleset_version_er
     message = str(exc_info.value)
     assert "0.13.0" in message
     assert RULESET_VERSION in message
+
+
+# --- Military Movement commit 3: the authentic 0.14.0 fixture is rejected -----
+# --- before its (military-less) payload is ever parsed as current-shape state -
+
+
+def test_frozen_military_movement_save_fixture_declares_the_old_ruleset_version() -> None:
+    """The sanity half of the pair: the fixture really is a `"0.14.0"` save, so the rejection
+    test below is proving something. Without this, a fixture silently regenerated under the
+    current engine would make that test pass for the wrong reason."""
+    raw = json.loads(MILITARY_MOVEMENT_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.14.0"
+    assert raw["ruleset_version"] != RULESET_VERSION
+    assert RULESET_VERSION == "0.15.0"
+
+
+def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
+    """Commit 3: rejected specifically via the ruleset-version gate, before `WorldState`
+    construction ever reaches the player country and finds no `MilitaryState` for
+    `player_military_state_required` to complain about -- the identical "clean rejection, not an
+    ugly crash" property every prior ruleset-version gate proves for its own fixture.
+
+    The error names BOTH versions, so the message tells a player what they have and what this
+    build wants, rather than only that something is wrong."""
+    raw_text = read_save_file(MILITARY_MOVEMENT_SAVE_PATH)
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(raw_text, source=str(MILITARY_MOVEMENT_SAVE_PATH))
+
+    message = str(exc_info.value)
+    assert "0.14.0" in message
+    assert "0.15.0" in message
+    assert RULESET_VERSION in message
+
+
+def test_military_movement_save_rejection_happens_before_any_state_json_is_parsed() -> None:
+    """The ordering claim, made falsifiable rather than asserted.
+
+    The fixture's `state_json` payloads are replaced with text that is not even valid JSON. If
+    `check_compatibility` rejects on the ruleset version FIRST, the substitution is never reached
+    and the error is still the clean `UnsupportedRulesetVersionError`. If any entry's payload were
+    parsed first, this would instead surface as a JSON or validation error -- so the test fails
+    loudly if the gate ever moves after payload parsing.
+    """
+    raw = json.loads(MILITARY_MOVEMENT_SAVE_PATH.read_text(encoding="utf-8"))
+    for entry in raw["entries"]:
+        entry["state_json"] = "{ this is not json at all"
+
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(json.dumps(raw), source="military-movement-payload-never-parsed")
+
+    assert "0.14.0" in str(exc_info.value)
+
+
+def test_military_movement_fixture_synthesizes_no_roster_into_the_old_save() -> None:
+    """No migration is fabricated: the frozen save has no `military` anywhere, and loading it
+    does not invent one. `military` DOES appear in the text as the pre-existing
+    `InstitutionState(id="military")` row, so this checks for the FIELD on a country, which is
+    what commit 3 added -- a substring search would pass for the wrong reason."""
+    raw = json.loads(MILITARY_MOVEMENT_SAVE_PATH.read_text(encoding="utf-8"))
+    for entry in raw["entries"]:
+        state = json.loads(entry["state_json"])
+        for country in state["world"]["countries"].values():
+            assert "military" not in country

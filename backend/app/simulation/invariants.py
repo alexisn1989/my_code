@@ -1314,6 +1314,20 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
                     ),
                 )
             )
+        if player.military is None:
+            violations.append(
+                InvariantViolation(
+                    code="player_military_state_required",
+                    message=(
+                        f"player country {player.id!r} has no MilitaryState; the military movement "
+                        "slice cannot resolve without it — AI countries may omit military, the "
+                        "player country may not. Note this is NOT "
+                        "'player_military_institution_required' above, which concerns the entirely "
+                        "separate InstitutionState(id='military') row the coup-risk formula reads; "
+                        "an explicit MilitaryState(formations={}) satisfies this rule"
+                    ),
+                )
+            )
 
     for country in state.world.countries.values():
         is_player = country.id == state.world.player_country_id
@@ -1323,5 +1337,60 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
 
     violations.extend(_check_foreign_conflicts(state.world))
     violations.extend(_check_strategic_map(state.world))
+    violations.extend(_check_formation_locations(state.world))
+
+    return violations
+
+
+def _check_formation_locations(world: WorldState) -> list[InvariantViolation]:
+    """Every formation stands on a theater its OWN country owns (Military Movement, commit 3).
+
+    Two codes, both about the formation's location and neither duplicating M0's map-owner rules:
+    M0 already proves every theater's `owner` resolves and that a `PlayerCountryRef` names the
+    player (`map_owner_country_unknown`, `map_player_ref_not_player`, `map_owner_profile_unknown`).
+    This adds only the fact those cannot see -- that a formation is standing somewhere its
+    containing country actually owns.
+
+    Iterates `sorted(...)` at both levels so the emitted order depends on ids, never on mapping
+    insertion order.
+    """
+    violations: list[InvariantViolation] = []
+    theaters = world.strategic_map.theaters
+
+    for country_id in sorted(world.countries):
+        military = world.countries[country_id].military
+        if military is None:
+            continue
+        for formation_id in sorted(military.formations):
+            location = military.formations[formation_id].location_theater_id
+            theater = theaters.get(location)
+            if theater is None:
+                violations.append(
+                    InvariantViolation(
+                        code="formation_location_unknown_theater",
+                        message=(
+                            f"formation {formation_id!r} of country {country_id!r} is located at "
+                            f"{location!r}, which is not a key of world.strategic_map.theaters"
+                        ),
+                    )
+                )
+                continue
+            owner = theater.owner
+            if not isinstance(owner, PlayerCountryRef) or owner.country_id != country_id:
+                held_by = (
+                    f"player country {owner.country_id!r}"
+                    if isinstance(owner, PlayerCountryRef)
+                    else f"foreign profile {owner.foreign_profile_id!r}"
+                )
+                violations.append(
+                    InvariantViolation(
+                        code="formation_location_not_owned_by_country",
+                        message=(
+                            f"formation {formation_id!r} of country {country_id!r} is located at "
+                            f"theater {location!r}, which is owned by {held_by} — a formation may "
+                            "only stand on a theater its own country owns"
+                        ),
+                    )
+                )
 
     return violations

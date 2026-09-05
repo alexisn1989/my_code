@@ -35,6 +35,7 @@ from app.simulation.state import (
     InstitutionState,
     LegislativeBlocState,
     LegislatureState,
+    MilitaryState,
     PartyState,
     PlayerCountryRef,
     PoliticalState,
@@ -383,6 +384,8 @@ def make_country(
     economy: EconomyState | None = None,
     with_politics: bool = True,
     politics: PoliticalState | None = None,
+    with_military: bool = True,
+    military: MilitaryState | None = None,
 ) -> CountryState:
     """Build a minimal, valid `CountryState` for unit tests that don't need YAML.
 
@@ -393,6 +396,14 @@ def make_country(
     `with_finance=False`/`with_economy=False`/`with_politics=False` to build an AI-style country
     with none of them, or `finance=...`/`economy=...`/`politics=...` to supply a specific one
     (implies the corresponding `with_*` flag is ignored).
+
+    `with_military` (Military Movement, commit 3) joins them for exactly the same reason:
+    `player_military_state_required` makes `MilitaryState` mandatory for the player. It defaults
+    to an EXPLICITLY EMPTY `MilitaryState(formations={})` rather than a roster -- the invariant
+    requires the state to be present, never that it hold a formation, and inventing a formation
+    here would put a location in every unit test that no test asked for. A test needing one passes
+    `military=...`, and its `location_theater_id` must be a theater the same country owns (see
+    `make_minimal_strategic_map`, whose single theater is `"capital"`).
     """
     groups = [
         PopulationGroupState(id=f"group_{i}", name=f"Group {i}", population_share=share)
@@ -407,6 +418,11 @@ def make_country(
     resolved_politics = (
         politics if politics is not None else (make_politics() if with_politics else None)
     )
+    resolved_military = (
+        military
+        if military is not None
+        else (MilitaryState(formations={}) if with_military else None)
+    )
     return CountryState(
         id=country_id,
         name=country_id.title(),
@@ -420,6 +436,7 @@ def make_country(
         finance=resolved_finance,
         economy=resolved_economy,
         politics=resolved_politics,
+        military=resolved_military,
     )
 
 
@@ -498,7 +515,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id, politics=politics)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.14.0",
+        content_version="0.15.0",
         seed=seed,
         turn=turn,
         state_version=state_version,

@@ -91,7 +91,7 @@ with an actionable message, same as the save-format-version case above. See
 `docs/adr/0013-government-survival.md`.
 """
 
-SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.14.0"})
+SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.15.0"})
 """Tracks content-*schema* compatibility (what shape scenario-authored data must have), not a
 fingerprint of any scenario's actual parameter values — two scenarios sharing a content_version
 routinely carry different `resource_output_coefficients`/`resource_deposits`/`sectors` values
@@ -114,7 +114,14 @@ field with no principled empty-shape to omit-as-absent. See
 `docs/adr/0012-political-memory-policy-reactions-and-relationship-decay.md`,
 `docs/adr/0013-government-survival.md`,
 `docs/adr/0016-external-wars-foreign-conflicts.md`, and
-`docs/adr/0017-strategic-military-map-m0.md`."""
+`docs/adr/0017-strategic-military-map-m0.md`. Bumped `"0.14.0" -> "0.15.0"` for the Military
+Movement vertical slice: every scenario's PLAYER country gains a `military:` block with one
+authored formation. The field is optional on `CountryState`, but `player_military_state_required`
+makes it mandatory for the player -- so no 0.14.0-shaped scenario can satisfy 0.15.0, and leaving
+the declaration at `"0.14.0"` would have a scenario claim a compatibility it no longer has. That is
+the schema-shape reasoning of every bump above, not a fingerprint of the roster's values: the three
+scenarios author three different formations at the same content version, exactly as they already
+carry different sectors, deposits and legislatures."""
 
 _REQUIRED_ENVELOPE_KEYS = {
     "save_format_version",

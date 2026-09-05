@@ -25,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.14.0"
+content_version: "0.15.0"
 seed: 99
 player_country_id: strapped
 
@@ -522,3 +522,12 @@ countries:
                 baseline_government_relationship_bps: 1000
                 tax_preference_bps: -2000
                 spending_preference_bps: 2000
+    # Military Movement vertical slice, commit 3: the approved roster. Exactly one
+    # abstract Army formation, starting in this country's own capital theater. No
+    # manpower, strength or equipment is stated or implied.
+    military:
+      formations:
+        strapped_first_army:
+          display_name: First Army of the Republic
+          branch: army
+          location_theater_id: home_capital

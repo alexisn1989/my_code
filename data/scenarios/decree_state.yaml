@@ -39,7 +39,7 @@
 schema_version: 1
 scenario_id: decree_state
 name: "Decree State Fixture"
-content_version: "0.14.0"
+content_version: "0.15.0"
 seed: 77
 player_country_id: valdrun
 
@@ -543,6 +543,15 @@ countries:
                 baseline_government_relationship_bps: -8000
                 tax_preference_bps: -6000
                 spending_preference_bps: 0
+    # Military Movement vertical slice, commit 3: the approved roster. Exactly one
+    # abstract Army formation, starting in this country's own capital theater. No
+    # manpower, strength or equipment is stated or implied.
+    military:
+      formations:
+        valdrun_first_army:
+          display_name: First Army of Valdrun
+          branch: army
+          location_theater_id: valdrun_capital
 
   - id: neighbor
     name: "Neighboring State"
