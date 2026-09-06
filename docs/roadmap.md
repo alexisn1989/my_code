@@ -894,12 +894,46 @@ appropriate pointer and keyboard hit targets. The shipped 400–442px SVG is ade
 read-only overview and too compact for interactive unit movement. M0 deliberately designs none of
 M1's unit schema, combat, movement costs or military branches.
 
-### Gates M1–M5 — not started
+**Met** by the military movement vertical slice below, which took the first branch — an enlarged
+map mode — and left zoom/pan unbuilt. Recorded here so this prerequisite does not read as
+outstanding.
 
-Not started, and deliberately not scoped here: no mandate has yet divided this work into gates, and
-assigning topics to gate numbers would be design. What is known is what M0 excluded and therefore
-still owes — troop units and orders, movement, combat, occupation and annexation, provinces, cities,
-terrain, resources and military bases — each to be scoped by its own audited plan.
+### Military movement vertical slice — **complete**
+
+Frozen plan: `docs/plans/military-movement-vertical-slice-implementation-plan.md`. Architecture:
+`docs/adr/0018-military-movement-vertical-slice.md`.
+
+Delivered, in ten commits: formation state and scenario rosters at ruleset `0.15.0`; the single
+directed one-edge LAND reachability classifier; decision acceptance, authoritative validation,
+slot-8 application, the fourteenth domain report and reconciliation Group 54 landing together as
+one atom; the read-only `/api/game/military` projection; formations drawn in a bounded fan with a
+`+N` overflow control; accessible selection, destination choice, review and staging into the shared
+turn draft; and determinism, persistence and real-browser evidence.
+
+**It supplies infrastructure, not a military system.** A formation's location is authoritative,
+ordered by the player, applied by the engine, persisted, hash-covered, reconciled against its own
+report, and rendered from that report on every surface — and **no gameplay formula reads it**.
+Movement is free: no cost, no combat, no supply, no readiness, no transit, no foreign entry, one
+branch, one order per turn. That is deliberate, and ADR 0018 records it as the slice's defining
+limitation rather than as unfinished work.
+
+**M0's prerequisite for interactive movement was met by the first of its two branches.** ADR 0017
+required a larger interaction-focused surface *or* deterministic zoom/pan before troop icons and
+orders. This slice shipped an enlarged map mode — roughly 63% of the row rather than half, same
+authored viewBox, same geometry, more pixels — and did **not** add zoom/pan, which remains the
+answer if a later gate finds the enlarged mode insufficient. A real-browser walkthrough at 1440×900
+and 820×900 is the evidence that the interaction is operable at the shipped size.
+
+### Remaining military work — not started
+
+Deliberately not scoped here: no mandate has yet divided it into gates, and assigning topics to
+gate numbers would be design. What is known is what remains owed — **what movement should cost**,
+combat and casualties, occupation and annexation, supply and readiness, naval and air branches,
+provinces, cities, terrain, resources and military bases — each to be scoped by its own audited
+plan.
+
+The honest next question is the first of those. A free action with no consequence is not yet a
+strategic choice, so cost is what turns this substrate into a decision rather than a control.
 
 ## Phase 4 — Persistence and API
 
