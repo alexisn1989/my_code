@@ -37,7 +37,7 @@ demand, mirroring `labor_allocation.compute_required_workers`.
 ## Allocation
 
 The extraction *sector's* allocated workers (already computed by `labor_allocation` earlier this
-same phase) are the budget, sub-allocated across the eight deposits by the shared
+same phase) are the budget, sub-allocated across the nine deposits by the shared
 `integer_allocation.largest_remainder_allocation` core. Unlike `labor_allocation.allocate_workers`
 (which keeps a tuple input, already in canonical order, unchanged from Phase 2B3),
 `allocate_extraction_workers` below takes a category-keyed *mapping* and explicitly canonicalizes
@@ -155,7 +155,7 @@ def allocate_extraction_workers(
     extraction_sector_workers: WorkerCount,
 ) -> tuple[DepositAllocationResult, ...]:
     """Deterministic largest-remainder allocation of the extraction sector's workers across the
-    eight resource deposits, always returned in canonical `ResourceCategory` order.
+    nine resource deposits, always returned in canonical `ResourceCategory` order.
 
     `required_by_category` must be a mapping covering every `ResourceCategory` exactly once — its
     *insertion order does not matter*: this function builds the `(category, weight)` pairs in
@@ -170,7 +170,8 @@ def allocate_extraction_workers(
     unknown = provided - canonical
     if missing or unknown:
         raise ValueError(
-            "required_by_category must cover exactly the eight ResourceCategory members, once "
+            f"required_by_category must cover exactly the {len(ResourceCategory)} "
+            "ResourceCategory members, once "
             f"each; missing={sorted(c.value for c in missing)!r} "
             f"unknown={sorted(repr(k) for k in unknown)!r}"
         )
@@ -265,7 +266,7 @@ def aggregate_extraction(
     extraction_sector_workers: WorkerCount,
     results: tuple[DepositExtractionResult, ...],
 ) -> ExtractionAggregates:
-    """Sum worker allocation and per-status counts across all eight deposits — never a summed
+    """Sum worker allocation and per-status counts across all nine deposits — never a summed
     physical quantity (D4): tonnes, barrels, and cubic metres cannot be meaningfully added
     together."""
     total_extraction_workers = sum(r.allocated_workers for r in results)

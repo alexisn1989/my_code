@@ -117,8 +117,8 @@ def test_tiny_valid_resource_calibration_reproduces_every_hand_worked_figure_exa
     assert resources is not None
 
     assert resources.extraction_sector_workers == 20_000
-    assert resources.total_extraction_workers == 13_500
-    assert resources.unassigned_resource_workers == 6_500
+    assert resources.total_extraction_workers == 14_000
+    assert resources.unassigned_resource_workers == 6_000
 
     expected = {
         ResourceCategory.TIMBER: (5_000_000, 80_000, 100_000, 4_980_000),

@@ -25,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.15.0"
+content_version: "0.16.0"
 seed: 99
 player_country_id: strapped
 
@@ -327,7 +327,7 @@ countries:
 
       # Phase 2C1: resource-poor / import-dependent. The extraction sector's allocated_workers
       # this turn is 10,000 (see the required=10,000 row above; abundant labor means allocated ==
-      # required). Only timber and iron_ore have any endowment; the other six categories are
+      # required). Only timber and iron_ore have any endowment; the other seven categories are
       # legitimate zero-stock/zero-capacity entries (a resource-poor country still declares every
       # category, just at zero — output_per_worker=1 is the minimum valid StrictResourceQuantity
       # PerWorker value, never exercised since capacity is 0). total_required = 400 (timber) + 400
@@ -388,6 +388,15 @@ countries:
           remaining_stock: 0
           extraction_capacity_per_turn: 0
           output_per_worker: 1
+        # Ruleset 0.16.0's ninth category, and a seventh zero entry: this country has no gold
+        # either. Authored at zero rather than omitted, for exactly the reason the six above are —
+        # a resource-poor country still declares every category. Nothing about this scenario's
+        # extraction, output, tax bases or treasury changes as a result, which is why no
+        # coefficient here is re-offset the way tiny_valid's and decree_state's crude_oil is.
+        - category: gold
+          remaining_stock: 0
+          extraction_capacity_per_turn: 0
+          output_per_worker: 1
 
       # Phase 2C2: physical-to-output bridge coefficients. REPLACES the extraction sector's old
       # capacity/productivity output formula (500,000,000, see the sector block above) with the sum
@@ -396,7 +405,7 @@ countries:
       # 2B/2C1 figure numerically at turn 1 only:
       #   timber:    10,000 x 10,000 =  100,000,000
       #   iron_ore:  20,000 x 20,000 =  400,000,000
-      #   six others:      0 x (any) =            0  (positive coefficients required, D5, but
+      #   seven others:    0 x (any) =            0  (positive coefficients required, D5, but
       #                                                always multiplied by zero here)
       #   total                     =  500,000,000  (matches the old formula exactly, turn 1 only)
       # From turn 26 (iron_ore depleted) the total drops to 100,000,000, and from turn 41 (timber's
@@ -420,6 +429,8 @@ countries:
           real_output_per_unit: 1000
         - category: critical_minerals
           real_output_per_unit: 5000
+        - category: gold
+          real_output_per_unit: 100000
 
     # Phase 3A: a less-accepted presidential order under resource decline (see docs/adr/0009
     # and docs/economy_methodology.md, "Political calibration"). Two real, already-calibrated

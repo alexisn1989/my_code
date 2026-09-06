@@ -517,6 +517,31 @@ def test_concurrency_check_is_insensitive_to_foreign_profiles_insertion_order() 
 # --- foreign_profiles, dyads (W1) and strategic_map (M0) may have changed -----
 
 
+def _revert_gold_authoring(scenario: dict[str, object]) -> None:
+    """Undo, in place, exactly what the map-resources slice authored into every scenario's
+    economy: the ninth (`gold`) `resource_deposits` row, the ninth `resource_output_coefficients`
+    row, and `crude_oil`'s coefficient offset (1,200 -> 1,100 in `tiny_valid`/`decree_state`;
+    untouched at 1,200 in `deficit_demo`, where restoring it is a no-op).
+
+    Deliberately narrow. It removes rows by category and rewrites ONE named coefficient -- it does
+    not rebuild the blocks, so any other edit to a deposit, a coefficient or anything else in the
+    economy survives it and fails the digest comparison, which is the entire point.
+    """
+    countries = scenario["countries"]
+    assert isinstance(countries, list)
+    for country in countries:
+        economy = country.get("economy")
+        if not isinstance(economy, dict):
+            continue
+        for path in ("resource_deposits", "resource_output_coefficients"):
+            rows = economy.get(path)
+            if isinstance(rows, list):
+                economy[path] = [row for row in rows if row.get("category") != "gold"]
+        for row in economy.get("resource_output_coefficients", []):
+            if row.get("category") == "crude_oil":
+                row["real_output_per_unit"] = 1200
+
+
 @pytest.mark.parametrize(
     "scenario_file", ["tiny_valid.yaml", "decree_state.yaml", "deficit_demo.yaml"]
 )
@@ -531,11 +556,17 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
     is stripped per COUNTRY rather than as a top-level key, because that is where the roster
     actually lives.
 
-    The pinned digests are deliberately UNCHANGED by the roster: stripping the one new authored
-    path restores the pre-W1 value exactly, which is the proof that authoring a formation
-    disturbed no economic, fiscal, political or constitutional content. Re-pinning them instead
-    would have thrown that proof away. The pre-W1 side is a stable literal recorded at authoring
-    time (module-level `_PRE_W1_SCENARIO_DIGEST_BLAKE2B`); this test performs no git invocation."""
+    The map-resources slice is the first gate to change authored ECONOMIC content, so a strip
+    alone can no longer restore the pre-W1 bytes. Rather than re-pin the digests -- which would
+    throw the whole proof away -- this test INVERTS that slice's authoring exactly
+    (`_revert_gold_authoring` below) and requires the pre-W1 digest to come back. That is a
+    stronger statement than a fresh pin: it says the slice changed precisely three things in every
+    scenario's economy (a `gold` deposit row, a `gold` coefficient row, and `crude_oil`'s
+    coefficient) and disturbed nothing else, fiscal, political, constitutional or calibration.
+
+    The pinned digests are therefore still the ORIGINAL pre-W1 values. The pre-W1 side is a stable
+    literal recorded at authoring time (module-level `_PRE_W1_SCENARIO_DIGEST_BLAKE2B`); this test
+    performs no git invocation."""
     with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
         current = yaml.safe_load(handle)
     stripped = {
@@ -547,6 +578,11 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
         {key: value for key, value in country.items() if key != "military"}
         for country in stripped["countries"]
     ]
+    assert canonical_digest(stripped) != _PRE_W1_SCENARIO_DIGEST_BLAKE2B[scenario_file], (
+        "the gold authoring is supposed to be visible in these bytes; if the digest already "
+        "matches before it is reverted, this test proves nothing"
+    )
+    _revert_gold_authoring(stripped)
     assert canonical_digest(stripped) == _PRE_W1_SCENARIO_DIGEST_BLAKE2B[scenario_file]
 
 
@@ -556,7 +592,7 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
 def test_every_scenario_has_exactly_the_w1_paths_present(scenario_file: str) -> None:
     with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
         current = yaml.safe_load(handle)
-    assert current["content_version"] == "0.15.0"
+    assert current["content_version"] == "0.16.0"
     assert isinstance(current["foreign_profiles"], dict) and len(current["foreign_profiles"]) == 2
     assert isinstance(current["dyads"], list) and len(current["dyads"]) == 1
     assert isinstance(current["strategic_map"], dict)
@@ -597,7 +633,7 @@ def test_phase4a_save_compatibility_is_checked_before_any_entry_payload_is_parse
 
 
 def test_ruleset_and_save_format_versions_are_current() -> None:
-    assert RULESET_VERSION == "0.15.0"
+    assert RULESET_VERSION == "0.16.0"
     assert SAVE_FORMAT_VERSION == 1
 
 
@@ -605,4 +641,4 @@ def test_no_migration_path_exists_for_the_pre_w1_ruleset() -> None:
     """`SUPPORTED_RULESET_VERSIONS` names exactly one version -- the current one. A migration
     path would need a second, older version present in this set; there is none, and no
     foreign-conflict state is ever synthesized for a save that predates it."""
-    assert frozenset({"0.15.0"}) == SUPPORTED_RULESET_VERSIONS
+    assert frozenset({"0.16.0"}) == SUPPORTED_RULESET_VERSIONS

@@ -99,9 +99,10 @@ class TestResourceCategoryAndUnits:
             ResourceCategory.URANIUM,
             ResourceCategory.COPPER,
             ResourceCategory.CRITICAL_MINERALS,
+            ResourceCategory.GOLD,
         )
 
-    def test_resource_units_covers_all_eight_categories(self) -> None:
+    def test_resource_units_covers_all_nine_categories(self) -> None:
         assert set(RESOURCE_UNITS) == set(ResourceCategory)
         assert all(isinstance(unit, str) and unit for unit in RESOURCE_UNITS.values())
 
@@ -495,7 +496,7 @@ class TestEdgeCases:
 
 
 class TestAllocateExtractionWorkers:
-    def test_all_equal_remainder_eight_deposit_fixture_resolved_by_canonical_order(self) -> None:
+    def test_all_equal_remainder_nine_deposit_fixture_resolved_by_canonical_order(self) -> None:
         # Every category requires 10, budget 25 (scarce): all remainders equal, so tie-breaking is
         # resolved entirely by tuple(ResourceCategory) canonical order regardless of mapping order.
         required = {c: 10 for c in ResourceCategory}
@@ -503,8 +504,12 @@ class TestAllocateExtractionWorkers:
             required_by_category=required, extraction_sector_workers=25
         )
         allocated = [r.allocated_workers for r in results]
-        # 8 categories * floor(25*10/80)=3 each = 24, leftover=1 -> first category (TIMBER) gets it.
-        assert allocated == [4, 3, 3, 3, 3, 3, 3, 3]
+        # 9 categories * floor(25*10/90)=2 each = 18, leftover=7 -> the first SEVEN categories in
+        # canonical order (through COPPER) take one extra each; CRITICAL_MINERALS and GOLD take
+        # none. A seven-worker leftover exercises the canonical-order tie-break across a run of
+        # categories, where the eight-deposit fixture this replaces only ever exercised it on a
+        # single leftover worker.
+        assert allocated == [3, 3, 3, 3, 3, 3, 3, 2, 2]
         assert sum(allocated) == 25
 
     def test_permuting_mapping_insertion_order_yields_identical_results(self) -> None:
@@ -640,7 +645,11 @@ class TestResourceFormulaProperties:
         assert result == result_again
 
     @given(
-        weights=st.lists(st.integers(min_value=0, max_value=100_000), min_size=8, max_size=8),
+        weights=st.lists(
+            st.integers(min_value=0, max_value=100_000),
+            min_size=len(ResourceCategory),
+            max_size=len(ResourceCategory),
+        ),
         budget=st.integers(min_value=0, max_value=500_000),
     )
     @settings(max_examples=1000)

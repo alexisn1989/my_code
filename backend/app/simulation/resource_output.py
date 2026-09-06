@@ -73,7 +73,7 @@ def compute_resource_output_contributions(
     extraction_results: tuple[DepositExtractionResult, ...],
     coefficients: Mapping[ResourceCategory, int],
 ) -> tuple[ResourceOutputContribution, ...]:
-    """Verifies both inputs cover all eight `ResourceCategory` members exactly once, then iterates
+    """Verifies both inputs cover all nine `ResourceCategory` members exactly once, then iterates
     `tuple(ResourceCategory)` — canonical order, never `extraction_results`'/`coefficients`'
     incoming order — calling the bridge twice per category: once on `extracted`, once on
     `potential_quantity := min(result.available_stock, result.extraction_capacity_per_turn)`.
@@ -85,7 +85,8 @@ def compute_resource_output_contributions(
     unknown_results = provided_results - canonical
     if missing_results or unknown_results:
         raise ValueError(
-            "extraction_results must cover exactly the eight ResourceCategory members, once "
+            f"extraction_results must cover exactly the {len(ResourceCategory)} "
+            "ResourceCategory members, once "
             f"each; missing={sorted(c.value for c in missing_results)!r} "
             f"unknown={sorted(repr(k) for k in unknown_results)!r}"
         )
@@ -95,7 +96,8 @@ def compute_resource_output_contributions(
     unknown_coefficients = provided_coefficients - canonical
     if missing_coefficients or unknown_coefficients:
         raise ValueError(
-            "coefficients must cover exactly the eight ResourceCategory members, once each; "
+            f"coefficients must cover exactly the {len(ResourceCategory)} ResourceCategory "
+            "members, once each; "
             f"missing={sorted(c.value for c in missing_coefficients)!r} "
             f"unknown={sorted(repr(k) for k in unknown_coefficients)!r}"
         )

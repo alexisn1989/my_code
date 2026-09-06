@@ -836,7 +836,7 @@ class ResourceExtractionReport(BaseModel):
     No `total_extracted` field: physical quantities of different resources (tonnes, barrels,
     cubic metres) are never summed together (D4) — only worker counts are aggregated. But
     `extraction_sector_real_output`/`extraction_sector_potential_output` (Phase 2C2) sum
-    homogeneous `RealOutput` contributions across all eight deposits — a different, legal kind of
+    homogeneous `RealOutput` contributions across all nine deposits — a different, legal kind of
     sum, since every deposit's contribution is already in the same converted unit. These are the
     values `TurnReport` cross-validates against `ProductionReport.sectors[EXTRACTION]`, since this
     row cannot self-validate `actual_output`/`capacity_utilization_bps`/`constraint` in isolation.

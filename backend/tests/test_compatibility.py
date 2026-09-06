@@ -46,6 +46,13 @@ this build will ever be able to prove pre-parse rejection against for that missi
 the `"0.14.0"` bump landed, every subsequently-generated `"0.13.0"` save became impossible to
 produce."""
 
+MAP_RESOURCES_SAVE_PATH = FIXTURES_DIR / "map_resources_save_ruleset_0.15.0.json"
+"""Frozen by the unmodified `"0.15.0"` engine (map-resources slice, gold commit) -- after
+`CountryState.military` became required but before `ResourceCategory` had a ninth member. Like the
+two fixtures below it is the only save this build will ever be able to prove pre-parse rejection
+against for its own missing content: once the `"0.16.0"` bump landed, a `"0.15.0"` save became
+impossible to produce."""
+
 MILITARY_MOVEMENT_SAVE_PATH = FIXTURES_DIR / "military_movement_save_ruleset_0.14.0.json"
 """Frozen by the unmodified `"0.14.0"` engine (Military Movement vertical slice, commit 2) --
 after `strategic_map` became required but before `CountryState.military` existed. Like the
@@ -432,7 +439,7 @@ def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
     from app.simulation.resolver import resolve_turn
 
     state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
-    assert state.ruleset_version == RULESET_VERSION == "0.15.0"
+    assert state.ruleset_version == RULESET_VERSION == "0.16.0"
     decisions = DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
     )
@@ -470,7 +477,7 @@ def test_scenario_content_version_is_current(scenario_name: str) -> None:
     since it changes field TYPES (float -> strict bps) as well as adding/removing whole rows --
     not a case a line-level text rebuild can express cleanly."""
     state = load_scenario_file(SCENARIOS_DIR / scenario_name)
-    assert state.content_version == "0.15.0"
+    assert state.content_version == "0.16.0"
 
 
 @pytest.mark.parametrize(
@@ -598,7 +605,7 @@ def test_frozen_military_movement_save_fixture_declares_the_old_ruleset_version(
     raw = json.loads(MILITARY_MOVEMENT_SAVE_PATH.read_text(encoding="utf-8"))
     assert raw["ruleset_version"] == "0.14.0"
     assert raw["ruleset_version"] != RULESET_VERSION
-    assert RULESET_VERSION == "0.15.0"
+    assert RULESET_VERSION == "0.16.0"
 
 
 def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
@@ -615,7 +622,7 @@ def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_e
 
     message = str(exc_info.value)
     assert "0.14.0" in message
-    assert "0.15.0" in message
+    assert "0.16.0" in message
     assert RULESET_VERSION in message
 
 
@@ -648,3 +655,39 @@ def test_military_movement_fixture_synthesizes_no_roster_into_the_old_save() -> 
         state = json.loads(entry["state_json"])
         for country in state["world"]["countries"].values():
             assert "military" not in country
+
+
+def test_frozen_map_resources_save_fixture_declares_the_old_ruleset_version() -> None:
+    """The sanity half of the pair, exactly as the `"0.14.0"` fixture above has: the fixture
+    really is a `"0.15.0"` save, so the rejection test below is proving something rather than
+    passing because someone regenerated it under the current engine."""
+    raw = json.loads(MAP_RESOURCES_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.15.0"
+    assert raw["content_version"] == "0.15.0"
+    assert raw["ruleset_version"] != RULESET_VERSION
+
+
+def test_map_resources_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
+    """A 0.15.0 save's economy carries eight deposits and eight output coefficients; 0.16.0
+    requires nine of each. The rejection happens at the ruleset-version gate, before any
+    `state_json` is parsed -- so the player is told their save predates this build, not handed a
+    validation error about a missing `gold` deposit from deep inside `EconomyState`."""
+    raw_text = read_save_file(MAP_RESOURCES_SAVE_PATH)
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(raw_text, source=str(MAP_RESOURCES_SAVE_PATH))
+
+    message = str(exc_info.value)
+    assert "0.15.0" in message
+    assert RULESET_VERSION in message
+    assert "not loaded" in message
+
+
+def test_map_resources_save_rejection_happens_before_any_state_json_is_parsed() -> None:
+    """The ordering claim made falsifiable: with every `state_json` replaced by text that is not
+    valid JSON, the failure is still the version error, not a parse error."""
+    raw = json.loads(read_save_file(MAP_RESOURCES_SAVE_PATH))
+    for entry in raw["entries"]:
+        entry["state_json"] = "{not even valid json"
+
+    with pytest.raises(UnsupportedRulesetVersionError):
+        load_save_json(json.dumps(raw), source="corrupted-and-incompatible")

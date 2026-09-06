@@ -430,7 +430,7 @@ class TestApprovedRosters:
         with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
             document = yaml.safe_load(handle)
 
-        assert document["content_version"] == "0.15.0"
+        assert document["content_version"] == "0.16.0"
         for country in document["countries"]:
             if country["id"] == country_id:
                 assert "military" in country

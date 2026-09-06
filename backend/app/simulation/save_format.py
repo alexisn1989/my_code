@@ -91,7 +91,7 @@ with an actionable message, same as the save-format-version case above. See
 `docs/adr/0013-government-survival.md`.
 """
 
-SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.15.0"})
+SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.16.0"})
 """Tracks content-*schema* compatibility (what shape scenario-authored data must have), not a
 fingerprint of any scenario's actual parameter values — two scenarios sharing a content_version
 routinely carry different `resource_output_coefficients`/`resource_deposits`/`sectors` values
@@ -121,7 +121,13 @@ makes it mandatory for the player -- so no 0.14.0-shaped scenario can satisfy 0.
 the declaration at `"0.14.0"` would have a scenario claim a compatibility it no longer has. That is
 the schema-shape reasoning of every bump above, not a fingerprint of the roster's values: the three
 scenarios author three different formations at the same content version, exactly as they already
-carry different sectors, deposits and legislatures."""
+carry different sectors, deposits and legislatures. Bumped `"0.15.0" -> "0.16.0"` for the
+map-resources slice: `ResourceCategory` gains a ninth member, so every scenario's
+`resource_deposits:` and `resource_output_coefficients:` blocks must now author a `gold` row.
+Both blocks are validated as covering every category exactly once, which is a *shape* requirement
+no 0.15.0-shaped scenario can satisfy -- not a claim about what any scenario's gold numbers are.
+`tiny_valid`/`decree_state` author a producing gold deposit and `deficit_demo` a zero one, at the
+same content version, exactly as they already differ on every other deposit."""
 
 _REQUIRED_ENVELOPE_KEYS = {
     "save_format_version",

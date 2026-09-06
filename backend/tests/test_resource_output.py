@@ -93,6 +93,7 @@ class TestComputeResourceOutputContributionsExactness:
             ResourceCategory.URANIUM: 100_000,
             ResourceCategory.COPPER: 1_000,
             ResourceCategory.CRITICAL_MINERALS: 5_000,
+            ResourceCategory.GOLD: 100_000,
         }
         contributions = compute_resource_output_contributions(
             extraction_results=results, coefficients=coefficients
@@ -333,7 +334,11 @@ def _deposit_inputs(draw: st.DrawFn) -> tuple[int, int, int, int]:
     return available_stock, extraction_capacity_per_turn, extracted, real_output_per_unit
 
 
-@given(inputs=st.lists(_deposit_inputs(), min_size=8, max_size=8))
+@given(
+    inputs=st.lists(
+        _deposit_inputs(), min_size=len(ResourceCategory), max_size=len(ResourceCategory)
+    )
+)
 @settings(max_examples=1000)
 def test_actual_never_exceeds_potential_for_arbitrary_valid_inputs(
     inputs: list[tuple[int, int, int, int]],
@@ -362,7 +367,11 @@ def test_actual_never_exceeds_potential_for_arbitrary_valid_inputs(
     assert actual_total <= potential_total
 
 
-@given(inputs=st.lists(_deposit_inputs(), min_size=8, max_size=8))
+@given(
+    inputs=st.lists(
+        _deposit_inputs(), min_size=len(ResourceCategory), max_size=len(ResourceCategory)
+    )
+)
 @settings(max_examples=1000)
 def test_zero_extraction_biconditional_holds_for_arbitrary_valid_inputs(
     inputs: list[tuple[int, int, int, int]],
@@ -391,7 +400,11 @@ def test_zero_extraction_biconditional_holds_for_arbitrary_valid_inputs(
         assert (c.real_output_contribution == 0) == (c.extracted == 0)
 
 
-@given(inputs=st.lists(_deposit_inputs(), min_size=8, max_size=8))
+@given(
+    inputs=st.lists(
+        _deposit_inputs(), min_size=len(ResourceCategory), max_size=len(ResourceCategory)
+    )
+)
 @settings(max_examples=1000)
 def test_determinism_across_repeat_calls(inputs: list[tuple[int, int, int, int]]) -> None:
     results = tuple(

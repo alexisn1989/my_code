@@ -115,7 +115,7 @@ start of the phase, derives this turn's labor allocation via the pure
 sector's capacity/productivity — see "Phase 2B3 labor allocation" below), assembling the
 self-validating `LaborMarketReport` into `PhaseContext.labor_market_report`. Immediately after
 that, it derives this turn's resource extraction via the pure `simulation/resource_extraction.py`
-engine, sub-allocating the extraction sector's just-allocated workers across the eight resource
+engine, sub-allocating the extraction sector's just-allocated workers across the nine resource
 deposits (see "Phase 2C1 resource extraction" below), assembling the self-validating
 `ResourceExtractionReport` into `PhaseContext.resources_report` — and, in that same step, writing
 each deposit's closing stock back into the working `economy.resource_deposits`. It then computes
@@ -162,7 +162,7 @@ allocation algorithm and its tie-breaking rule, and the calibration approach.
 No new `PHASE_ORDER` slot: extraction runs immediately after labor allocation, at the start of
 `resolve_production_and_trade`, before per-sector production — same phase, same turn. The
 extraction **sector's** just-allocated workers (`LaborMarketReport.sectors[EXTRACTION]
-.allocated_workers`) are the budget, sub-allocated across the eight resource deposits by the
+.allocated_workers`) are the budget, sub-allocated across the nine resource deposits by the
 shared `simulation/integer_allocation.py` core (see below). Unlike every other helper in this
 phase, resource extraction is **not** pure with respect to `ctx.state`: after computing each
 deposit's closing stock, it writes that value straight back into

@@ -39,7 +39,7 @@
 schema_version: 1
 scenario_id: decree_state
 name: "Decree State Fixture"
-content_version: "0.15.0"
+content_version: "0.16.0"
 seed: 77
 player_country_id: valdrun
 
@@ -384,11 +384,13 @@ countries:
           value_added_share_bps: 5000
           labor_income_share_bps: 5000
 
-      # Phase 2C1: resource-rich, all eight categories active, labor abundant. The extraction
+      # Phase 2C1: resource-rich, all nine categories active, labor abundant. The extraction
       # sector's allocated_workers this turn is 20,000 (see the required=20,000 row above; abundant
-      # labor means allocated == required). total_required across all eight deposits below is
-      # 2,000*6 + 500 + 1,000 = 13,500 <= 20,000, so every deposit gets exactly its requirement and
-      # unassigned_resource_workers = 20,000 - 13,500 = 6,500.
+      # labor means allocated == required). total_required across all nine deposits below is
+      # 2,000*6 + 500 + 1,000 + 500 = 14,000 <= 20,000, so every deposit gets exactly its
+      # requirement and unassigned_resource_workers = 20,000 - 14,000 = 6,000. Gold's 500 miners
+      # come out of the slack, never out of another deposit's allocation — which is why no other
+      # deposit's extracted quantity moves when gold is added.
       #
       # Timber (the only renewable): regenerated = min(80,000, 6,000,000 - 5,000,000) = 80,000;
       # available = 5,080,000; extracted = min(5,080,000, 100,000, 2,000*50=100,000) = 100,000;
@@ -434,6 +436,14 @@ countries:
           remaining_stock: 2000000
           extraction_capacity_per_turn: 20000
           output_per_worker: 20
+        # Nonrenewable, and deliberately small and labor-intensive: 500 kg/turn from 500 miners
+        # (output_per_worker: 1), against a 250,000 kg reserve that lasts 500 turns at full
+        # capacity — five times critical_minerals' 100-turn life, so gold does not become the
+        # scenario's binding deposit and the "shortest-lived deposit" note above stays true.
+        - category: gold
+          remaining_stock: 250000
+          extraction_capacity_per_turn: 500
+          output_per_worker: 1
 
       # Phase 2C2: physical-to-output bridge coefficients. REPLACES the extraction sector's old
       # capacity/productivity output formula (2,000,000,000, see the sector block above) with the
@@ -443,12 +453,21 @@ countries:
       #   timber:             100,000 x 1,000   =   100,000,000
       #   iron_ore:            200,000 x 1,500   =   300,000,000
       #   coal:                300,000 x 1,000   =   300,000,000
-      #   crude_oil:           500,000 x 1,200   =   600,000,000
+      #   crude_oil:           500,000 x 1,100   =   550,000,000
       #   natural_gas:         400,000 x 1,000   =   400,000,000
       #   uranium:                 500 x 100,000 =    50,000,000
       #   copper:              150,000 x 1,000   =   150,000,000
       #   critical_minerals:    20,000 x 5,000   =   100,000,000
+      #   gold:                    500 x 100,000 =    50,000,000
       #   total                                  = 2,000,000,000  (matches the old formula exactly)
+      # Gold (ruleset 0.16.0's ninth category) is OFFSET, not added on top: crude_oil's
+      # coefficient drops 1,200 -> 1,100, freeing exactly the 50,000,000 gold contributes. These
+      # three scenarios are calibrated fixtures whose extraction total was chosen to preserve
+      # Phase 2B/2C1's production/tax-base/revenue/treasury figures numerically (see the paragraph
+      # above); adding a resource to the catalogue should not silently re-balance a country's
+      # whole fiscal position, so the total is held and the diff shows the new resource rather
+      # than a scenario-wide renumbering. The offset is an authoring choice about THIS fixture,
+      # not a claim that gold displaces oil in the model.
       # Every deposit here is capacity-bound (extracted == potential_quantity every turn), so
       # extraction_sector_potential_output also equals 2,000,000,000 — capacity_utilization_bps is
       # 10,000 (100%) and constraint is physical_resource_constrained for the full 100-turn tested
@@ -461,7 +480,7 @@ countries:
         - category: coal
           real_output_per_unit: 1000
         - category: crude_oil
-          real_output_per_unit: 1200
+          real_output_per_unit: 1100
         - category: natural_gas
           real_output_per_unit: 1000
         - category: uranium
@@ -470,6 +489,8 @@ countries:
           real_output_per_unit: 1000
         - category: critical_minerals
           real_output_per_unit: 5000
+        - category: gold
+          real_output_per_unit: 100000
 
     # Phase 3B1 (plan §0.8): a monarchy with UNLIMITED decree authority AND a real
     # unicameral legislature -- the one combination that gives a player a genuine

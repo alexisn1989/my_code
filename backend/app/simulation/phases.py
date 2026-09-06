@@ -1615,7 +1615,7 @@ def _extract_resources(
     after labor allocation and before aggregate sector production, inside
     `resolve_production_and_trade`. `extraction_sector_workers` is this same turn's
     `LaborMarketReport.sectors[EXTRACTION].allocated_workers` — the worker budget sub-allocated
-    across the eight deposits. As of Phase 2C2, also computes each deposit's actual and potential
+    across the nine deposits. As of Phase 2C2, also computes each deposit's actual and potential
     physical-to-output bridge contribution (`simulation.resource_output`), which the caller
     (`_resolve_production_and_trade`) uses to derive the extraction sector's
     `SectorProductionReport` row — replacing, never adding to, that sector's former

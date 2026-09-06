@@ -300,7 +300,7 @@ class SectorState(BaseModel):
 
 
 class ResourceCategory(StrEnum):
-    """The eight physical natural resources modeled in Phase 2C1.
+    """The nine physical natural resources modeled from Phase 2C1 onward.
 
     Declaration order here is the canonical resource ordering used by `EconomyState`'s
     completeness validator and by `ResourceExtractionReport.deposits` (`report.py`) — changing
@@ -319,6 +319,12 @@ class ResourceCategory(StrEnum):
     URANIUM = "uranium"
     COPPER = "copper"
     CRITICAL_MINERALS = "critical_minerals"
+    GOLD = "gold"
+    """Appended, never inserted. Declaration order is the canonical resource ordering (see this
+    docstring's first paragraph), so appending is the only placement that leaves every existing
+    category's position — and therefore every existing pairwise ordering assertion — unchanged.
+    Inserting `gold` anywhere else would silently renumber the eight categories that came before
+    it for no modeling reason."""
 
 
 RENEWABLE_RESOURCES: frozenset[ResourceCategory] = frozenset({ResourceCategory.TIMBER})
@@ -336,6 +342,7 @@ RESOURCE_UNITS: dict[ResourceCategory, str] = {
     ResourceCategory.URANIUM: "t",
     ResourceCategory.COPPER: "t",
     ResourceCategory.CRITICAL_MINERALS: "t",
+    ResourceCategory.GOLD: "kg",
 }
 """A physical unit is a fixed property of the category, not authored per-deposit state — a
 per-deposit unit string would be a redundant, driftable value, exactly what Phase 2B2/2B3 removed
@@ -451,13 +458,13 @@ class EconomyState(BaseModel):
     `CountryState` directly — `CountryState.population` stays the single authoritative
     population source; this coefficient only says what *share* of it is economically active.
 
-    `resource_deposits` (Phase 2C1) covers all eight `ResourceCategory` members exactly once,
+    `resource_deposits` (Phase 2C1) covers all nine `ResourceCategory` members exactly once,
     zero-stock/zero-capacity entries legal (a resource-poor country still declares every
     category, just at zero — the same "no ambiguous missing-vs-zero concept" reasoning
     `sectors` already follows). Grouped here, not on `CountryState` directly, because deposits
     are worked by the same extraction sector's labor this economy already allocates.
 
-    `resource_output_coefficients` (Phase 2C2) covers all eight `ResourceCategory` members
+    `resource_output_coefficients` (Phase 2C2) covers all nine `ResourceCategory` members
     exactly once, canonical order, **rejected not normalized** on reorder — following the
     `resource_deposits` precedent (R3, not the `sectors` normalize-on-reorder one), since this is
     a second resource-facing tuple. Read-only after construction: no decision in this phase
@@ -1503,7 +1510,7 @@ class WorldState(BaseModel):
         return self
 
 
-RULESET_VERSION = "0.15.0"
+RULESET_VERSION = "0.16.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -1588,6 +1595,18 @@ reasoning of the M0 bump above. Like M0, this bump changes NO turn-resolution be
 adds no decision, no phase, no formula, no RNG stream and no report, so replaying 0.14.0-authored
 decisions under 0.15.0 rules produces the identical turn. `SAVE_FORMAT_VERSION` stays `1`, and no
 migration is fabricated.
+
+Bumped `"0.15.0" -> "0.16.0"` for the map-resources slice: `ResourceCategory` gains a ninth
+member, `GOLD`, and `EconomyState`'s deposit and coefficient validators require every category
+exactly once -- so a 0.15.0 save's eight-deposit economy no longer satisfies this ruleset, and a
+0.16.0 save's nine-deposit economy is not something a 0.15.0 engine could have produced. **No
+migration**: a gold endowment is authored content (stock, capacity, per-worker yield, output
+coefficient) that no 0.15.0 save contains, and defaulting it -- to zero or to anything else --
+would assert a fact about the country the save never recorded, exactly the reasoning of the 2C1
+`resource_deposits` and M0 `strategic_map` bumps above. Unlike those two, this bump DOES change
+turn resolution: the extraction sector now sub-allocates its workers across nine deposits rather
+than eight and sums a ninth output contribution, so replaying 0.15.0-authored decisions under
+0.16.0 rules does not produce the identical turn. `SAVE_FORMAT_VERSION` stays `1`.
 """
 
 

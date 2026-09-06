@@ -6,7 +6,7 @@ the ruleset adds required military state and a fourteenth report, so neither who
 identical. What IS assertable is the seven comparisons below, each checked separately.
 
 The frozen fixture is read here and NEVER rewritten, migrated or regenerated. It is also never
-loaded through `load_save_json`: `SUPPORTED_CONTENT_VERSIONS` is `{"0.15.0"}`, so a 0.14.0 save is
+loaded through `load_save_json`: `SUPPORTED_CONTENT_VERSIONS` is `{"0.16.0"}`, so a 0.14.0 save is
 refused by design, and `test_compatibility.py` owns proving that. Here it is read as raw JSON --
 a frozen record of what the unmodified 0.14.0 engine produced from this exact recipe.
 
@@ -55,6 +55,21 @@ THIRTEEN_PRE_EXISTING_REPORTS = (
     "foreign_affairs",
 )
 
+#: The one of those thirteen that the LATER map-resources slice legitimately changes. `resources`
+#: gained a ninth (`gold`) deposit row and `crude_oil`'s coefficient was re-authored to offset it,
+#: so this subtree cannot be byte-identical to a record produced by an eight-category engine.
+#: Named here and excluded from assertion 1 rather than deleted from the tuple above -- the tuple
+#: still means "the thirteen that existed before commit 5", and the exclusion has to justify
+#: itself in exactly one place. Assertion 1a then pins HOW it differs, so "changed" never becomes
+#: "unchecked".
+CHANGED_BY_THE_MAP_RESOURCES_SLICE = frozenset({"resources"})
+
+TWELVE_BYTE_IDENTICAL_REPORTS = tuple(
+    field
+    for field in THIRTEEN_PRE_EXISTING_REPORTS
+    if field not in CHANGED_BY_THE_MAP_RESOURCES_SLICE
+)
+
 #: Every RNG stream the engine drew from before this commit. `foreign_conflict_progress:{id}` is
 #: omitted deliberately: it is parameterised by a conflict id, and `tiny_valid` resolves these two
 #: turns with no conflict, so there is no such stream to compare. The nine below are the fixed
@@ -72,10 +87,18 @@ PRE_EXISTING_RNG_STREAMS = (
     "unrest_severity",
 )
 
-#: The complete set of state paths that legitimately differ between the frozen 0.14.0 baseline and
-#: this build, beyond the excluded military subtree. Both are the ruleset bump itself, which is
-#: precisely what the fixture exists to record.
+#: The state paths that differ because of the ruleset bump itself, beyond the excluded military
+#: subtree -- precisely what the fixture exists to record.
 EXPECTED_ENVELOPE_DIFFERENCES = {"content_version", "ruleset_version"}
+
+#: The state paths the map-resources slice authored. Kept as its own set rather than folded into
+#: the envelope set above, so each named difference still says WHY it is there: these two are
+#: authored economy content (a ninth deposit, a ninth coefficient and crude_oil's offset), not a
+#: version stamp.
+EXPECTED_MAP_RESOURCES_DIFFERENCES = {
+    f"world.countries.{PLAYER}.economy.resource_deposits",
+    f"world.countries.{PLAYER}.economy.resource_output_coefficients",
+}
 
 
 # --------------------------------------------------------------------------
@@ -221,14 +244,79 @@ class TestTheExclusionHelperRemovesOnlyTwoPaths:
 
 
 class TestQuietTurnRegressionAgainstFrozenBaseline:
-    def test_1_the_thirteen_pre_existing_report_subtrees_are_byte_identical(
+    def test_1_the_twelve_untouched_pre_existing_report_subtrees_are_byte_identical(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
+        """`production`, `tax_base_derivation` and `finance` are in this list, which is the whole
+        calibration claim of the map-resources slice proven against a frozen record from an engine
+        that had never heard of gold: the resource catalogue grew by a category that really is
+        extracted every turn, and the country's output, tax bases, revenue and treasury did not
+        move by one minor unit."""
         for live_row, base_row in zip(live[1:], baseline[1:], strict=True):
-            for field in THIRTEEN_PRE_EXISTING_REPORTS:
+            for field in TWELVE_BYTE_IDENTICAL_REPORTS:
                 assert json.dumps(live_row["report"][field], sort_keys=True) == json.dumps(
                     base_row["report"][field], sort_keys=True
                 ), f"turn {live_row['turn']}: {field}"
+
+    def test_1a_the_resources_report_differs_only_where_the_ninth_deposit_lands(
+        self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
+    ) -> None:
+        """The excluded subtree, pinned as an EXACT difference set rather than skipped.
+
+        Three leaves differ and no others -- in particular `extraction_sector_real_output` and
+        `extraction_sector_potential_output` are absent from the set, which is the offset holding
+        against a pre-gold record. The two worker counts move by exactly 500 in opposite
+        directions, which is gold taking its miners out of the sector's existing slack rather than
+        out of another deposit's allocation.
+        """
+        for live_row, base_row in zip(live[1:], baseline[1:], strict=True):
+            live_resources = live_row["report"]["resources"]
+            base_resources = base_row["report"]["resources"]
+            assert _differing_paths(live_resources, base_resources) == [
+                "deposits",
+                "total_extraction_workers",
+                "unassigned_resource_workers",
+            ], f"turn {live_row['turn']}"
+
+            assert len(base_resources["deposits"]) == 8
+            assert len(live_resources["deposits"]) == 9
+            live_rows = {row["category"]: row for row in live_resources["deposits"]}
+            base_rows = {row["category"]: row for row in base_resources["deposits"]}
+            assert set(live_rows) - set(base_rows) == {"gold"}
+
+            # Every pre-existing deposit row is byte-identical except crude_oil, whose
+            # coefficient was lowered by exactly what gold contributes.
+            for category, base_deposit in base_rows.items():
+                if category == "crude_oil":
+                    continue
+                assert json.dumps(live_rows[category], sort_keys=True) == json.dumps(
+                    base_deposit, sort_keys=True
+                ), f"turn {live_row['turn']}: {category}"
+            assert _differing_paths(live_rows["crude_oil"], base_rows["crude_oil"]) == [
+                "potential_output_contribution",
+                "real_output_contribution",
+                "real_output_per_unit",
+            ], f"turn {live_row['turn']}"
+            # Crude oil's PHYSICAL extraction is untouched -- same stock, same capacity, same
+            # workers, same barrels. Only the coefficient that converts those barrels to output
+            # moved, and it moved by exactly gold's contribution.
+            assert live_rows["crude_oil"]["extracted"] == base_rows["crude_oil"]["extracted"]
+            assert (
+                base_rows["crude_oil"]["real_output_contribution"]
+                - live_rows["crude_oil"]["real_output_contribution"]
+                == live_rows["gold"]["real_output_contribution"]
+            )
+
+            assert (
+                live_resources["total_extraction_workers"]
+                - base_resources["total_extraction_workers"]
+                == 500
+            )
+            assert (
+                base_resources["unassigned_resource_workers"]
+                - live_resources["unassigned_resource_workers"]
+                == 500
+            )
 
     def test_2_w1_foreign_affairs_rows_and_outcomes_are_byte_identical(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
@@ -240,7 +328,7 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
                 base_row["report"]["foreign_affairs"], sort_keys=True
             )
 
-    def test_3_closing_state_differs_only_by_military_and_the_ruleset_envelope(
+    def test_3_closing_state_differs_only_by_military_the_envelope_and_the_gold_authoring(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """Stated as an EXACT remaining-difference set, not as a wider exclusion.
@@ -259,16 +347,16 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
                     strip_commit_five_additions(state=live_row["state"]), base_row["state"]
                 )
             )
-            assert differences == EXPECTED_ENVELOPE_DIFFERENCES, (
-                f"turn {live_row['turn']}: {sorted(differences)}"
-            )
+            assert differences == (
+                EXPECTED_ENVELOPE_DIFFERENCES | EXPECTED_MAP_RESOURCES_DIFFERENCES
+            ), f"turn {live_row['turn']}: {sorted(differences)}"
 
     def test_3a_the_envelope_difference_is_exactly_the_ruleset_bump(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """So the pinned set above can never quietly absorb a different meaning."""
-        assert live[-1]["state"]["ruleset_version"] == "0.15.0"
-        assert live[-1]["state"]["content_version"] == "0.15.0"
+        assert live[-1]["state"]["ruleset_version"] == "0.16.0"
+        assert live[-1]["state"]["content_version"] == "0.16.0"
         assert baseline[-1]["state"]["ruleset_version"] == "0.14.0"
         assert baseline[-1]["state"]["content_version"] == "0.14.0"
 
