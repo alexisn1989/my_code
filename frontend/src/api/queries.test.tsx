@@ -23,6 +23,7 @@ import {
   strategicMapQueryKey,
   useGameGeneration,
   useLoadGame,
+  militaryQueryKey,
   usePreview,
   useNewGame,
   useResolve,
@@ -443,5 +444,78 @@ describe("mutations carry the campaign the view belongs to", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(sentBody()).toMatchObject({ revision: OLD_REVISION, campaign_id: "campaign-1" });
+  });
+});
+
+/**
+ * The military view's cache lifetime (frozen plan §8.2).
+ *
+ * Geography and positions are two queries on purpose. The strategic map is campaign-static and
+ * cached with an infinite stale time; positions change every turn. Invalidating the wrong one --
+ * or both -- would either serve stale positions forever or refetch a map that did not change.
+ */
+describe("military view invalidation", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("a resolve invalidates the military view and NOT the strategic map", async () => {
+    const client = makeClient();
+    const invalidateSpy = vi.spyOn(client, "invalidateQueries");
+    client.setQueryData(gameGenerationQueryKey(), 1);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, { turnResult: TURN_RESULT, dashboard: DASHBOARD_AFTER }),
+    );
+
+    const { result } = renderHook(() => useResolve(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ revision: OLD_REVISION, campaignId: "campaign-1", decisions: [] });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: militaryQueryKey(NEW_REVISION) });
+    // Geography did not change, so the map's key must not move: an unchanged counter means the
+    // strategic map is served from the same cache entry it already had.
+    expect(client.getQueryData(gameGenerationQueryKey())).toBe(1);
+  });
+
+  it("a campaign change drops every cached military view, not just the current revision", async () => {
+    // The replacement campaign starts at its OWN revision, so the entries to drop are the old
+    // ones -- which no later key would ever match. Removal is by prefix for that reason.
+    const client = makeClient();
+    client.setQueryData(militaryQueryKey(OLD_REVISION), { revision: OLD_REVISION, formations: [] });
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, DASHBOARD_AFTER));
+
+    const { result } = renderHook(() => useLoadGame(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ saveId: "save-1" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(client.getQueryData(militaryQueryKey(OLD_REVISION))).toBeUndefined();
+  });
+
+  it("a FAILED campaign change keeps the military view, like every other campaign-scoped entry", async () => {
+    const client = makeClient();
+    const cached = { revision: OLD_REVISION, formations: [] };
+    client.setQueryData(militaryQueryKey(OLD_REVISION), cached);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(404, {
+        type: "save_not_found",
+        title: "save_not_found",
+        status: 404,
+        detail: "no such save",
+        fields: [],
+        extra: {},
+      }),
+    );
+
+    const { result } = renderHook(() => useLoadGame(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ saveId: "does-not-exist" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(client.getQueryData(militaryQueryKey(OLD_REVISION))).toEqual(cached);
   });
 });

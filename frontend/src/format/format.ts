@@ -134,3 +134,124 @@ export function labelOffsetPosition(
 export function paletteIndex(position: number, paletteSize: number): number {
   return position % paletteSize;
 }
+
+// --------------------------------------------------------------------------
+// Formation markers on the strategic map (Military Movement, commit 7)
+// --------------------------------------------------------------------------
+
+/** How far a formation marker sits from its theater's node, in authored grid units.
+ *
+ * Larger than `LABEL_OFFSET_UNITS` so a marker never sits between a node and its own name, and
+ * chosen with the fan geometry in mind: markers one 60-degree step apart on this radius are
+ * exactly this many units apart from each other, which is comfortably wider than a marker. */
+const FORMATION_FAN_RADIUS_UNITS = 620;
+
+/** Six 60-degree slots, and therefore six markers maximum around one node. */
+export const FORMATION_FAN_SLOTS = 6;
+
+/** Above the ceiling, this many formations still render individually; the last slot becomes the
+ * overflow control. Five, not six: the control OCCUPIES a slot rather than being a seventh marker
+ * squeezed between them, which is what makes the non-overlap provable rather than asserted. */
+const FORMATION_ICONS_WHEN_OVERFLOWING = FORMATION_FAN_SLOTS - 1;
+
+const DEGREES_PER_SLOT = 360 / FORMATION_FAN_SLOTS;
+
+/**
+ * Where slot 0 points, given where the theater's own name sits.
+ *
+ * Away from the label, always. A naive fan starting due north puts slot 0 straight through the
+ * name of every `anchor: n` theater -- three of the five in `tiny_valid` -- which is what drawing
+ * the mockups found. Angles are SVG-style: 0 is east and they increase clockwise, because the
+ * authored grid's y axis grows downward.
+ *
+ * With six slots covering the full circle, some slot must eventually point at the label; the
+ * guarantee is about slot 0, which is the only one occupied when a theater holds one formation --
+ * overwhelmingly the common case, and the one worth protecting.
+ */
+function fanStartDegrees(anchor: LabelAnchorValue): number {
+  switch (anchor) {
+    case "n":
+      return 90; // label above, fan opens below
+    case "s":
+      return 270; // label below, fan opens above
+    case "e":
+      return 180; // label to the right, fan opens left
+    case "w":
+      return 0; // label to the left, fan opens right
+    case "center":
+      return 270; // a centre label drops BELOW the node, so the fan opens above
+  }
+}
+
+/** One marker to draw at a theater: either a single formation, or the overflow control. */
+export interface FormationMarkerPlacement {
+  /** The formation this marker stands for, or `null` for the overflow control. */
+  formationId: string | null;
+  /** How many formations this marker hides. `0` for an individual formation. */
+  hiddenCount: number;
+  x: number;
+  y: number;
+}
+
+/**
+ * Deterministic marker positions for one theater's formations.
+ *
+ * `formationIds` must already be in canonical order; the caller gets them that way from the
+ * server and this function never re-sorts, so the picture cannot disagree with the list beside it.
+ *
+ * Six is a RENDERING ceiling, never a gameplay one -- the state model caps formations per theater
+ * at nothing, and the renderer must not become the reason a limit exists:
+ *
+ * - 1 to 6 formations: one individual marker each.
+ * - 7 or more: the first five render individually and the sixth slot carries one overflow marker
+ *   standing for the rest.
+ *
+ * Coordinates are rounded to whole grid units so the same map always produces the same picture,
+ * byte for byte, and so a test can assert positions rather than approximate them.
+ */
+export function formationMarkerPlacements(
+  centroidX: number,
+  centroidY: number,
+  anchor: LabelAnchorValue,
+  formationIds: readonly string[],
+): FormationMarkerPlacement[] {
+  const total = formationIds.length;
+  const overflowing = total > FORMATION_FAN_SLOTS;
+  const individual = overflowing ? FORMATION_ICONS_WHEN_OVERFLOWING : total;
+  const startDegrees = fanStartDegrees(anchor);
+
+  const placements: FormationMarkerPlacement[] = [];
+  for (let slot = 0; slot < individual; slot += 1) {
+    placements.push({
+      formationId: formationIds[slot],
+      hiddenCount: 0,
+      ...slotPosition(centroidX, centroidY, startDegrees, slot),
+    });
+  }
+  if (overflowing) {
+    placements.push({
+      formationId: null,
+      hiddenCount: total - FORMATION_ICONS_WHEN_OVERFLOWING,
+      ...slotPosition(centroidX, centroidY, startDegrees, FORMATION_ICONS_WHEN_OVERFLOWING),
+    });
+  }
+  return placements;
+}
+
+function slotPosition(
+  centroidX: number,
+  centroidY: number,
+  startDegrees: number,
+  slot: number,
+): { x: number; y: number } {
+  const radians = ((startDegrees + slot * DEGREES_PER_SLOT) * Math.PI) / 180;
+  return {
+    x: Math.round(centroidX + FORMATION_FAN_RADIUS_UNITS * Math.cos(radians)),
+    y: Math.round(centroidY + FORMATION_FAN_RADIUS_UNITS * Math.sin(radians)),
+  };
+}
+
+/** The overflow control's visible label: the exact number of formations it stands for. */
+export function formationOverflowLabel(hiddenCount: number): string {
+  return `+${hiddenCount}`;
+}

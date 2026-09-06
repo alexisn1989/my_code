@@ -33,6 +33,9 @@ export type PolicyCardChamberRequirement = Schemas["PolicyCardChamberRequirement
 export type BudgetDecision = Schemas["BudgetDecision"];
 export type ConstitutionalAmendmentDecision = Schemas["ConstitutionalAmendmentDecision"];
 export type StrategicMapProjection = Schemas["StrategicMapProjection"];
+export type MilitaryProjection = Schemas["MilitaryProjection"];
+export type FormationProjection = Schemas["FormationProjection"];
+export type DestinationOption = Schemas["DestinationOption"];
 export type StrategicTheaterProjection = Schemas["StrategicTheaterProjection"];
 export type StrategicRouteProjection = Schemas["StrategicRouteProjection"];
 export type StrategicShapeProjection = Schemas["StrategicShapeProjection"];
@@ -84,6 +87,8 @@ export const api = {
 
   getDecisionOptions: (): Promise<DecisionOptionsProjection> =>
     request("/api/game/decision-options"),
+
+  getMilitary: (): Promise<MilitaryProjection> => request("/api/game/military"),
 
   preview: (
     revision: string,

@@ -237,11 +237,21 @@ function Harness() {
   );
 }
 
-function renderScreen(map: unknown, options?: { revision?: string | null }) {
+/** An empty military view: the map screen's existing tests are about geography, and geography is
+ * served by a different query with a different lifetime. */
+const NO_FORMATIONS = { revision: "rev-1", formations: [] };
+
+function renderScreen(
+  map: unknown,
+  options?: { revision?: string | null; military?: unknown },
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/api/game/map/strategic")) return Promise.resolve(jsonResponse(map));
+    if (url.includes("/api/game/military")) {
+      return Promise.resolve(jsonResponse(options?.military ?? NO_FORMATIONS));
+    }
     throw new Error(`unexpected fetch: ${url}`);
   });
 
@@ -1369,5 +1379,209 @@ describe("StrategicMapScreen: labels, legend and the accessibility split", () =>
     expect(within(detail as HTMLElement).getAllByText("Capital Theater").length).toBe(2);
     expect(within(detail as HTMLElement).getByText("Land")).toBeInTheDocument();
     expect(within(detail as HTMLElement).getByText("Republic of Arken")).toBeInTheDocument();
+  });
+});
+
+// --------------------------------------------------------------------------
+// Formation markers: bounded placement and the sixth-slot overflow (commit 7)
+// --------------------------------------------------------------------------
+//
+// Six is a RENDERING ceiling, never a gameplay one. The state model caps formations per theater at
+// nothing, and the renderer must not become the reason a limit exists -- so above the ceiling the
+// picture clusters while the textual list stays complete.
+
+function militaryWith(count: number, theaterId = "capital"): unknown {
+  return {
+    revision: "rev-1",
+    formations: Array.from({ length: count }, (_, index) => ({
+      // Zero-padded so canonical id order and creation order agree, and a test reading the
+      // rendered order is reading the server's order rather than a lucky string sort.
+      formation_id: `army_${String(index).padStart(2, "0")}`,
+      display_name: `Army ${index}`,
+      branch: "army",
+      location_theater_id: theaterId,
+      location_display_name: "Capital Theater",
+      destination_options: [],
+    })),
+  };
+}
+
+function renderedMarkers(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>("[data-formation-marker]"));
+}
+
+describe("StrategicMapScreen: formation markers", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    [1, 1, null],
+    [2, 2, null],
+    [6, 6, null],
+    [7, 5, "+2"],
+    [20, 5, "+15"],
+  ])(
+    "%i formations render %i individual icons",
+    async (count: number, icons: number, overflow: string | null) => {
+      renderScreen(RECIPROCAL_MAP, { military: militaryWith(count) });
+      await screen.findByTestId("strategic-map-svg");
+
+      await waitFor(() => expect(renderedMarkers().length).toBeGreaterThan(0));
+      const markers = renderedMarkers();
+      const individual = markers.filter((m) => m.dataset.formationMarker !== "overflow");
+      const overflowMarkers = markers.filter((m) => m.dataset.formationMarker === "overflow");
+
+      expect(individual).toHaveLength(icons);
+      if (overflow === null) {
+        expect(overflowMarkers).toHaveLength(0);
+      } else {
+        expect(overflowMarkers).toHaveLength(1);
+        expect(overflowMarkers[0].textContent).toBe(overflow);
+        // The label is the EXACT hidden count, not an approximation or a "more" affordance.
+        expect(overflowMarkers[0].dataset.hiddenCount).toBe(String(count - 5));
+      }
+    },
+  );
+
+  it.each([1, 2, 6, 7, 20])(
+    "no two rendered markers share coordinates with %i formations",
+    async (count: number) => {
+      // Asserted on the ACTUAL rendered positions, icons and the overflow control alike -- not on
+      // the placement function in isolation, which could be right while the component drew
+      // something else. The overflow control occupies a slot rather than being a seventh marker
+      // squeezed between them, which is what makes this provable at all.
+      renderScreen(RECIPROCAL_MAP, { military: militaryWith(count) });
+      await screen.findByTestId("strategic-map-svg");
+      await waitFor(() => expect(renderedMarkers().length).toBeGreaterThan(0));
+
+      const positions = renderedMarkers().map((m) => `${m.dataset.markerX},${m.dataset.markerY}`);
+
+      expect(new Set(positions).size).toBe(positions.length);
+    },
+  );
+
+  it("renders the first five in canonical id order when overflowing", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: militaryWith(7) });
+    await screen.findByTestId("strategic-map-svg");
+    await waitFor(() => expect(renderedMarkers().length).toBeGreaterThan(0));
+
+    const ids = renderedMarkers()
+      .map((m) => m.dataset.formationMarker)
+      .filter((id) => id !== "overflow");
+
+    expect(ids).toEqual(["army_00", "army_01", "army_02", "army_03", "army_04"]);
+  });
+
+  it("places no marker on top of its own theater's label", async () => {
+    // The defect drawing the mockups found: a naive fan starting due north puts slot 0 straight
+    // through the name of every `anchor: n` theater. `frontier` is anchored north here.
+    renderScreen(RECIPROCAL_MAP, { military: militaryWith(1, "frontier") });
+    await screen.findByTestId("strategic-map-svg");
+    await waitFor(() => expect(renderedMarkers().length).toBeGreaterThan(0));
+
+    const marker = renderedMarkers()[0];
+    const label = document.querySelector<HTMLElement>('[data-theater-label="frontier"]');
+
+    expect(label).not.toBeNull();
+    // The label sits above its node; slot 0 must not.
+    expect(Number(marker.dataset.markerY)).toBeGreaterThan(Number(label?.getAttribute("y")));
+  });
+
+  it("draws nothing when the campaign has no formations in a theater", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: NO_FORMATIONS });
+    await screen.findByTestId("strategic-map-svg");
+
+    expect(renderedMarkers()).toHaveLength(0);
+  });
+
+  it("still renders the map when the military view fails", async () => {
+    // Geography does not depend on positions. A failed or slow military query must cost the
+    // markers, never the map -- the two queries have separate lifetimes precisely so one cannot
+    // take the other down with it.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/game/map/strategic")) {
+        return Promise.resolve(jsonResponse(RECIPROCAL_MAP));
+      }
+      if (url.includes("/api/game/military")) {
+        return Promise.resolve(
+          jsonResponse(
+            { type: "internal_error", title: "Failed", status: 500, detail: "boom", fields: [] },
+            500,
+          ),
+        );
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={client}>
+          <SessionProvider>
+            <SetRevision>{children}</SetRevision>
+          </SessionProvider>
+        </QueryClientProvider>
+      );
+    }
+    render(<StrategicMapScreen navigate={vi.fn()} />, { wrapper: Wrapper });
+
+    expect(await screen.findByTestId("strategic-map-svg")).toBeInTheDocument();
+    expect(renderedMarkers()).toHaveLength(0);
+  });
+
+  it("does not refetch the strategic map when only the military view changes", async () => {
+    // Geography is campaign-static and cached with an infinite stale time; positions are not.
+    // Serving them from one query would show stale positions with no refetch -- which is the
+    // whole reason these are two queries with two lifetimes.
+    renderScreen(RECIPROCAL_MAP, { military: militaryWith(2) });
+    await screen.findByTestId("strategic-map-svg");
+    await waitFor(() => expect(renderedMarkers().length).toBe(2));
+
+    const mapFetches = vi
+      .mocked(fetch)
+      .mock.calls.filter(([input]) => String(input).includes("/api/game/map/strategic"));
+
+    expect(mapFetches).toHaveLength(1);
+  });
+});
+
+describe("StrategicMapScreen: enlarged mode", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("toggles between the standard and enlarged widths, and says which it is", async () => {
+    renderScreen(RECIPROCAL_MAP);
+    const toggle = await screen.findByTestId("strategic-map-enlarge-toggle");
+    const visual = screen.getByTestId("strategic-map-visual");
+
+    expect(visual.dataset.enlarged).toBe("false");
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(visual.className).toContain("w-1/2");
+
+    fireEvent.click(toggle);
+
+    expect(visual.dataset.enlarged).toBe("true");
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    expect(visual.className).toContain("w-[63%]");
+  });
+
+  it("keeps the authored viewBox exactly -- more pixels, never different geometry", async () => {
+    renderScreen(RECIPROCAL_MAP);
+    const toggle = await screen.findByTestId("strategic-map-enlarge-toggle");
+    const before = screen.getByTestId("strategic-map-svg").getAttribute("viewBox");
+
+    fireEvent.click(toggle);
+
+    expect(screen.getByTestId("strategic-map-svg").getAttribute("viewBox")).toBe(before);
+    expect(before).toBe("0 0 10000 10000");
   });
 });

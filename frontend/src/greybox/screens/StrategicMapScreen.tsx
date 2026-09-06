@@ -31,8 +31,13 @@ import type {
   StrategicShapeProjection,
   StrategicTheaterProjection,
 } from "../../api/client";
-import { useGameGeneration, useStrategicMap } from "../../api/queries";
-import { labelOffsetPosition, paletteIndex } from "../../format/format";
+import { useGameGeneration, useMilitary, useStrategicMap } from "../../api/queries";
+import {
+  formationMarkerPlacements,
+  formationOverflowLabel,
+  labelOffsetPosition,
+  paletteIndex,
+} from "../../format/format";
 import { useSession } from "../../state/SessionContext";
 import { ErrorPanel } from "../../status/ErrorPanel";
 import { LoadingPanel } from "../../status/StatusPanels";
@@ -151,6 +156,11 @@ const NODE_FILL = "var(--color-navy-950)";
 const NODE_RING = "var(--color-parchment-100)";
 const NODE_RING_WIDTH = 26;
 const NODE_RADIUS = 130;
+/** Formation marker sizing, in authored grid units like every size in this file. The radius is
+ * comfortably under the fan's slot separation, so two markers on adjacent slots never touch. */
+const FORMATION_MARKER_RADIUS = 190;
+const FORMATION_MARKER_RING_WIDTH = 26;
+const FORMATION_MARKER_FONT_SIZE = 210;
 const NODE_RADIUS_SELECTED = 200;
 const NODE_GLYPH_RADIUS = 46;
 const NODE_GLYPH_SQUARE = 74;
@@ -161,6 +171,9 @@ const NODE_HIT_RADIUS = 380;
 
 const SELECTED_FILL = "var(--color-gold-500)";
 const SELECTED_STROKE = "var(--color-gold-500)";
+const FORMATION_MARKER_FILL = "var(--color-navy-800)";
+const FORMATION_MARKER_RING = "var(--color-gold-500)";
+const FORMATION_MARKER_TEXT = "var(--color-parchment-100)";
 const SELECTION_RING_RADIUS = 430;
 const SELECTION_RING_WIDTH = 26;
 const SELECTION_RING_DASH = "78 62";
@@ -317,6 +330,10 @@ export function StrategicMapScreen(_props: ScreenProps) {
   const { revision } = useSession();
   const generation = useGameGeneration();
   const map = useStrategicMap(generation.data, { enabled: revision !== null });
+  // Two queries, two lifetimes: campaign-static geography above, per-turn positions here. The
+  // military view is keyed on `revision`, so a resolve refetches it and never refetches the map.
+  const military = useMilitary(revision, { enabled: revision !== null });
+  const [enlarged, setEnlarged] = useState(false);
   const [selectedTheaterId, setSelectedTheaterId] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -342,6 +359,18 @@ export function StrategicMapScreen(_props: ScreenProps) {
 
   const data = map.data;
   const theatersById = new Map(data.theaters.map((theater) => [theater.theater_id, theater]));
+  // Formation ids grouped by where they stand, in the canonical order the server sent them.
+  // Never re-sorted here: the picture and the textual list must agree, and the server already
+  // decided that order.
+  const formationsByTheater = new Map<string, string[]>();
+  for (const formation of military.data?.formations ?? []) {
+    const existing = formationsByTheater.get(formation.location_theater_id);
+    if (existing === undefined) {
+      formationsByTheater.set(formation.location_theater_id, [formation.formation_id]);
+    } else {
+      existing.push(formation.formation_id);
+    }
+  }
 
   const integrityProblem = routeIntegrityProblem(data, theatersById);
   if (integrityProblem !== null) {
@@ -375,7 +404,17 @@ export function StrategicMapScreen(_props: ScreenProps) {
       <div className="flex flex-col gap-6 min-[900px]:flex-row">
         <div
           data-testid="strategic-map-visual"
-          className="hidden min-[900px]:block min-[900px]:w-1/2 min-[900px]:shrink-0"
+          data-enlarged={enlarged ? "true" : "false"}
+          // Enlarged mode is the SAME authored `0 0 10000 10000` viewBox and the same geometry,
+          // given more of the row -- more pixels per grid unit, nothing rescaled or recentred.
+          // There is deliberately no zoom or pan in this slice; if a real browser walkthrough
+          // shows this is still not enough for hit targets or label legibility, that evidence
+          // reopens the question, not a preference.
+          className={
+            enlarged
+              ? "hidden min-[900px]:block min-[900px]:w-[63%] min-[900px]:shrink-0"
+              : "hidden min-[900px]:block min-[900px]:w-1/2 min-[900px]:shrink-0"
+          }
         >
           {/* The horizontal padding is not decoration: it is the gutter the labels overflow INTO
               (see the `overflow-visible` note on the SVG below), so a name anchored at the edge of
@@ -392,6 +431,17 @@ export function StrategicMapScreen(_props: ScreenProps) {
             >
               Schematic — not to geographic scale
             </p>
+            {/* A real button, not a decoration on the aria-hidden picture: the map itself carries
+                no keyboard stops, so this is the one control the enlarged mode needs. */}
+            <button
+              type="button"
+              data-testid="strategic-map-enlarge-toggle"
+              aria-pressed={enlarged}
+              onClick={() => setEnlarged(!enlarged)}
+              className="mb-4 rounded border border-navy-800 px-3 py-1 text-xs text-parchment-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+            >
+              {enlarged ? "Reduce map" : "Enlarge map"}
+            </button>
             <svg
               viewBox={MAP_VIEWBOX}
               aria-hidden="true"
@@ -698,6 +748,60 @@ export function StrategicMapScreen(_props: ScreenProps) {
                     pointerEvents="none"
                   />
                 ) : null}
+              </g>
+
+              {/* Layer 5b -- formation markers (Military Movement, commit 7).
+                  Drawn AFTER the nodes so a marker is never hidden behind one, and before the
+                  labels so a name still wins where they meet. Positions come from
+                  `formationMarkerPlacements`; this component computes no coordinate of its own
+                  (`format-boundary.test.ts` walks its real AST and fails on arithmetic here). */}
+              <g data-layer="formations">
+                {formationsByTheater.size === 0
+                  ? null
+                  : data.theaters.map((theater) => {
+                      const ids = formationsByTheater.get(theater.theater_id) ?? [];
+                      if (ids.length === 0) {
+                        return null;
+                      }
+                      return (
+                        <g key={theater.theater_id} data-theater-formations={theater.theater_id}>
+                          {formationMarkerPlacements(
+                            theater.centroid_x,
+                            theater.centroid_y,
+                            theater.label_anchor,
+                            ids,
+                          ).map((placement) => (
+                            <g
+                              key={placement.formationId ?? "overflow"}
+                              data-formation-marker={placement.formationId ?? "overflow"}
+                              data-hidden-count={String(placement.hiddenCount)}
+                              data-marker-x={String(placement.x)}
+                              data-marker-y={String(placement.y)}
+                              transform={`translate(${placement.x} ${placement.y})`}
+                            >
+                              <circle
+                                r={FORMATION_MARKER_RADIUS}
+                                fill={FORMATION_MARKER_FILL}
+                                stroke={FORMATION_MARKER_RING}
+                                strokeWidth={FORMATION_MARKER_RING_WIDTH}
+                              />
+                              {placement.formationId === null ? (
+                                <text
+                                  data-formation-overflow-label=""
+                                  textAnchor="middle"
+                                  dominantBaseline="central"
+                                  fill={FORMATION_MARKER_TEXT}
+                                  fontSize={FORMATION_MARKER_FONT_SIZE}
+                                  pointerEvents="none"
+                                >
+                                  {formationOverflowLabel(placement.hiddenCount)}
+                                </text>
+                              ) : null}
+                            </g>
+                          ))}
+                        </g>
+                      );
+                    })}
               </g>
 
               {/* Layer 6 -- theater labels, placed per authored `label_anchor`. */}

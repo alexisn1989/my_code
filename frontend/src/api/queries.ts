@@ -151,6 +151,27 @@ export function useStrategicMap(generation: number, options?: { enabled?: boolea
   });
 }
 
+/** Formation positions and their destination options.
+ *
+ * Keyed on `revision`, NOT on the map generation: positions change on every resolve, and the
+ * strategic map's own key deliberately does not. The client composes the campaign-static geography
+ * from `useStrategicMap` with these per-turn positions at render time -- two queries, two
+ * lifetimes, one render.
+ *
+ * The server decides every eligibility here. This hook transports its verdicts; it does not
+ * interpret them, and nothing in the client re-derives what is legal. */
+export function militaryQueryKey(revision: string | null) {
+  return ["military", revision] as const;
+}
+
+export function useMilitary(revision: string | null, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: militaryQueryKey(revision),
+    queryFn: api.getMilitary,
+    enabled: (options?.enabled ?? true) && revision !== null,
+  });
+}
+
 export function historyDetailQueryKey(turn: number) {
   return ["historyDetail", turn] as const;
 }
@@ -229,6 +250,9 @@ export function useResolve(): UseMutationResult<
       queryClient.invalidateQueries({ queryKey: historyQueryKey() });
       queryClient.invalidateQueries({ queryKey: savesQueryKey() });
       queryClient.invalidateQueries({ queryKey: decisionOptionsQueryKey(newRevision) });
+      // Positions may have changed; the strategic map deliberately is NOT invalidated, because
+      // geography did not. That asymmetry is the whole reason these are two queries.
+      queryClient.invalidateQueries({ queryKey: militaryQueryKey(newRevision) });
     },
   });
 }
@@ -257,6 +281,11 @@ export function useResolve(): UseMutationResult<
 function clearCampaignScopedState(queryClient: QueryClient): void {
   useDraftStore.getState().clearDraft();
   queryClient.removeQueries({ queryKey: liveTurnResultQueryKey() });
+  // Formation positions belong to the campaign that had them. `removeQueries` on the whole
+  // `["military", ...]` prefix, not `invalidateQueries` on one revision: the replacement campaign
+  // starts at its own revision, so the entries to drop are the OLD ones, which no later key would
+  // ever match.
+  queryClient.removeQueries({ queryKey: ["military"] });
 }
 
 export function useNewGame(): UseMutationResult<
