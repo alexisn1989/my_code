@@ -110,10 +110,26 @@ export function gameGenerationQueryKey() {
   return ["gameGeneration"] as const;
 }
 
+/** A cache entry that is WRITTEN by the campaign mutations and only ever READ here -- the same
+ * shape `useLiveTurnResult` below uses for the same reason, and `enabled: false` is the whole of
+ * it.
+ *
+ * Without it this query is enabled with the default zero `staleTime`, so the entry is stale the
+ * moment it exists and any new observer -- navigating back to the map screen is enough --
+ * triggers a fetch. The fetch function IS the reset: it returned the constant `0`, silently
+ * undoing every bump. The map is then read from the generation-`0` key, and because that entry is
+ * cached with `staleTime: Infinity` it is never corrected, so a campaign change could leave the
+ * PREVIOUS campaign's map on screen with no path back to the right one.
+ *
+ * The body throws rather than returning a value: it must never run, and a future regression that
+ * re-enables the query should fail loudly instead of resetting the counter again. */
 export function useGameGeneration() {
   return useQuery({
     queryKey: gameGenerationQueryKey(),
-    queryFn: () => 0,
+    queryFn: () => {
+      throw new Error("the game generation counter is never fetched; it is set by new game/load");
+    },
+    enabled: false,
     initialData: 0,
   });
 }

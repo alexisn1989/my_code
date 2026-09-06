@@ -20,6 +20,8 @@ import {
   historyQueryKey,
   liveTurnResultQueryKey,
   savesQueryKey,
+  strategicMapQueryKey,
+  useGameGeneration,
   useLoadGame,
   useNewGame,
   useResolve,
@@ -326,5 +328,70 @@ describe("campaign replacement clears campaign-scoped client state", () => {
 
     expect(useDraftStore.getState().dismissedHelp).toBe(true);
     expect(useDraftStore.getState().glossaryOpen).toBe(true);
+  });
+});
+
+/**
+ * The map generation counter must never reset itself.
+ *
+ * The strategic map is campaign-static content cached with `staleTime: Infinity`, keyed on this
+ * counter, and bumped only when the campaign is replaced. That makes the counter the only thing
+ * standing between a campaign change and a map cached under the previous campaign's key -- and a
+ * cache entry that is never refetched is never corrected, so a counter that reverts serves the
+ * WRONG campaign's map with no path back.
+ *
+ * The defect only appears on a real remount: React Query refetches a stale entry when a new
+ * observer subscribes, so a test that calls the hook once, or reads `getQueryData` directly, never
+ * sees it. These mount, unmount and mount again against one shared client, exactly as navigating
+ * away from the map screen and back does.
+ */
+describe("useGameGeneration", () => {
+  it("survives an unmount and remount of its consumer without reverting", async () => {
+    const client = makeClient();
+    client.setQueryData(gameGenerationQueryKey(), 3);
+
+    const first = renderHook(() => useGameGeneration(), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(first.result.current.data).toBe(3));
+    first.unmount();
+
+    const second = renderHook(() => useGameGeneration(), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(second.result.current.isFetching).toBe(false));
+
+    expect(second.result.current.data).toBe(3);
+    expect(client.getQueryData(gameGenerationQueryKey())).toBe(3);
+  });
+
+  it("never fetches, so nothing can overwrite a bumped counter with a computed one", async () => {
+    const client = makeClient();
+    client.setQueryData(gameGenerationQueryKey(), 2);
+
+    const { result } = renderHook(() => useGameGeneration(), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(result.current.data).toBe(2));
+
+    expect(result.current.fetchStatus).toBe("idle");
+    expect(result.current.isError).toBe(false);
+  });
+
+  it("keeps the strategic map keyed to the campaign that cached it", async () => {
+    // The end-to-end statement: campaign one's map is cached under generation 0; a campaign
+    // change bumps the key; remounting the map consumer must NOT land back on generation 0.
+    const client = makeClient();
+    client.setQueryData(strategicMapQueryKey(0), { map_id: "campaign-one-map" });
+
+    vi.stubGlobal("fetch", vi.fn());
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, DASHBOARD_AFTER));
+    const load = renderHook(() => useLoadGame(), { wrapper: wrapperFor(client) });
+    load.result.current.mutate({ saveId: "save-2" });
+    await waitFor(() => expect(load.result.current.isSuccess).toBe(true));
+    vi.unstubAllGlobals();
+
+    const generation = renderHook(() => useGameGeneration(), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(generation.result.current.isFetching).toBe(false));
+    generation.unmount();
+    const remounted = renderHook(() => useGameGeneration(), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(remounted.result.current.isFetching).toBe(false));
+
+    expect(remounted.result.current.data).not.toBe(0);
+    expect(client.getQueryData(strategicMapQueryKey(remounted.result.current.data))).toBeUndefined();
   });
 });
