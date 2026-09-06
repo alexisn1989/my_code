@@ -83,9 +83,21 @@ def _fsync_directory_best_effort(directory: Path) -> None:
 
 
 def read_save_file(path: str | Path) -> str:
-    """Read a save file's raw text. Raises `SaveFileError` if it can't be read."""
+    """Read a save file's raw text. Raises `SaveFileError` if it can't be read.
+
+    `UnicodeDecodeError` is caught alongside `OSError` because it is NOT one -- it subclasses
+    `ValueError` -- so undecodable bytes previously escaped this function entirely and surfaced as
+    an internal error. Translating it here puts it in the `MandateError` family every caller
+    already handles: `SaveRepository.list_saves` degrades one unreadable save into an unloadable
+    row rather than failing the whole listing, and since `list_saves` also runs on the new-game
+    path, a single corrupt file no longer blocks starting a campaign.
+
+    Rejected rather than decoded leniently: a save whose bytes are not UTF-8 is not recoverable
+    data -- `load_save_json` would refuse it a line later -- so a specific, honest failure is
+    better than a mangled string, exactly as a missing file is refused above.
+    """
     path = Path(path)
     try:
         return path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise SaveFileError(f"could not read save file {path}: {exc}") from exc

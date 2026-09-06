@@ -178,7 +178,11 @@ class SaveRepository:
             return {}
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            # `UnicodeDecodeError` is listed explicitly: it subclasses `ValueError`, not
+            # `json.JSONDecodeError`, so undecodable index bytes were escaping this handler and
+            # failing every caller. Named rather than widened to `ValueError`, so a genuine bug in
+            # the parsing below is still raised instead of silently returning an empty index.
             return {}
         if not isinstance(raw, dict):
             return {}

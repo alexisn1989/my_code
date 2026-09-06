@@ -8,10 +8,13 @@ embedded separators are unrepresentable rather than filtered.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
+from app.api.main import ApiSettings, create_app
 from app.api.save_registry import (
     InvalidDisplayNameError,
     InvalidSaveIdError,
@@ -246,3 +249,130 @@ def test_a_tampered_save_is_listed_as_unloadable_with_its_problem(tmp_path: Path
     assert len(records) == 1
     assert records[0].loadable is False
     assert records[0].integrity_problem
+
+
+# --------------------------------------------------------------------------
+# One undecodable file must not break listing or new-game creation
+# --------------------------------------------------------------------------
+#
+# `read_text(encoding="utf-8")` raises `UnicodeDecodeError`, which subclasses `ValueError` and NOT
+# `OSError`. Neither reader caught it, so a single file of invalid bytes in the save directory
+# escaped as a 500 -- and because `list_saves()` runs on the new-game path too, it also blocked
+# starting a fresh campaign, which is a far worse outcome than one unlistable save.
+
+UNDECODABLE = b"\xff\xfe\x00 not utf-8"
+
+
+def test_an_undecodable_save_is_listed_as_unloadable_rather_than_raising(tmp_path: Path) -> None:
+    """Degrades exactly like a tampered save: named, unloadable, with its reason."""
+    repository = SaveRepository(tmp_path)
+    save_id = new_save_id()
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    (tmp_path / f"{save_id}.json").write_bytes(UNDECODABLE)
+
+    records = repository.list_saves()
+
+    assert len(records) == 1
+    assert records[0].save_id == save_id
+    assert records[0].loadable is False
+    assert records[0].integrity_problem
+
+
+def test_one_undecodable_save_does_not_hide_the_readable_ones(tmp_path: Path) -> None:
+    """The property that makes this a recovery rather than a smaller failure."""
+    repository = SaveRepository(tmp_path)
+    good_id = new_save_id()
+    repository.write_save(good_id, _advance(_fresh_save()))
+    (tmp_path / f"{new_save_id()}.json").write_bytes(UNDECODABLE)
+
+    by_id = {record.save_id: record for record in repository.list_saves()}
+
+    assert len(by_id) == 2
+    assert by_id[good_id].loadable is True
+    assert sum(1 for record in by_id.values() if not record.loadable) == 1
+
+
+def test_an_undecodable_index_leaves_listing_working(tmp_path: Path) -> None:
+    """The index is reconstructible metadata -- losing it costs display names, never game data --
+    so an unreadable one is reconciled from the files themselves, exactly as its docstring
+    promises for a missing or malformed one."""
+    repository = SaveRepository(tmp_path)
+    save_id = new_save_id()
+    repository.write_save(save_id, _advance(_fresh_save()))
+    (tmp_path / "index.json").write_bytes(UNDECODABLE)
+
+    assert repository.read_index() == {}
+    records = repository.list_saves()
+    assert [record.save_id for record in records] == [save_id]
+    assert records[0].loadable is True
+
+
+def test_a_new_save_can_be_written_and_listed_alongside_an_undecodable_one(
+    tmp_path: Path,
+) -> None:
+    """The regression that motivated this: `new_game` writes the save and then calls
+    `list_saves()`, so one corrupt file in the directory failed the whole request -- a player
+    could no longer start a campaign at all."""
+    repository = SaveRepository(tmp_path)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    (tmp_path / f"{new_save_id()}.json").write_bytes(UNDECODABLE)
+
+    fresh_id = new_save_id()
+    repository.write_save(fresh_id, _fresh_save())
+    records = repository.list_saves()
+
+    assert {record.save_id for record in records} >= {fresh_id}
+    assert next(r for r in records if r.save_id == fresh_id).loadable is True
+
+
+# --------------------------------------------------------------------------
+# The same recovery, through the real endpoints
+# --------------------------------------------------------------------------
+#
+# The repository-level tests above prove the mechanism; these prove the outcome a player actually
+# sees, at the level the defect was reported -- both endpoints returned 500.
+
+
+@pytest.fixture
+def client(tmp_path: Path) -> Iterator[TestClient]:
+    """A fresh app per test with an isolated save root. The session is process-wide by design, so
+    tests must not share one app instance or they would share a game."""
+    app = create_app(
+        ApiSettings(save_root=tmp_path / "saves", scenario_root=SCENARIO_DIR, serve_spa=False)
+    )
+    with TestClient(app, base_url="http://127.0.0.1:8420") as test_client:
+        yield test_client
+
+
+def _plant_undecodable_save(tmp_path: Path) -> str:
+    root = tmp_path / "saves"
+    root.mkdir(parents=True, exist_ok=True)
+    save_id = new_save_id()
+    (root / f"{save_id}.json").write_bytes(UNDECODABLE)
+    return save_id
+
+
+def test_listing_saves_succeeds_with_an_undecodable_file_present(
+    client: TestClient, tmp_path: Path
+) -> None:
+    save_id = _plant_undecodable_save(tmp_path)
+
+    response = client.get("/api/saves")
+
+    assert response.status_code == 200, response.text
+    rows = {row["save_id"]: row for row in response.json()}
+    assert rows[save_id]["loadable"] is False
+    assert rows[save_id]["integrity_problem"]
+
+
+def test_starting_a_new_game_succeeds_with_an_undecodable_file_present(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """`new_game` writes the save and then lists, so one corrupt file used to fail the whole
+    request -- a player could not start a campaign at all until they cleaned the directory."""
+    _plant_undecodable_save(tmp_path)
+
+    response = client.post("/api/game/new", json={"scenario_id": "decree_state"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["turn"] == 0

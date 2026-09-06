@@ -88,3 +88,22 @@ def test_read_save_file_round_trips_written_content(tmp_path: Path) -> None:
 def test_read_save_file_missing_path_raises_save_file_error(tmp_path: Path) -> None:
     with pytest.raises(SaveFileError):
         read_save_file(tmp_path / "does-not-exist.json")
+
+
+def test_read_save_file_undecodable_bytes_raise_save_file_error(tmp_path: Path) -> None:
+    """A save whose bytes are not UTF-8 is UNREADABLE, not a crash.
+
+    `read_text(encoding="utf-8")` raises `UnicodeDecodeError`, which subclasses `ValueError` and
+    NOT `OSError` -- so the missing-file handler above never covered it, and the exception escaped
+    all the way to a 500. Translating it to `SaveFileError` puts it in the `MandateError` family
+    that every caller already handles: `SaveRepository.list_saves` degrades a single unreadable
+    save into an unloadable row instead of failing the whole listing.
+
+    The corruption is real bytes on disk, written with `write_bytes` -- not a monkeypatched reader,
+    which would prove only that the handler runs.
+    """
+    dest = tmp_path / "save.json"
+    dest.write_bytes(b"\xff\xfe\x00 not utf-8")
+
+    with pytest.raises(SaveFileError):
+        read_save_file(dest)
