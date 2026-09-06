@@ -22,6 +22,7 @@ import { useLoadGame, useNewGame, useResolve } from "../../api/queries";
 import { labelOffsetPosition } from "../../format/format";
 import { StrategicMapScreen } from "./StrategicMapScreen";
 import { SessionProvider, useSession } from "../../state/SessionContext";
+import { useDraftStore } from "../../state/draft";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -1583,5 +1584,305 @@ describe("StrategicMapScreen: enlarged mode", () => {
 
     expect(screen.getByTestId("strategic-map-svg").getAttribute("viewBox")).toBe(before);
     expect(before).toBe("0 0 10000 10000");
+  });
+});
+
+// --------------------------------------------------------------------------
+// Selection, destination, review and staging (commit 8)
+// --------------------------------------------------------------------------
+//
+// The map STAGES an order; it never resolves the turn. There is deliberately no `resolving` state
+// here -- resolution stays on the Decisions screen, and a second way to end a turn would be a
+// competing authority, not a convenience.
+
+const ARKEN_MILITARY = {
+  revision: "rev-1",
+  formations: [
+    {
+      formation_id: "arken_first_army",
+      display_name: "First Army of Arken",
+      branch: "army",
+      location_theater_id: "capital",
+      location_display_name: "Capital Theater",
+      destination_options: [
+        { theater_id: "capital", display_name: "Capital Theater", eligible: false, ineligible_reason_code: "destination_is_origin" },
+        { theater_id: "frontier", display_name: "Frontier Theater", eligible: true, ineligible_reason_code: null },
+      ],
+    },
+  ],
+};
+
+/** Every destination refused: a player theater reached only by an incoming route from the capital
+ * has no outgoing row of its own. Commit 4 proved that state is constructible and passes
+ * `check_invariants`; no invariant was added to make this panel simpler. */
+const STRANDED_MILITARY = {
+  revision: "rev-1",
+  formations: [
+    {
+      formation_id: "arken_first_army",
+      display_name: "First Army of Arken",
+      branch: "army",
+      location_theater_id: "capital",
+      location_display_name: "Capital Theater",
+      destination_options: [
+        { theater_id: "capital", display_name: "Capital Theater", eligible: false, ineligible_reason_code: "destination_is_origin" },
+        { theater_id: "frontier", display_name: "Frontier Theater", eligible: false, ineligible_reason_code: "destination_not_player_owned" },
+      ],
+    },
+  ],
+};
+
+function movementState(): string | undefined {
+  return screen.getByTestId("movement-panel").dataset.movementState;
+}
+
+describe("StrategicMapScreen: staging a movement order", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    useDraftStore.getState().clearDraft();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDraftStore.getState().clearDraft();
+  });
+
+  async function openFormation() {
+    renderScreen(RECIPROCAL_MAP, { military: ARKEN_MILITARY });
+    const formation = await screen.findByTestId("movement-panel");
+    fireEvent.click(screen.getByText("First Army of Arken"));
+    return formation;
+  }
+
+  it("walks idle -> formationSelected -> destinationSelected -> staged", async () => {
+    await openFormation();
+    expect(movementState()).toBe("formationSelected");
+
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+    expect(movementState()).toBe("destinationSelected");
+
+    fireEvent.click(screen.getByTestId("add-movement-order"));
+
+    expect(movementState()).toBe("idle");
+    expect(useDraftStore.getState().movement).toEqual({
+      formationId: "arken_first_army",
+      destinationTheaterId: "frontier",
+    });
+    expect(screen.getByTestId("staged-order-summary")).toBeInTheDocument();
+  });
+
+  it("focuses the destination heading on selection, and the review heading on destination", async () => {
+    await openFormation();
+    expect(screen.getByTestId("destination-heading")).toHaveFocus();
+
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+
+    expect(screen.getByTestId("order-review-heading")).toHaveFocus();
+  });
+
+  it("Escape steps back one state at a time, never straight out", async () => {
+    await openFormation();
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+    expect(movementState()).toBe("destinationSelected");
+
+    fireEvent.keyDown(screen.getByTestId("movement-panel"), { key: "Escape" });
+    expect(movementState()).toBe("formationSelected");
+
+    fireEvent.keyDown(screen.getByTestId("movement-panel"), { key: "Escape" });
+    expect(movementState()).toBe("idle");
+  });
+
+  it("Escape from the staged summary removes the order and returns to idle", async () => {
+    await openFormation();
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+    fireEvent.click(screen.getByTestId("add-movement-order"));
+
+    fireEvent.keyDown(screen.getByTestId("staged-order-summary"), { key: "Escape" });
+
+    expect(useDraftStore.getState().movement).toBeNull();
+    expect(screen.queryByTestId("staged-order-summary")).not.toBeInTheDocument();
+  });
+
+  it("staging a second order REPLACES the first, so the one-order cap is unreachable", async () => {
+    await openFormation();
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+    fireEvent.click(screen.getByTestId("add-movement-order"));
+
+    fireEvent.click(screen.getByTestId("change-staged-order"));
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+    fireEvent.click(screen.getByTestId("add-movement-order"));
+
+    expect(useDraftStore.getState().movement).toEqual({
+      formationId: "arken_first_army",
+      destinationTheaterId: "frontier",
+    });
+  });
+
+  it("reads 'In position' until an order is staged, then names the destination", async () => {
+    await openFormation();
+    const status = () => document.querySelector('[data-formation-status="arken_first_army"]');
+    expect(status()?.textContent).toBe("In position");
+
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+    fireEvent.click(screen.getByTestId("add-movement-order"));
+
+    // Derived copy, both of them: no `status` field exists on a formation and none is added.
+    expect(status()?.textContent).toBe("Order staged: → Frontier Theater");
+  });
+
+  it("states the direction in words, not only as an arrowhead", async () => {
+    await openFormation();
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+
+    expect(screen.getByTestId("order-review-from")).toHaveTextContent("Capital Theater");
+    expect(screen.getByTestId("order-review-to")).toHaveTextContent("Frontier Theater");
+  });
+
+  it("announces each transition politely, and says nothing has moved yet", async () => {
+    await openFormation();
+    const region = document.querySelector('[role="status"]');
+    expect(region?.textContent).toContain("1 eligible destination");
+
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+    expect(region?.textContent).toContain("Planned route: Capital Theater to Frontier Theater");
+
+    fireEvent.click(screen.getByTestId("add-movement-order"));
+    expect(region?.textContent).toContain("Nothing has moved yet");
+  });
+});
+
+describe("StrategicMapScreen: the planned route is visibly directed", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    useDraftStore.getState().clearDraft();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDraftStore.getState().clearDraft();
+  });
+
+  it("draws no route and no arrowhead before a destination is chosen", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: ARKEN_MILITARY });
+    await screen.findByTestId("movement-panel");
+
+    expect(document.querySelector("[data-planned-route]")).toBeNull();
+
+    fireEvent.click(screen.getByText("First Army of Arken"));
+
+    expect(document.querySelector("[data-planned-route]")).toBeNull();
+  });
+
+  it("draws exactly one arrowhead, attached to the destination end", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: ARKEN_MILITARY });
+    await screen.findByTestId("movement-panel");
+    fireEvent.click(screen.getByText("First Army of Arken"));
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+
+    const line = document.querySelector("[data-planned-route-line]");
+    expect(document.querySelectorAll("[data-planned-route]")).toHaveLength(1);
+    // `marker-end` only: a `marker-start` would state a reciprocal relationship the order does
+    // not have.
+    expect(line?.getAttribute("marker-end")).toBe("url(#planned-route-arrowhead)");
+    expect(line?.getAttribute("marker-start")).toBeNull();
+    expect(document.querySelector("[data-planned-route-casing]")).not.toBeNull();
+  });
+
+  it("takes its direction from the projection, not from click order or screen geometry", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: ARKEN_MILITARY });
+    await screen.findByTestId("movement-panel");
+    fireEvent.click(screen.getByText("First Army of Arken"));
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+
+    const line = document.querySelector("[data-planned-route-line]");
+    // capital is authored at (0,0) and frontier at (10,10); the line runs origin -> destination.
+    expect(line?.getAttribute("x1")).toBe("0");
+    expect(line?.getAttribute("x2")).toBe("10");
+  });
+});
+
+describe("StrategicMapScreen: a formation with nowhere to go", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    useDraftStore.getState().clearDraft();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDraftStore.getState().clearDraft();
+  });
+
+  it("explains every refusal and offers no review or confirmation", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: STRANDED_MILITARY });
+    await screen.findByTestId("movement-panel");
+    fireEvent.click(screen.getByText("First Army of Arken"));
+
+    expect(screen.getByTestId("no-eligible-destinations")).toBeInTheDocument();
+    // Nothing to review, and a disabled Confirm would imply an order is one step away.
+    expect(screen.queryByTestId("order-review-heading")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("add-movement-order")).not.toBeInTheDocument();
+    // Focus lands on the heading, never on a control the player cannot use.
+    expect(screen.getByTestId("destination-heading")).toHaveFocus();
+  });
+
+  it("names every ineligible destination with a reason in words", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: STRANDED_MILITARY });
+    await screen.findByTestId("movement-panel");
+    fireEvent.click(screen.getByText("First Army of Arken"));
+
+    // Foreign theaters read as OWNERSHIP failures, never as merely unreachable -- no wording may
+    // suggest that authoring a route would authorize foreign entry.
+    const foreign = document.querySelector('[data-destination-ineligible="frontier"]');
+    expect(foreign?.textContent).toContain("owned by Republic of Veskara");
+    expect(foreign?.textContent).toContain("foreign entry is unavailable");
+    expect(foreign?.textContent).not.toContain("route");
+
+    const origin = document.querySelector('[data-destination-ineligible="capital"]');
+    expect(origin?.textContent).toContain("already here");
+  });
+});
+
+describe("StrategicMapScreen: a clustered selection is never invisible", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    useDraftStore.getState().clearDraft();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDraftStore.getState().clearDraft();
+  });
+
+  it("every formation stays individually selectable when the picture clusters", async () => {
+    // Clustering is a property of the PICTURE alone. The textual list is the accessible source of
+    // truth and never clusters, so no formation becomes unreachable because its icon was hidden.
+    renderScreen(RECIPROCAL_MAP, { military: militaryWith(20) });
+    await screen.findByTestId("movement-panel");
+
+    expect(document.querySelectorAll("[data-formation-option]")).toHaveLength(20);
+    // The picture shows five icons and one control for the other fifteen.
+    expect(renderedMarkers()).toHaveLength(6);
+  });
+
+  it("the overflow control takes the selected styling when it hides the selection", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: militaryWith(20) });
+    await screen.findByTestId("movement-panel");
+    const overflow = () => document.querySelector('[data-formation-marker="overflow"]');
+    expect(overflow()?.getAttribute("data-marker-selected")).toBe("false");
+
+    // `army_10` is well past the fifth icon, so it is one of the hidden ones.
+    fireEvent.click(document.querySelector('[data-formation-option="army_10"]') as HTMLElement);
+
+    expect(overflow()?.getAttribute("data-marker-selected")).toBe("true");
+  });
+
+  it("a visible formation marks its own icon, not the overflow control", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: militaryWith(20) });
+    await screen.findByTestId("movement-panel");
+
+    fireEvent.click(document.querySelector('[data-formation-option="army_00"]') as HTMLElement);
+
+    expect(
+      document.querySelector('[data-formation-marker="army_00"]')?.getAttribute("data-marker-selected"),
+    ).toBe("true");
+    expect(
+      document.querySelector('[data-formation-marker="overflow"]')?.getAttribute("data-marker-selected"),
+    ).toBe("false");
   });
 });

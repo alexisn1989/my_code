@@ -68,6 +68,13 @@ export interface DraftState {
   /** Relationship investment is its own, non-exclusive slot: (partyId,
    * blocId) -> political capital. */
   investments: Record<string, number>;
+  /** The one movement order staged for this turn, or `null` for none.
+   *
+   * Another separate, non-exclusive slot -- movement never interacts with the budget/amendment
+   * exclusivity. Nullable rather than a list because ruleset 0.15.0 accepts one order per turn,
+   * and because staging a second REPLACES the first (see `setMovementOrder`), which makes the cap
+   * unreachable from the interface rather than merely refused by the server. */
+  movement: { formationId: string; destinationTheaterId: string } | null;
 
   dismissedHelp: boolean;
   glossaryOpen: boolean;
@@ -94,6 +101,13 @@ export interface DraftState {
     politicalCapital: number | undefined,
   ) => void;
   setInvestment: (partyId: string, blocId: string, politicalCapital: number | undefined) => void;
+  /** Stage a movement order, REPLACING any order already staged.
+   *
+   * Wholesale replacement mirrors `applyCard`'s documented rule for the policy slot: no stale
+   * field survives a switch. Staging an order for a second formation therefore supersedes the
+   * first rather than accumulating one the server would reject. */
+  setMovementOrder: (formationId: string, destinationTheaterId: string) => void;
+  clearMovementOrder: () => void;
   /** Clears every draft field. Called ONLY after a successful resolve
    * (mandate: "Clear the committed draft only after success"). */
   clearDraft: () => void;
@@ -134,6 +148,7 @@ export const useDraftStore = create<DraftState>((set) => ({
   budget: EMPTY_BUDGET,
   amendment: EMPTY_AMENDMENT,
   investments: {},
+  movement: null,
   dismissedHelp: false,
   glossaryOpen: false,
 
@@ -204,12 +219,21 @@ export const useDraftStore = create<DraftState>((set) => ({
       investments: withEntry(state.investments, influenceKey(partyId, blocId), politicalCapital),
     })),
 
+  setMovementOrder: (formationId, destinationTheaterId) =>
+    set({ movement: { formationId, destinationTheaterId } }),
+
+  clearMovementOrder: () => set({ movement: null }),
+
   clearDraft: () =>
     set({
       policySlot: null,
       budget: EMPTY_BUDGET,
       amendment: EMPTY_AMENDMENT,
       investments: {},
+      // Cleared with the rest of the draft, which is what stops a `formationId` from a previous
+      // campaign -- an id that may not even exist in the new one -- from being submitted after a
+      // New Game or Load.
+      movement: null,
     }),
 
   dismissHelp: () => set({ dismissedHelp: true }),

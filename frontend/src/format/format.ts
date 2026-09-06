@@ -255,3 +255,34 @@ function slotPosition(
 export function formationOverflowLabel(hiddenCount: number): string {
   return `+${hiddenCount}`;
 }
+
+/**
+ * The movement interaction's spoken sentences.
+ *
+ * Composing a sentence from parts is string arithmetic, so it lives here with every other
+ * arithmetic in this codebase -- `format-boundary.test.ts` walks the real TypeScript AST and fails
+ * on any binary expression outside `src/format/**`, string concatenation included. It caught these
+ * when they were written inline in the screen.
+ *
+ * Each is announced through the map's single polite live region.
+ */
+export function formationSelectedAnnouncement(
+  formationName: string,
+  locationName: string,
+  eligibleCount: number,
+): string {
+  const plural = eligibleCount === 1 ? "destination" : "destinations";
+  return `${formationName} selected, in ${locationName}, ${eligibleCount} eligible ${plural}`;
+}
+
+export function plannedRouteAnnouncement(originName: string, destinationName: string): string {
+  return `Planned route: ${originName} to ${destinationName}`;
+}
+
+/** Explicit that nothing has moved: staging an order changes the draft, never the game. */
+export function orderStagedAnnouncement(
+  formationName: string,
+  destinationName: string,
+): string {
+  return `Movement order added to this turn's draft: ${formationName} to ${destinationName}. Nothing has moved yet — resolve the turn to apply it.`;
+}

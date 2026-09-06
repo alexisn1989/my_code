@@ -32,11 +32,15 @@ import type {
   StrategicTheaterProjection,
 } from "../../api/client";
 import { useGameGeneration, useMilitary, useStrategicMap } from "../../api/queries";
+import { useDraftStore } from "../../state/draft";
 import {
   formationMarkerPlacements,
   formationOverflowLabel,
+  formationSelectedAnnouncement,
   labelOffsetPosition,
+  orderStagedAnnouncement,
   paletteIndex,
+  plannedRouteAnnouncement,
 } from "../../format/format";
 import { useSession } from "../../state/SessionContext";
 import { ErrorPanel } from "../../status/ErrorPanel";
@@ -174,6 +178,12 @@ const SELECTED_STROKE = "var(--color-gold-500)";
 const FORMATION_MARKER_FILL = "var(--color-navy-800)";
 const FORMATION_MARKER_RING = "var(--color-gold-500)";
 const FORMATION_MARKER_TEXT = "var(--color-parchment-100)";
+const PLANNED_ROUTE_WIDTH = 46;
+const PLANNED_ROUTE_CASING_WIDTH = 110;
+const PLANNED_ROUTE_DASH = "150 110";
+/** The dashed gold ring that marks a selection. Never the only carrier: the Formations list names
+ * the selection in words, and the live region announces it. */
+const SELECTED_DASH = "120 90";
 const SELECTION_RING_RADIUS = 430;
 const SELECTION_RING_WIDTH = 26;
 const SELECTION_RING_DASH = "78 62";
@@ -326,6 +336,36 @@ function routeIntegrityProblem(
 
 // --- The screen ------------------------------------------------------------
 
+/**
+ * Why a destination cannot be ordered, in words (frozen plan §9.4).
+ *
+ * Every ineligible destination is LISTED with its reason rather than omitted, and no reason is
+ * ever carried by colour alone. Both foreign codes read as ownership failures and neither is ever
+ * described as merely unreachable, so no wording can suggest that authoring a route would
+ * authorize foreign entry.
+ *
+ * There is deliberately no "reachable only through another theater" sentence for the two-hop case.
+ * Producing it needs graph traversal this one-edge slice otherwise never performs, and running a
+ * search purely to improve an error message would smuggle multi-hop reachability into a slice that
+ * forbids it.
+ */
+function ineligibilityReason(code: string | null | undefined, ownerName: string | null): string {
+  switch (code) {
+    case "destination_not_player_owned":
+      return ownerName === null
+        ? "Not eligible — foreign territory; foreign entry is unavailable."
+        : `Not eligible — owned by ${ownerName}; foreign entry is unavailable.`;
+    case "destination_not_directly_reachable":
+      return "Not eligible — no direct outgoing LAND route from this theater.";
+    case "destination_is_origin":
+      return "Not eligible — this formation is already here.";
+    default:
+      // Never reached for a code this build emits; a visible sentence beats a blank row if a
+      // future code arrives before its wording does.
+      return "Not eligible.";
+  }
+}
+
 export function StrategicMapScreen(_props: ScreenProps) {
   const { revision } = useSession();
   const generation = useGameGeneration();
@@ -334,6 +374,19 @@ export function StrategicMapScreen(_props: ScreenProps) {
   // military view is keyed on `revision`, so a resolve refetches it and never refetches the map.
   const military = useMilitary(revision, { enabled: revision !== null });
   const [enlarged, setEnlarged] = useState(false);
+  // The map stages an order; it never resolves the turn. There is deliberately no `resolving`
+  // state here -- resolution stays exactly where it already is, on the Decisions screen, and this
+  // screen would otherwise become a second competing way to end a turn.
+  const [selectedFormationId, setSelectedFormationId] = useState<string | null>(null);
+  const [selectedDestinationId, setSelectedDestinationId] = useState<string | null>(null);
+  const [movementAnnouncement, setMovementAnnouncement] = useState("");
+  const stagedOrder = useDraftStore((state) => state.movement);
+  const setMovementOrder = useDraftStore((state) => state.setMovementOrder);
+  const clearMovementOrder = useDraftStore((state) => state.clearMovementOrder);
+  const destinationHeadingRef = useRef<HTMLHeadingElement>(null);
+  const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
+  const stagedSummaryRef = useRef<HTMLDivElement>(null);
+  const formationButtonRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const [selectedTheaterId, setSelectedTheaterId] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
 
@@ -348,7 +401,23 @@ export function StrategicMapScreen(_props: ScreenProps) {
   // construction.
   useEffect(() => {
     setSelectedTheaterId(null);
+    setSelectedFormationId(null);
+    setSelectedDestinationId(null);
   }, [generation.data]);
+
+  // Focus follows the machine, and never lands on a control the player cannot use: with no
+  // eligible destination the heading takes focus rather than an empty list.
+  useEffect(() => {
+    if (selectedFormationId !== null && selectedDestinationId === null) {
+      destinationHeadingRef.current?.focus();
+    }
+  }, [selectedFormationId, selectedDestinationId]);
+
+  useEffect(() => {
+    if (selectedDestinationId !== null) {
+      reviewHeadingRef.current?.focus();
+    }
+  }, [selectedDestinationId]);
 
   if (map.isPending) {
     return <LoadingPanel label="Loading strategic map…" />;
@@ -387,6 +456,94 @@ export function StrategicMapScreen(_props: ScreenProps) {
     ? `${selected.display_name}, ${selected.kind}, owned by ${selected.owner_display_name}, ${outgoing.length} routes out, ${incoming.length} routes in`
     : "";
 
+  // --- movement interaction -------------------------------------------------
+  const formations = military.data?.formations ?? [];
+  const selectedFormation =
+    formations.find((formation) => formation.formation_id === selectedFormationId) ?? null;
+  const eligibleDestinations =
+    selectedFormation?.destination_options.filter((option) => option.eligible) ?? [];
+  const selectedDestination =
+    selectedFormation?.destination_options.find(
+      (option) => option.theater_id === selectedDestinationId,
+    ) ?? null;
+  const stagedFormation =
+    stagedOrder === null
+      ? null
+      : (formations.find((f) => f.formation_id === stagedOrder.formationId) ?? null);
+
+  // Drawn only once a destination is chosen: neither `idle` nor `formationSelected` shows a route
+  // or an arrowhead, because there is no direction to state yet.
+  const plannedRoute =
+    selectedFormation === null || selectedDestinationId === null
+      ? null
+      : (() => {
+          const from = theatersById.get(selectedFormation.location_theater_id);
+          const to = theatersById.get(selectedDestinationId);
+          return from === undefined || to === undefined ? null : { from, to };
+        })();
+
+  function theaterName(theaterId: string): string {
+    return theatersById.get(theaterId)?.display_name ?? theaterId;
+  }
+
+  function selectFormation(formationId: string): void {
+    setSelectedFormationId(formationId);
+    setSelectedDestinationId(null);
+    const formation = formations.find((f) => f.formation_id === formationId);
+    const count = formation?.destination_options.filter((o) => o.eligible).length ?? 0;
+    setMovementAnnouncement(
+      formation === undefined
+        ? ""
+        : formationSelectedAnnouncement(
+            formation.display_name,
+            formation.location_display_name,
+            count,
+          ),
+    );
+  }
+
+  function selectDestination(option: { theater_id: string; display_name: string }): void {
+    setSelectedDestinationId(option.theater_id);
+    setMovementAnnouncement(
+      selectedFormation === null
+        ? ""
+        : plannedRouteAnnouncement(selectedFormation.location_display_name, option.display_name),
+    );
+  }
+
+  function stageOrder(): void {
+    if (selectedFormation === null || selectedDestination === null) {
+      return;
+    }
+    setMovementOrder(selectedFormation.formation_id, selectedDestination.theater_id);
+    setMovementAnnouncement(
+      orderStagedAnnouncement(selectedFormation.display_name, selectedDestination.display_name),
+    );
+    // Control returns to the shared turn draft: the map goes back to idle with the staged order
+    // visible, and the player may add a budget, an amendment or investments as usual.
+    setSelectedFormationId(null);
+    setSelectedDestinationId(null);
+  }
+
+  function removeStagedOrder(): void {
+    clearMovementOrder();
+    setMovementAnnouncement("Movement order removed. Nothing has moved.");
+    setSelectedFormationId(null);
+    setSelectedDestinationId(null);
+  }
+
+  function escapeFromMovement(): void {
+    if (selectedDestinationId !== null) {
+      setSelectedDestinationId(null);
+      return;
+    }
+    if (selectedFormationId !== null) {
+      const returning = selectedFormationId;
+      setSelectedFormationId(null);
+      formationButtonRefs.current.get(returning)?.focus();
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <h2
@@ -397,8 +554,10 @@ export function StrategicMapScreen(_props: ScreenProps) {
         Strategic map
       </h2>
 
+      {/* M0's existing polite region, reused rather than duplicated -- a second live region would
+          compete with this one for a screen reader's attention. */}
       <div role="status" aria-live="polite" className="sr-only">
-        {announcement}
+        {movementAnnouncement === "" ? announcement : movementAnnouncement}
       </div>
 
       <div className="flex flex-col gap-6 min-[900px]:flex-row">
@@ -507,6 +666,26 @@ export function StrategicMapScreen(_props: ScreenProps) {
                   orient="auto"
                 >
                   <path d="M 12 0 L 0 6 L 12 12 z" fill={ROUTE_LINE} />
+                </marker>
+                {/* The planned order's single arrowhead. SOLID, not dashed, and carrying the same
+                    casing treatment as its line, so it stays legible where it approaches the
+                    destination's ring. */}
+                <marker
+                  id="planned-route-arrowhead"
+                  viewBox="0 0 12 12"
+                  refX="26"
+                  refY="6"
+                  markerWidth="12"
+                  markerHeight="12"
+                  orient="auto"
+                >
+                  <path
+                    data-planned-route-arrowhead=""
+                    d="M 0 0 L 12 6 L 0 12 z"
+                    fill={SELECTED_STROKE}
+                    stroke={NODE_FILL}
+                    strokeWidth="1"
+                  />
                 </marker>
               </defs>
 
@@ -770,19 +949,41 @@ export function StrategicMapScreen(_props: ScreenProps) {
                             theater.centroid_y,
                             theater.label_anchor,
                             ids,
-                          ).map((placement) => (
+                          ).map((placement, slot) => {
+                            // A clustered selection must never be invisible on the map: when the
+                            // selected formation is one of the ones this control hides, the
+                            // control itself takes the selected styling. The picture is
+                            // aria-hidden, so the ACCESSIBLE statement of the same fact is the
+                            // Formations list, which never clusters and always names every
+                            // formation individually.
+                            const hidesSelection =
+                              placement.formationId === null &&
+                              selectedFormationId !== null &&
+                              ids.slice(slot).includes(selectedFormationId);
+                            const isSelectedMarker =
+                              placement.formationId !== null &&
+                              placement.formationId === selectedFormationId;
+                            return (
                             <g
                               key={placement.formationId ?? "overflow"}
                               data-formation-marker={placement.formationId ?? "overflow"}
                               data-hidden-count={String(placement.hiddenCount)}
                               data-marker-x={String(placement.x)}
                               data-marker-y={String(placement.y)}
+                              data-marker-selected={isSelectedMarker || hidesSelection ? "true" : "false"}
                               transform={`translate(${placement.x} ${placement.y})`}
                             >
                               <circle
                                 r={FORMATION_MARKER_RADIUS}
                                 fill={FORMATION_MARKER_FILL}
-                                stroke={FORMATION_MARKER_RING}
+                                stroke={
+                                  isSelectedMarker || hidesSelection
+                                    ? SELECTED_STROKE
+                                    : FORMATION_MARKER_RING
+                                }
+                                strokeDasharray={
+                                  isSelectedMarker || hidesSelection ? SELECTED_DASH : undefined
+                                }
                                 strokeWidth={FORMATION_MARKER_RING_WIDTH}
                               />
                               {placement.formationId === null ? (
@@ -798,11 +999,45 @@ export function StrategicMapScreen(_props: ScreenProps) {
                                 </text>
                               ) : null}
                             </g>
-                          ))}
+                            );
+                          })}
                         </g>
                       );
                     })}
               </g>
+
+              {/* Layer 5c -- the planned route (frozen plan §9.5.1). Drawn AFTER the nodes and
+                  markers so the reachability rings and discs cannot obscure it: a casing stroke
+                  wide enough that nothing underneath shows through, the gold dashed foreground,
+                  and ONE solid arrowhead at the DESTINATION end. A movement has one direction;
+                  two arrowheads would state a reciprocal relationship the order does not have.
+                  Origin and destination come from the authoritative projection, never from screen
+                  geometry or the order the player clicked. */}
+              {plannedRoute === null ? null : (
+                <g data-layer="planned-route" data-planned-route="">
+                  <line
+                    data-planned-route-casing=""
+                    x1={plannedRoute.from.centroid_x}
+                    y1={plannedRoute.from.centroid_y}
+                    x2={plannedRoute.to.centroid_x}
+                    y2={plannedRoute.to.centroid_y}
+                    stroke={NODE_FILL}
+                    strokeWidth={PLANNED_ROUTE_CASING_WIDTH}
+                    strokeLinecap="round"
+                  />
+                  <line
+                    data-planned-route-line=""
+                    x1={plannedRoute.from.centroid_x}
+                    y1={plannedRoute.from.centroid_y}
+                    x2={plannedRoute.to.centroid_x}
+                    y2={plannedRoute.to.centroid_y}
+                    stroke={SELECTED_STROKE}
+                    strokeWidth={PLANNED_ROUTE_WIDTH}
+                    strokeDasharray={PLANNED_ROUTE_DASH}
+                    markerEnd="url(#planned-route-arrowhead)"
+                  />
+                </g>
+              )}
 
               {/* Layer 6 -- theater labels, placed per authored `label_anchor`. */}
               <g data-layer="labels">
@@ -931,6 +1166,189 @@ export function StrategicMapScreen(_props: ScreenProps) {
         </div>
 
         <div className="flex flex-1 flex-col gap-6">
+          {/* Formations: the ACCESSIBLE SOURCE OF TRUTH, and it never clusters. The picture may
+              cluster above six per theater; this list always carries every formation, so no
+              formation becomes unreachable because its icon was clustered, and the whole
+              interaction works in the narrow layout where no SVG renders at all. */}
+          <Panel title="Formations">
+            {formations.length === 0 ? (
+              <EmptyNote>This campaign has no formations.</EmptyNote>
+            ) : (
+              <div
+                data-testid="movement-panel"
+                data-movement-state={
+                  selectedFormation === null
+                    ? "idle"
+                    : selectedDestination === null
+                      ? "formationSelected"
+                      : "destinationSelected"
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    event.stopPropagation();
+                    escapeFromMovement();
+                  }
+                }}
+              >
+                <ul className="flex flex-col gap-2">
+                  {formations.map((formation) => {
+                    const staged = stagedOrder?.formationId === formation.formation_id;
+                    return (
+                      <li key={formation.formation_id}>
+                        <button
+                          type="button"
+                          ref={(node) => {
+                            formationButtonRefs.current.set(formation.formation_id, node);
+                          }}
+                          data-formation-option={formation.formation_id}
+                          aria-pressed={selectedFormationId === formation.formation_id}
+                          onClick={() => selectFormation(formation.formation_id)}
+                          className="w-full rounded border border-navy-800 px-3 py-2 text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 aria-pressed:border-gold-500"
+                        >
+                          <span className="block text-parchment-100">{formation.display_name}</span>
+                          <span className="block text-xs text-parchment-200/70">
+                            {formation.location_display_name}
+                          </span>
+                          {/* Derived copy, never stored state: no `status` field exists on a
+                              formation and none is added. Both lines are computed from the
+                              authoritative location and the shared draft. */}
+                          <span
+                            data-formation-status={formation.formation_id}
+                            className="block text-xs text-parchment-200/70"
+                          >
+                            {staged && stagedOrder !== null
+                              ? `Order staged: → ${theaterName(stagedOrder.destinationTheaterId)}`
+                              : "In position"}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                {selectedFormation === null ? null : (
+                  <div className="mt-4 border-t border-navy-800 pt-4">
+                    <h3
+                      ref={destinationHeadingRef}
+                      tabIndex={-1}
+                      data-testid="destination-heading"
+                      className="text-sm uppercase tracking-[0.15em] text-parchment-100 focus:outline-none"
+                    >
+                      Destinations for {selectedFormation.display_name}
+                    </h3>
+                    {eligibleDestinations.length === 0 ? (
+                      // Reachable from a valid state and designed rather than assumed away: a
+                      // player theater reached only by an incoming route from the capital has no
+                      // outgoing row of its own. No review and no confirmation control are
+                      // rendered -- there is nothing to review, and a disabled Confirm would imply
+                      // an order is one step away.
+                      <p data-testid="no-eligible-destinations" className="mt-2 text-sm text-parchment-200/80">
+                        This formation has no eligible movement destination this turn.
+                      </p>
+                    ) : null}
+                    <ul className="mt-2 flex flex-col gap-1">
+                      {selectedFormation.destination_options.map((option) => (
+                        <li key={option.theater_id}>
+                          {option.eligible ? (
+                            <button
+                              type="button"
+                              data-destination-option={option.theater_id}
+                              aria-pressed={selectedDestinationId === option.theater_id}
+                              onClick={() => selectDestination(option)}
+                              className="w-full rounded border border-dashed border-gold-500 px-3 py-1 text-left text-sm text-parchment-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                            >
+                              {option.display_name} — eligible
+                            </button>
+                          ) : (
+                            <p
+                              data-destination-ineligible={option.theater_id}
+                              className="px-3 py-1 text-sm text-parchment-200/50"
+                            >
+                              {option.display_name} — {ineligibilityReason(
+                                option.ineligible_reason_code,
+                                theatersById.get(option.theater_id)?.owner_display_name ?? null,
+                              )}
+                            </p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {selectedFormation !== null && selectedDestination !== null ? (
+                  <div className="mt-4 rounded border border-gold-600 p-3">
+                    <h3
+                      ref={reviewHeadingRef}
+                      tabIndex={-1}
+                      data-testid="order-review-heading"
+                      className="text-sm uppercase tracking-[0.15em] text-parchment-100 focus:outline-none"
+                    >
+                      Review movement order
+                    </h3>
+                    {/* From and To in words: the arrowhead on the map is never the sole carrier
+                        of direction. */}
+                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 text-sm">
+                      <dt className="text-parchment-200/70">From</dt>
+                      <dd data-testid="order-review-from">{selectedFormation.location_display_name}</dd>
+                      <dt className="text-parchment-200/70">To</dt>
+                      <dd data-testid="order-review-to">{selectedDestination.display_name}</dd>
+                    </dl>
+                    <button
+                      type="button"
+                      data-testid="add-movement-order"
+                      onClick={stageOrder}
+                      className="mt-3 rounded border border-gold-600 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                    >
+                      Add movement order
+                    </button>
+                  </div>
+                ) : null}
+
+                {stagedOrder !== null && selectedFormation === null ? (
+                  <div
+                    ref={stagedSummaryRef}
+                    tabIndex={-1}
+                    data-testid="staged-order-summary"
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.stopPropagation();
+                        removeStagedOrder();
+                      }
+                    }}
+                    className="mt-4 rounded border border-gold-600 p-3 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                  >
+                    <p>
+                      Staged: {stagedFormation?.display_name ?? stagedOrder.formationId} →{" "}
+                      {theaterName(stagedOrder.destinationTheaterId)}
+                    </p>
+                    <p className="mt-1 text-xs text-parchment-200/70">
+                      Nothing has moved yet. Resolve the turn on the Decisions screen to apply it.
+                    </p>
+                    <div className="mt-2 flex gap-3">
+                      <button
+                        type="button"
+                        data-testid="change-staged-order"
+                        onClick={() => selectFormation(stagedOrder.formationId)}
+                        className="rounded border border-navy-800 px-3 py-1 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                      >
+                        Change
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="remove-staged-order"
+                        onClick={removeStagedOrder}
+                        className="rounded border border-navy-800 px-3 py-1 text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </Panel>
+
           <Panel title="Theaters">
             {data.theaters.length === 0 ? (
               <EmptyNote>This campaign has no theaters.</EmptyNote>

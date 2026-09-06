@@ -133,5 +133,17 @@ export function buildDecisions(draft: DraftState): Decision[] {
     }
   }
 
+  if (draft.movement !== null) {
+    decisions.push({
+      kind: "military_movement",
+      orders: [
+        {
+          formation_id: draft.movement.formationId,
+          destination_theater_id: draft.movement.destinationTheaterId,
+        },
+      ],
+    }); // "military_movement" sorts fourth -- last of the four kinds
+  }
+
   return decisions;
 }

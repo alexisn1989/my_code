@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildDecisions } from "./buildDecisionSet";
-import type { DraftState } from "./draft";
+import { useDraftStore, type DraftState } from "./draft";
 
 function baseDraft(overrides: Partial<DraftState> = {}): DraftState {
   return {
@@ -17,6 +17,7 @@ function baseDraft(overrides: Partial<DraftState> = {}): DraftState {
     budget: { spendingUpdates: {}, route: "legislative", influence: {} },
     amendment: { targets: {}, route: "legislative", influence: {} },
     investments: {},
+    movement: null,
     dismissedHelp: false,
     glossaryOpen: false,
     setPolicySlot: () => {},
@@ -28,6 +29,8 @@ function baseDraft(overrides: Partial<DraftState> = {}): DraftState {
     setAmendmentTarget: () => {},
     setAmendmentRoute: () => {},
     setAmendmentInfluence: () => {},
+    setMovementOrder: () => {},
+    clearMovementOrder: () => {},
     setInvestment: () => {},
     clearDraft: () => {},
     dismissHelp: () => {},
@@ -207,5 +210,182 @@ describe("buildDecisions: a decree route takes no influence", () => {
     const [budget] = buildDecisions(draft);
     expect(budget?.["influence"]).toBeUndefined();
     expect(budget?.["route"]).toBe("decree");
+  });
+});
+
+// --------------------------------------------------------------------------
+// Movement combines with every other kind (Military Movement, commit 8)
+// --------------------------------------------------------------------------
+//
+// `military_movement` sorts LAST of the four kinds, and the server rejects a noncanonical set
+// rather than sorting it. Each row below states the resulting array exactly -- no elided or
+// optional member -- so a reader can see the ordering rather than infer it.
+
+const MOVEMENT = { formationId: "arken_first_army", destinationTheaterId: "arken_north" };
+
+const MOVEMENT_DECISION = {
+  kind: "military_movement",
+  orders: [{ formation_id: "arken_first_army", destination_theater_id: "arken_north" }],
+};
+
+describe("buildDecisions: movement", () => {
+  it("emits nothing when no order is staged", () => {
+    expect(buildDecisions(baseDraft())).toEqual([]);
+  });
+
+  it("movement only", () => {
+    expect(buildDecisions(baseDraft({ movement: MOVEMENT }))).toEqual([MOVEMENT_DECISION]);
+  });
+
+  it("movement + relationship investment", () => {
+    const decisions = buildDecisions(
+      baseDraft({ movement: MOVEMENT, investments: { "party_a|bloc_a": 5 } }),
+    );
+    expect(decisions.map((d) => d.kind)).toEqual([
+      "bloc_relationship_investment",
+      "military_movement",
+    ]);
+  });
+
+  it("movement + budget", () => {
+    const decisions = buildDecisions(
+      baseDraft({
+        movement: MOVEMENT,
+        policySlot: "budget",
+        budget: { personalIncomeRateBps: 2500, spendingUpdates: {}, route: "legislative", influence: {} },
+      }),
+    );
+    expect(decisions.map((d) => d.kind)).toEqual(["budget", "military_movement"]);
+  });
+
+  it("movement + constitutional amendment", () => {
+    const decisions = buildDecisions(
+      baseDraft({
+        movement: MOVEMENT,
+        policySlot: "amendment",
+        amendment: { targets: { decree_authority: "unlimited" }, route: "legislative", influence: {} },
+      }),
+    );
+    expect(decisions.map((d) => d.kind)).toEqual([
+      "constitutional_amendment",
+      "military_movement",
+    ]);
+  });
+
+  it("movement + relationship investment + budget", () => {
+    const decisions = buildDecisions(
+      baseDraft({
+        movement: MOVEMENT,
+        investments: { "party_a|bloc_a": 5 },
+        policySlot: "budget",
+        budget: { personalIncomeRateBps: 2500, spendingUpdates: {}, route: "legislative", influence: {} },
+      }),
+    );
+    expect(decisions.map((d) => d.kind)).toEqual([
+      "bloc_relationship_investment",
+      "budget",
+      "military_movement",
+    ]);
+  });
+
+  it("movement + relationship investment + amendment", () => {
+    const decisions = buildDecisions(
+      baseDraft({
+        movement: MOVEMENT,
+        investments: { "party_a|bloc_a": 5 },
+        policySlot: "amendment",
+        amendment: { targets: { decree_authority: "unlimited" }, route: "legislative", influence: {} },
+      }),
+    );
+    expect(decisions.map((d) => d.kind)).toEqual([
+      "bloc_relationship_investment",
+      "constitutional_amendment",
+      "military_movement",
+    ]);
+  });
+
+  it("is built from the draft's CONTENT, not the order the player clicked", () => {
+    // The array is assembled from a plain object with no ordering of its own, so two players who
+    // staged the same turn in opposite orders must submit byte-identical payloads -- otherwise
+    // they would digest differently and produce different `entry_hash`es for the same decisions.
+    const budget = {
+      personalIncomeRateBps: 2500,
+      spendingUpdates: {},
+      route: "legislative" as const,
+      influence: {},
+    };
+    const movementFirst = buildDecisions(
+      baseDraft({ movement: MOVEMENT, policySlot: "budget", budget }),
+    );
+    const budgetFirst = buildDecisions(
+      baseDraft({ policySlot: "budget", budget, movement: MOVEMENT }),
+    );
+
+    expect(JSON.stringify(movementFirst)).toBe(JSON.stringify(budgetFirst));
+  });
+});
+
+// --------------------------------------------------------------------------
+// The staged order's lifetime (frozen plan §9.1.1, §9.2 F7)
+// --------------------------------------------------------------------------
+//
+// Resolution happens on the Decisions screen, so the map is NOT mounted when a turn resolves.
+// Nothing attempts to focus an unmounted map node, and the staged order's survival is a property
+// of the shared draft store rather than of any screen -- which is exactly why it can be asserted
+// here, one layer below the screens.
+
+describe("the staged movement order's lifetime", () => {
+  it("is reconstructed from the draft alone, so navigating away cannot lose it", () => {
+    // The map holds no order state of its own: everything it displays about a staged order comes
+    // from this store, so unmounting and remounting the screen is a no-op for the order.
+    useDraftStore.getState().clearDraft();
+    useDraftStore.getState().setMovementOrder("arken_first_army", "arken_north");
+
+    expect(useDraftStore.getState().movement).toEqual({
+      formationId: "arken_first_army",
+      destinationTheaterId: "arken_north",
+    });
+    expect(buildDecisions(useDraftStore.getState()).map((d) => d.kind)).toEqual([
+      "military_movement",
+    ]);
+  });
+
+  it("a second order replaces the first rather than accumulating", () => {
+    useDraftStore.getState().clearDraft();
+    useDraftStore.getState().setMovementOrder("first", "a");
+    useDraftStore.getState().setMovementOrder("second", "b");
+
+    const decisions = buildDecisions(useDraftStore.getState());
+    expect(decisions).toHaveLength(1);
+    expect(decisions[0]).toEqual({
+      kind: "military_movement",
+      orders: [{ formation_id: "second", destination_theater_id: "b" }],
+    });
+  });
+
+  it("clearDraft removes it, which is what stops it crossing campaigns", () => {
+    // `clearDraft` runs on a successful resolve AND on New Game / Load. Without that last part a
+    // `formationId` from a previous scenario -- an id that may not exist in the new one -- would
+    // be submitted against the wrong campaign.
+    useDraftStore.getState().setMovementOrder("arken_first_army", "arken_north");
+    useDraftStore.getState().clearDraft();
+
+    expect(useDraftStore.getState().movement).toBeNull();
+    expect(buildDecisions(useDraftStore.getState())).toEqual([]);
+  });
+
+  it("survives everything short of a clear, so a FAILED resolve keeps it", () => {
+    // `clearDraft` lives inside `onSuccess` only. A rejected or errored resolve leaves the whole
+    // draft -- movement included -- intact for the player to correct and retry.
+    useDraftStore.getState().clearDraft();
+    useDraftStore.getState().setMovementOrder("arken_first_army", "arken_north");
+    useDraftStore.getState().setPolicySlot("budget");
+    useDraftStore.getState().setBudgetRateTarget("personalIncomeRateBps", 2500);
+
+    expect(buildDecisions(useDraftStore.getState()).map((d) => d.kind)).toEqual([
+      "budget",
+      "military_movement",
+    ]);
+    expect(useDraftStore.getState().movement).not.toBeNull();
   });
 });
