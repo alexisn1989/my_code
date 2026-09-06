@@ -49,12 +49,14 @@ from .projections import (
     DecisionOptionsProjection,
     HistoryDetailResponse,
     HistoryListEntry,
+    MilitaryProjection,
     PreviewProjection,
     ResolveResponse,
     SaveSummary,
     ScenarioSummary,
     StrategicMapProjection,
     build_dashboard,
+    build_military,
     build_strategic_map,
     build_turn_result,
 )
@@ -299,6 +301,28 @@ def get_decision_options(request: Request) -> DecisionOptionsProjection:
     return build_decision_options_with_policy_cards(
         save.current_state(), campaign_id=session.save_id
     )
+
+
+@router.get("/game/military", response_model=MilitaryProjection)
+def get_military(request: Request) -> MilitaryProjection:
+    """Where the player's formations are, and where each could be ordered.
+
+    Read-only, like `/game/state` and `/game/map/strategic`: it captures `session.current_save`
+    once and never takes the mutation boundary. Nothing here queues an order, and asking for the
+    options is not submitting one -- `/preview` scores a draft and `/resolve`'s own validators
+    remain the only authority on what is legal.
+
+    Deliberately separate from `/game/map/strategic`. That map is campaign-static content the
+    client caches with an infinite stale time; positions change every turn, so serving them there
+    would show stale positions with no refetch. This response is revision-keyed instead, and the
+    client composes the immutable geography with these per-turn positions at render time.
+
+    Adds no legality logic of its own: `build_military` attaches display names to the verdicts
+    `classify_destinations` returns, and that is the same function `/resolve` decides submissions
+    with.
+    """
+    save = _session(request).current_save
+    return build_military(save.current_state())
 
 
 @router.get("/game/history", response_model=list[HistoryListEntry])

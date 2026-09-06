@@ -35,6 +35,7 @@ from app.simulation.legislative_voting import (
     DECREE_POLITICAL_CAPITAL_COST,
 )
 from app.simulation.legislature import LegislativeOutcome, ProposalRoute
+from app.simulation.military import classify_destinations
 from app.simulation.report import TurnReport
 from app.simulation.state import (
     GameState,
@@ -1147,6 +1148,71 @@ def _build_strategic_shapes(
     return tuple(sorted(shapes, key=lambda s: s.shape_id))
 
 
+# --------------------------------------------------------------------------
+# Military -- current positions and destination options (Military Movement, commit 6)
+# --------------------------------------------------------------------------
+
+
+class DestinationOption(BaseModel):
+    """One theater a formation could be ordered to, eligible or not.
+
+    Named `destination_options` on the projection rather than `valid_destinations`, because this
+    collection deliberately carries the INELIGIBLE theaters too: the interface has to explain why
+    a destination is unavailable, and it cannot explain what it was never given. A field called
+    `valid_destinations` that contained invalid ones would be a lie told by the schema itself.
+
+    `ineligible_reason_code` is one of the classifier's own codes, propagated verbatim, and is
+    present exactly when `eligible` is false.
+    """
+
+    model_config = _STRICT
+
+    theater_id: str
+    display_name: str
+    eligible: bool
+    ineligible_reason_code: str | None = None
+
+
+class FormationProjection(BaseModel):
+    """One formation: where it is now, and where it could go.
+
+    `location_display_name` accompanies `location_theater_id` for the same reason every other
+    projection here carries names beside ids -- so no surface has to resolve one from the other,
+    and so a raw id never becomes player-facing text.
+    """
+
+    model_config = _STRICT
+
+    formation_id: str
+    display_name: str
+    branch: str
+    location_theater_id: str
+    location_display_name: str
+    destination_options: tuple[DestinationOption, ...]
+
+
+class MilitaryProjection(BaseModel):
+    """Current formation positions and their destination options.
+
+    **Revision-keyed, and deliberately not part of the strategic map.** The map is campaign-static
+    content cached with an infinite stale time; positions change every turn, so putting them there
+    would show stale positions with no refetch. Two queries, two lifetimes, one render.
+
+    **Current state only.** There is no applied-movement history field here: what moved is
+    reported by the resolve response and by the Turn Result / History surfaces, from the report
+    written when it happened. A history-derived field on a state projection would duplicate that
+    record and could disagree with it.
+
+    **Pending drafts are absent.** A staged order lives in the client until the existing Resolve
+    action sends it; the server has no draft to report.
+    """
+
+    model_config = _STRICT
+
+    revision: str
+    formations: tuple[FormationProjection, ...]
+
+
 def build_strategic_map(state: GameState) -> StrategicMapProjection:
     """The whole read-only strategic map, resolved for display. Pure: reads `state` only, never
     mutates it, never draws RNG. Every collection is emitted in server-sorted (and therefore
@@ -1159,6 +1225,60 @@ def build_strategic_map(state: GameState) -> StrategicMapProjection:
         routes=_build_strategic_routes(strategic_map.routes),
         shapes=_build_strategic_shapes(strategic_map, state),
     )
+
+
+def build_military(state: GameState) -> MilitaryProjection:
+    """Current positions plus destination options, for the player's formations.
+
+    **Presents; never re-derives.** Every eligibility verdict and every reason code comes from
+    `classify_destinations` -- the same function `/preview` and `/resolve` decide legality with --
+    and this builder only attaches display names to its rows. A second implementation here could
+    disagree with the one that actually governs a submission, which is the entire failure this
+    endpoint's design exists to avoid; `test_api_military.py` asserts row-for-row equality with
+    the classifier across all three shipped scenarios.
+
+    Pure: reads `state`, mutates nothing, draws no randomness. Formations are emitted sorted by
+    `formation_id`, and `classify_destinations` already returns its rows sorted by `theater_id`,
+    so neither collection depends on mapping insertion order.
+    """
+    country = state.world.countries[state.world.player_country_id]
+    military = country.military
+    strategic_map = state.world.strategic_map
+    # Unreachable in a valid 0.15.0 state -- `player_military_state_required` (invariants) runs
+    # before and after every resolution, and on every load. An empty roster is reported rather
+    # than raised, because a read-only projection has no channel for a state-integrity complaint
+    # and inventing one here would put a second opinion beside the invariant that owns it.
+    formations = {} if military is None else military.formations
+
+    rows: list[FormationProjection] = []
+    for formation_id in sorted(formations):
+        formation = formations[formation_id]
+        rows.append(
+            FormationProjection(
+                formation_id=formation_id,
+                display_name=formation.display_name,
+                branch=formation.branch.value,
+                location_theater_id=formation.location_theater_id,
+                location_display_name=strategic_map.theaters[
+                    formation.location_theater_id
+                ].display_name,
+                destination_options=tuple(
+                    DestinationOption(
+                        theater_id=row.theater_id,
+                        display_name=strategic_map.theaters[row.theater_id].display_name,
+                        eligible=row.eligible,
+                        ineligible_reason_code=row.ineligible_reason_code,
+                    )
+                    for row in classify_destinations(
+                        formation=formation,
+                        player_country_id=state.world.player_country_id,
+                        map_state=strategic_map,
+                    )
+                ),
+            )
+        )
+
+    return MilitaryProjection(revision=revision_token(state), formations=tuple(rows))
 
 
 def build_turn_result(state: GameState, report: TurnReport) -> TurnResultProjection:

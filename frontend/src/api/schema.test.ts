@@ -60,12 +60,18 @@ describe("schema.d.ts is the untouched generated artifact", () => {
     }
   });
 
-  it("declares all eleven contract endpoints", () => {
+  it("declares all thirteen contract endpoints", () => {
+    // `/api/game/map/strategic` was a PRE-EXISTING omission: Gate M0 added the endpoint without
+    // extending this list, so the assertion has been claiming completeness it did not have.
+    // Corrected here rather than left, because adding only the new path to a list already known
+    // to be short would be knowingly shipping the same untruth.
     const paths = [
       "/api/scenarios",
       "/api/game/new",
       "/api/game/state",
       "/api/game/decision-options",
+      "/api/game/map/strategic",
+      "/api/game/military",
       "/api/game/preview",
       "/api/game/resolve",
       "/api/game/history",

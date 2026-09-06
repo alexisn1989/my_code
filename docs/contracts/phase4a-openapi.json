@@ -636,6 +636,42 @@
         "title": "DecreeAuthorityTarget",
         "type": "object"
       },
+      "DestinationOption": {
+        "additionalProperties": false,
+        "description": "One theater a formation could be ordered to, eligible or not.\n\nNamed `destination_options` on the projection rather than `valid_destinations`, because this\ncollection deliberately carries the INELIGIBLE theaters too: the interface has to explain why\na destination is unavailable, and it cannot explain what it was never given. A field called\n`valid_destinations` that contained invalid ones would be a lie told by the schema itself.\n\n`ineligible_reason_code` is one of the classifier's own codes, propagated verbatim, and is\npresent exactly when `eligible` is false.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "ineligible_reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ineligible Reason Code"
+          },
+          "theater_id": {
+            "title": "Theater Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "theater_id",
+          "display_name",
+          "eligible"
+        ],
+        "title": "DestinationOption",
+        "type": "object"
+      },
       "DriverItem": {
         "additionalProperties": false,
         "properties": {
@@ -763,6 +799,49 @@
           "value"
         ],
         "title": "ExecutiveSystemTarget",
+        "type": "object"
+      },
+      "FormationProjection": {
+        "additionalProperties": false,
+        "description": "One formation: where it is now, and where it could go.\n\n`location_display_name` accompanies `location_theater_id` for the same reason every other\nprojection here carries names beside ids -- so no surface has to resolve one from the other,\nand so a raw id never becomes player-facing text.",
+        "properties": {
+          "branch": {
+            "title": "Branch",
+            "type": "string"
+          },
+          "destination_options": {
+            "items": {
+              "$ref": "#/components/schemas/DestinationOption"
+            },
+            "title": "Destination Options",
+            "type": "array"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "formation_id": {
+            "title": "Formation Id",
+            "type": "string"
+          },
+          "location_display_name": {
+            "title": "Location Display Name",
+            "type": "string"
+          },
+          "location_theater_id": {
+            "title": "Location Theater Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "formation_id",
+          "display_name",
+          "branch",
+          "location_theater_id",
+          "location_display_name",
+          "destination_options"
+        ],
+        "title": "FormationProjection",
         "type": "object"
       },
       "GoalCard": {
@@ -963,6 +1042,29 @@
           "note"
         ],
         "title": "MapProjection",
+        "type": "object"
+      },
+      "MilitaryProjection": {
+        "additionalProperties": false,
+        "description": "Current formation positions and their destination options.\n\n**Revision-keyed, and deliberately not part of the strategic map.** The map is campaign-static\ncontent cached with an infinite stale time; positions change every turn, so putting them there\nwould show stale positions with no refetch. Two queries, two lifetimes, one render.\n\n**Current state only.** There is no applied-movement history field here: what moved is\nreported by the resolve response and by the Turn Result / History surfaces, from the report\nwritten when it happened. A history-derived field on a state projection would duplicate that\nrecord and could disagree with it.\n\n**Pending drafts are absent.** A staged order lives in the client until the existing Resolve\naction sends it; the server has no draft to report.",
+        "properties": {
+          "formations": {
+            "items": {
+              "$ref": "#/components/schemas/FormationProjection"
+            },
+            "title": "Formations",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "revision",
+          "formations"
+        ],
+        "title": "MilitaryProjection",
         "type": "object"
       },
       "NewGameRequest": {
@@ -2197,6 +2299,25 @@
           }
         },
         "summary": "Get Strategic Map"
+      }
+    },
+    "/api/game/military": {
+      "get": {
+        "description": "Where the player's formations are, and where each could be ordered.\n\nRead-only, like `/game/state` and `/game/map/strategic`: it captures `session.current_save`\nonce and never takes the mutation boundary. Nothing here queues an order, and asking for the\noptions is not submitting one -- `/preview` scores a draft and `/resolve`'s own validators\nremain the only authority on what is legal.\n\nDeliberately separate from `/game/map/strategic`. That map is campaign-static content the\nclient caches with an infinite stale time; positions change every turn, so serving them there\nwould show stale positions with no refetch. This response is revision-keyed instead, and the\nclient composes the immutable geography with these per-turn positions at render time.\n\nAdds no legality logic of its own: `build_military` attaches display names to the verdicts\n`classify_destinations` returns, and that is the same function `/resolve` decides submissions\nwith.",
+        "operationId": "get_military_api_game_military_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilitaryProjection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Military"
       }
     },
     "/api/game/new": {

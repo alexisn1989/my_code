@@ -122,6 +122,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/game/military": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Military
+         * @description Where the player's formations are, and where each could be ordered.
+         *
+         *     Read-only, like `/game/state` and `/game/map/strategic`: it captures `session.current_save`
+         *     once and never takes the mutation boundary. Nothing here queues an order, and asking for the
+         *     options is not submitting one -- `/preview` scores a draft and `/resolve`'s own validators
+         *     remain the only authority on what is legal.
+         *
+         *     Deliberately separate from `/game/map/strategic`. That map is campaign-static content the
+         *     client caches with an infinite stale time; positions change every turn, so serving them there
+         *     would show stale positions with no refetch. This response is revision-keyed instead, and the
+         *     client composes the immutable geography with these per-turn positions at render time.
+         *
+         *     Adds no legality logic of its own: `build_military` attaches display names to the verdicts
+         *     `classify_destinations` returns, and that is the same function `/resolve` decides submissions
+         *     with.
+         */
+        get: operations["get_military_api_game_military_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/game/new": {
         parameters: {
             query?: never;
@@ -573,6 +607,28 @@ export interface components {
             axis: "decree_authority";
             value: components["schemas"]["DecreeAuthority"];
         };
+        /**
+         * DestinationOption
+         * @description One theater a formation could be ordered to, eligible or not.
+         *
+         *     Named `destination_options` on the projection rather than `valid_destinations`, because this
+         *     collection deliberately carries the INELIGIBLE theaters too: the interface has to explain why
+         *     a destination is unavailable, and it cannot explain what it was never given. A field called
+         *     `valid_destinations` that contained invalid ones would be a lie told by the schema itself.
+         *
+         *     `ineligible_reason_code` is one of the classifier's own codes, propagated verbatim, and is
+         *     present exactly when `eligible` is false.
+         */
+        DestinationOption: {
+            /** Display Name */
+            display_name: string;
+            /** Eligible */
+            eligible: boolean;
+            /** Ineligible Reason Code */
+            ineligible_reason_code?: string | null;
+            /** Theater Id */
+            theater_id: string;
+        };
         /** DriverItem */
         DriverItem: {
             /** Category */
@@ -639,6 +695,28 @@ export interface components {
              */
             axis: "executive_system";
             value: components["schemas"]["ExecutiveSystem"];
+        };
+        /**
+         * FormationProjection
+         * @description One formation: where it is now, and where it could go.
+         *
+         *     `location_display_name` accompanies `location_theater_id` for the same reason every other
+         *     projection here carries names beside ids -- so no surface has to resolve one from the other,
+         *     and so a raw id never becomes player-facing text.
+         */
+        FormationProjection: {
+            /** Branch */
+            branch: string;
+            /** Destination Options */
+            destination_options: components["schemas"]["DestinationOption"][];
+            /** Display Name */
+            display_name: string;
+            /** Formation Id */
+            formation_id: string;
+            /** Location Display Name */
+            location_display_name: string;
+            /** Location Theater Id */
+            location_theater_id: string;
         };
         /** GoalCard */
         GoalCard: {
@@ -730,6 +808,28 @@ export interface components {
             tint_metric_label: string;
             /** Tint Value Bps */
             tint_value_bps: number;
+        };
+        /**
+         * MilitaryProjection
+         * @description Current formation positions and their destination options.
+         *
+         *     **Revision-keyed, and deliberately not part of the strategic map.** The map is campaign-static
+         *     content cached with an infinite stale time; positions change every turn, so putting them there
+         *     would show stale positions with no refetch. Two queries, two lifetimes, one render.
+         *
+         *     **Current state only.** There is no applied-movement history field here: what moved is
+         *     reported by the resolve response and by the Turn Result / History surfaces, from the report
+         *     written when it happened. A history-derived field on a state projection would duplicate that
+         *     record and could disagree with it.
+         *
+         *     **Pending drafts are absent.** A staged order lives in the client until the existing Resolve
+         *     action sends it; the server has no draft to report.
+         */
+        MilitaryProjection: {
+            /** Formations */
+            formations: components["schemas"]["FormationProjection"][];
+            /** Revision */
+            revision: string;
         };
         /** NewGameRequest */
         NewGameRequest: {
@@ -1337,6 +1437,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StrategicMapProjection"];
+                };
+            };
+        };
+    };
+    get_military_api_game_military_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MilitaryProjection"];
                 };
             };
         };

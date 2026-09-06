@@ -513,19 +513,29 @@ class TestMovementIsAcceptedAndAppliedTogether:
 
         assert hasattr(reconciliation_module, "reconcile_formation_movement")
 
-    def test_no_military_endpoint_is_routed_yet(self) -> None:
-        """Unchanged from commit 4, and still true: `/api/game/military` is commit 6's work, and
-        commit 5 introduces no endpoint, no projection model and therefore no contract delta.
+    def test_the_military_endpoint_is_routed_and_reuses_this_classifier(self) -> None:
+        """Commit 4 asserted this path's ABSENCE and commit 5 kept that assertion; commit 6 is the
+        commit that adds it, so the guard is turned around rather than deleted.
+
+        What it protects has not changed: the endpoint must REUSE the classifier, never re-derive
+        legality. `test_api_military.py` proves the verdicts match row for row; this proves the
+        route exists and that its builder actually calls the shared function.
 
         Asks the generated OpenAPI document for the served paths rather than walking `app.routes`,
         which mixes `Route` and `_IncludedRouter` objects and has no uniform `.path`.
         """
+        from app.api import projections as projections_module
         from app.api.main import ApiSettings, create_app
 
         app = create_app(ApiSettings(serve_spa=False))
         paths = set(app.openapi()["paths"])
         assert paths, "expected a non-empty path set; an empty one would pass vacuously"
-        assert not any("military" in path for path in paths), sorted(paths)
+        assert "/api/game/military" in paths, sorted(paths)
+
+        source = inspect.getsource(projections_module.build_military)
+        assert "classify_destinations(" in source
+        assert "PlayerCountryRef" not in source
+        assert "land_destinations_from" not in source
 
     def test_the_legality_rule_is_now_reachable_from_the_resolver(self) -> None:
         """Commit 4 asserted the opposite: nothing in turn resolution could reach this module, so
