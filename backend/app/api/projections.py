@@ -314,6 +314,17 @@ class DashboardProjection(BaseModel):
     model_config = _STRICT
 
     revision: str
+    campaign_id: str | None = None
+    """Which campaign these counters belong to (review defect #1).
+
+    `revision` says WHEN a client's view was taken; this says WHAT it was a view of. Without it,
+    two campaigns sitting at the same turn issue identical tokens, so a tab left open on one could
+    act on the other.
+
+    `None` only for a projection that belongs to no campaign: `/scenarios` builds a throwaway
+    dashboard from a scenario file purely to read its country name and government form, and that
+    object never leaves the server. Every projection a client actually receives carries a real id,
+    and `/resolve` and `/preview` require one on the way back."""
     turn: int
     country_name: str
     government_form: str
@@ -715,6 +726,14 @@ class DecisionOptionsProjection(BaseModel):
     model_config = _STRICT
 
     revision: str
+    campaign_id: str | None = None
+    """The campaign these options belong to (review defect #1).
+
+    Carried here as well as on the dashboard because this is the projection the stale-revision
+    RECOVERY refetches and adopts from (`DecisionsScreen.handleRefreshAfterStaleRevision`). If
+    Refresh adopted a fresh `revision` but kept a stale campaign id, recovery would be inert and
+    the tab stuck permanently -- the same defect that function's own comment records having been
+    found once already, one field over."""
     opening_capital: int
     tax_rate_bps_minimum: int
     tax_rate_bps_maximum: int
@@ -730,7 +749,9 @@ class DecisionOptionsProjection(BaseModel):
     constitutional_axes: tuple[ConstitutionalAxisOption, ...]
 
 
-def build_decision_options(state: GameState) -> DecisionOptionsProjection:
+def build_decision_options(
+    state: GameState, *, campaign_id: str | None = None
+) -> DecisionOptionsProjection:
     country = state.world.countries[state.world.player_country_id]
     politics = country.politics
     if politics is None:  # pragma: no cover - every shipped scenario has politics
@@ -798,6 +819,7 @@ def build_decision_options(state: GameState) -> DecisionOptionsProjection:
 
     return DecisionOptionsProjection(
         revision=revision_token(state),
+        campaign_id=campaign_id,
         opening_capital=politics.political_capital,
         tax_rate_bps_minimum=0,
         tax_rate_bps_maximum=BPS_DENOMINATOR,
@@ -858,7 +880,9 @@ def _terminal_summary(politics: PoliticalState) -> TerminalSummary | None:
     )
 
 
-def build_dashboard(state: GameState, report: TurnReport | None) -> DashboardProjection:
+def build_dashboard(
+    state: GameState, report: TurnReport | None, *, campaign_id: str | None = None
+) -> DashboardProjection:
     """The country's CURRENT condition.
 
     `report` is the stored report for the turn this state was reached by, or
@@ -908,6 +932,7 @@ def build_dashboard(state: GameState, report: TurnReport | None) -> DashboardPro
     difficulty = politics.constitution.amendment_difficulty.value.replace("_", " ").capitalize()
     return DashboardProjection(
         revision=revision_token(state),
+        campaign_id=campaign_id,
         turn=state.turn,
         country_name=country.name,
         government_form=_government_form_label(politics),

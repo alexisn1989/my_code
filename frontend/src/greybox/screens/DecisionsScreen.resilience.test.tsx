@@ -19,10 +19,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DecisionsScreen } from "./DecisionsScreen";
 import { SessionProvider, useSession } from "../../state/SessionContext";
 
-const DASHBOARD = { revision: "rev-1", country_name: "Testland", turn: 3, terminal: null };
+const DASHBOARD = {
+  revision: "rev-1",
+  campaign_id: "campaign-1",
+  country_name: "Testland",
+  turn: 3,
+  terminal: null,
+};
 
+// `campaign_id` is present here because the real endpoint sends it, and because this is the
+// projection Refresh adopts from. Omitting it would make the recovery test below fail for a
+// reason the production code is right about: a refreshed view with no campaign is not a view
+// this tab can resolve against.
 const DECISION_OPTIONS = {
   revision: "rev-1",
+  campaign_id: "campaign-1",
   blocs: [],
   chambers: [],
   constitutional_axes: [],
@@ -52,14 +63,17 @@ function problem(type: string, status: number, extra: Record<string, unknown> = 
 /** `revision` starts `null` in a fresh `SessionProvider`; `handleResolve`/`handlePreview`
  * both no-op on a null revision (correctly -- there is nothing to submit against yet).
  * Tests that need to actually exercise resolve must set one first, exactly as a real
- * New Game/Load flow would via `setRevision`. */
+ * New Game/Load flow would via `setCampaignView`. */
 function SetRevision({ children }: { children: ReactNode }) {
-  const { setRevision, revision } = useSession();
+  const { setCampaignView, revision } = useSession();
   useEffect(() => {
     if (revision === null) {
-      setRevision("rev-1");
+      // Both together, as a real New Game/Load flow adopts them: `handleResolve`/`handlePreview` both no-op until BOTH are set,
+      // because a request carrying one without the other is exactly what the server
+      // now refuses.
+      setCampaignView("rev-1", "campaign-1");
     }
-  }, [revision, setRevision]);
+  }, [revision, setCampaignView]);
   return revision === null ? null : <>{children}</>;
 }
 
@@ -192,16 +206,23 @@ describe("DecisionsScreen: stale_revision recovery", () => {
     // an inert relabelling of the same permanent failure.
     let resolveCallCount = 0;
     const seenResolveRevisions: string[] = [];
+    const seenResolveCampaigns: string[] = [];
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes("/api/game/state")) return Promise.resolve(jsonResponse(DASHBOARD));
       if (url.includes("/api/game/decision-options")) {
-        return Promise.resolve(jsonResponse({ ...DECISION_OPTIONS, revision: "rev-2" }));
+        // A DIFFERENT campaign id as well as a different revision: this is the campaign-replaced
+        // case, where adopting only the revision would leave the tab submitting a campaign that
+        // no longer exists and failing forever.
+        return Promise.resolve(
+          jsonResponse({ ...DECISION_OPTIONS, revision: "rev-2", campaign_id: "campaign-2" }),
+        );
       }
       if (url.includes("/api/game/resolve")) {
         resolveCallCount += 1;
-        const body = JSON.parse(String(init?.body)) as { revision: string };
+        const body = JSON.parse(String(init?.body)) as { revision: string; campaign_id: string };
         seenResolveRevisions.push(body.revision);
+        seenResolveCampaigns.push(body.campaign_id);
         if (body.revision === "rev-1") {
           return Promise.resolve(problem("stale_revision", 409, { expected: "rev-2", actual: "rev-1" }));
         }
@@ -232,5 +253,9 @@ describe("DecisionsScreen: stale_revision recovery", () => {
     await waitFor(() => expect(navigate).toHaveBeenCalledWith("result"));
     expect(resolveCallCount).toBe(2);
     expect(seenResolveRevisions).toEqual(["rev-1", "rev-2"]);
+    // The campaign is adopted with the revision, not left behind. Were it left behind, the retry
+    // would carry "campaign-1" against a server holding "campaign-2" and fail permanently -- the
+    // inert-Refresh defect, one field over from where it was found the first time.
+    expect(seenResolveCampaigns).toEqual(["campaign-1", "campaign-2"]);
   });
 });

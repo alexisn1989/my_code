@@ -22,12 +22,15 @@ import { SessionProvider, useSession } from "../../state/SessionContext";
  * no-ops on a null revision -- exactly the pattern already established by
  * `DecisionsScreen.resilience.test.tsx`. */
 function SetRevision({ children }: { children: ReactNode }) {
-  const { setRevision, revision } = useSession();
+  const { setCampaignView, revision } = useSession();
   useEffect(() => {
     if (revision === null) {
-      setRevision("rev-1");
+      // Both together, as a real New Game/Load flow adopts them: `handlePreview` no-ops until BOTH are set,
+      // because a request carrying one without the other is exactly what the server
+      // now refuses.
+      setCampaignView("rev-1", "campaign-1");
     }
-  }, [revision, setRevision]);
+  }, [revision, setCampaignView]);
   return revision === null ? null : <>{children}</>;
 }
 

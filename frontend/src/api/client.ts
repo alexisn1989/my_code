@@ -85,11 +85,19 @@ export const api = {
   getDecisionOptions: (): Promise<DecisionOptionsProjection> =>
     request("/api/game/decision-options"),
 
-  preview: (revision: string, decisions: readonly Decision[]): Promise<PreviewProjection> =>
-    postJson("/api/game/preview", { revision, decisions }),
+  preview: (
+    revision: string,
+    campaignId: string,
+    decisions: readonly Decision[],
+  ): Promise<PreviewProjection> =>
+    postJson("/api/game/preview", { revision, campaign_id: campaignId, decisions }),
 
-  resolve: (revision: string, decisions: readonly Decision[]): Promise<ResolveResponse> =>
-    postJson("/api/game/resolve", { revision, decisions }),
+  resolve: (
+    revision: string,
+    campaignId: string,
+    decisions: readonly Decision[],
+  ): Promise<ResolveResponse> =>
+    postJson("/api/game/resolve", { revision, campaign_id: campaignId, decisions }),
 
   listHistory: (): Promise<HistoryListEntry[]> => request("/api/game/history"),
 

@@ -19,7 +19,7 @@ export function TitleScreen({ navigate }: ScreenProps) {
   const saves = useSaves();
   const newGame = useNewGame();
   const loadGame = useLoadGame();
-  const { setRevision } = useSession();
+  const { setCampaignView } = useSession();
   const [seedInput, setSeedInput] = useState("");
 
   function handleStart(scenarioId: string) {
@@ -28,7 +28,7 @@ export function TitleScreen({ navigate }: ScreenProps) {
       { scenarioId, seed },
       {
         onSuccess: (dashboard) => {
-          setRevision(dashboard.revision);
+          setCampaignView(dashboard.revision, dashboard.campaign_id);
           navigate("dashboard");
         },
       },
@@ -40,7 +40,7 @@ export function TitleScreen({ navigate }: ScreenProps) {
       { saveId },
       {
         onSuccess: (dashboard) => {
-          setRevision(dashboard.revision);
+          setCampaignView(dashboard.revision, dashboard.campaign_id);
           navigate("dashboard");
         },
         // On failure, this mutation writes nothing to the query cache (see

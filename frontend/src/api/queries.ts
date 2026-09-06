@@ -196,10 +196,11 @@ export function useLiveTurnResult() {
 export function usePreview(): UseMutationResult<
   Awaited<ReturnType<typeof api.preview>>,
   Error,
-  { revision: string; decisions: readonly Decision[] }
+  { revision: string; campaignId: string; decisions: readonly Decision[] }
 > {
   return useMutation({
-    mutationFn: ({ revision, decisions }) => api.preview(revision, decisions),
+    mutationFn: ({ revision, campaignId, decisions }) =>
+      api.preview(revision, campaignId, decisions),
   });
 }
 
@@ -215,11 +216,12 @@ export function usePreview(): UseMutationResult<
 export function useResolve(): UseMutationResult<
   ResolveResponse,
   Error,
-  { revision: string; decisions: readonly Decision[] }
+  { revision: string; campaignId: string; decisions: readonly Decision[] }
 > {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ revision, decisions }) => api.resolve(revision, decisions),
+    mutationFn: ({ revision, campaignId, decisions }) =>
+      api.resolve(revision, campaignId, decisions),
     onSuccess: (response) => {
       const newRevision = response.dashboard.revision;
       queryClient.setQueryData(dashboardQueryKey(newRevision), response.dashboard);

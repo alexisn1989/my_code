@@ -34,6 +34,19 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
         yield test_client
 
 
+def _campaign_of(client: TestClient) -> str:
+    """The live campaign id, read where a real client reads it (review defect #1).
+
+    Every request that echoes a revision must echo the campaign it belongs to, so these tests send
+    a REAL one. Sending nothing would be rejected as a missing field -- a 422 that looks exactly
+    like the malformed-decision rejections several tests here assert, which would let them pass
+    without ever exercising what they claim to.
+    """
+    response = client.get("/api/game/state")
+    assert response.status_code == 200, response.text
+    return str(response.json()["campaign_id"])
+
+
 def _new_game(client: TestClient, scenario_id: str = "decree_state") -> dict:
     response = client.post("/api/game/new", json={"scenario_id": scenario_id})
     assert response.status_code == 200, response.text
@@ -197,7 +210,10 @@ def test_strategic_map_does_not_change_after_resolving_a_turn(client: TestClient
     _new_game(client, scenario_id="tiny_valid")
     before = client.get("/api/game/map/strategic").json()
 
-    resolve_response = client.post("/api/game/resolve", json={"revision": "0.0", "decisions": []})
+    resolve_response = client.post(
+        "/api/game/resolve",
+        json={"revision": "0.0", "campaign_id": _campaign_of(client), "decisions": []},
+    )
     assert resolve_response.status_code == 200, resolve_response.text
 
     after = client.get("/api/game/map/strategic").json()

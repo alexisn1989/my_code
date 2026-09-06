@@ -130,7 +130,7 @@ function axisCurrentValueText(currentValue: string | number | null): string {
 }
 
 export function DecisionsScreen({ navigate }: ScreenProps) {
-  const { revision, setRevision } = useSession();
+  const { revision, campaignId, setCampaignView } = useSession();
   const dashboard = useDashboard(revision);
   const options = useDecisionOptions(revision);
   const preview = usePreview();
@@ -188,10 +188,15 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   // relabelling of the same failure. This also naturally refreshes the
   // dashboard: `useDashboard` is keyed by `revision`, so adopting a new one
   // is exactly what makes it refetch.
+  // BOTH values are adopted, never just the revision. A `stale_revision` 409 now has two
+  // causes -- the campaign moved on, or it was REPLACED -- and for the second, adopting a fresh
+  // revision while keeping the old campaign id would leave this tab submitting a campaign that no
+  // longer exists, failing forever. That is precisely the inert-Refresh defect the comment above
+  // records having been found here once already, one field over.
   function handleRefreshAfterStaleRevision() {
     void options.refetch().then((result) => {
       if (result.data) {
-        setRevision(result.data.revision);
+        setCampaignView(result.data.revision, result.data.campaign_id);
       }
     });
   }
@@ -233,21 +238,21 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   const data = options.data;
 
   function handlePreview() {
-    if (revision === null) {
+    if (revision === null || campaignId === null) {
       return;
     }
-    preview.mutate({ revision, decisions: buildDecisions(draft) });
+    preview.mutate({ revision, campaignId, decisions: buildDecisions(draft) });
   }
 
   function handleResolve() {
-    if (revision === null) {
+    if (revision === null || campaignId === null) {
       return;
     }
     resolve.mutate(
-      { revision, decisions: buildDecisions(draft) },
+      { revision, campaignId, decisions: buildDecisions(draft) },
       {
         onSuccess: (response) => {
-          setRevision(response.dashboard.revision);
+          setCampaignView(response.dashboard.revision, response.dashboard.campaign_id);
           draft.clearDraft();
           setConfirming(false);
           navigate("result");

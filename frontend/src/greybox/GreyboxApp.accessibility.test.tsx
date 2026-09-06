@@ -34,12 +34,12 @@ import { SessionProvider, useSession } from "../state/SessionContext";
  * real in-progress campaign -- the same pattern
  * `DecisionsScreen.resilience.test.tsx` already established. */
 function SetRevision({ children }: { children: ReactNode }) {
-  const { setRevision, revision } = useSession();
+  const { setCampaignView, revision } = useSession();
   useEffect(() => {
     if (revision === null) {
-      setRevision("rev-1");
+      setCampaignView("rev-1", "campaign-1");
     }
-  }, [revision, setRevision]);
+  }, [revision, setCampaignView]);
   return revision === null ? null : <>{children}</>;
 }
 

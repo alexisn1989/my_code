@@ -54,6 +54,21 @@ def _session_of(app: FastAPI) -> GameSession:
     return session
 
 
+def _campaign_of(app: FastAPI) -> str:
+    """The live campaign id (review defect #1), read straight off the session rather than over
+    HTTP.
+
+    Deliberately not a `/api/game/state` call: several tests below construct their request bodies
+    INSIDE a concurrently-running task, and a second round trip there would change the very
+    overlap those tests exist to measure. `_session_of` is this file's established way of reaching
+    the same fact.
+
+    Takes the app rather than a client because these tests drive the ASGI app through
+    `httpx.AsyncClient`, which -- unlike `TestClient` -- exposes no `.app`.
+    """
+    return _session_of(app).save_id
+
+
 def _run(coroutine: Callable[[], Awaitable[Any]]) -> Any:
     return asyncio.run(coroutine())
 
@@ -147,12 +162,20 @@ def test_a_second_resolve_is_refused_while_the_first_is_in_flight(tmp_path: Path
             session.barrier = barrier
 
             first = asyncio.create_task(
-                client.post("/api/game/resolve", json={"revision": revision, "decisions": []})
+                client.post(
+                    "/api/game/resolve",
+                    json={
+                        "revision": revision,
+                        "campaign_id": _campaign_of(app),
+                        "decisions": [],
+                    },
+                )
             )
             await barrier.reached.wait()  # A is admitted and paused -- no sleep involved.
 
             second = await client.post(
-                "/api/game/resolve", json={"revision": revision, "decisions": []}
+                "/api/game/resolve",
+                json={"revision": revision, "campaign_id": _campaign_of(app), "decisions": []},
             )
             assert second.status_code == 409
             assert second.json()["type"] == "resolution_in_progress"
@@ -178,7 +201,8 @@ def test_a_second_resolve_is_refused_while_the_first_is_in_flight(tmp_path: Path
 
             # The loser's ORIGINAL revision is now stale -- a different 409.
             late = await client.post(
-                "/api/game/resolve", json={"revision": revision, "decisions": []}
+                "/api/game/resolve",
+                json={"revision": revision, "campaign_id": _campaign_of(app), "decisions": []},
             )
             assert late.status_code == 409
             assert late.json()["type"] == "stale_revision"
@@ -216,7 +240,14 @@ def test_a_new_game_is_refused_while_a_resolve_is_in_flight(tmp_path: Path) -> N
             barrier = MutationBarrier.create()
             session.barrier = barrier
             first = asyncio.create_task(
-                client.post("/api/game/resolve", json={"revision": revision, "decisions": []})
+                client.post(
+                    "/api/game/resolve",
+                    json={
+                        "revision": revision,
+                        "campaign_id": _campaign_of(app),
+                        "decisions": [],
+                    },
+                )
             )
             await barrier.reached.wait()
 
@@ -279,7 +310,14 @@ def test_a_load_is_refused_while_a_resolve_is_in_flight(tmp_path: Path) -> None:
             barrier = MutationBarrier.create()
             session.barrier = barrier
             first = asyncio.create_task(
-                client.post("/api/game/resolve", json={"revision": revision, "decisions": []})
+                client.post(
+                    "/api/game/resolve",
+                    json={
+                        "revision": revision,
+                        "campaign_id": _campaign_of(app),
+                        "decisions": [],
+                    },
+                )
             )
             await barrier.reached.wait()
 
@@ -325,7 +363,14 @@ def test_a_save_as_is_refused_while_a_resolve_is_in_flight(tmp_path: Path) -> No
             barrier = MutationBarrier.create()
             session.barrier = barrier
             first = asyncio.create_task(
-                client.post("/api/game/resolve", json={"revision": revision, "decisions": []})
+                client.post(
+                    "/api/game/resolve",
+                    json={
+                        "revision": revision,
+                        "campaign_id": _campaign_of(app),
+                        "decisions": [],
+                    },
+                )
             )
             await barrier.reached.wait()
 
@@ -387,7 +432,8 @@ def test_a_resolve_is_refused_while_a_load_is_in_flight(tmp_path: Path) -> None:
             await barrier.reached.wait()
 
             second = await client.post(
-                "/api/game/resolve", json={"revision": revision, "decisions": []}
+                "/api/game/resolve",
+                json={"revision": revision, "campaign_id": _campaign_of(app), "decisions": []},
             )
             assert second.status_code == 409
             assert second.json()["type"] == "resolution_in_progress"
@@ -407,7 +453,8 @@ def test_a_resolve_is_refused_while_a_load_is_in_flight(tmp_path: Path) -> None:
             # The checkpoint carries the same opening revision the refused resolve
             # was submitted against, so the retry can now succeed against it.
             retry = await client.post(
-                "/api/game/resolve", json={"revision": revision, "decisions": []}
+                "/api/game/resolve",
+                json={"revision": revision, "campaign_id": _campaign_of(app), "decisions": []},
             )
             assert retry.status_code == 200
             assert session.save_id == checkpoint_id, "resolve advanced the now-active loaded save"
@@ -439,7 +486,8 @@ def test_a_resolve_is_refused_while_a_new_game_is_in_flight(tmp_path: Path) -> N
             await barrier.reached.wait()
 
             second = await client.post(
-                "/api/game/resolve", json={"revision": revision, "decisions": []}
+                "/api/game/resolve",
+                json={"revision": revision, "campaign_id": _campaign_of(app), "decisions": []},
             )
             assert second.status_code == 409
             assert second.json()["type"] == "resolution_in_progress"
@@ -457,7 +505,12 @@ def test_a_resolve_is_refused_while_a_new_game_is_in_flight(tmp_path: Path) -> N
             assert new_revision == "0.0"
 
             retry = await client.post(
-                "/api/game/resolve", json={"revision": new_revision, "decisions": []}
+                "/api/game/resolve",
+                json={
+                    "revision": new_revision,
+                    "campaign_id": _campaign_of(app),
+                    "decisions": [],
+                },
             )
             assert retry.status_code == 200
 
@@ -488,7 +541,14 @@ def test_read_only_and_preview_requests_stay_coherent_during_a_paused_resolve(
             barrier = MutationBarrier.create()
             session.barrier = barrier
             first = asyncio.create_task(
-                client.post("/api/game/resolve", json={"revision": revision, "decisions": []})
+                client.post(
+                    "/api/game/resolve",
+                    json={
+                        "revision": revision,
+                        "campaign_id": _campaign_of(app),
+                        "decisions": [],
+                    },
+                )
             )
             await barrier.reached.wait()
 
@@ -497,7 +557,8 @@ def test_read_only_and_preview_requests_stay_coherent_during_a_paused_resolve(
             assert mid_state.json()["revision"] == revision
 
             mid_preview = await client.post(
-                "/api/game/preview", json={"revision": revision, "decisions": []}
+                "/api/game/preview",
+                json={"revision": revision, "campaign_id": _campaign_of(app), "decisions": []},
             )
             assert mid_preview.status_code == 200
 
@@ -582,12 +643,18 @@ def test_a_stale_revision_resolves_nothing_and_writes_nothing(
     client: TestClient, tmp_path: Path
 ) -> None:
     revision = _new_game(client)
-    assert client.post("/api/game/resolve", json={"revision": revision, "decisions": []}).is_success
+    assert client.post(
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client.app), "decisions": []},
+    ).is_success
     save_id = client.get("/api/saves").json()[0]["save_id"]
     on_disk = (tmp_path / "saves" / f"{save_id}.json").read_bytes()
     turn_before = client.get("/api/game/state").json()["turn"]
 
-    response = client.post("/api/game/resolve", json={"revision": revision, "decisions": []})
+    response = client.post(
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client.app), "decisions": []},
+    )
 
     assert response.status_code == 409
     body = response.json()
@@ -602,7 +669,10 @@ def test_a_stale_revision_resolves_nothing_and_writes_nothing(
 def test_a_malformed_revision_token_is_rejected(client: TestClient, revision: str) -> None:
     _new_game(client)
 
-    response = client.post("/api/game/resolve", json={"revision": revision, "decisions": []})
+    response = client.post(
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client.app), "decisions": []},
+    )
 
     assert response.status_code == 422
     assert response.json()["type"] == "decision_rejected"
@@ -612,7 +682,10 @@ def test_the_revision_advances_by_exactly_one_turn(client: TestClient) -> None:
     revision = _new_game(client)
     assert revision == "0.0"
 
-    body = client.post("/api/game/resolve", json={"revision": revision, "decisions": []}).json()
+    body = client.post(
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client.app), "decisions": []},
+    ).json()
 
     assert body["turnResult"]["revision"] == "1.1"
     assert body["dashboard"]["revision"] == "1.1"
@@ -627,7 +700,10 @@ def test_resolve_returns_both_shapes_and_they_agree_with_history(client: TestCli
     entry via the same builders (`build_turn_result`, `build_dashboard`)."""
     revision = _new_game(client)
 
-    body = client.post("/api/game/resolve", json={"revision": revision, "decisions": []}).json()
+    body = client.post(
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client.app), "decisions": []},
+    ).json()
 
     assert set(body) == {"turnResult", "dashboard"}
     historical = client.get("/api/game/history/1").json()
@@ -660,7 +736,10 @@ def test_a_persistence_failure_leaves_disk_and_memory_unchanged(
         raise OSError("disk full")
 
     monkeypatch.setattr("app.api.save_registry.write_save_atomic", explode)
-    response = client.post("/api/game/resolve", json={"revision": revision, "decisions": []})
+    response = client.post(
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client.app), "decisions": []},
+    )
 
     assert response.status_code == 500
     monkeypatch.undo()
@@ -669,7 +748,10 @@ def test_a_persistence_failure_leaves_disk_and_memory_unchanged(
     assert not list((tmp_path / "saves").glob("*.tmp")), "no temporary file survives"
 
     # And the boundary was released, so a later valid request still succeeds.
-    assert client.post("/api/game/resolve", json={"revision": revision, "decisions": []}).is_success
+    assert client.post(
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client.app), "decisions": []},
+    ).is_success
 
 
 def test_the_boundary_is_released_after_a_rejected_decision(client: TestClient) -> None:
@@ -677,21 +759,37 @@ def test_the_boundary_is_released_after_a_rejected_decision(client: TestClient) 
 
     rejected = client.post(
         "/api/game/resolve",
-        json={"revision": revision, "decisions": [{"kind": "not_a_real_decision"}]},
+        json={
+            "revision": revision,
+            "campaign_id": _campaign_of(client.app),
+            "decisions": [{"kind": "not_a_real_decision"}],
+        },
     )
     assert rejected.status_code == 422
 
-    assert client.post("/api/game/resolve", json={"revision": revision, "decisions": []}).is_success
+    assert client.post(
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client.app), "decisions": []},
+    ).is_success
 
 
 def test_the_boundary_is_released_after_a_stale_rejection(client: TestClient) -> None:
     revision = _new_game(client)
-    client.post("/api/game/resolve", json={"revision": revision, "decisions": []})
+    client.post(
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client.app), "decisions": []},
+    )
 
     assert (
-        client.post("/api/game/resolve", json={"revision": revision, "decisions": []}).status_code
+        client.post(
+            "/api/game/resolve",
+            json={"revision": revision, "campaign_id": _campaign_of(client.app), "decisions": []},
+        ).status_code
         == 409
     )
 
     current = client.get("/api/game/state").json()["revision"]
-    assert client.post("/api/game/resolve", json={"revision": current, "decisions": []}).is_success
+    assert client.post(
+        "/api/game/resolve",
+        json={"revision": current, "campaign_id": _campaign_of(client.app), "decisions": []},
+    ).is_success

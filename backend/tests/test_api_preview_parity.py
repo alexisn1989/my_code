@@ -52,12 +52,36 @@ def _budget(rate_bps: int = 2_500, route: str = "legislative", **extra: Any) -> 
     return {"kind": "budget", "personal_income_rate_bps": rate_bps, "route": route, **extra}
 
 
+def _campaign_of(client: TestClient) -> str:
+    """The live campaign id, read where a real client reads it (review defect #1).
+
+    Every request that echoes a revision must echo the campaign it belongs to, so these tests send
+    a REAL one. Sending nothing would be rejected as a missing field -- a 422 that looks exactly
+    like the malformed-decision rejections several tests here assert, which would let them pass
+    without ever exercising what they claim to.
+
+    A client with NO campaign yet has nothing real to send, so a placeholder is returned for that
+    case: the request is then rejected for having no session, which is what the caller is testing,
+    rather than for a schema violation that would mask it.
+    """
+    response = client.get("/api/game/state")
+    if response.status_code != 200:
+        return "no-active-campaign"
+    return str(response.json()["campaign_id"])
+
+
 def _preview(client: TestClient, revision: str, decisions: list[dict[str, Any]]) -> Any:
-    return client.post("/api/game/preview", json={"revision": revision, "decisions": decisions})
+    return client.post(
+        "/api/game/preview",
+        json={"revision": revision, "campaign_id": _campaign_of(client), "decisions": decisions},
+    )
 
 
 def _resolve(client: TestClient, revision: str, decisions: list[dict[str, Any]]) -> Any:
-    return client.post("/api/game/resolve", json={"revision": revision, "decisions": decisions})
+    return client.post(
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client), "decisions": decisions},
+    )
 
 
 def _chamber_tallies_from_trace(turn_result: dict[str, Any]) -> dict[str, str]:
@@ -551,7 +575,7 @@ def test_a_scenario_state_is_loadable_for_every_shipped_scenario() -> None:
 
 
 def _assert_both_reject(client: TestClient, revision: str, decisions: list[dict[str, Any]]) -> None:
-    body = {"revision": revision, "decisions": decisions}
+    body = {"revision": revision, "campaign_id": _campaign_of(client), "decisions": decisions}
     preview = client.post("/api/game/preview", json=body)
     resolve = client.post("/api/game/resolve", json=body)
     assert preview.status_code == 422, preview.text
@@ -748,7 +772,12 @@ def test_162_bargaining_plus_139_investment_previews_as_unaffordable_and_resolve
         turn_before = save_before.current_turn()
 
         resolved = resolver.post(
-            "/api/game/resolve", json={"revision": revision, "decisions": decisions}
+            "/api/game/resolve",
+            json={
+                "revision": revision,
+                "campaign_id": _campaign_of(resolver),
+                "decisions": decisions,
+            },
         )
         assert resolved.status_code == 422, resolved.text
         assert resolved.json()["type"] == "decision_rejected"

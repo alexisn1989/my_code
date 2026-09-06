@@ -28,12 +28,12 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function SetRevision({ children }: { children: ReactNode }) {
-  const { setRevision, revision } = useSession();
+  const { setCampaignView, revision } = useSession();
   useEffect(() => {
     if (revision === null) {
-      setRevision("rev-1");
+      setCampaignView("rev-1", "campaign-1");
     }
-  }, [revision, setRevision]);
+  }, [revision, setCampaignView]);
   return revision === null ? null : <>{children}</>;
 }
 
@@ -201,7 +201,7 @@ function dashboard(revision: string, overrides: Record<string, unknown> = {}) {
  * five-row loaded-game-identity table (frozen plan §12/§13, "C5") is proven
  * through the actual production wiring, not re-implemented in the test. */
 function Harness() {
-  const { revision, setRevision } = useSession();
+  const { revision, setCampaignView } = useSession();
   const newGame = useNewGame();
   const loadGame = useLoadGame();
   const resolve = useResolve();
@@ -209,13 +209,13 @@ function Harness() {
     <div>
       <button
         type="button"
-        onClick={() => newGame.mutate({ scenarioId: "tiny_valid" }, { onSuccess: (d) => setRevision(d.revision) })}
+        onClick={() => newGame.mutate({ scenarioId: "tiny_valid" }, { onSuccess: (d) => setCampaignView(d.revision, d.campaign_id) })}
       >
         Start tiny_valid
       </button>
       <button
         type="button"
-        onClick={() => loadGame.mutate({ saveId: "save-decree" }, { onSuccess: (d) => setRevision(d.revision) })}
+        onClick={() => loadGame.mutate({ saveId: "save-decree" }, { onSuccess: (d) => setCampaignView(d.revision, d.campaign_id) })}
       >
         Load decree_state
       </button>
@@ -225,8 +225,8 @@ function Harness() {
         onClick={() =>
           revision !== null &&
           resolve.mutate(
-            { revision, decisions: [] },
-            { onSuccess: (response) => setRevision(response.dashboard.revision) },
+            { revision, campaignId: "campaign-1", decisions: [] },
+            { onSuccess: (response) => setCampaignView(response.dashboard.revision, response.dashboard.campaign_id) },
           )
         }
       >

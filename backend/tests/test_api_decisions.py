@@ -44,11 +44,24 @@ def _new(client: TestClient, scenario_id: str = "decree_state") -> str:
     return revision
 
 
+def _campaign_of(client: TestClient) -> str:
+    """The live campaign id, read where a real client reads it (review defect #1).
+
+    Every request that echoes a revision must echo the campaign it belongs to, so these tests send
+    a REAL one. Sending nothing would be rejected as a missing field -- a 422 that looks exactly
+    like the malformed-decision rejections several tests here assert, which would let them pass
+    without ever exercising what they claim to.
+    """
+    response = client.get("/api/game/state")
+    assert response.status_code == 200, response.text
+    return str(response.json()["campaign_id"])
+
+
 def _assert_both_reject(client: TestClient, revision: str, decisions: tuple[dict, ...]) -> None:
     """`/preview` and `/resolve` must reject the identical malformed payload
     with the identical error type -- proving the two cannot silently drift
     apart on what "invalid" means."""
-    body = {"revision": revision, "decisions": list(decisions)}
+    body = {"revision": revision, "campaign_id": _campaign_of(client), "decisions": list(decisions)}
 
     preview = client.post("/api/game/preview", json=body)
     resolve = client.post("/api/game/resolve", json=body)
@@ -94,7 +107,11 @@ def test_canonical_kind_order_is_accepted(client: TestClient) -> None:
         "kind": "bloc_relationship_investment",
         "investments": [{**BLOC_A, "political_capital": 10}],
     }
-    body = {"revision": revision, "decisions": [investment, _budget()]}
+    body = {
+        "revision": revision,
+        "campaign_id": _campaign_of(client),
+        "decisions": [investment, _budget()],
+    }
 
     assert client.post("/api/game/preview", json=body).status_code == 200
     assert client.post("/api/game/resolve", json=body).status_code == 200
@@ -153,7 +170,7 @@ def test_canonical_influence_order_is_accepted(client: TestClient) -> None:
             {**BLOC_B, "political_capital": 5},
         ]
     )
-    body = {"revision": revision, "decisions": [decision]}
+    body = {"revision": revision, "campaign_id": _campaign_of(client), "decisions": [decision]}
 
     assert client.post("/api/game/preview", json=body).status_code == 200
     assert client.post("/api/game/resolve", json=body).status_code == 200
@@ -271,7 +288,7 @@ def test_investment_at_exactly_the_cap_is_accepted(client: TestClient) -> None:
         "kind": "bloc_relationship_investment",
         "investments": [{**BLOC_A, "political_capital": 200}],
     }
-    body = {"revision": revision, "decisions": [decision]}
+    body = {"revision": revision, "campaign_id": _campaign_of(client), "decisions": [decision]}
 
     assert client.post("/api/game/preview", json=body).status_code == 200
     assert client.post("/api/game/resolve", json=body).status_code == 200
@@ -309,7 +326,8 @@ def test_a_failed_legislative_vote_still_consumes_committed_capital(client: Test
     decision = _budget(influence=[{**BLOC_A, "political_capital": 20}])
 
     body = client.post(
-        "/api/game/resolve", json={"revision": revision, "decisions": [decision]}
+        "/api/game/resolve",
+        json={"revision": revision, "campaign_id": _campaign_of(client), "decisions": [decision]},
     ).json()
 
     assert body["turnResult"]["outcome_tone"] == "negative"

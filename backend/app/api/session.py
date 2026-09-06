@@ -69,11 +69,19 @@ class StaleRevisionError(MandateError):
     `DecisionSetError` would raise -- never a substitute for it.
     """
 
-    def __init__(self, *, expected: str, actual: str) -> None:
+    def __init__(self, *, expected: str, actual: str, subject: str = "revision") -> None:
+        """`subject` names what did not match, so the message stays literally true.
+
+        Two different things now raise this: a stale revision within the live campaign, and a
+        revision belonging to a DIFFERENT campaign entirely (review defect #1). Both leave the
+        client in the same position -- holding a view that is no longer live, recoverable only by
+        refreshing -- so they share a status, an envelope and a recovery affordance. Calling a
+        campaign id a "revision" in the message would be the one dishonest part of that reuse.
+        """
         self.expected = expected
         self.actual = actual
         super().__init__(
-            f"the game has moved on: submitted revision {actual!r}, current {expected!r}"
+            f"the game has moved on: submitted {subject} {actual!r}, current {expected!r}"
         )
 
 

@@ -197,7 +197,7 @@ async def create_game(request: Request, body: NewGameRequest) -> DashboardProjec
         session.repository.write_save(save_id, save)
         session.repository.list_saves()
         session.adopt(save, save_id)
-        return build_dashboard(save.current_state(), None)
+        return build_dashboard(save.current_state(), None, campaign_id=save_id)
 
 
 @router.post("/game/load", response_model=DashboardProjection)
@@ -217,7 +217,7 @@ async def load_game(request: Request, body: LoadRequest) -> DashboardProjection:
         if problems:
             raise HistoryValidationError(problems)
         session.adopt(save, save_id)
-        return build_dashboard(save.current_state(), save.entries[-1].report())
+        return build_dashboard(save.current_state(), save.entries[-1].report(), campaign_id=save_id)
 
 
 @router.post("/game/save-as", response_model=SaveSummary)
@@ -265,8 +265,11 @@ async def save_as(request: Request, body: SaveAsRequest) -> SaveSummary:
 @router.get("/game/state", response_model=DashboardProjection)
 def get_state(request: Request) -> DashboardProjection:
     """The bare dashboard shape -- never a narrative about what changed."""
-    save = _session(request).current_save
-    return build_dashboard(save.current_state(), save.entries[-1].report())
+    session = _session(request)
+    save = session.current_save
+    return build_dashboard(
+        save.current_state(), save.entries[-1].report(), campaign_id=session.save_id
+    )
 
 
 @router.get("/game/map/strategic", response_model=StrategicMapProjection)
@@ -291,8 +294,11 @@ def get_decision_options(request: Request) -> DecisionOptionsProjection:
     nothing about what is affordable or legal to SUBMIT -- `/preview` scores a
     draft and `/resolve`'s own validators are still the only authority.
     """
-    save = _session(request).current_save
-    return build_decision_options_with_policy_cards(save.current_state())
+    session = _session(request)
+    save = session.current_save
+    return build_decision_options_with_policy_cards(
+        save.current_state(), campaign_id=session.save_id
+    )
 
 
 @router.get("/game/history", response_model=list[HistoryListEntry])
@@ -329,7 +335,7 @@ def get_history_detail(request: Request, turn: int) -> HistoryDetailResponse:
     state = entry.state()
     return HistoryDetailResponse(
         turnResult=build_turn_result(state, report),
-        dashboardAsOfTurn=build_dashboard(state, report),
+        dashboardAsOfTurn=build_dashboard(state, report, campaign_id=_session(request).save_id),
     )
 
 
@@ -361,6 +367,11 @@ class ResolveRequest(BaseModel):
 
     #: The opaque token most recently received, echoed back VERBATIM.
     revision: str
+    #: Which campaign this request belongs to; required, and checked before the counters.
+    #: REQUIRED rather than optional on purpose: an optional field that skipped the check when
+    #: absent would reintroduce the very defect this closes, in a form that passes every test
+    #: that does send it -- and `extra="forbid"` makes an omission a loud 422, not a silent pass.
+    campaign_id: str
     #: Assembled in canonical order by the client. The server does not sort,
     #: deduplicate, normalize or repair -- noncanonical order is REJECTED by the
     #: engine's own validators, which is the contract the engine guarantees.
@@ -378,6 +389,30 @@ def _parse_revision(revision: str) -> tuple[int, int]:
     if match is None:
         raise DecisionSetError(f"malformed revision token {revision!r}")
     return int(match.group(1)), int(match.group(2))
+
+
+def _require_same_campaign(session: GameSession, claimed_campaign_id: str) -> None:
+    """Reject a request built against a DIFFERENT campaign (review defect #1).
+
+    `revision` says WHEN a client's view was taken; it says nothing about WHAT it was a view of.
+    Two campaigns sitting at the same turn issue byte-identical tokens, so before this check a tab
+    left open on one campaign could resolve a turn of another -- returning 200, and advancing the
+    wrong game.
+
+    Runs BEFORE the counter comparison and IN ADDITION to it, never instead of it: the engine's own
+    staleness check stays load-bearing on the values the CLIENT claimed (ADR 0014), and a stale
+    revision within the right campaign is still refused.
+
+    Reuses `StaleRevisionError` rather than minting a new type. The status, the problem envelope and
+    the client's recovery affordance are identical -- a tab holding a view of something no longer
+    live must refresh -- and the message names the campaign mismatch specifically, so the two causes
+    stay distinguishable in a log and in the panel.
+    """
+    live_campaign_id = session.save_id
+    if claimed_campaign_id != live_campaign_id:
+        raise StaleRevisionError(
+            expected=live_campaign_id, actual=claimed_campaign_id, subject="campaign"
+        )
 
 
 @router.post("/game/resolve", response_model=ResolveResponse)
@@ -407,6 +442,7 @@ async def resolve(request: Request, body: ResolveRequest) -> ResolveResponse:
     async with session.boundary.admit("resolution"):
         await session.wait_at_barrier()
 
+        _require_same_campaign(session, body.campaign_id)
         save = session.current_save
         claimed_turn, claimed_version = _parse_revision(body.revision)
         live = save.current_state()
@@ -451,7 +487,8 @@ async def resolve(request: Request, body: ResolveRequest) -> ResolveResponse:
     assert report is not None, "a resolved turn always stores a report"
     state = entry.state()
     return ResolveResponse(
-        turnResult=build_turn_result(state, report), dashboard=build_dashboard(state, report)
+        turnResult=build_turn_result(state, report),
+        dashboard=build_dashboard(state, report, campaign_id=session.save_id),
     )
 
 
@@ -464,6 +501,11 @@ class PreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     revision: str
+    #: Which campaign this request belongs to; required, and checked before the counters.
+    #: REQUIRED rather than optional on purpose: an optional field that skipped the check when
+    #: absent would reintroduce the very defect this closes, in a form that passes every test
+    #: that does send it -- and `extra="forbid"` makes an omission a loud 422, not a silent pass.
+    campaign_id: str
     decisions: tuple[dict[str, Any], ...] = ()
 
 
@@ -480,7 +522,9 @@ def preview_proposal(request: Request, body: PreviewRequest) -> PreviewProjectio
     show preview a mixture of pre- and post-mutation state. It observes one
     complete revision or the other.
     """
-    save = _session(request).current_save  # captured once; never re-read below
+    session = _session(request)
+    _require_same_campaign(session, body.campaign_id)
+    save = session.current_save  # captured once; never re-read below
     state = save.current_state()
     claimed_turn, claimed_version = _parse_revision(body.revision)
     if (claimed_turn, claimed_version) != (state.turn, state.state_version):

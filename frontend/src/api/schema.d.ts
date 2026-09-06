@@ -485,6 +485,8 @@ export interface components {
              * @default []
              */
             alerts: components["schemas"]["Alert"][];
+            /** Campaign Id */
+            campaign_id?: string | null;
             concerns: components["schemas"]["DashboardConcerns"];
             /** Country Name */
             country_name: string;
@@ -521,6 +523,8 @@ export interface components {
         DecisionOptionsProjection: {
             /** Blocs */
             blocs: components["schemas"]["BlocOption"][];
+            /** Campaign Id */
+            campaign_id?: string | null;
             /** Chambers */
             chambers: string[];
             /** Constitutional Axes */
@@ -912,6 +916,8 @@ export interface components {
         };
         /** PreviewRequest */
         PreviewRequest: {
+            /** Campaign Id */
+            campaign_id: string;
             /**
              * Decisions
              * @default []
@@ -934,6 +940,8 @@ export interface components {
         ProposalRoute: "legislative" | "decree";
         /** ResolveRequest */
         ResolveRequest: {
+            /** Campaign Id */
+            campaign_id: string;
             /**
              * Decisions
              * @default []

@@ -57,7 +57,7 @@ describe("the typed client", () => {
   it("sends a POST with the JSON body for a mutating endpoint", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { revision: "rev-2" }));
 
-    await api.resolve("rev-1", [{ kind: "budget", route: "legislative" }]);
+    await api.resolve("rev-1", "campaign-1", [{ kind: "budget", route: "legislative" }]);
 
     expect(fetch).toHaveBeenCalledWith(
       "/api/game/resolve",
@@ -65,6 +65,7 @@ describe("the typed client", () => {
         method: "POST",
         body: JSON.stringify({
           revision: "rev-1",
+          campaign_id: "campaign-1",
           decisions: [{ kind: "budget", route: "legislative" }],
         }),
       }),
@@ -76,7 +77,7 @@ describe("the typed client", () => {
       jsonResponse(409, problem("stale_revision", 409, { expected: "rev-2", actual: "rev-1" })),
     );
 
-    await expect(api.resolve("rev-1", [])).rejects.toMatchObject({
+    await expect(api.resolve("rev-1", "campaign-1", [])).rejects.toMatchObject({
       constructor: StaleRevisionError,
       expected: "rev-2",
       actual: "rev-1",
@@ -86,7 +87,7 @@ describe("the typed client", () => {
   it("maps 409 resolution_in_progress to ResolutionInProgressError", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(409, problem("resolution_in_progress", 409)));
 
-    await expect(api.resolve("rev-1", [])).rejects.toBeInstanceOf(ResolutionInProgressError);
+    await expect(api.resolve("rev-1", "campaign-1", [])).rejects.toBeInstanceOf(ResolutionInProgressError);
   });
 
   it("maps 422 decision_rejected to DecisionRejectedError carrying field detail", async () => {
@@ -96,7 +97,7 @@ describe("the typed client", () => {
     };
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(422, body));
 
-    await expect(api.resolve("rev-1", [{ kind: "budget", route: "bogus" }])).rejects.toMatchObject({
+    await expect(api.resolve("rev-1", "campaign-1", [{ kind: "budget", route: "bogus" }])).rejects.toMatchObject({
       constructor: DecisionRejectedError,
       fields: [{ path: "decisions[0].route", message: "unknown route" }],
     });
@@ -111,7 +112,7 @@ describe("the typed client", () => {
   it("maps 409 game_concluded to GameConcludedError", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(409, problem("game_concluded", 409)));
 
-    await expect(api.resolve("rev-1", [])).rejects.toBeInstanceOf(GameConcludedError);
+    await expect(api.resolve("rev-1", "campaign-1", [])).rejects.toBeInstanceOf(GameConcludedError);
   });
 
   it("falls back to the shared ApiError for an unmapped type, and to a synthesized ApiError for a malformed body", async () => {

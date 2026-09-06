@@ -23,6 +23,7 @@ import {
   strategicMapQueryKey,
   useGameGeneration,
   useLoadGame,
+  usePreview,
   useNewGame,
   useResolve,
 } from "./queries";
@@ -72,7 +73,7 @@ describe("useResolve", () => {
     );
 
     const { result } = renderHook(() => useResolve(), { wrapper: wrapperFor(client) });
-    result.current.mutate({ revision: OLD_REVISION, decisions: [] });
+    result.current.mutate({ revision: OLD_REVISION, campaignId: "campaign-1", decisions: [] });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -105,7 +106,7 @@ describe("useResolve", () => {
     );
 
     const { result } = renderHook(() => useResolve(), { wrapper: wrapperFor(client) });
-    result.current.mutate({ revision: OLD_REVISION, decisions: [] });
+    result.current.mutate({ revision: OLD_REVISION, campaignId: "campaign-1", decisions: [] });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
@@ -123,7 +124,7 @@ describe("useResolve", () => {
     );
 
     const { result } = renderHook(() => useResolve(), { wrapper: wrapperFor(client) });
-    result.current.mutate({ revision: OLD_REVISION, decisions: [] });
+    result.current.mutate({ revision: OLD_REVISION, campaignId: "campaign-1", decisions: [] });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -393,5 +394,54 @@ describe("useGameGeneration", () => {
 
     expect(remounted.result.current.data).not.toBe(0);
     expect(client.getQueryData(strategicMapQueryKey(remounted.result.current.data))).toBeUndefined();
+  });
+});
+
+/**
+ * Every request that echoes a revision echoes the campaign it belongs to (review defect #1).
+ *
+ * `revision` alone says only WHEN a client's view was taken. Two campaigns sitting at the same
+ * turn issue identical tokens, so the server now requires the campaign alongside it and refuses a
+ * request built against a different one. These assert the wire payload, because that is the part
+ * the server actually checks.
+ */
+describe("mutations carry the campaign the view belongs to", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function sentBody(): Record<string, unknown> {
+    const call = vi.mocked(fetch).mock.calls.at(-1);
+    const init = call?.[1] as RequestInit | undefined;
+    return JSON.parse(String(init?.body)) as Record<string, unknown>;
+  }
+
+  it("useResolve sends campaign_id alongside the revision", async () => {
+    const client = makeClient();
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(200, { turnResult: TURN_RESULT, dashboard: DASHBOARD_AFTER }),
+    );
+
+    const { result } = renderHook(() => useResolve(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ revision: OLD_REVISION, campaignId: "campaign-1", decisions: [] });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sentBody()).toMatchObject({ revision: OLD_REVISION, campaign_id: "campaign-1" });
+  });
+
+  it("usePreview sends campaign_id alongside the revision", async () => {
+    const client = makeClient();
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, { estimate: true }));
+
+    const { result } = renderHook(() => usePreview(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ revision: OLD_REVISION, campaignId: "campaign-1", decisions: [] });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sentBody()).toMatchObject({ revision: OLD_REVISION, campaign_id: "campaign-1" });
   });
 });

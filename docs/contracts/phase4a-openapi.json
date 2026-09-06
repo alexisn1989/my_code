@@ -432,6 +432,17 @@
             "title": "Alerts",
             "type": "array"
           },
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
+          },
           "concerns": {
             "$ref": "#/components/schemas/DashboardConcerns"
           },
@@ -499,6 +510,17 @@
             },
             "title": "Blocs",
             "type": "array"
+          },
+          "campaign_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campaign Id"
           },
           "chambers": {
             "items": {
@@ -1360,6 +1382,10 @@
       "PreviewRequest": {
         "additionalProperties": false,
         "properties": {
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
           "decisions": {
             "default": [],
             "items": {
@@ -1375,7 +1401,8 @@
           }
         },
         "required": [
-          "revision"
+          "revision",
+          "campaign_id"
         ],
         "title": "PreviewRequest",
         "type": "object"
@@ -1392,6 +1419,10 @@
       "ResolveRequest": {
         "additionalProperties": false,
         "properties": {
+          "campaign_id": {
+            "title": "Campaign Id",
+            "type": "string"
+          },
           "decisions": {
             "default": [],
             "items": {
@@ -1407,7 +1438,8 @@
           }
         },
         "required": [
-          "revision"
+          "revision",
+          "campaign_id"
         ],
         "title": "ResolveRequest",
         "type": "object"

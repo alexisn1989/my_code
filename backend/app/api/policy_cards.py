@@ -766,7 +766,9 @@ def build_policy_cards(state: GameState) -> tuple[PolicyCard, ...]:
     return tuple(cards)
 
 
-def build_decision_options_with_policy_cards(state: GameState) -> DecisionOptionsProjection:
+def build_decision_options_with_policy_cards(
+    state: GameState, *, campaign_id: str | None = None
+) -> DecisionOptionsProjection:
     """`build_decision_options` plus its `policy_cards` field, in one call.
 
     Lives here rather than in `projections.py` to avoid a circular import:
@@ -775,5 +777,5 @@ def build_decision_options_with_policy_cards(state: GameState) -> DecisionOption
     calls this wrapper instead of `build_decision_options` directly; nothing
     else changes about what `build_decision_options` itself computes.
     """
-    options = build_decision_options(state)
+    options = build_decision_options(state, campaign_id=campaign_id)
     return options.model_copy(update={"policy_cards": build_policy_cards(state)})
