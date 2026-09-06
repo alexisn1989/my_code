@@ -147,3 +147,27 @@ export function buildDecisions(draft: DraftState): Decision[] {
 
   return decisions;
 }
+
+/**
+ * A stable identity for "the exact request a preview was made against".
+ *
+ * A preview estimate describes ONE decision set at ONE revision of ONE campaign. Change any of
+ * those three and the estimate no longer describes anything the player is about to submit -- so
+ * the screen compares this signature at render time against the one it captured when it asked.
+ *
+ * Lives here rather than in the screen for two reasons, both enforced by tests: `JSON.stringify`
+ * is banned in the rendering layer (`raw-data-boundary.test.ts`, scoped to `greybox/**`), and
+ * building a string by concatenation is arithmetic the format boundary refuses outside
+ * `src/format/**`. One `JSON.stringify` over a tuple is neither.
+ *
+ * Built from `buildDecisions` rather than from the raw draft on purpose: two drafts that produce
+ * the same submitted payload ARE the same request, so a player who changes something and changes
+ * it back keeps a preview that still honestly describes what they would send.
+ */
+export function previewRequestSignature(
+  draft: DraftState,
+  revision: string | null,
+  campaignId: string | null,
+): string {
+  return JSON.stringify([revision, campaignId, buildDecisions(draft)]);
+}

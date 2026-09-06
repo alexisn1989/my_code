@@ -22,7 +22,7 @@ import { formatAmount, formatBpsPercent } from "../../format/format";
 import { ConsequencesPanel } from "../policy/ConsequencesPanel";
 import { PolicyCardGrid } from "../policy/PolicyCardGrid";
 import { chooseCardRoute, mapPolicyCardToDraft } from "../../state/applyPolicyCard";
-import { buildDecisions } from "../../state/buildDecisionSet";
+import { buildDecisions, previewRequestSignature } from "../../state/buildDecisionSet";
 import { useDraftStore } from "../../state/draft";
 import { useSession } from "../../state/SessionContext";
 import { ErrorPanel } from "../../status/ErrorPanel";
@@ -137,6 +137,11 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   const resolve = useResolve();
   const draft = useDraftStore();
   const [confirming, setConfirming] = useState(false);
+  // Which request the displayed preview describes. A preview estimates ONE decision set at ONE
+  // revision; when the draft moves on, the estimate stops describing anything the player is about
+  // to submit, and showing it anyway is how a "Would pass" verdict outlives the decision it was
+  // about.
+  const [previewedSignature, setPreviewedSignature] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [routeChangeAnnouncement, setRouteChangeAnnouncement] = useState<string | null>(null);
 
@@ -241,6 +246,10 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
     if (revision === null || campaignId === null) {
       return;
     }
+    // Remembered BEFORE the request goes out, so a draft edited while it is in flight is compared
+    // against what was actually asked -- not against whatever the draft happens to be when the
+    // response lands.
+    setPreviewedSignature(previewRequestSignature(draft, revision, campaignId));
     preview.mutate({ revision, campaignId, decisions: buildDecisions(draft) });
   }
 
@@ -263,6 +272,13 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
       },
     );
   }
+
+  // Recomputed every render from the CURRENT draft, so an edit invalidates the estimate the moment
+  // it happens -- including an edit made while a preview request is still outstanding.
+  const previewIsCurrent =
+    !preview.isPending &&
+    previewedSignature !== null &&
+    previewedSignature === previewRequestSignature(draft, revision, campaignId);
 
   const resolveError = resolve.error;
   const isStale = resolveError instanceof StaleRevisionError;
@@ -513,7 +529,23 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         </div>
 
         {preview.isError ? <ErrorPanel error={preview.error} /> : null}
-        {preview.isSuccess ? <ConsequencesPanel preview={preview.data} /> : null}
+        {/* The estimate is shown ONLY while it still describes the decision set the player would
+            submit. Once the draft, the revision or the campaign moves on, the verdict is REPLACED
+            rather than annotated: a "Would pass" left on screen beside a stale-marker is still a
+            verdict a player can read, and it is a verdict about a decision they no longer have. */}
+        {preview.isSuccess && previewIsCurrent ? (
+          <ConsequencesPanel preview={preview.data} />
+        ) : null}
+        {preview.isSuccess && !previewIsCurrent ? (
+          <p
+            data-testid="preview-outdated"
+            role="status"
+            className="mt-3 rounded border border-navy-800 px-3 py-2 text-sm text-parchment-200/80"
+          >
+            The decision changed since this estimate was made. Preview again to see what the
+            legislature would do with the current draft.
+          </p>
+        ) : null}
 
         {confirming ? (
           <div className="mt-4 rounded border border-gold-600 p-3">

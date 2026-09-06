@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DecisionsScreen } from "./DecisionsScreen";
 import { SessionProvider, useSession } from "../../state/SessionContext";
+import { useDraftStore } from "../../state/draft";
 
 /** `revision` starts `null` in a fresh `SessionProvider`, and `handlePreview`
  * no-ops on a null revision -- exactly the pattern already established by
@@ -283,5 +284,126 @@ describe("PreviewProjection's real schema carries no stochastic-outcome field (s
     for (const forbidden of forbiddenFieldNames) {
       expect(block, `PreviewProjection must not declare ${forbidden}`).not.toContain(forbidden);
     }
+  });
+});
+
+// --------------------------------------------------------------------------
+// A preview describes ONE decision set (review finding #3)
+// --------------------------------------------------------------------------
+//
+// The defect: a successful preview rendered unconditionally. A player could preview a passing
+// proposal, change the policy or the influence, and still read "Would pass" -- a verdict about a
+// decision they no longer had -- while Resolve submitted the new one.
+
+const PASSING = {
+  route: "legislative",
+  would_pass: true,
+  chambers: [
+    { chamber: "lower", supporting_seats: 58, required_seats: 51, total_seats: 100, carries: true },
+  ],
+};
+
+describe("DecisionsScreen: a preview stops describing an edited draft", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    useDraftStore.getState().clearDraft();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDraftStore.getState().clearDraft();
+  });
+
+  it("replaces the verdict when the draft changes after the estimate", async () => {
+    // The slot must be selected for a rate to reach the payload: `buildDecisions` emits a budget
+    // only when `policySlot` is "budget". Editing a rate with no slot chosen changes nothing the
+    // player would submit, so the estimate would still be honest -- which is the design, and is
+    // why this test sets the slot before relying on the edit.
+    useDraftStore.getState().setPolicySlot("budget");
+    useDraftStore.getState().setBudgetRateTarget("personalIncomeRateBps", 2500);
+    renderScreenAndPreview(baseProjection(PASSING));
+    await clickPreview();
+    await waitFor(() => expect(screen.getByText("Would pass")).toBeInTheDocument());
+
+    // The player changes their mind. The estimate above was about the OLD decision.
+    useDraftStore.getState().setBudgetRateTarget("personalIncomeRateBps", 3300);
+
+    await waitFor(() => expect(screen.getByTestId("preview-outdated")).toBeInTheDocument());
+    // Replaced, not annotated: a verdict left on screen is a verdict a player can read.
+    expect(screen.queryByText("Would pass")).not.toBeInTheDocument();
+  });
+
+  it("comes back when the draft returns to what was previewed", async () => {
+    // The signature is the SUBMITTED payload, not a one-shot invalidation flag: two drafts that
+    // send the same decisions are the same request, so an estimate that still describes what the
+    // player would submit is still honest.
+    useDraftStore.getState().setPolicySlot("budget");
+    useDraftStore.getState().setBudgetRateTarget("personalIncomeRateBps", 2500);
+    renderScreenAndPreview(baseProjection(PASSING));
+    await clickPreview();
+    await waitFor(() => expect(screen.getByText("Would pass")).toBeInTheDocument());
+
+    useDraftStore.getState().setBudgetRateTarget("personalIncomeRateBps", 3300);
+    await waitFor(() => expect(screen.getByTestId("preview-outdated")).toBeInTheDocument());
+
+    useDraftStore.getState().setBudgetRateTarget("personalIncomeRateBps", 2500);
+
+    await waitFor(() => expect(screen.getByText("Would pass")).toBeInTheDocument());
+    expect(screen.queryByTestId("preview-outdated")).not.toBeInTheDocument();
+  });
+
+  it("an edit made WHILE the request is outstanding leaves the arriving result outdated", async () => {
+    // The signature is captured before the request goes out, so the result is compared against
+    // what was actually asked -- not against whatever the draft became while it was in flight.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Typed with a no-op initial value rather than `null`: TypeScript cannot see that a Promise
+    // executor runs synchronously, so a nullable binding narrows to `never` at the call below.
+    let release: () => void = () => {};
+    const inFlight = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/game/state")) return Promise.resolve(jsonResponse(ACTIVE_DASHBOARD));
+      if (url.includes("/api/game/decision-options")) {
+        return Promise.resolve(jsonResponse(DECISION_OPTIONS));
+      }
+      if (url.includes("/api/game/preview") && init?.method === "POST") {
+        return inFlight.then(() => jsonResponse(baseProjection(PASSING)));
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <QueryClientProvider client={client}>
+          <SessionProvider>
+            <SetRevision>{children}</SetRevision>
+          </SessionProvider>
+        </QueryClientProvider>
+      );
+    }
+    useDraftStore.getState().setPolicySlot("budget");
+    useDraftStore.getState().setBudgetRateTarget("personalIncomeRateBps", 2500);
+    render(<DecisionsScreen navigate={vi.fn()} />, { wrapper: Wrapper });
+    await clickPreview();
+
+    // Edit while the request is still outstanding, then let it land.
+    useDraftStore.getState().setBudgetRateTarget("personalIncomeRateBps", 4200);
+    release();
+
+    await waitFor(() => expect(screen.getByTestId("preview-outdated")).toBeInTheDocument());
+    expect(screen.queryByText("Would pass")).not.toBeInTheDocument();
+  });
+
+  it("a staged movement order counts as a decision change", async () => {
+    // Movement is part of the submitted payload, so staging one after an estimate makes that
+    // estimate describe a different turn than the one Resolve would send.
+    renderScreenAndPreview(baseProjection(PASSING));
+    await clickPreview();
+    await waitFor(() => expect(screen.getByText("Would pass")).toBeInTheDocument());
+
+    useDraftStore.getState().setMovementOrder("arken_first_army", "arken_north");
+
+    await waitFor(() => expect(screen.getByTestId("preview-outdated")).toBeInTheDocument());
   });
 });
