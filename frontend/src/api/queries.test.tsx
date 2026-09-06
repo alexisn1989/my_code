@@ -24,6 +24,7 @@ import {
   useNewGame,
   useResolve,
 } from "./queries";
+import { useDraftStore } from "../state/draft";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -219,5 +220,111 @@ describe("useNewGame", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(client.getQueryData(gameGenerationQueryKey())).toBe(2);
+  });
+});
+
+/**
+ * Campaign-scoped client state must not survive a campaign replacement.
+ *
+ * A draft belongs to the campaign it was drafted against, and the live turn result belongs to the
+ * turn that produced it. Starting or loading a different campaign invalidates both: decisions
+ * staged in campaign A must not be carried into B, and B's Result screen must not render A's
+ * outcome -- which, for a campaign that ended, means rendering another campaign's ending.
+ *
+ * Asserted through the mutations rather than through the screens: `onSuccess` is where campaign
+ * replacement is centrally known, so a second caller of these hooks inherits the behaviour instead
+ * of having to remember it.
+ */
+describe("campaign replacement clears campaign-scoped client state", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDraftStore.getState().clearDraft();
+    useDraftStore.setState({ dismissedHelp: false, glossaryOpen: false });
+  });
+
+  /** Stage a draft and a live turn result, as a player mid-campaign would have. */
+  function stageCampaignState(client: QueryClient): void {
+    useDraftStore.getState().setPolicySlot("budget");
+    useDraftStore.getState().setBudgetRateTarget("personalIncomeRateBps", 2_500);
+    useDraftStore.getState().setInvestment("party-1", "bloc-1", 5);
+    client.setQueryData(liveTurnResultQueryKey(), TURN_RESULT);
+  }
+
+  function draftIsEmpty(): boolean {
+    const draft = useDraftStore.getState();
+    return (
+      draft.policySlot === null &&
+      draft.budget.personalIncomeRateBps === undefined &&
+      Object.keys(draft.investments).length === 0
+    );
+  }
+
+  it("a successful new game clears the staged draft and the previous live turn result", async () => {
+    const client = makeClient();
+    stageCampaignState(client);
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, DASHBOARD_BEFORE));
+
+    const { result } = renderHook(() => useNewGame(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ scenarioId: "scenario-1" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(draftIsEmpty()).toBe(true);
+    expect(client.getQueryData(liveTurnResultQueryKey())).toBeUndefined();
+  });
+
+  it("a successful load clears the staged draft and the previous live turn result", async () => {
+    const client = makeClient();
+    stageCampaignState(client);
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, DASHBOARD_AFTER));
+
+    const { result } = renderHook(() => useLoadGame(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ saveId: "save-1" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(draftIsEmpty()).toBe(true);
+    expect(client.getQueryData(liveTurnResultQueryKey())).toBeUndefined();
+  });
+
+  it("a FAILED load clears nothing -- the campaign on screen is still the one being played", async () => {
+    const client = makeClient();
+    stageCampaignState(client);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      jsonResponse(404, {
+        type: "save_not_found",
+        title: "save_not_found",
+        status: 404,
+        detail: "no such save",
+        fields: [],
+        extra: {},
+      }),
+    );
+
+    const { result } = renderHook(() => useLoadGame(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ saveId: "does-not-exist" });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(draftIsEmpty()).toBe(false);
+    expect(client.getQueryData(liveTurnResultQueryKey())).toEqual(TURN_RESULT);
+  });
+
+  it("UI preferences are NOT campaign-scoped and survive a campaign change", async () => {
+    const client = makeClient();
+    useDraftStore.getState().dismissHelp();
+    useDraftStore.getState().setGlossaryOpen(true);
+    vi.mocked(fetch).mockResolvedValueOnce(jsonResponse(200, DASHBOARD_BEFORE));
+
+    const { result } = renderHook(() => useNewGame(), { wrapper: wrapperFor(client) });
+    result.current.mutate({ scenarioId: "scenario-1" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(useDraftStore.getState().dismissedHelp).toBe(true);
+    expect(useDraftStore.getState().glossaryOpen).toBe(true);
   });
 });

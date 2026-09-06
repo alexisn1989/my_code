@@ -17,6 +17,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
@@ -28,6 +29,7 @@ import {
   type SaveSummary,
 } from "./client";
 import { nextGeneration } from "../format/format";
+import { useDraftStore } from "../state/draft";
 
 /** No game loaded yet -- distinct from "loading" or "errored". Callers branch
  * on this via `NoActiveSessionError`, not on a magic revision value. */
@@ -213,6 +215,32 @@ export function useResolve(): UseMutationResult<
   });
 }
 
+/**
+ * Campaign-scoped client state, dropped when the campaign underneath it is replaced.
+ *
+ * A draft belongs to the campaign it was drafted against and the live turn result belongs to the
+ * turn that produced it, so neither may survive a new game or a load: decisions staged in one
+ * campaign would otherwise be carried into another, and the Result screen could render the
+ * previous campaign's outcome -- including, for a campaign that ended, another campaign's ending.
+ *
+ * Called from `useNewGame`/`useLoadGame` `onSuccess` ONLY. A failed campaign change leaves the
+ * campaign on screen exactly as it was, which is the guarantee `useLoadGame`'s docstring below
+ * records, and that guarantee covers the draft and the result too.
+ *
+ * `clearDraft` is reused rather than reimplemented: it already resets exactly the four
+ * campaign-scoped fields and deliberately leaves `dismissedHelp`/`glossaryOpen`, which are UI
+ * preferences and are not campaign-scoped. `getState()` is Zustand's supported accessor outside
+ * React, so these mutations stay usable without a store provider.
+ *
+ * `removeQueries`, not `invalidateQueries`: `useLiveTurnResult`'s `queryFn` throws by design
+ * (there is nothing to fetch), so invalidating would schedule a refetch into that throw. Removing
+ * the entry leaves the screen with nothing stale to render.
+ */
+function clearCampaignScopedState(queryClient: QueryClient): void {
+  useDraftStore.getState().clearDraft();
+  queryClient.removeQueries({ queryKey: liveTurnResultQueryKey() });
+}
+
 export function useNewGame(): UseMutationResult<
   Awaited<ReturnType<typeof api.newGame>>,
   Error,
@@ -226,6 +254,7 @@ export function useNewGame(): UseMutationResult<
       queryClient.invalidateQueries({ queryKey: savesQueryKey() });
       queryClient.invalidateQueries({ queryKey: historyQueryKey() });
       queryClient.setQueryData(gameGenerationQueryKey(), nextGeneration);
+      clearCampaignScopedState(queryClient);
     },
   });
 }
@@ -250,6 +279,7 @@ export function useLoadGame(): UseMutationResult<
       queryClient.setQueryData(dashboardQueryKey(dashboard.revision), dashboard);
       queryClient.invalidateQueries({ queryKey: historyQueryKey() });
       queryClient.setQueryData(gameGenerationQueryKey(), nextGeneration);
+      clearCampaignScopedState(queryClient);
     },
   });
 }
