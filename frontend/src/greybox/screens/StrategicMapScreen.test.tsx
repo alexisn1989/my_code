@@ -1886,3 +1886,136 @@ describe("StrategicMapScreen: a clustered selection is never invisible", () => {
     ).toBe("false");
   });
 });
+
+// --------------------------------------------------------------------------
+// Keyboard-only completion and narrow-layout parity (commit 9)
+// --------------------------------------------------------------------------
+//
+// The two §12 rows that prove the interaction is not pointer-dependent and not picture-dependent.
+// The map's SVG is `aria-hidden` and carries no keyboard stops by design, so everything below runs
+// through the textual controls -- which is exactly the claim being tested.
+
+describe("StrategicMapScreen: keyboard-only completion", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    useDraftStore.getState().clearDraft();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDraftStore.getState().clearDraft();
+  });
+
+  it("stages an order using keys alone, with focus usable at every step", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: ARKEN_MILITARY });
+    await screen.findByTestId("movement-panel");
+
+    // Every control reached below is a real button, so a keyboard activation is a click event --
+    // what matters is that each step's focus target is reachable and operable without a pointer.
+    const formation = document.querySelector(
+      '[data-formation-option="arken_first_army"]',
+    ) as HTMLButtonElement;
+    formation.focus();
+    expect(formation).toHaveFocus();
+    fireEvent.keyDown(formation, { key: "Enter" });
+    fireEvent.click(formation);
+
+    // Focus moved to the destination heading, which is where a screen reader starts reading.
+    expect(screen.getByTestId("destination-heading")).toHaveFocus();
+
+    const destination = document.querySelector(
+      '[data-destination-option="frontier"]',
+    ) as HTMLButtonElement;
+    destination.focus();
+    expect(destination).toHaveFocus();
+    fireEvent.click(destination);
+
+    expect(screen.getByTestId("order-review-heading")).toHaveFocus();
+
+    const add = screen.getByTestId("add-movement-order");
+    add.focus();
+    expect(add).toHaveFocus();
+    fireEvent.click(add);
+
+    expect(useDraftStore.getState().movement).toEqual({
+      formationId: "arken_first_army",
+      destinationTheaterId: "frontier",
+    });
+  });
+
+  it("every control in the interaction is a real focusable element", async () => {
+    // Not a div with a click handler anywhere on the path: a pointer-only affordance would pass a
+    // click-driven test and fail a keyboard user.
+    renderScreen(RECIPROCAL_MAP, { military: ARKEN_MILITARY });
+    await screen.findByTestId("movement-panel");
+    fireEvent.click(screen.getByText("First Army of Arken"));
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+
+    for (const selector of [
+      '[data-formation-option="arken_first_army"]',
+      '[data-destination-option="frontier"]',
+      '[data-testid="add-movement-order"]',
+    ]) {
+      expect(document.querySelector(selector)?.tagName).toBe("BUTTON");
+    }
+  });
+
+  it("Escape is handled by the panel, so it works from anywhere inside the interaction", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: ARKEN_MILITARY });
+    await screen.findByTestId("movement-panel");
+    fireEvent.click(screen.getByText("First Army of Arken"));
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+
+    // Dispatched at the review button, not at the panel: the handler is on an ancestor, so the
+    // event reaches it by bubbling -- which is what makes Escape work wherever focus happens to be.
+    fireEvent.keyDown(screen.getByTestId("add-movement-order"), { key: "Escape" });
+
+    expect(movementState()).toBe("formationSelected");
+  });
+});
+
+describe("StrategicMapScreen: narrow-layout parity", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    useDraftStore.getState().clearDraft();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDraftStore.getState().clearDraft();
+  });
+
+  it("the whole interaction lives outside the picture, so it works where no SVG renders", async () => {
+    // The visual column is `hidden` below the 900px breakpoint -- jsdom applies no media queries,
+    // so the class is asserted rather than the computed layout. What the test actually proves is
+    // structural and stronger: every control the interaction needs is OUTSIDE that column.
+    renderScreen(RECIPROCAL_MAP, { military: ARKEN_MILITARY });
+    await screen.findByTestId("movement-panel");
+
+    const visual = screen.getByTestId("strategic-map-visual");
+    expect(visual.className).toContain("hidden");
+
+    fireEvent.click(screen.getByText("First Army of Arken"));
+    fireEvent.click(document.querySelector('[data-destination-option="frontier"]') as HTMLElement);
+    fireEvent.click(screen.getByTestId("add-movement-order"));
+
+    expect(useDraftStore.getState().movement).not.toBeNull();
+    for (const selector of [
+      '[data-formation-option="arken_first_army"]',
+      '[data-testid="staged-order-summary"]',
+    ]) {
+      const node = document.querySelector(selector);
+      expect(node).not.toBeNull();
+      expect(visual.contains(node)).toBe(false);
+    }
+  });
+
+  it("the staged order and its reasons are readable text, not picture state", async () => {
+    renderScreen(RECIPROCAL_MAP, { military: STRANDED_MILITARY });
+    await screen.findByTestId("movement-panel");
+    fireEvent.click(screen.getByText("First Army of Arken"));
+
+    const visual = screen.getByTestId("strategic-map-visual");
+    const reason = document.querySelector('[data-destination-ineligible="frontier"]');
+    expect(reason?.textContent).toContain("foreign entry is unavailable");
+    expect(visual.contains(reason)).toBe(false);
+  });
+});

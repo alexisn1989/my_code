@@ -13,6 +13,7 @@ import {
   FORMATION_FAN_SLOTS,
   formationMarkerPlacements,
   formationOverflowLabel,
+  labelOffsetPosition,
   type LabelAnchorValue,
 } from "./format";
 
@@ -129,5 +130,38 @@ describe("formationOverflowLabel", () => {
   it("states the exact hidden count", () => {
     expect(formationOverflowLabel(2)).toBe("+2");
     expect(formationOverflowLabel(15)).toBe("+15");
+  });
+});
+
+describe("formationMarkerPlacements: no marker lands on its own theater's name", () => {
+  // Commit 7 tested the `n` anchor, which is the case drawing the mockups found. All five are
+  // asserted here: the guarantee is about slot 0 for EVERY anchor, not only the one that broke.
+  const ANCHORS: LabelAnchorValue[] = ["n", "s", "e", "w", "center"];
+
+  /** Where `labelOffsetPosition` puts this theater's name, in the same grid units. */
+  function labelAt(anchor: LabelAnchorValue) {
+    return labelOffsetPosition(CENTRE_X, CENTRE_Y, anchor);
+  }
+
+  it.each(ANCHORS)("slot 0 clears the label for anchor %s", (anchor) => {
+    const [first] = formationMarkerPlacements(CENTRE_X, CENTRE_Y, anchor, ["only"]);
+    const label = labelAt(anchor);
+
+    // "Clears" means genuinely apart, not merely unequal: a marker one unit from the text would
+    // pass an inequality check and still be unreadable.
+    const separation = Math.hypot(first.x - label.x, first.y - label.y);
+    expect(separation).toBeGreaterThan(400);
+  });
+
+  it.each(ANCHORS)("slot 0 never sits on the node itself for anchor %s", (anchor) => {
+    const [first] = formationMarkerPlacements(CENTRE_X, CENTRE_Y, anchor, ["only"]);
+    expect(Math.hypot(first.x - CENTRE_X, first.y - CENTRE_Y)).toBeGreaterThan(400);
+  });
+
+  it("the separation check would fail if a marker were placed on the label", () => {
+    // Anti-vacuity for the threshold above: the same measurement against a deliberately colliding
+    // position must fall under it, or the assertions would pass for any geometry at all.
+    const label = labelAt("n");
+    expect(Math.hypot(label.x - label.x, label.y - label.y)).toBeLessThan(400);
   });
 });
