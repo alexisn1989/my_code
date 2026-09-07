@@ -138,6 +138,22 @@ def strip_commit_five_additions(
     return stripped
 
 
+def _unlocated(deposit_row: dict[str, Any]) -> dict[str, Any]:
+    """A resource-report deposit row without the two fields the map-resources slice added
+    (`theater_id`, `theater_display_name`).
+
+    A 0.14.0 row has no location at all, so a byte-for-byte comparison against one has to set
+    these aside -- but by NAME, and only after asserting both are present, so a row that lost a
+    location fails this comparison instead of quietly matching the old shape.
+    """
+    assert "theater_id" in deposit_row and "theater_display_name" in deposit_row, deposit_row
+    return {
+        key: value
+        for key, value in deposit_row.items()
+        if key not in ("theater_id", "theater_display_name")
+    }
+
+
 def _differing_paths(live: Any, base: Any, path: str = "") -> list[str]:
     """Every leaf path at which two JSON structures differ. Used to make the assertions state
     WHAT differs rather than merely that something does."""
@@ -289,15 +305,18 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
             base_rows = {row["category"]: row for row in base_resources["deposits"]}
             assert set(live_rows) - set(base_rows) == {"gold"}
 
-            # Every pre-existing deposit row is byte-identical except crude_oil, whose
-            # coefficient was lowered by exactly what gold contributes.
+            # Every pre-existing deposit row is byte-identical -- once the two LOCATION fields
+            # the slice added to every row are set aside -- except crude_oil, whose coefficient
+            # was lowered by exactly what gold contributes. The location fields are dropped by
+            # name rather than by a wider exclusion, and `_located` asserts they were really
+            # there, so a row that silently lost one would fail here rather than be waved through.
             for category, base_deposit in base_rows.items():
                 if category == "crude_oil":
                     continue
-                assert json.dumps(live_rows[category], sort_keys=True) == json.dumps(
+                assert json.dumps(_unlocated(live_rows[category]), sort_keys=True) == json.dumps(
                     base_deposit, sort_keys=True
                 ), f"turn {live_row['turn']}: {category}"
-            assert _differing_paths(live_rows["crude_oil"], base_rows["crude_oil"]) == [
+            assert _differing_paths(_unlocated(live_rows["crude_oil"]), base_rows["crude_oil"]) == [
                 "potential_output_contribution",
                 "real_output_contribution",
                 "real_output_per_unit",

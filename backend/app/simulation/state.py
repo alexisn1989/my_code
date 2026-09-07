@@ -353,7 +353,27 @@ from tax bases and employment. Used by the CLI for display only; never affects a
 
 
 class ResourceDepositState(BaseModel):
-    """One country's physical endowment of one `ResourceCategory` (Phase 2C1).
+    """One country's physical endowment of one `ResourceCategory`, AT ONE THEATER (Phase 2C1;
+    located by the map-resources slice).
+
+    `theater_id` is where the deposit physically is. Until this slice a deposit was a national
+    aggregate with no location at all, which made the strategic map and the economy two unrelated
+    models of the same country. The field is a plain `StrictMapId` here because a model cannot see
+    the map it belongs to: that the theater EXISTS and is owned by the deposit's own country is
+    checked every turn by `simulation.invariants` (`resource_deposit_theater_unknown`,
+    `resource_deposit_theater_not_owned_by_country`), exactly as a formation's location is.
+
+    Location does not yet change any quantity -- extraction still reads only stock, capacity and
+    labor. What it changes is that the report, the CLI and every surface can now say WHERE the
+    country's gold is, and that an authored deposit somewhere the country does not hold is a
+    rejected state rather than an unnoticed one. Terrain, and a yield that depends on it, is the
+    next gate; this one deliberately ships the location and its enforcement without inventing a
+    formula to consume them.
+
+    Deposits do NOT have to be spread out: several categories may share a theater, and a theater
+    may hold none. The one deposit per category rule is unchanged -- this slice locates the
+    existing nine, it does not split them into per-field deposits, which is a separate and much
+    larger change (product spec sec.41, "province/field-level deposits").
 
     `remaining_stock` is the only field this phase's turn resolution ever mutates — and it does
     so exactly once per turn, inside `resolve_production_and_trade` (phase 3), immediately after
@@ -375,6 +395,7 @@ class ResourceDepositState(BaseModel):
     model_config = _STRICT_CONFIG
 
     category: ResourceCategory
+    theater_id: StrictMapId
     remaining_stock: StrictResourceQuantity
     extraction_capacity_per_turn: StrictResourceQuantity
     output_per_worker: StrictResourceQuantityPerWorker
@@ -1680,6 +1701,12 @@ would assert a fact about the country the save never recorded, exactly the reaso
 turn resolution: the extraction sector now sub-allocates its workers across nine deposits rather
 than eight and sums a ninth output contribution, so replaying 0.15.0-authored decisions under
 0.16.0 rules does not produce the identical turn. `SAVE_FORMAT_VERSION` stays `1`.
+
+The same `"0.16.0"` also covers the rest of the map-resources slice, which is one slice and gets
+one bump: `ResourceDepositState` gains a required `theater_id`, and `StrategicMapState` gains
+`rivers` (defaulted, so it owes nothing on its own). A 0.15.0 save's deposits have no location,
+and there is nothing to migrate from -- placing them all in the capital, or spreading them
+arbitrarily, would assert a geography the save never recorded.
 """
 
 

@@ -1671,12 +1671,26 @@ def _extract_resources(
         contribution.category: contribution for contribution in contributions
     }
 
+    # Where each deposit is, resolved once from state and from the map. Built as mappings keyed
+    # by category rather than read positionally, so a reordered `extraction_results` could not
+    # silently attach one deposit's location to another's row.
+    theaters = ctx.state.world.strategic_map.theaters
+    theater_by_category = {
+        deposit.category: deposit.theater_id for deposit in economy.resource_deposits
+    }
+
     deposit_reports: list[ResourceDepositReport] = []
     for extraction_result in extraction_results:
         contribution = contribution_by_category[extraction_result.category]
+        theater_id = theater_by_category[extraction_result.category]
         deposit_reports.append(
             ResourceDepositReport(
                 category=extraction_result.category,
+                theater_id=theater_id,
+                # `check_invariants` (`resource_deposit_theater_unknown`) has already rejected a
+                # deposit whose theater is not on the map, and the resolver re-checks invariants
+                # after every phase -- so this lookup cannot miss in a state that reaches here.
+                theater_display_name=theaters[theater_id].display_name,
                 opening_stock=extraction_result.opening_stock,
                 regeneration_per_turn=extraction_result.regeneration_per_turn,
                 stock_ceiling=extraction_result.stock_ceiling,

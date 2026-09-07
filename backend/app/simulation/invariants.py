@@ -1338,6 +1338,7 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
     violations.extend(_check_foreign_conflicts(state.world))
     violations.extend(_check_strategic_map(state.world))
     violations.extend(_check_formation_locations(state.world))
+    violations.extend(_check_deposit_locations(state.world))
 
     return violations
 
@@ -1392,5 +1393,72 @@ def _check_formation_locations(world: WorldState) -> list[InvariantViolation]:
                         ),
                     )
                 )
+
+    return violations
+
+
+def _check_deposit_locations(world: WorldState) -> list[InvariantViolation]:
+    """Every one of the PLAYER's resource deposits sits on a theater the player holds
+    (map-resources slice).
+
+    Deliberately the same two-code shape as `_check_formation_locations` above, and for the same
+    reason: M0's map rules already prove every theater's `owner` resolves, and `EconomyState`
+    already proves the nine categories are present exactly once. Neither can see the fact this
+    adds -- that the country's gold is somewhere the country actually holds.
+
+    **Scoped to the player, unlike `_check_formation_locations`.** That is not laxity, it is what
+    the map model permits: `map_player_ref_not_player` requires every `PlayerCountryRef` owner to
+    name the player, so under M0 a non-player `CountryState` cannot own a theater AT ALL. Applying
+    the ownership rule to AI countries would therefore reject every AI economy for failing a
+    condition no state can satisfy. An AI country's `theater_id` values are consequently
+    unchecked, which is honest about what location currently means: only the player holds map
+    area, so only the player's deposits have a location that can be right or wrong.
+
+    Not folded into `_check_formation_locations` despite the similar shape. The two answer
+    different questions about different subtrees, with different scopes, and a merged helper would
+    make a failure message have to explain which kind of thing it was talking about.
+
+    Reads `theater_id` through `getattr`. A `model_construct`-bypassed deposit row carries no such
+    attribute at all, and invariants exist precisely to catch bypassed constructions -- so a
+    missing field must become a violation here, never an `AttributeError` out of the checker.
+    """
+    violations: list[InvariantViolation] = []
+    theaters = world.strategic_map.theaters
+    country_id = world.player_country_id
+    player = world.countries.get(country_id)
+    if player is None or player.economy is None:
+        return violations
+
+    for deposit in player.economy.resource_deposits:
+        theater_id = getattr(deposit, "theater_id", None)
+        theater = None if theater_id is None else theaters.get(theater_id)
+        if theater is None:
+            violations.append(
+                InvariantViolation(
+                    code="resource_deposit_theater_unknown",
+                    message=(
+                        f"country {country_id!r} has a {deposit.category.value} deposit at "
+                        f"{theater_id!r}, which is not a key of world.strategic_map.theaters"
+                    ),
+                )
+            )
+            continue
+        owner = theater.owner
+        if not isinstance(owner, PlayerCountryRef) or owner.country_id != country_id:
+            held_by = (
+                f"player country {owner.country_id!r}"
+                if isinstance(owner, PlayerCountryRef)
+                else f"foreign profile {owner.foreign_profile_id!r}"
+            )
+            violations.append(
+                InvariantViolation(
+                    code="resource_deposit_theater_not_owned_by_country",
+                    message=(
+                        f"country {country_id!r} has a {deposit.category.value} deposit at "
+                        f"theater {theater_id!r}, which is owned by {held_by} — a country may "
+                        "only hold deposits on theaters it owns"
+                    ),
+                )
+            )
 
     return violations

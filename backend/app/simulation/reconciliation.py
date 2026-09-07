@@ -3427,3 +3427,95 @@ def _movement_entry_problems(report: TurnReport, movement: MovementReport) -> li
                     "(group 54)"
                 )
     return problems
+
+
+def _player_deposits(state: GameState) -> dict[str, str] | None:
+    """category value -> `theater_id` for the player's deposits, or `None` when the country or
+    its economy is missing.
+
+    `None` is unreachable in a valid state (`player_economy_required`, invariants), and guarded
+    anyway for the reason every helper in this module is: a tampered save must produce a problem
+    string, never an AttributeError.
+    """
+    country = state.world.countries.get(state.world.player_country_id)
+    if country is None or country.economy is None:
+        return None
+    return {
+        deposit.category.value: deposit.theater_id for deposit in country.economy.resource_deposits
+    }
+
+
+def reconcile_deposit_locations(
+    *, opening_state: GameState, closing_state: GameState, report: TurnReport
+) -> list[str]:
+    """Group 55 -- a deposit's location is fixed, and the report says where it really is.
+
+    Three records of the same fact are compared: the opening state, the closing state, and the
+    resource report's rows. Deposits are IMMOBILE -- nothing in this ruleset can move one -- so
+    the three must agree exactly, and a turn that appeared to relocate a country's gold would be
+    caught here rather than showing up later as a report that disagrees with the map.
+
+    Deliberately narrow. Whether the named theater exists and is owned by the country is
+    `simulation.invariants`' job (`resource_deposit_theater_unknown`,
+    `resource_deposit_theater_not_owned_by_country`), which runs before and after every
+    resolution; this reconciler does not re-implement that judgement. It does look the theater up,
+    because the display-name comparison needs it -- and reports a problem rather than raising when
+    the lookup fails, so a tampered pair of (state, report) is still a problem string.
+
+    Returns problem strings, never raises, matching every existing reconciler.
+    """
+    problems: list[str] = []
+
+    if report.resources is None:
+        return ["turn report has no resources report to reconcile deposits against (group 55)"]
+
+    opening = _player_deposits(opening_state)
+    closing = _player_deposits(closing_state)
+    if opening is None or closing is None:
+        return [
+            "player country or its economy is missing, so deposit locations cannot be "
+            "reconciled (group 55)"
+        ]
+
+    if opening != closing:
+        moved = sorted(
+            category
+            for category in set(opening) | set(closing)
+            if opening.get(category) != closing.get(category)
+        )
+        problems.append(
+            f"deposit location(s) changed during the turn for {moved!r}; deposits are immobile "
+            "in this ruleset (group 55)"
+        )
+
+    reported = {row.category.value: row for row in report.resources.deposits}
+    if set(reported) != set(closing):
+        problems.append(
+            f"the resource report covers {sorted(reported)!r} but the closing state holds "
+            f"{sorted(closing)!r} (group 55)"
+        )
+
+    theaters = closing_state.world.strategic_map.theaters
+    for category in sorted(set(reported) & set(closing)):
+        row = reported[category]
+        expected_theater = closing[category]
+        if row.theater_id != expected_theater:
+            problems.append(
+                f"the resource report places {category} at {row.theater_id!r} but the closing "
+                f"state holds it at {expected_theater!r} (group 55)"
+            )
+            continue
+        theater = theaters.get(expected_theater)
+        if theater is None:
+            problems.append(
+                f"{category} is held at {expected_theater!r}, which the closing state's map does "
+                "not contain (group 55)"
+            )
+            continue
+        if row.theater_display_name != theater.display_name:
+            problems.append(
+                f"the resource report names {category}'s theater {row.theater_display_name!r} "
+                f"but the map calls it {theater.display_name!r} (group 55)"
+            )
+
+    return problems

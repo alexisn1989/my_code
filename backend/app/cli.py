@@ -910,10 +910,18 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
         # a resolved TurnReport), resource endowments live in state itself and are available at
         # turn 0 — a fresh save can show them without having resolved anything yet.
         print("  resource endowments:")
+        theaters = save.current_state().world.strategic_map.theaters
         for deposit in player.economy.resource_deposits:
             unit = RESOURCE_UNITS[deposit.category]
+            # A deposit whose theater is not on the map is an invalid state
+            # (`resource_deposit_theater_unknown`), but `inspect` exists to describe saves that
+            # may BE invalid -- so the id is shown as a fallback rather than raising a KeyError
+            # out of a diagnostic command.
+            located = theaters.get(deposit.theater_id)
+            where = deposit.theater_id if located is None else located.display_name
             print(
-                f"    {deposit.category.value}: remaining_stock={deposit.remaining_stock:,} {unit}"
+                f"    {deposit.category.value} at {where}: "
+                f"remaining_stock={deposit.remaining_stock:,} {unit}"
             )
         if args.coefficients:
             # Read directly from state — never from data/scenarios/*.yaml, which is parsed only
@@ -1115,7 +1123,8 @@ def _print_resource_extraction_report(resources: ResourceExtractionReport) -> No
     for deposit in resources.deposits:
         unit = RESOURCE_UNITS[deposit.category]
         print(
-            f"      {deposit.category.value}: opening={deposit.opening_stock:,} "
+            f"      {deposit.category.value} at {deposit.theater_display_name}: "
+            f"opening={deposit.opening_stock:,} "
             f"regenerated={deposit.regenerated:,} extracted={deposit.extracted:,} "
             f"closing={deposit.closing_stock:,} {unit} "
             f"-> output={deposit.real_output_contribution:,} "

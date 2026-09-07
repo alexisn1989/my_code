@@ -272,6 +272,7 @@ def _deposit(
         stock_ceiling = remaining_stock
     return ResourceDepositState(
         category=category,
+        theater_id="capital",
         remaining_stock=remaining_stock,
         extraction_capacity_per_turn=extraction_capacity_per_turn,
         output_per_worker=output_per_worker,

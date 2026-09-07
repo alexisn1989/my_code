@@ -517,15 +517,17 @@ def test_concurrency_check_is_insensitive_to_foreign_profiles_insertion_order() 
 # --- foreign_profiles, dyads (W1) and strategic_map (M0) may have changed -----
 
 
-def _revert_gold_authoring(scenario: dict[str, object]) -> None:
+def _revert_map_resources_authoring(scenario: dict[str, object]) -> None:
     """Undo, in place, exactly what the map-resources slice authored into every scenario's
     economy: the ninth (`gold`) `resource_deposits` row, the ninth `resource_output_coefficients`
-    row, and `crude_oil`'s coefficient offset (1,200 -> 1,100 in `tiny_valid`/`decree_state`;
-    untouched at 1,200 in `deficit_demo`, where restoring it is a no-op).
+    row, `crude_oil`'s coefficient offset (1,200 -> 1,100 in `tiny_valid`/`decree_state`;
+    untouched at 1,200 in `deficit_demo`, where restoring it is a no-op), and every deposit's new
+    `theater_id`.
 
-    Deliberately narrow. It removes rows by category and rewrites ONE named coefficient -- it does
-    not rebuild the blocks, so any other edit to a deposit, a coefficient or anything else in the
-    economy survives it and fails the digest comparison, which is the entire point.
+    Deliberately narrow. It removes rows by category, drops ONE named key per deposit and rewrites
+    ONE named coefficient -- it does not rebuild the blocks, so any other edit to a deposit, a
+    coefficient or anything else in the economy survives it and fails the digest comparison, which
+    is the entire point.
     """
     countries = scenario["countries"]
     assert isinstance(countries, list)
@@ -537,6 +539,8 @@ def _revert_gold_authoring(scenario: dict[str, object]) -> None:
             rows = economy.get(path)
             if isinstance(rows, list):
                 economy[path] = [row for row in rows if row.get("category") != "gold"]
+        for row in economy.get("resource_deposits", []):
+            row.pop("theater_id", None)
         for row in economy.get("resource_output_coefficients", []):
             if row.get("category") == "crude_oil":
                 row["real_output_per_unit"] = 1200
@@ -559,10 +563,11 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
     The map-resources slice is the first gate to change authored ECONOMIC content, so a strip
     alone can no longer restore the pre-W1 bytes. Rather than re-pin the digests -- which would
     throw the whole proof away -- this test INVERTS that slice's authoring exactly
-    (`_revert_gold_authoring` below) and requires the pre-W1 digest to come back. That is a
-    stronger statement than a fresh pin: it says the slice changed precisely three things in every
-    scenario's economy (a `gold` deposit row, a `gold` coefficient row, and `crude_oil`'s
-    coefficient) and disturbed nothing else, fiscal, political, constitutional or calibration.
+    (`_revert_map_resources_authoring` below) and requires the pre-W1 digest to come back. That is
+    a stronger statement than a fresh pin: it says the slice changed precisely four things in
+    every scenario's economy (a `gold` deposit row, a `gold` coefficient row, `crude_oil`'s
+    coefficient, and a `theater_id` on every deposit) and disturbed nothing else, fiscal,
+    political, constitutional or calibration.
 
     The pinned digests are therefore still the ORIGINAL pre-W1 values. The pre-W1 side is a stable
     literal recorded at authoring time (module-level `_PRE_W1_SCENARIO_DIGEST_BLAKE2B`); this test
@@ -579,10 +584,10 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
         for country in stripped["countries"]
     ]
     assert canonical_digest(stripped) != _PRE_W1_SCENARIO_DIGEST_BLAKE2B[scenario_file], (
-        "the gold authoring is supposed to be visible in these bytes; if the digest already "
-        "matches before it is reverted, this test proves nothing"
+        "the map-resources authoring is supposed to be visible in these bytes; if the digest "
+        "already matches before it is reverted, this test proves nothing"
     )
-    _revert_gold_authoring(stripped)
+    _revert_map_resources_authoring(stripped)
     assert canonical_digest(stripped) == _PRE_W1_SCENARIO_DIGEST_BLAKE2B[scenario_file]
 
 

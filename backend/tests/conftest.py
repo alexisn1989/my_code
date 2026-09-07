@@ -128,6 +128,7 @@ def make_resource_deposits(
     output_per_worker: int = 1,
     regeneration_per_turn: int = 0,
     stock_ceiling: int | None = None,
+    theater_id: str = "capital",
 ) -> tuple[ResourceDepositState, ...]:
     """Build a valid `ResourceDepositState` tuple covering all 8 `ResourceCategory` values.
 
@@ -145,6 +146,12 @@ def make_resource_deposits(
     `stock_ceiling` defaults to `remaining_stock` when not given explicitly — the minimum legal
     ceiling (`stock_ceiling >= remaining_stock`) — so the all-zero default satisfies
     `ResourceDepositState`'s renewability validators without the caller needing to think about it.
+
+    `theater_id` (map-resources slice) defaults to `"capital"`, the sole theater
+    `make_minimal_strategic_map` authors — the same default and the same reason as
+    `make_formations`' `location_theater_id`. Every deposit therefore satisfies
+    `resource_deposit_theater_not_owned_by_country` out of the box, so a test that does not care
+    about geography still builds a valid state.
     """
     deposits: list[ResourceDepositState] = []
     for category in ResourceCategory:
@@ -152,6 +159,7 @@ def make_resource_deposits(
             deposits.append(
                 ResourceDepositState(
                     category=category,
+                    theater_id=theater_id,
                     remaining_stock=remaining_stock,
                     extraction_capacity_per_turn=extraction_capacity_per_turn,
                     output_per_worker=output_per_worker,
@@ -163,6 +171,7 @@ def make_resource_deposits(
             deposits.append(
                 ResourceDepositState(
                     category=category,
+                    theater_id=theater_id,
                     remaining_stock=remaining_stock,
                     extraction_capacity_per_turn=extraction_capacity_per_turn,
                     output_per_worker=output_per_worker,

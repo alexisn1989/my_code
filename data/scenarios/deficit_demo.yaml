@@ -381,36 +381,44 @@ countries:
       # with no regeneration to offset it — conservation holds exactly every resolution.
       resource_deposits:
         - category: timber
+          theater_id: home_lowlands
           remaining_stock: 200000
           extraction_capacity_per_turn: 10000
           output_per_worker: 25
           regeneration_per_turn: 5000
           stock_ceiling: 250000
         - category: iron_ore
+          theater_id: home_lowlands
           remaining_stock: 500000
           extraction_capacity_per_turn: 20000
           output_per_worker: 50
         - category: coal
+          theater_id: home_capital
           remaining_stock: 0
           extraction_capacity_per_turn: 0
           output_per_worker: 1
         - category: crude_oil
+          theater_id: home_port
           remaining_stock: 0
           extraction_capacity_per_turn: 0
           output_per_worker: 1
         - category: natural_gas
+          theater_id: home_port
           remaining_stock: 0
           extraction_capacity_per_turn: 0
           output_per_worker: 1
         - category: uranium
+          theater_id: home_capital
           remaining_stock: 0
           extraction_capacity_per_turn: 0
           output_per_worker: 1
         - category: copper
+          theater_id: home_capital
           remaining_stock: 0
           extraction_capacity_per_turn: 0
           output_per_worker: 1
         - category: critical_minerals
+          theater_id: home_capital
           remaining_stock: 0
           extraction_capacity_per_turn: 0
           output_per_worker: 1
@@ -420,6 +428,7 @@ countries:
         # extraction, output, tax bases or treasury changes as a result, which is why no
         # coefficient here is re-offset the way tiny_valid's and decree_state's crude_oil is.
         - category: gold
+          theater_id: home_lowlands
           remaining_stock: 0
           extraction_capacity_per_turn: 0
           output_per_worker: 1

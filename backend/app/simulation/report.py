@@ -116,7 +116,7 @@ from app.simulation.foreign_conflict import (
     raw_closing_intensity_bps,
     select_candidate_index,
 )
-from app.simulation.geography import StrictMapId
+from app.simulation.geography import StrictDisplayName, StrictMapId
 from app.simulation.government_survival import (
     AMENDMENT_PRESSURE_PER_AXIS_BY_DIFFICULTY_BPS,
     BASE_COUP_ATTEMPT_RISK_BPS,
@@ -638,6 +638,14 @@ class ResourceDepositReport(BaseModel):
     model_config = _STRICT_CONFIG
 
     category: ResourceCategory
+    theater_id: StrictMapId
+    """Where this deposit is (map-resources slice). Copied from `ResourceDepositState.theater_id`
+    by the phase that built the row, never re-derived: the state is the single source of a
+    deposit's location, and reconciliation group 55 proves the two agree."""
+    theater_display_name: StrictDisplayName
+    """The theater's name, resolved once by the builder so no surface has to hold the map to
+    render a resource row -- the same discipline `FormationMovementRow` already follows for the
+    two theaters a movement names."""
     opening_stock: StrictResourceQuantity
     regeneration_per_turn: StrictResourceQuantity
     stock_ceiling: StrictResourceQuantity | None

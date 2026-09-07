@@ -115,6 +115,7 @@ def test_scenario_missing_resource_category_rejected(tiny_valid_scenario_path: P
     text = tiny_valid_scenario_path.read_text(encoding="utf-8")
     critical_minerals_block = (
         "        - category: critical_minerals\n"
+        "          theater_id: arken_capital\n"
         "          remaining_stock: 2000000\n"
         "          extraction_capacity_per_turn: 20000\n"
         "          output_per_worker: 20\n"

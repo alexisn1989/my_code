@@ -34,6 +34,7 @@ def _valid_resource_report_dict() -> dict:
     deposits = (
         ResourceDepositState(
             category=ResourceCategory.TIMBER,
+            theater_id="capital",
             remaining_stock=1_000,
             extraction_capacity_per_turn=100,
             output_per_worker=10,
@@ -42,6 +43,7 @@ def _valid_resource_report_dict() -> dict:
         ),
         ResourceDepositState(
             category=ResourceCategory.IRON_ORE,
+            theater_id="capital",
             remaining_stock=500,
             extraction_capacity_per_turn=50,
             output_per_worker=5,
@@ -49,6 +51,7 @@ def _valid_resource_report_dict() -> dict:
         *(
             ResourceDepositState(
                 category=category,
+                theater_id="capital",
                 remaining_stock=0,
                 extraction_capacity_per_turn=0,
                 output_per_worker=1,
@@ -70,6 +73,8 @@ def _valid_resource_report_dict() -> dict:
 def _valid_deposit_report() -> ResourceDepositReport:
     return ResourceDepositReport(
         category=ResourceCategory.TIMBER,
+        theater_id="capital",
+        theater_display_name="Capital Region",
         opening_stock=1_000,
         regeneration_per_turn=20,
         stock_ceiling=2_000,
@@ -109,6 +114,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="regenerated"):
             ResourceDepositReport(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=1_000,
                 regeneration_per_turn=20,
                 stock_ceiling=2_000,
@@ -137,6 +144,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="regenerated"):
             ResourceDepositReport(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=1_990,
                 regeneration_per_turn=20,
                 stock_ceiling=2_000,
@@ -158,6 +167,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="nonrenewable"):
             ResourceDepositReport(
                 category=ResourceCategory.IRON_ORE,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=500,
                 regeneration_per_turn=1,  # must be 0 for a nonrenewable
                 stock_ceiling=None,
@@ -179,6 +190,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="nonrenewable"):
             ResourceDepositReport(
                 category=ResourceCategory.IRON_ORE,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=500,
                 regeneration_per_turn=0,
                 stock_ceiling=1_000,  # must be None for a nonrenewable
@@ -200,6 +213,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="renewable"):
             ResourceDepositReport(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=1_000,
                 regeneration_per_turn=20,
                 stock_ceiling=None,  # renewable must declare a ceiling
@@ -221,6 +236,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="exceeds stock_ceiling"):
             ResourceDepositReport(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=1_995,
                 regeneration_per_turn=20,
                 stock_ceiling=2_000,
@@ -242,6 +259,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="available_stock"):
             ResourceDepositReport(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=1_000,
                 regeneration_per_turn=20,
                 stock_ceiling=2_000,
@@ -263,6 +282,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="required_workers"):
             ResourceDepositReport(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=1_000,
                 regeneration_per_turn=20,
                 stock_ceiling=2_000,
@@ -284,6 +305,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="exceeds"):
             ResourceDepositReport(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=1_000,
                 regeneration_per_turn=20,
                 stock_ceiling=2_000,
@@ -305,6 +328,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="extracted"):
             ResourceDepositReport(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=1_000,
                 regeneration_per_turn=20,
                 stock_ceiling=2_000,
@@ -326,6 +351,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="closing_stock"):
             ResourceDepositReport(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=1_000,
                 regeneration_per_turn=20,
                 stock_ceiling=2_000,
@@ -347,6 +374,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError, match="status"):
             ResourceDepositReport(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=1_000,
                 regeneration_per_turn=20,
                 stock_ceiling=2_000,
@@ -368,6 +397,8 @@ class TestResourceDepositReportSelfValidation:
         with pytest.raises(ValidationError):
             ResourceDepositReport(
                 category=ResourceCategory.IRON_ORE,
+                theater_id="capital",
+                theater_display_name="Capital Region",
                 opening_stock=0,
                 regeneration_per_turn=0,
                 stock_ceiling=None,

@@ -52,6 +52,7 @@ def _deposit(
         stock_ceiling = remaining_stock
     return ResourceDepositState(
         category=category,
+        theater_id="capital",
         remaining_stock=remaining_stock,
         extraction_capacity_per_turn=extraction_capacity_per_turn,
         output_per_worker=output_per_worker,
@@ -168,6 +169,7 @@ class TestResourceDepositStateRenewabilityValidators:
         with pytest.raises(ValueError, match="nonrenewable"):
             ResourceDepositState(
                 category=ResourceCategory.IRON_ORE,
+                theater_id="capital",
                 remaining_stock=100,
                 extraction_capacity_per_turn=10,
                 output_per_worker=1,
@@ -179,6 +181,7 @@ class TestResourceDepositStateRenewabilityValidators:
         with pytest.raises(ValueError, match="renewable"):
             ResourceDepositState(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
                 remaining_stock=100,
                 extraction_capacity_per_turn=10,
                 output_per_worker=1,
@@ -190,6 +193,7 @@ class TestResourceDepositStateRenewabilityValidators:
         with pytest.raises(ValueError, match="below its own remaining_stock"):
             ResourceDepositState(
                 category=ResourceCategory.TIMBER,
+                theater_id="capital",
                 remaining_stock=100,
                 extraction_capacity_per_turn=10,
                 output_per_worker=1,
@@ -200,6 +204,7 @@ class TestResourceDepositStateRenewabilityValidators:
     def test_renewable_with_ceiling_equal_to_stock_is_valid(self) -> None:
         deposit = ResourceDepositState(
             category=ResourceCategory.TIMBER,
+            theater_id="capital",
             remaining_stock=100,
             extraction_capacity_per_turn=10,
             output_per_worker=1,
@@ -470,6 +475,7 @@ class TestEdgeCases:
         with pytest.raises(ValidationError):
             ResourceDepositState(
                 category=ResourceCategory.IRON_ORE,
+                theater_id="capital",
                 remaining_stock=0,
                 extraction_capacity_per_turn=0,
                 output_per_worker=0,

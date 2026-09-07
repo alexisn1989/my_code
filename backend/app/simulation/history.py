@@ -64,6 +64,7 @@ from app.core.errors import HistoryValidationError, SnapshotNotFoundError
 from app.simulation.decisions import DecisionSet
 from app.simulation.invariants import check_invariants
 from app.simulation.reconciliation import (
+    reconcile_deposit_locations,
     reconcile_foreign_affairs_report,
     reconcile_formation_movement,
     reconcile_political_legislative_and_survival_report,
@@ -426,6 +427,18 @@ def validate_history(save: GameSave) -> list[str]:
                     opening_state=previous_state_model,
                     closing_state=state_model,
                     decisions=decisions_model,
+                    report=report_model,
+                )
+            )
+            # Map-resources slice (group 55): a fifth independent entrypoint, in the same
+            # report-guarded shape as group 54 above because it compares report rows against
+            # state. It takes no `decisions` argument at all -- no decision in this ruleset can
+            # move a deposit, so there is nothing in a submitted order for it to check.
+            problems.extend(
+                f"turn {entry.turn}: {problem}"
+                for problem in reconcile_deposit_locations(
+                    opening_state=previous_state_model,
+                    closing_state=state_model,
                     report=report_model,
                 )
             )
