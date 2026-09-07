@@ -29,6 +29,7 @@ from app.simulation.constitution import (
     DecreeAuthority,
     ExecutiveSelection,
     JudicialReview,
+    Legislature,
 )
 
 REQUIRED_ELECTION_SUPPORT_BPS = 5_000
@@ -159,6 +160,158 @@ def population_weighted_mean_bps(*, shares_and_metrics: tuple[tuple[int, int], .
     return trunc_div_toward_zero(weighted_sum, total_share)
 
 
+# --- Structural removal exposure: how much a government's FORM exposes it to violent removal --
+#
+# The one place government form enters the coup and popular-unrest channels. Everything else in
+# this module that reads the constitution reads it for a *procedural* reason -- a scheduled
+# election exists because of `national_election_interval_turns`, impeachment runs through courts
+# and a legislature. This is the one genuinely structural claim: an executive that no electorate
+# can remove, and that no other organ constrains, is more exposed to being removed by force.
+#
+# What it deliberately is NOT:
+#
+#   * It is not `is_noncompetitive_constitution` (above), and must never be replaced by it. That
+#     helper answers Phase 3C's victory question and counts ANY non-NONE decree authority as
+#     noncompetitive -- which makes all three shipped scenarios noncompetitive, two of them purely
+#     because they author `emergency_only`. Emergency powers held by an accountable elected
+#     government are not a dictatorship, and the weights below say so: they are worth 500 of a
+#     possible 10,000.
+#   * It is not a legitimacy judgement. Nothing here reaches `legitimacy.py`, whose neutrality is
+#     structural (no function there accepts a constitutional type) and stays that way. A
+#     dictatorship is not less *accepted* for being one; it is more exposed to a particular kind of
+#     removal.
+#   * It is not derived from a scenario's name, its display labels, or a persisted regime-type
+#     field. There is no such field, and adding one would be a second source of truth for something
+#     the axes already say.
+#
+# The weights are GAME-BALANCE CHOICES. They are not measurements of real countries and were not
+# supplied by anyone; they are the smallest set that separates the cases the design has to tell
+# apart, and they are meant to be re-tuned from calibration rather than defended as facts.
+
+UNELECTED_EXECUTIVE_EXPOSURE_BPS = 4_000
+"""No electorate can remove this executive at all (`HEREDITARY`/`APPOINTED`). The single largest
+component, because it is the difference the whole feature exists to express: an electoral
+government under strain still has a scheduled, lawful way out, and that is exactly the pressure
+valve a coup or an uprising substitutes for."""
+ELECTED_WITHOUT_SCHEDULED_ELECTION_EXPOSURE_BPS = 2_000
+"""Elected in principle, with no election actually scheduled (`national_election_interval_turns`
+is `None`). Half the unelected weight rather than zero: the office is answerable in form but the
+answering never comes due."""
+
+UNLIMITED_DECREE_EXPOSURE_BPS = 3_000
+"""The executive can legislate alone. Constraint by other organs is gone, not merely weakened."""
+EMERGENCY_DECREE_EXPOSURE_BPS = 500
+"""Emergency powers, and nothing more. Deliberately small: this is the component that must NOT be
+able to make an accountable electoral government read as a dictatorship."""
+
+NO_LEGISLATURE_EXPOSURE_BPS = 2_000
+"""No chamber exists to constrain the executive. Note this is never a standalone case -- rule C10
+(`constitution.first_constitutional_violation`) requires `decree_authority='unlimited'` wherever
+the legislature is `none`, so a legislature-less constitution always carries the decree weight
+too."""
+
+NO_JUDICIAL_REVIEW_EXPOSURE_BPS = 1_000
+WEAK_JUDICIAL_REVIEW_EXPOSURE_BPS = 500
+"""Courts as the last remaining constraint. The smallest components, because a court alone rarely
+stops an executive that has already lost both the electorate and the legislature -- but a
+constrained monarchy keeps its courts, and this is part of what distinguishes it from personal
+rule."""
+
+MAX_STRUCTURAL_EXPOSURE_BPS = 10_000
+"""The components sum to exactly this at the unrestricted-personal-rule endpoint (4,000 + 3,000 +
+2,000 + 1,000), so the clamp below is DEFENSIVE, not load-bearing -- the same property
+`coup_success_probability_bps`'s 3,500-of-7,000 headroom has, and pinned by a test for the same
+reason: a future component that silently starts saturating the scale would stop being visible in
+the total."""
+
+COUP_STRUCTURAL_WEIGHT_BPS = 400
+"""Full exposure adds 400 bps (4 percentage points) to the coup channel's per-turn attempt risk,
+against a base of 8 and a cap of 2,500. Sized so an unaccountable government faces a genuinely
+different threat level while staying far below the cap -- structure raises the odds, it does not
+decide the outcome, and the conditional success formula is untouched."""
+UNREST_STRUCTURAL_WEIGHT_BPS = 300
+"""The same idea on the narrower unrest scale (base 15, cap 1,500). Lower than the coup weight
+because an unaccountable executive is most directly exposed to the armed institution closest to
+it; popular removal still depends mostly on how radicalized and organized the population is,
+which the existing terms already carry."""
+
+
+@dataclass(frozen=True, slots=True)
+class StructuralExposureAssessment:
+    """Every named component behind `exposure_bps`, so a report can publish the total and a reader
+    can re-derive it from the constitution without trusting the engine that produced it."""
+
+    executive_accountability_exposure_bps: int
+    decree_authority_exposure_bps: int
+    legislature_exposure_bps: int
+    judicial_review_exposure_bps: int
+    exposure_bps: int
+
+
+def structural_removal_exposure_bps(
+    *,
+    executive_selection: ExecutiveSelection,
+    decree_authority: DecreeAuthority,
+    legislature: Legislature,
+    judicial_review: JudicialReview,
+    national_election_interval_turns: int | None,
+) -> StructuralExposureAssessment:
+    """How much this constitution's SHAPE exposes its executive to violent removal, in bps.
+
+    Two orthogonal questions, both answered from axes that already exist:
+
+    1. **Can voters remove this executive?** `HEREDITARY`/`APPOINTED` selection means no; an
+       elected selection with no scheduled election means not in practice; an elected selection
+       with a scheduled interval means yes, and contributes nothing.
+    2. **Is the executive constrained by other organs?** Decree authority, whether a legislature
+       exists at all, and how strong judicial review is.
+
+    Accepts plain enums and an `int | None`, never a `ConstitutionState` -- the same split every
+    other function in this module keeps, so `phases.py` stays the only place that reads the
+    constitution object itself.
+
+    Returns each component separately as well as the clamped total. The components are summed
+    once and clamped once; there is no per-component rounding, because every component is a
+    literal constant.
+    """
+    if executive_selection in (ExecutiveSelection.HEREDITARY, ExecutiveSelection.APPOINTED):
+        executive_accountability_exposure_bps = UNELECTED_EXECUTIVE_EXPOSURE_BPS
+    elif national_election_interval_turns is None:
+        executive_accountability_exposure_bps = ELECTED_WITHOUT_SCHEDULED_ELECTION_EXPOSURE_BPS
+    else:
+        executive_accountability_exposure_bps = 0
+
+    if decree_authority is DecreeAuthority.UNLIMITED:
+        decree_authority_exposure_bps = UNLIMITED_DECREE_EXPOSURE_BPS
+    elif decree_authority is DecreeAuthority.EMERGENCY_ONLY:
+        decree_authority_exposure_bps = EMERGENCY_DECREE_EXPOSURE_BPS
+    else:
+        decree_authority_exposure_bps = 0
+
+    legislature_exposure_bps = NO_LEGISLATURE_EXPOSURE_BPS if legislature is Legislature.NONE else 0
+
+    if judicial_review is JudicialReview.NONE:
+        judicial_review_exposure_bps = NO_JUDICIAL_REVIEW_EXPOSURE_BPS
+    elif judicial_review is JudicialReview.WEAK:
+        judicial_review_exposure_bps = WEAK_JUDICIAL_REVIEW_EXPOSURE_BPS
+    else:
+        judicial_review_exposure_bps = 0
+
+    total_bps = (
+        executive_accountability_exposure_bps
+        + decree_authority_exposure_bps
+        + legislature_exposure_bps
+        + judicial_review_exposure_bps
+    )
+    return StructuralExposureAssessment(
+        executive_accountability_exposure_bps=executive_accountability_exposure_bps,
+        decree_authority_exposure_bps=decree_authority_exposure_bps,
+        legislature_exposure_bps=legislature_exposure_bps,
+        judicial_review_exposure_bps=judicial_review_exposure_bps,
+        exposure_bps=min(MAX_STRUCTURAL_EXPOSURE_BPS, total_bps),
+    )
+
+
 # --- Gate 3C2: coup channel ----------------------------------------------------------------
 
 BASE_COUP_ATTEMPT_RISK_BPS = 8
@@ -193,6 +346,7 @@ class CoupAttemptRiskAssessment:
     legitimacy_contribution_bps: int
     opposition_contribution_bps: int
     transition_pressure_contribution_bps: int
+    structural_contribution_bps: int
     attempt_risk_bps: int
 
 
@@ -203,10 +357,19 @@ def coup_attempt_risk_bps(
     legitimacy_bps: int,
     opposition_seat_share_bps: int | None,
     transition_pressure_bps: int,
+    structural_exposure_bps: int,
 ) -> CoupAttemptRiskAssessment:
     """The coup channel's per-turn attempt risk -- pure, no RNG. `opposition_seat_share_bps=None`
     (no legislature at all) contributes nothing from that term, the same "nothing to read"
-    treatment `election_baseline_support_bps` gives a missing legislature."""
+    treatment `election_baseline_support_bps` gives a missing legislature.
+
+    `structural_exposure_bps` comes from `structural_removal_exposure_bps` above and is the ONLY
+    route by which government form reaches this figure. It is a separate term from
+    `transition_pressure_bps` and cannot double-count it: exposure is a function of the
+    constitution's axes as they now stand, pressure is a decaying memory of having recently
+    changed them. A government that amended nothing has pressure 0 and whatever exposure its
+    shape implies; one that liberalized last turn carries pressure while its exposure has already
+    fallen."""
     loyalty_shortfall_bps = max(0, COUP_LOYALTY_THRESHOLD_BPS - military_loyalty_bps)
     loyalty_contribution_bps = trunc_div_toward_zero(
         trunc_div_toward_zero(loyalty_shortfall_bps * military_power_bps, BPS_DENOMINATOR)
@@ -223,18 +386,27 @@ def coup_attempt_risk_bps(
     pressure_contribution_bps = trunc_div_toward_zero(
         transition_pressure_bps * COUP_TRANSITION_PRESSURE_WEIGHT_BPS, BPS_DENOMINATOR
     )
+    structural_contribution_bps = trunc_div_toward_zero(
+        structural_exposure_bps * COUP_STRUCTURAL_WEIGHT_BPS, BPS_DENOMINATOR
+    )
     total_bps = (
         BASE_COUP_ATTEMPT_RISK_BPS
         + loyalty_contribution_bps
         + legitimacy_contribution_bps
         + opposition_contribution_bps
         + pressure_contribution_bps
+        + structural_contribution_bps
     )
+    # The structural term joins the sum BEFORE the clamp, exactly like every other contribution.
+    # That is what makes the cap behave unchanged: a risk already saturated at the maximum does
+    # not move when structure is added, so "greater or equal, never lower" holds everywhere while
+    # "strictly greater" holds only below the cap.
     return CoupAttemptRiskAssessment(
         loyalty_contribution_bps=loyalty_contribution_bps,
         legitimacy_contribution_bps=legitimacy_contribution_bps,
         opposition_contribution_bps=opposition_contribution_bps,
         transition_pressure_contribution_bps=pressure_contribution_bps,
+        structural_contribution_bps=structural_contribution_bps,
         attempt_risk_bps=max(0, min(MAX_COUP_ATTEMPT_RISK_BPS, total_bps)),
     )
 
@@ -289,11 +461,16 @@ class UnrestAttemptRiskAssessment:
 
     radicalization_contribution_bps: int
     disapproval_contribution_bps: int
+    structural_contribution_bps: int
     attempt_risk_bps: int
 
 
 def unrest_attempt_risk_bps(
-    *, radicalization_bps: int, organization_bps: int, disapproval_bps: int
+    *,
+    radicalization_bps: int,
+    organization_bps: int,
+    disapproval_bps: int,
+    structural_exposure_bps: int,
 ) -> UnrestAttemptRiskAssessment:
     """The popular-unrest channel's per-turn attempt risk -- pure, no RNG.
 
@@ -301,7 +478,13 @@ def unrest_attempt_risk_bps(
     over the current population groups (`population_weighted_mean_bps`), already bps (R8) -- no
     float involved anywhere. Radicalization only contributes once BOTH it is above threshold AND
     the population is organized enough to act on it (the excess is scaled by raw `organization_bps`,
-    not threshold-gated itself, since organization is a capacity, not a trigger)."""
+    not threshold-gated itself, since organization is a capacity, not a trigger).
+
+    `structural_exposure_bps` enters exactly as it does on the coup channel: a population with no
+    lawful way to change its government is likelier to try an unlawful one. It raises how often
+    unrest is ATTEMPTED and never how often it succeeds -- `unrest_success_probability_bps` below
+    is untouched, so where organization is low enough that success is 0, more structural exposure
+    produces more attempts and still no removals."""
     radicalization_excess_bps = max(0, radicalization_bps - UNREST_RADICALIZATION_THRESHOLD_BPS)
     radicalization_contribution_bps = trunc_div_toward_zero(
         trunc_div_toward_zero(radicalization_excess_bps * organization_bps, BPS_DENOMINATOR)
@@ -312,14 +495,19 @@ def unrest_attempt_risk_bps(
     disapproval_contribution_bps = trunc_div_toward_zero(
         disapproval_excess_bps * UNREST_DISAPPROVAL_WEIGHT_BPS, BPS_DENOMINATOR
     )
+    structural_contribution_bps = trunc_div_toward_zero(
+        structural_exposure_bps * UNREST_STRUCTURAL_WEIGHT_BPS, BPS_DENOMINATOR
+    )
     total_bps = (
         BASE_UNREST_ATTEMPT_RISK_BPS
         + radicalization_contribution_bps
         + disapproval_contribution_bps
+        + structural_contribution_bps
     )
     return UnrestAttemptRiskAssessment(
         radicalization_contribution_bps=radicalization_contribution_bps,
         disapproval_contribution_bps=disapproval_contribution_bps,
+        structural_contribution_bps=structural_contribution_bps,
         attempt_risk_bps=max(0, min(MAX_UNREST_ATTEMPT_RISK_BPS, total_bps)),
     )
 

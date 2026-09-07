@@ -138,12 +138,17 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "turn": 32,
     },
     "coup_risk_assessed": {
-        "coup_attempt_risk_bps": 38,
-        "unrest_attempt_risk_bps": 15,
+        # tiny_valid's real genesis figures under ruleset 0.17.0: 58 = 8 base + 30 opposition
+        # + 20 structural, and 30 = 15 base + 15 structural.
+        "coup_attempt_risk_bps": 58,
+        "unrest_attempt_risk_bps": 30,
         "impeachment_eligible": True,
         "impeachment_attempt_risk_bps": 0,
+        "structural_exposure_bps": 500,
+        "coup_structural_contribution_bps": 20,
+        "unrest_structural_contribution_bps": 15,
     },
-    "coup_attempt_occurred": {"attempt_risk_bps": 38},
+    "coup_attempt_occurred": {"attempt_risk_bps": 58},
     "coup_succeeded": {"success_probability_bps": 300},
     "popular_unrest_occurred": {"outcome": "contained"},
     "impeachment_motion_brought": {"attempt_risk_bps": 200},

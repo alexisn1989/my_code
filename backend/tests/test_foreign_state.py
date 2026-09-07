@@ -638,7 +638,7 @@ def test_phase4a_save_compatibility_is_checked_before_any_entry_payload_is_parse
 
 
 def test_ruleset_and_save_format_versions_are_current() -> None:
-    assert RULESET_VERSION == "0.16.0"
+    assert RULESET_VERSION == "0.17.0"
     assert SAVE_FORMAT_VERSION == 1
 
 
@@ -646,4 +646,4 @@ def test_no_migration_path_exists_for_the_pre_w1_ruleset() -> None:
     """`SUPPORTED_RULESET_VERSIONS` names exactly one version -- the current one. A migration
     path would need a second, older version present in this set; there is none, and no
     foreign-conflict state is ever synthesized for a save that predates it."""
-    assert frozenset({"0.16.0"}) == SUPPORTED_RULESET_VERSIONS
+    assert frozenset({"0.17.0"}) == SUPPORTED_RULESET_VERSIONS

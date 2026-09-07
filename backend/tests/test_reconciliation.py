@@ -1223,6 +1223,115 @@ def test_group_24_coup_attempt_risk_field_fabricated_is_rejected() -> None:
     assert any("coup_unrest.coup.opposition_contribution_bps=" in p for p in problems)
 
 
+def test_group_24_forged_structural_exposure_is_rejected_against_the_constitution() -> None:
+    """The forgery this feature specifically has to survive.
+
+    A tamperer who wants a lower coup risk cannot simply lower `attempt_risk_bps` -- the report's
+    own validator recomputes the sum. So they raise the exposure and rescale every dependent figure
+    consistently: exposure, the structural contribution, and the total all agree with each other,
+    both report self-validators pass, and re-hashing the entry makes the save internally coherent.
+
+    It still fails here, because group 24 does not ask the report what the exposure was. It derives
+    it from the constitution stored in the closing state, which the tamperer would have to change
+    as well -- and changing that is a different, separately reconciled edit.
+    """
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    genuine = coup_unrest.coup.structural_exposure_bps
+    assert genuine == 500, "tiny_valid's authored constitution; the forgery below must differ"
+
+    # A fully self-consistent lie: exposure 10,000 -> contribution 400 -> risk +380.
+    forged_exposure = 10_000
+    forged_contribution = 400
+    forged_coup = coup_unrest.coup.model_copy(
+        update={
+            "structural_exposure_bps": forged_exposure,
+            "structural_contribution_bps": forged_contribution,
+            "attempt_risk_bps": (
+                coup_unrest.coup.attempt_risk_bps
+                - coup_unrest.coup.structural_contribution_bps
+                + forged_contribution
+            ),
+        }
+    )
+    # It really does satisfy the model's own validators -- otherwise this test would be proving
+    # that pydantic caught it, not that reconciliation did.
+    revalidated = type(forged_coup).model_validate(forged_coup.model_dump(mode="json"))
+    assert revalidated.structural_contribution_bps == forged_contribution
+
+    fabricated = coup_unrest.model_copy(update={"coup": forged_coup})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.coup.structural_exposure_bps=" in p for p in problems)
+    assert any("recomputed from closing_state's constitution" in p for p in problems)
+
+
+def test_group_27_forged_unrest_structural_exposure_is_rejected() -> None:
+    """The same forgery on the other violent channel. Both rows publish the exposure, so both are
+    checked against the constitution -- a tamperer cannot get at one through the other."""
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    forged_unrest = coup_unrest.popular_unrest.model_copy(
+        update={
+            "structural_exposure_bps": 10_000,
+            "structural_contribution_bps": 300,
+            "attempt_risk_bps": (
+                coup_unrest.popular_unrest.attempt_risk_bps
+                - coup_unrest.popular_unrest.structural_contribution_bps
+                + 300
+            ),
+        }
+    )
+    fabricated = coup_unrest.model_copy(update={"popular_unrest": forged_unrest})
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.popular_unrest.structural_exposure_bps=" in p for p in problems)
+
+
+def test_group_24_and_27_reject_two_channels_that_disagree_with_each_other() -> None:
+    """Both rows carry the same exposure because one assessment produced them. A report whose two
+    channels disagree is incoherent whichever one is right, and both are named."""
+    opening_state, resolution, decisions = _quiet_turn()
+    coup_unrest = resolution.report.coup_unrest
+    assert coup_unrest is not None
+    fabricated = coup_unrest.model_copy(
+        update={
+            "popular_unrest": coup_unrest.popular_unrest.model_copy(
+                update={
+                    "structural_exposure_bps": 7_500,
+                    "structural_contribution_bps": 225,
+                    "attempt_risk_bps": (
+                        coup_unrest.popular_unrest.attempt_risk_bps
+                        - coup_unrest.popular_unrest.structural_contribution_bps
+                        + 225
+                    ),
+                }
+            )
+        }
+    )
+    fabricated_report = resolution.report.model_copy(update={"coup_unrest": fabricated})
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=opening_state,
+        closing_state=resolution.state,
+        report=fabricated_report,
+        decisions=decisions,
+    )
+    assert any("coup_unrest.popular_unrest.structural_exposure_bps=7500" in p for p in problems)
+    assert not any("coup_unrest.coup.structural_exposure_bps=" in p for p in problems)
+
+
 def test_group_25_coup_success_probability_fabricated_is_rejected() -> None:
     opening_state, resolution, decisions = _coup_attempted_turn()
     coup_unrest = resolution.report.coup_unrest

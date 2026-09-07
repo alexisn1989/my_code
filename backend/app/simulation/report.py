@@ -121,11 +121,13 @@ from app.simulation.government_survival import (
     AMENDMENT_PRESSURE_PER_AXIS_BY_DIFFICULTY_BPS,
     BASE_COUP_ATTEMPT_RISK_BPS,
     BASE_UNREST_ATTEMPT_RISK_BPS,
+    COUP_STRUCTURAL_WEIGHT_BPS,
     MAX_COUP_ATTEMPT_RISK_BPS,
     MAX_IMPEACHMENT_ATTEMPT_RISK_BPS,
     MAX_POLLING_UNCERTAINTY_SWING_BPS,
     MAX_UNREST_ATTEMPT_RISK_BPS,
     REQUIRED_ELECTION_SUPPORT_BPS,
+    UNREST_STRUCTURAL_WEIGHT_BPS,
     coup_success_probability_bps,
     impeachment_success_probability_bps,
     unrest_success_probability_bps,
@@ -2768,6 +2770,14 @@ class CoupChannelReport(BaseModel):
     legitimacy_contribution_bps: StrictSignedRiskContributionBps
     opposition_contribution_bps: StrictSignedRiskContributionBps
     transition_pressure_contribution_bps: StrictSignedRiskContributionBps
+    structural_exposure_bps: StrictRiskBps
+    """How much this government's constitutional SHAPE exposes it to violent removal, from
+    `government_survival.structural_removal_exposure_bps`. Published as a raw INPUT, alongside the
+    military and legitimacy figures, so `structural_contribution_bps` below is re-derivable from
+    this row alone -- the constitution itself is not carried here. Reconciliation recomputes this
+    value from the closing state's constitution, which is what makes a forged exposure fail even
+    when this row's own arithmetic balances."""
+    structural_contribution_bps: StrictSignedRiskContributionBps
     attempt_risk_bps: StrictRiskBps
     attempted: bool
     success_probability_bps: StrictRiskBps | None = None
@@ -2783,13 +2793,30 @@ class CoupChannelReport(BaseModel):
                 + self.loyalty_contribution_bps
                 + self.legitimacy_contribution_bps
                 + self.opposition_contribution_bps
-                + self.transition_pressure_contribution_bps,
+                + self.transition_pressure_contribution_bps
+                + self.structural_contribution_bps,
             ),
         )
         if self.attempt_risk_bps != expected:
             raise ValueError(
-                f"attempt_risk_bps={self.attempt_risk_bps} does not match the four named "
+                f"attempt_risk_bps={self.attempt_risk_bps} does not match the five named "
                 f"contributions, base, and clamp ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _structural_contribution_matches_its_published_exposure(self) -> CoupChannelReport:
+        """The one contribution this row can fully re-derive from its own published input. The
+        others are checked only as a sum here and individually by reconciliation; this one is
+        checked both ways, because the exposure is the new value a tamperer would reach for."""
+        expected = trunc_div_toward_zero(
+            self.structural_exposure_bps * COUP_STRUCTURAL_WEIGHT_BPS, BPS_DENOMINATOR
+        )
+        if self.structural_contribution_bps != expected:
+            raise ValueError(
+                f"structural_contribution_bps={self.structural_contribution_bps} does not match "
+                f"structural_exposure_bps={self.structural_exposure_bps} scaled by "
+                f"COUP_STRUCTURAL_WEIGHT_BPS ({expected})"
             )
         return self
 
@@ -2831,6 +2858,13 @@ class PopularUnrestChannelReport(BaseModel):
     legitimacy_bps: StrictRiskBps
     radicalization_contribution_bps: StrictSignedRiskContributionBps
     disapproval_contribution_bps: StrictSignedRiskContributionBps
+    structural_exposure_bps: StrictRiskBps
+    """The same published input as `CoupChannelReport.structural_exposure_bps`, and necessarily the
+    same value on any one turn -- both channels read one assessment computed once in slot 12.
+    Carried on both rows rather than hoisted onto `CoupUnrestReport` so each channel row stays
+    independently re-derivable, which is the property every other input on these rows already has.
+    Reconciliation checks the two agree with each other and with the constitution."""
+    structural_contribution_bps: StrictSignedRiskContributionBps
     attempt_risk_bps: StrictRiskBps
     attempted: bool
     success_probability_bps: StrictRiskBps | None = None
@@ -2845,13 +2879,29 @@ class PopularUnrestChannelReport(BaseModel):
                 MAX_UNREST_ATTEMPT_RISK_BPS,
                 BASE_UNREST_ATTEMPT_RISK_BPS
                 + self.radicalization_contribution_bps
-                + self.disapproval_contribution_bps,
+                + self.disapproval_contribution_bps
+                + self.structural_contribution_bps,
             ),
         )
         if self.attempt_risk_bps != expected:
             raise ValueError(
-                f"attempt_risk_bps={self.attempt_risk_bps} does not match the two named "
+                f"attempt_risk_bps={self.attempt_risk_bps} does not match the three named "
                 f"contributions, base, and clamp ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _structural_contribution_matches_its_published_exposure(
+        self,
+    ) -> PopularUnrestChannelReport:
+        expected = trunc_div_toward_zero(
+            self.structural_exposure_bps * UNREST_STRUCTURAL_WEIGHT_BPS, BPS_DENOMINATOR
+        )
+        if self.structural_contribution_bps != expected:
+            raise ValueError(
+                f"structural_contribution_bps={self.structural_contribution_bps} does not match "
+                f"structural_exposure_bps={self.structural_exposure_bps} scaled by "
+                f"UNREST_STRUCTURAL_WEIGHT_BPS ({expected})"
             )
         return self
 

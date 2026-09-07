@@ -1604,7 +1604,7 @@ class WorldState(BaseModel):
         return self
 
 
-RULESET_VERSION = "0.16.0"
+RULESET_VERSION = "0.17.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -1707,6 +1707,23 @@ one bump: `ResourceDepositState` gains a required `theater_id`, and `StrategicMa
 `rivers` (defaulted, so it owes nothing on its own). A 0.15.0 save's deposits have no location,
 and there is nothing to migrate from -- placing them all in the capital, or spreading them
 arbitrarily, would assert a geography the save never recorded.
+
+Bumped `"0.16.0" -> "0.17.0"` for government structure in violent-removal risk
+(`docs/adr/0019-government-structure-and-violent-removal-risk.md`): the coup and popular-unrest
+channels gain a structural contribution derived from the constitution's own axes, so a government
+that no electorate can remove and no other organ constrains is more exposed to being removed by
+force. Unlike the M0 and movement bumps this changes NO state shape at all -- not one field is
+added to `GameState`. It is a pure turn-resolution change, which is the other half of this
+constant's rule: the same 0.16.0 state now yields a different `coup_attempt_risk_bps`, a different
+RNG comparison in slot 12, and therefore possibly a different history. Replaying 0.16.0-authored
+decisions under 0.17.0 rules does not reproduce the 0.16.0 turn.
+
+**No migration, and specifically no reinterpretation.** A 0.16.0 save's recorded turns were
+resolved under rules where form did not matter; loading it here and continuing would silently
+apply the new rules to a campaign that was never exposed to them, and re-deriving its history
+under them would contradict the hashes it stores. It is rejected. `SAVE_FORMAT_VERSION` stays `1`
+and `content_version` stays `"0.16.0"` -- no scenario authored field changes shape, and the two
+new weights are engine constants, not content.
 """
 
 

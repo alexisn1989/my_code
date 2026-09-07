@@ -119,6 +119,7 @@ from app.simulation.government_survival import (
     legislative_support_bps,
     population_weighted_mean_bps,
     resolve_transition_pressure_bps,
+    structural_removal_exposure_bps,
     transition_pressure_added_bps,
     unrest_attempt_risk_bps,
     unrest_success_probability_bps,
@@ -2856,6 +2857,25 @@ def _evaluate_unrest_and_coup_risk(ctx: PhaseContext) -> None:  # noqa: C901
     opposition_seat_share_bps = _opposition_seat_share_bps(legislature)
     military = next(row for row in player.institutions if row.id == "military")
 
+    # How much this government's FORM exposes it to violent removal. Computed ONCE, here, and fed
+    # to both violent channels -- one assessment, so the two rows can never disagree about the
+    # constitution they were scored against.
+    #
+    # `constitution` is the same object this slot already reads for impeachment eligibility below,
+    # which is the CLOSING constitution: slot 2 commits an enacted amendment, so a government that
+    # liberalized this turn is scored on what it became, not on what it was. That is deliberate and
+    # matches the boundary impeachment eligibility has always used; a failed amendment commits
+    # nothing, so it is scored on the unchanged opening shape. Transition pressure is a separate
+    # term above and is not double-counted here -- it measures having recently changed the
+    # constitution, this measures what the constitution now is.
+    structural_exposure = structural_removal_exposure_bps(
+        executive_selection=constitution.executive_selection,
+        decree_authority=constitution.decree_authority,
+        legislature=constitution.legislature,
+        judicial_review=constitution.judicial_review,
+        national_election_interval_turns=constitution.national_election_interval_turns,
+    )
+
     # --- Coup channel -------------------------------------------------------------------------
     coup_risk = coup_attempt_risk_bps(
         military_loyalty_bps=military.loyalty,
@@ -2863,6 +2883,7 @@ def _evaluate_unrest_and_coup_risk(ctx: PhaseContext) -> None:  # noqa: C901
         legitimacy_bps=legitimacy,
         opposition_seat_share_bps=opposition_seat_share_bps,
         transition_pressure_bps=pressure_resolution.closing_bps,
+        structural_exposure_bps=structural_exposure.exposure_bps,
     )
     coup_attempted = (
         ctx.rng("coup_attempt").randint(1, BPS_DENOMINATOR) <= coup_risk.attempt_risk_bps
@@ -2902,6 +2923,7 @@ def _evaluate_unrest_and_coup_risk(ctx: PhaseContext) -> None:  # noqa: C901
         radicalization_bps=radicalization_bps,
         organization_bps=organization_bps,
         disapproval_bps=disapproval_bps,
+        structural_exposure_bps=structural_exposure.exposure_bps,
     )
     unrest_attempted = (
         ctx.rng("unrest_attempt").randint(1, BPS_DENOMINATOR) <= unrest_risk.attempt_risk_bps
@@ -2997,6 +3019,8 @@ def _evaluate_unrest_and_coup_risk(ctx: PhaseContext) -> None:  # noqa: C901
             legitimacy_contribution_bps=coup_risk.legitimacy_contribution_bps,
             opposition_contribution_bps=coup_risk.opposition_contribution_bps,
             transition_pressure_contribution_bps=coup_risk.transition_pressure_contribution_bps,
+            structural_exposure_bps=structural_exposure.exposure_bps,
+            structural_contribution_bps=coup_risk.structural_contribution_bps,
             attempt_risk_bps=coup_risk.attempt_risk_bps,
             attempted=coup_attempted,
             success_probability_bps=coup_success_probability,
@@ -3009,6 +3033,8 @@ def _evaluate_unrest_and_coup_risk(ctx: PhaseContext) -> None:  # noqa: C901
             legitimacy_bps=legitimacy,
             radicalization_contribution_bps=unrest_risk.radicalization_contribution_bps,
             disapproval_contribution_bps=unrest_risk.disapproval_contribution_bps,
+            structural_exposure_bps=structural_exposure.exposure_bps,
+            structural_contribution_bps=unrest_risk.structural_contribution_bps,
             attempt_risk_bps=unrest_risk.attempt_risk_bps,
             attempted=unrest_attempted,
             success_probability_bps=unrest_success_probability,
@@ -3042,6 +3068,13 @@ def _evaluate_unrest_and_coup_risk(ctx: PhaseContext) -> None:  # noqa: C901
                 "unrest_attempt_risk_bps": unrest_risk.attempt_risk_bps,
                 "impeachment_eligible": impeachment_eligible,
                 "impeachment_attempt_risk_bps": impeachment_attempt_risk_value or 0,
+                # How much of the two violent figures above is the government's SHAPE rather than
+                # its current conditions. Carried as params on the existing reason rather than as a
+                # new reason id: it is part of the same assessment, and a player reading "survival
+                # risk assessed" should see what drove it in one sentence.
+                "structural_exposure_bps": structural_exposure.exposure_bps,
+                "coup_structural_contribution_bps": coup_risk.structural_contribution_bps,
+                "unrest_structural_contribution_bps": unrest_risk.structural_contribution_bps,
             },
         )
     )

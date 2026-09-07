@@ -38,6 +38,7 @@ from app.simulation.government_survival import (
     MAX_COUP_SUCCESS_PROBABILITY_BPS,
     MAX_IMPEACHMENT_ATTEMPT_RISK_BPS,
     MAX_IMPEACHMENT_SUCCESS_PROBABILITY_BPS,
+    MAX_STRUCTURAL_EXPOSURE_BPS,
     MAX_UNREST_ATTEMPT_RISK_BPS,
     MAX_UNREST_SUCCESS_PROBABILITY_BPS,
     POPULATION_APPROVAL_WEIGHT_BPS,
@@ -79,6 +80,19 @@ DECREE_STATE_OPPOSITION_SEAT_SHARE_BPS = 5_500  # opposition_party (55 of 100 se
 DECREE_STATE_RADICALIZATION_BPS = 625
 DECREE_STATE_ORGANIZATION_BPS = 3_275
 DECREE_STATE_DISAPPROVAL_BPS = 4_670
+
+# Structural removal exposure, measured from each scenario's authored constitution by
+# `structural_removal_exposure_bps` (see `test_structural_exposure.py`, which derives these from
+# the real `ConstitutionState` rather than trusting the literals here):
+#   tiny_valid    parliamentary, elected + scheduled, bicameral, strong courts, emergency decree
+#                 -> 0 + 500 + 0 + 0 = 500
+#   deficit_demo  presidential, elected + scheduled, unicameral, weak courts, emergency decree
+#                 -> 0 + 500 + 0 + 500 = 1,000
+#   decree_state  monarchical, hereditary, unicameral, weak courts, UNLIMITED decree
+#                 -> 4,000 + 3,000 + 0 + 500 = 7,500
+TINY_VALID_STRUCTURAL_EXPOSURE_BPS = 500
+DEFICIT_DEMO_STRUCTURAL_EXPOSURE_BPS = 1_000
+DECREE_STATE_STRUCTURAL_EXPOSURE_BPS = 7_500
 
 
 def test_weight_constants_sum_to_the_full_scale() -> None:
@@ -169,68 +183,98 @@ def test_required_election_support_is_the_scale_midpoint() -> None:
 
 
 def test_coup_attempt_risk_bps_tiny_valid_worked_example() -> None:
-    """Loyalty (7,500) and legitimacy (7,000) both clear their thresholds, so only the base and
-    opposition-seat-share terms contribute: 8 + trunc(3,800*80/10,000) = 8 + 30 = 38."""
+    """Loyalty (7,500) and legitimacy (7,000) both clear their thresholds, so only the base, the
+    opposition-seat-share term and the structural term contribute:
+    8 + trunc(3,800*80/10,000) + trunc(500*400/10,000) = 8 + 30 + 20 = 58.
+
+    An accountable electoral government with emergency powers pays 20 bps for its form. That is
+    the smallest nonzero structural charge any shipped scenario carries, and it is what stops
+    `emergency_only` from reading as dictatorship."""
     assessment = coup_attempt_risk_bps(
         military_loyalty_bps=TINY_VALID_MILITARY["loyalty_bps"],
         military_power_bps=TINY_VALID_MILITARY["power_bps"],
         legitimacy_bps=TINY_VALID_LEGITIMACY_BPS,
         opposition_seat_share_bps=TINY_VALID_OPPOSITION_SEAT_SHARE_BPS,
         transition_pressure_bps=0,
+        structural_exposure_bps=TINY_VALID_STRUCTURAL_EXPOSURE_BPS,
     )
     assert assessment.loyalty_contribution_bps == 0
     assert assessment.legitimacy_contribution_bps == 0
     assert assessment.opposition_contribution_bps == 30
     assert assessment.transition_pressure_contribution_bps == 0
-    assert assessment.attempt_risk_bps == 38
+    assert assessment.structural_contribution_bps == 20
+    assert assessment.attempt_risk_bps == 58
 
 
 def test_coup_attempt_risk_bps_deficit_demo_worked_example() -> None:
-    """8 + trunc(5,000*80/10,000) = 8 + 40 = 48."""
+    """8 + trunc(5,000*80/10,000) + trunc(1,000*400/10,000) = 8 + 40 + 40 = 88. Weak courts cost
+    it 500 more exposure than tiny_valid, and nothing else about its form differs."""
     assessment = coup_attempt_risk_bps(
         military_loyalty_bps=DEFICIT_DEMO_MILITARY["loyalty_bps"],
         military_power_bps=DEFICIT_DEMO_MILITARY["power_bps"],
         legitimacy_bps=DEFICIT_DEMO_LEGITIMACY_BPS,
         opposition_seat_share_bps=DEFICIT_DEMO_OPPOSITION_SEAT_SHARE_BPS,
         transition_pressure_bps=0,
+        structural_exposure_bps=DEFICIT_DEMO_STRUCTURAL_EXPOSURE_BPS,
     )
-    assert assessment.attempt_risk_bps == 48
+    assert assessment.structural_contribution_bps == 40
+    assert assessment.attempt_risk_bps == 88
 
 
 def test_coup_attempt_risk_bps_decree_state_worked_example() -> None:
-    """8 + trunc(5,500*80/10,000) = 8 + 44 = 52."""
+    """8 + trunc(5,500*80/10,000) + trunc(7,500*400/10,000) = 8 + 44 + 300 = 352.
+
+    The whole point of the feature in one number. `decree_state`'s military is IDENTICAL to
+    tiny_valid's (same loyalty, power and competence, both authored 7,500/6,500/6,000) and its
+    opposition share is only 1,700 bps higher, yet its per-turn coup risk is roughly six times
+    tiny_valid's -- because a hereditary executive ruling by unlimited decree has no lawful way of
+    being removed, and 300 of those 352 bps come from saying so."""
     assessment = coup_attempt_risk_bps(
         military_loyalty_bps=DECREE_STATE_MILITARY["loyalty_bps"],
         military_power_bps=DECREE_STATE_MILITARY["power_bps"],
         legitimacy_bps=DECREE_STATE_LEGITIMACY_BPS,
         opposition_seat_share_bps=DECREE_STATE_OPPOSITION_SEAT_SHARE_BPS,
         transition_pressure_bps=0,
+        structural_exposure_bps=DECREE_STATE_STRUCTURAL_EXPOSURE_BPS,
     )
-    assert assessment.attempt_risk_bps == 52
+    assert assessment.structural_contribution_bps == 300
+    assert assessment.attempt_risk_bps == 352
 
 
 def test_coup_attempt_risk_bps_low_loyalty_case_from_the_plan() -> None:
     """§11's deliberately-low-loyalty test case: tiny_valid's military with loyalty edited down to
-    2,000, everything else unchanged -- 623 bps, a real, sharply visible jump from the baseline 38,
-    confirming the formula is genuinely sensitive."""
+    2,000, everything else unchanged -- a real, sharply visible jump from the baseline 58,
+    confirming the formula is genuinely sensitive.
+
+    Still dominated by loyalty, not by structure: 585 of the 643 bps come from the disloyal army.
+    A democracy whose military has turned on it is in far more danger than a dictatorship whose
+    army has not, which is exactly the "democracies remain susceptible" property."""
     assessment = coup_attempt_risk_bps(
         military_loyalty_bps=2_000,
         military_power_bps=TINY_VALID_MILITARY["power_bps"],
         legitimacy_bps=TINY_VALID_LEGITIMACY_BPS,
         opposition_seat_share_bps=TINY_VALID_OPPOSITION_SEAT_SHARE_BPS,
         transition_pressure_bps=0,
+        structural_exposure_bps=TINY_VALID_STRUCTURAL_EXPOSURE_BPS,
     )
     assert assessment.loyalty_contribution_bps == 585
-    assert assessment.attempt_risk_bps == 623
+    assert assessment.structural_contribution_bps == 20
+    assert assessment.attempt_risk_bps == 643
 
 
 def test_coup_attempt_risk_bps_no_legislature_contributes_nothing_from_opposition() -> None:
+    """`structural_exposure_bps=0` here ISOLATES the opposition term. A real constitution with no
+    legislature could never have zero exposure -- rule C10 forces unlimited decree alongside it, so
+    it carries at least 5,000 -- but this test is about the opposition term reading `None`, and
+    passing a nonzero exposure would put a second contribution in the total it asserts.
+    `test_structural_exposure.py` covers what such a constitution really scores."""
     assessment = coup_attempt_risk_bps(
         military_loyalty_bps=9_000,
         military_power_bps=5_000,
         legitimacy_bps=9_000,
         opposition_seat_share_bps=None,
         transition_pressure_bps=0,
+        structural_exposure_bps=0,
     )
     assert assessment.opposition_contribution_bps == 0
     assert assessment.attempt_risk_bps == BASE_COUP_ATTEMPT_RISK_BPS
@@ -245,8 +289,13 @@ def test_coup_attempt_risk_bps_transition_pressure_at_maximum() -> None:
         legitimacy_bps=9_000,
         opposition_seat_share_bps=0,
         transition_pressure_bps=10_000,
+        structural_exposure_bps=0,
     )
     assert assessment.transition_pressure_contribution_bps == 1_000
+    # Zero exposure with maximum pressure: the two terms are genuinely independent, which is what
+    # rules out double counting. Pressure is the memory of having just changed the constitution;
+    # exposure is what the constitution now is.
+    assert assessment.structural_contribution_bps == 0
     assert assessment.attempt_risk_bps == BASE_COUP_ATTEMPT_RISK_BPS + 1_000
 
 
@@ -259,6 +308,7 @@ def test_coup_attempt_risk_bps_clamps_at_the_maximum() -> None:
         legitimacy_bps=0,
         opposition_seat_share_bps=10_000,
         transition_pressure_bps=10_000,
+        structural_exposure_bps=MAX_STRUCTURAL_EXPOSURE_BPS,
     )
     assert assessment.attempt_risk_bps == MAX_COUP_ATTEMPT_RISK_BPS
 
@@ -338,6 +388,7 @@ def test_unrest_attempt_risk_bps_tiny_valid_and_decree_state_share_the_baseline(
             radicalization_bps=radicalization,
             organization_bps=organization,
             disapproval_bps=disapproval,
+            structural_exposure_bps=0,
         )
         assert assessment.radicalization_contribution_bps == 0
         assert assessment.disapproval_contribution_bps == 0
@@ -351,6 +402,7 @@ def test_unrest_attempt_risk_bps_deficit_demo_worked_example() -> None:
         radicalization_bps=DEFICIT_DEMO_RADICALIZATION_BPS,
         organization_bps=DEFICIT_DEMO_ORGANIZATION_BPS,
         disapproval_bps=DEFICIT_DEMO_DISAPPROVAL_BPS,
+        structural_exposure_bps=0,
     )
     assert assessment.disapproval_contribution_bps == 0
     assert assessment.attempt_risk_bps == BASE_UNREST_ATTEMPT_RISK_BPS
@@ -358,7 +410,10 @@ def test_unrest_attempt_risk_bps_deficit_demo_worked_example() -> None:
 
 def test_unrest_attempt_risk_bps_above_both_thresholds() -> None:
     assessment = unrest_attempt_risk_bps(
-        radicalization_bps=10_000, organization_bps=10_000, disapproval_bps=10_000
+        radicalization_bps=10_000,
+        organization_bps=10_000,
+        disapproval_bps=10_000,
+        structural_exposure_bps=0,
     )
     radicalization_excess = 10_000 - 2_000
     radicalization_contribution = radicalization_excess * 10_000 // 10_000 * 2_500 // 10_000
@@ -374,7 +429,10 @@ def test_unrest_attempt_risk_bps_above_both_thresholds() -> None:
 
 def test_unrest_attempt_risk_bps_clamps_at_the_maximum() -> None:
     assessment = unrest_attempt_risk_bps(
-        radicalization_bps=10_000, organization_bps=10_000, disapproval_bps=10_000
+        radicalization_bps=10_000,
+        organization_bps=10_000,
+        disapproval_bps=10_000,
+        structural_exposure_bps=MAX_STRUCTURAL_EXPOSURE_BPS,
     )
     assert assessment.attempt_risk_bps == MAX_UNREST_ATTEMPT_RISK_BPS
 
@@ -383,7 +441,10 @@ def test_unrest_attempt_risk_bps_zero_organization_zeroes_radicalization_term() 
     """Radicalization alone, with no organized capacity to act on it, contributes nothing --
     organization is a multiplicative capacity term, not an independent trigger."""
     assessment = unrest_attempt_risk_bps(
-        radicalization_bps=10_000, organization_bps=0, disapproval_bps=0
+        radicalization_bps=10_000,
+        organization_bps=0,
+        disapproval_bps=0,
+        structural_exposure_bps=0,
     )
     assert assessment.radicalization_contribution_bps == 0
     assert assessment.attempt_risk_bps == BASE_UNREST_ATTEMPT_RISK_BPS

@@ -90,7 +90,10 @@ REASON_LABELS: dict[str, str] = {
     "election_scheduled": "An election was scheduled.",
     "election_result": "The election was decided.",
     "game_concluded": "The campaign ended.",
-    "coup_risk_assessed": "Coup risk was assessed.",
+    "coup_risk_assessed": (
+        "Survival risk was assessed, including how much of it comes from the government's own "
+        "structure."
+    ),
     "coup_attempt_occurred": "A coup was attempted.",
     "coup_succeeded": "The coup succeeded.",
     "popular_unrest_occurred": "Popular unrest broke out.",
@@ -940,12 +943,27 @@ def build_dashboard(
         seats_headline = f"{len(legislature.parties)} parties, {total} seats"
 
     coup = report.coup_unrest if report is not None else None
+    survival_detail: str | None = None
     if coup is None:
         survival_headline = "Not yet assessed"
         survival_tone: Tone = "neutral"
     else:
         survival_headline = f"Coup risk {format_bps_percent(coup.coup.attempt_risk_bps)}"
         survival_tone = "caution" if coup.coup.attempt_risk_bps > 0 else "neutral"
+        # Says WHERE the risk comes from, in the card the player already looks at, rather than
+        # leaving a bare percentage they cannot act on. Deliberately about an ATTEMPT and never
+        # about an outcome: a coup can be attempted and fail, and this card must not imply
+        # otherwise. Lives on the revision-keyed dashboard, never on the generation-keyed
+        # strategic-map projection, which is cached with an infinite stale time and would show a
+        # stale figure forever.
+        structural = coup.coup.structural_contribution_bps
+        if structural > 0:
+            survival_detail = (
+                f"{format_bps_percent(structural)} of that is the shape of the government "
+                "itself; the rest is current conditions."
+            )
+        else:
+            survival_detail = "None of that comes from the shape of the government itself."
 
     difficulty = politics.constitution.amendment_difficulty.value.replace("_", " ").capitalize()
     return DashboardProjection(
@@ -971,6 +989,7 @@ def build_dashboard(
             survival=ConcernCard(
                 label="Survival",
                 headline=survival_headline,
+                delta_text=survival_detail,
                 tone=survival_tone,
                 detail_screen="government",
             ),

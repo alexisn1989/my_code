@@ -64,10 +64,19 @@ THIRTEEN_PRE_EXISTING_REPORTS = (
 #: "unchecked".
 CHANGED_BY_THE_MAP_RESOURCES_SLICE = frozenset({"resources"})
 
-TWELVE_BYTE_IDENTICAL_REPORTS = tuple(
+#: And the one that the government-structure feature legitimately changes. `coup_unrest` gained a
+#: structural exposure and contribution on each of its two violent channels, and both attempt-risk
+#: totals moved as a result, so it cannot be byte-identical to a record produced by an engine whose
+#: coup formula could not see the constitution. Named separately from the set above rather than
+#: merged into one "changed" bucket, so each exclusion still says WHICH change made it and has to
+#: justify itself on its own. Assertion 1b pins exactly how this one differs.
+CHANGED_BY_THE_GOVERNMENT_STRUCTURE_FEATURE = frozenset({"coup_unrest"})
+
+ELEVEN_BYTE_IDENTICAL_REPORTS = tuple(
     field
     for field in THIRTEEN_PRE_EXISTING_REPORTS
-    if field not in CHANGED_BY_THE_MAP_RESOURCES_SLICE
+    if field
+    not in (CHANGED_BY_THE_MAP_RESOURCES_SLICE | CHANGED_BY_THE_GOVERNMENT_STRUCTURE_FEATURE)
 )
 
 #: Every RNG stream the engine drew from before this commit. `foreign_conflict_progress:{id}` is
@@ -265,7 +274,7 @@ class TestTheExclusionHelperRemovesOnlyTwoPaths:
 
 
 class TestQuietTurnRegressionAgainstFrozenBaseline:
-    def test_1_the_twelve_untouched_pre_existing_report_subtrees_are_byte_identical(
+    def test_1_the_eleven_untouched_pre_existing_report_subtrees_are_byte_identical(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """`production`, `tax_base_derivation` and `finance` are in this list, which is the whole
@@ -274,7 +283,7 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
         extracted every turn, and the country's output, tax bases, revenue and treasury did not
         move by one minor unit."""
         for live_row, base_row in zip(live[1:], baseline[1:], strict=True):
-            for field in TWELVE_BYTE_IDENTICAL_REPORTS:
+            for field in ELEVEN_BYTE_IDENTICAL_REPORTS:
                 assert json.dumps(live_row["report"][field], sort_keys=True) == json.dumps(
                     base_row["report"][field], sort_keys=True
                 ), f"turn {live_row['turn']}: {field}"
@@ -342,6 +351,61 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
                 == 500
             )
 
+    def test_1b_the_coup_unrest_report_differs_only_by_the_structural_term(
+        self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
+    ) -> None:
+        """The second excluded subtree, pinned as an EXACT difference set.
+
+        Six leaves and no others: a published exposure and a named contribution on each of the two
+        violent channels, and the two attempt-risk totals those contributions move. Everything
+        else in the subtree is byte-identical to the 0.14.0 record -- every raw input (military
+        loyalty, power, competence, legitimacy, the three population aggregates), every
+        pre-existing contribution, the whole impeachment channel, `removal_triggered`, and all
+        four transition-pressure fields.
+
+        That set is the feature's scope stated as a measurement. Impeachment's absence from it is
+        the specific claim that the structural term was NOT added to a third channel; the
+        population and military figures' absence is the claim that nothing about how conditions are
+        read changed; and `removal_triggered` being unchanged is the claim that this quiet turn
+        stayed quiet -- structure raised the odds without, here, altering the outcome.
+        """
+        for live_row, base_row in zip(live[1:], baseline[1:], strict=True):
+            assert _differing_paths(
+                live_row["report"]["coup_unrest"], base_row["report"]["coup_unrest"]
+            ) == [
+                "coup.attempt_risk_bps",
+                "coup.structural_contribution_bps",
+                "coup.structural_exposure_bps",
+                "popular_unrest.attempt_risk_bps",
+                "popular_unrest.structural_contribution_bps",
+                "popular_unrest.structural_exposure_bps",
+            ], f"turn {live_row['turn']}"
+
+            live_coup = live_row["report"]["coup_unrest"]["coup"]
+            live_unrest = live_row["report"]["coup_unrest"]["popular_unrest"]
+            base_coup = base_row["report"]["coup_unrest"]["coup"]
+            base_unrest = base_row["report"]["coup_unrest"]["popular_unrest"]
+
+            # The 0.14.0 rows carry no such fields at all -- asserted, so a future row that lost
+            # them would fail here instead of matching the old shape by omission.
+            assert "structural_exposure_bps" not in base_coup
+            assert "structural_exposure_bps" not in base_unrest
+
+            # `tiny_valid` is an accountable electoral government with emergency powers: 500 of a
+            # possible 10,000, the smallest nonzero charge any shipped scenario carries.
+            assert live_coup["structural_exposure_bps"] == 500
+            assert live_unrest["structural_exposure_bps"] == 500
+
+            # Each total moved by exactly its own new contribution, and by nothing else.
+            assert (
+                live_coup["attempt_risk_bps"] - base_coup["attempt_risk_bps"]
+                == live_coup["structural_contribution_bps"]
+            )
+            assert (
+                live_unrest["attempt_risk_bps"] - base_unrest["attempt_risk_bps"]
+                == live_unrest["structural_contribution_bps"]
+            )
+
     def test_2_w1_foreign_affairs_rows_and_outcomes_are_byte_identical(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
@@ -379,7 +443,7 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """So the pinned set above can never quietly absorb a different meaning."""
-        assert live[-1]["state"]["ruleset_version"] == "0.16.0"
+        assert live[-1]["state"]["ruleset_version"] == "0.17.0"
         assert live[-1]["state"]["content_version"] == "0.16.0"
         assert baseline[-1]["state"]["ruleset_version"] == "0.14.0"
         assert baseline[-1]["state"]["content_version"] == "0.14.0"

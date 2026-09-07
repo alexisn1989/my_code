@@ -209,7 +209,7 @@ class TestCoupChannelReportValidation:
     def test_attempt_risk_inconsistent_with_named_contributions_is_rejected(self, load) -> None:
         data = _baseline_dict()
         data["coup"]["attempt_risk_bps"] += 1
-        with pytest.raises(ValidationError, match="does not match the four named contributions"):
+        with pytest.raises(ValidationError, match="does not match the five named contributions"):
             load(data)
 
     @_LOADERS
@@ -260,7 +260,7 @@ class TestPopularUnrestChannelReportValidation:
     def test_attempt_risk_inconsistent_with_named_contributions_is_rejected(self, load) -> None:
         data = _baseline_dict()
         data["popular_unrest"]["attempt_risk_bps"] += 1
-        with pytest.raises(ValidationError, match="does not match the two named contributions"):
+        with pytest.raises(ValidationError, match="does not match the three named contributions"):
             load(data)
 
     @_LOADERS

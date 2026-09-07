@@ -8,12 +8,15 @@ matched against.
 
 from __future__ import annotations
 
+import pytest
+
 from app.content.scenarios import load_scenario_file
 from app.core.errors import GameAlreadyConcludedError
 from app.simulation.decisions import DecisionSet
 from app.simulation.government_survival import MAX_POLLING_UNCERTAINTY_SWING_BPS
 from app.simulation.history import advance_game, new_game
 from app.simulation.save_format import SAVE_FORMAT_VERSION
+from app.simulation.state import OutcomeBucket
 from tests.conftest import SCENARIO_DIR
 
 
@@ -338,61 +341,163 @@ class TestAStartingDemocracyCannotWinLiberalizationVictory:
 # --- Phase 3C, Gate 3C2: coup/unrest/impeachment calibration ------------------------------------
 
 
-class TestDecreeStateSeedZeroToNineteenSweepProvesStabilityUnderAddedRisk:
+_DECREE_STATE_SWEEP_SEEDS = range(20)
+_DECREE_STATE_SWEEP_HORIZON = 100
+
+
+@pytest.fixture(scope="module")
+def decree_state_sweep() -> dict[str, object]:
+    """Twenty 100-turn `decree_state` campaigns, resolved ONCE and reduced to raw integer facts.
+
+    One aggregation shared by every test below, following
+    `test_foreign_conflict_calibration.py`'s own `_measure` discipline: raw integers and sorted
+    lists only, never a rounded percentage, and completed campaigns kept strictly separate from
+    right-censored ones. Resolving the sweep per test instead would multiply a two-minute
+    measurement by the number of assertions made about it.
+
+    `disable_dyads=True` throughout. External Wars W1's security-anxiety channel can itself drive
+    a coup on this seed range, and mixing the two would make it impossible to attribute a removal
+    to government structure. War-driven termination is real and covered separately by
+    `test_foreign_conflict_wiring.py`.
+    """
+    coup_attempts = 0
+    unrest_attempts = 0
+    unrest_successes = 0
+    impeachment_eligible_turns = 0
+    turns_at_risk = 0
+    removals: dict[int, tuple[str, int]] = {}
+    survivors: list[int] = []
+    fatal_coup_rows: dict[int, tuple[int, int]] = {}
+
+    for seed in _DECREE_STATE_SWEEP_SEEDS:
+        save = _run_until_concluded(
+            "decree_state.yaml", _DECREE_STATE_SWEEP_HORIZON, seed=seed, disable_dyads=True
+        )
+        for entry in save.entries[1:]:
+            report = entry.report()
+            assert report is not None and report.coup_unrest is not None
+            coup_unrest = report.coup_unrest
+            turns_at_risk += 1
+            coup_attempts += bool(coup_unrest.coup.attempted)
+            unrest_attempts += bool(coup_unrest.popular_unrest.attempted)
+            unrest_successes += bool(coup_unrest.popular_unrest.succeeded)
+            impeachment_eligible_turns += bool(coup_unrest.impeachment.eligible)
+
+        politics = save.current_state().world.countries["valdrun"].politics
+        assert politics is not None
+        outcome = politics.terminal_outcome
+        if outcome is None:
+            survivors.append(seed)
+            continue
+        assert outcome.removal_reason is not None, seed
+        removals[seed] = (outcome.removal_reason.value, outcome.turn)
+        assert outcome.bucket is OutcomeBucket.DEFEAT, seed
+        final = save.entries[-1].report()
+        assert final is not None and final.coup_unrest is not None
+        fatal_coup_rows[seed] = (
+            final.coup_unrest.coup.structural_exposure_bps,
+            final.coup_unrest.coup.structural_contribution_bps,
+        )
+
+    return {
+        "coup_attempts": coup_attempts,
+        "unrest_attempts": unrest_attempts,
+        "unrest_successes": unrest_successes,
+        "impeachment_eligible_turns": impeachment_eligible_turns,
+        "turns_at_risk": turns_at_risk,
+        "removals": removals,
+        "survivors": sorted(survivors),
+        "fatal_coup_rows": fatal_coup_rows,
+    }
+
+
+class TestDecreeStateSeedZeroToNineteenSweepProvesADictatorshipIsAtRiskAndSurvivable:
     """The SAME declared seed range 0-19 the election sweep above uses, now driving `decree_state`
-    (the one scenario with no scheduled election at all -- §11's own choice of which scenario can
-    host a genuine, unmodified 100-turn nonterminal run) through a full 100 turns each, with the
-    coup/unrest/impeachment channels now live for the first time. Every seed was actually run
-    through the real engine (a small verification script, not part of the repository): none
-    terminate early, confirming Gate 3C2's added background risk does not break the non-
-    termination property Gate 3C1 established -- re-verified, not merely assumed unchanged.
+    (the one scenario with no scheduled election at all) through a full 100 turns each.
 
-    External Wars Gate W1: `decree_state` authors an eligible valdrun/neighbor dyad (exposure
-    3,000, frozen plan sec.9.6), and on this seed range a live war's security-anxiety
-    contribution (sec.9.4/9.5) genuinely lowers legitimacy far enough that, on at least one seed,
-    a coup actually SUCCEEDS at turn 53 -- a real, attributable, war-driven outcome, not noise.
-    This class's own claim has always been narrower than that: it isolates the PURE background
-    coup/unrest/impeachment risk `decree_state` was calibrated against in Gate 3C2, before W1
-    existed. Both tests below therefore run with `disable_dyads=True`, which makes every dyad
-    ineligible so no war can ever start -- restoring the exact war-free background-risk
-    conditions this class was written to prove, without cherry-picking seeds or weakening the
-    assertion. War-driven termination is a separate, real, and correctly-scoped phenomenon,
-    covered instead by the W1 wiring tests (`test_foreign_conflict_wiring.py`)."""
+    **This class's claim was deliberately changed by the government-structure feature**
+    (`docs/adr/0019-government-structure-and-violent-removal-risk.md`). It previously asserted that
+    no seed in this range ever terminates and that no channel ever succeeds -- true while the coup
+    formula could not see that `decree_state` is a hereditary monarchy ruling by unlimited decree.
+    That silence is exactly what the feature removes, so the old assertion is not weakened here; it
+    is REPLACED by the stronger pair of facts the engine now actually produces.
 
-    _SEED_RANGE = range(20)
+    Every figure below was measured by resolving all twenty campaigns through the real engine.
+    Over 1,812 resolved turns: 70 coup attempts, three of which succeeded; 40 popular-unrest
+    attempts, none of which succeeded; and no eligible impeachment turn at all.
 
-    def test_no_seed_in_the_declared_range_terminates_within_100_turns_no_foreign_war_control(
-        self,
+    Both halves are load-bearing:
+
+    * **A dictatorship is genuinely in danger** -- three of twenty campaigns end in a coup, at
+      turns 9, 23 and 80 rather than clustered at one point.
+    * **A dictatorship remains playable** -- the other seventeen survive the entire horizon. A
+      future re-tune of `COUP_STRUCTURAL_WEIGHT_BPS` that made most campaigns fall would be a
+      balance regression, and this is where it surfaces.
+    """
+
+    def test_exactly_three_seeds_end_in_a_coup_at_the_measured_turns(
+        self, decree_state_sweep: dict[str, object]
     ) -> None:
-        for seed in self._SEED_RANGE:
-            save = _run("decree_state.yaml", 100, seed=seed, disable_dyads=True)
-            politics = save.current_state().world.countries["valdrun"].politics
-            assert politics is not None
-            assert politics.terminal_outcome is None, seed
-            assert save.current_turn() == 100, seed
+        assert decree_state_sweep["removals"] == {
+            1: ("coup", 9),
+            12: ("coup", 23),
+            19: ("coup", 80),
+        }
 
-    def test_no_channel_ever_succeeds_across_any_seed_in_the_declared_range_no_foreign_war_control(
-        self,
+    def test_the_other_seventeen_seeds_survive_the_full_horizon(
+        self, decree_state_sweep: dict[str, object]
     ) -> None:
-        """`decree_state`'s calibrated background risk (coup 52bps, unrest 15bps attempt;
-        impeachment ineligible at genesis, hereditary selection) genuinely produces occasional
-        low-probability ATTEMPTS over a 100-turn x 20-seed sweep (2,000 independent draws each on
-        the coup/unrest RNG streams; impeachment is skipped entirely, ineligible) -- an attempt is
-        expected background noise at these odds, not itself a finding. What must never happen is
-        a SUCCESS, since that would silently terminate the game this sweep is asserting stays
-        alive for the full 100 turns."""
-        for seed in self._SEED_RANGE:
-            save = _run("decree_state.yaml", 100, seed=seed, disable_dyads=True)
-            for entry in save.entries[1:]:
-                report = entry.report()
-                assert report is not None and report.coup_unrest is not None
-                coup_unrest = report.coup_unrest
-                assert not coup_unrest.coup.succeeded, (seed, entry.turn)
-                assert not coup_unrest.popular_unrest.succeeded, (seed, entry.turn)
-                assert not coup_unrest.impeachment.eligible, (seed, entry.turn)
+        """The playability half. A structural weight that made a dictatorship unplayable would
+        empty this list rather than pass quietly."""
+        survivors = decree_state_sweep["survivors"]
+        assert isinstance(survivors, list)
+        assert len(survivors) == 17
+        assert set(survivors).isdisjoint({1, 12, 19})
+
+    def test_coups_are_attempted_far_more_often_than_they_succeed(
+        self, decree_state_sweep: dict[str, object]
+    ) -> None:
+        """70 attempts, 3 removals. Structure decides how often the army MOVES, never whether it
+        wins -- `coup_success_probability_bps` is untouched by this feature."""
+        assert decree_state_sweep["coup_attempts"] == 70
+        assert decree_state_sweep["turns_at_risk"] == 1_812
+
+    def test_popular_unrest_attempts_happen_and_never_once_succeed(
+        self, decree_state_sweep: dict[str, object]
+    ) -> None:
+        """The zero-conditional-success exception, end to end over 1,812 real turns.
+
+        Structural exposure raises how often unrest is ATTEMPTED -- 40 attempts, from 15 bps of
+        base risk plus 225 bps of structure -- and cannot raise how often it succeeds, because
+        `unrest_success_probability_bps` is untouched and floors at 0 for `decree_state`'s
+        organization and legitimacy. More attempts, still no removals: structure cannot manufacture
+        an outcome the conditional formula rules out."""
+        assert decree_state_sweep["unrest_attempts"] == 40
+        assert decree_state_sweep["unrest_successes"] == 0
+
+    def test_impeachment_is_never_even_eligible(
+        self, decree_state_sweep: dict[str, object]
+    ) -> None:
+        """Unchanged by this feature, and asserted so: eligibility still reads
+        `executive_selection`/`legislature`/`judicial_review` exactly as before, and a hereditary
+        executive is ineligible however exposed the government is."""
+        assert decree_state_sweep["impeachment_eligible_turns"] == 0
+
+    def test_every_fatal_coup_was_scored_with_the_full_structural_exposure(
+        self, decree_state_sweep: dict[str, object]
+    ) -> None:
+        """Attribution rather than correlation: each fatal turn is checked to have carried
+        `decree_state`'s 7,500-bps exposure and the 300-bps coup contribution it implies, so the
+        removals are demonstrably this feature's doing and not an unrelated drift in loyalty or
+        legitimacy."""
+        rows = decree_state_sweep["fatal_coup_rows"]
+        assert isinstance(rows, dict)
+        assert rows == {1: (7_500, 300), 12: (7_500, 300), 19: (7_500, 300)}
 
 
-def _run_until_concluded(scenario: str, max_turns: int, *, seed: int):  # type: ignore[no-untyped-def]
+def _run_until_concluded(  # type: ignore[no-untyped-def]
+    scenario: str, max_turns: int, *, seed: int, disable_dyads: bool = False
+):
     """Like `_run`, but stops cleanly the moment the game concludes (the same "stop, don't crash"
     discipline `_cmd_resolve`'s own mid-batch-conclusion handling uses, R10) rather than assuming
     every seed survives to `max_turns` -- `tiny_valid`'s own turn-16 election can conclude the
@@ -401,6 +506,13 @@ def _run_until_concluded(scenario: str, max_turns: int, *, seed: int):  # type: 
     reaching a term-limit-exit at all."""
     state = load_scenario_file(SCENARIO_DIR / scenario)
     state = state.model_copy(update={"seed": seed})
+    if disable_dyads:
+        dyads_disabled = tuple(
+            dyad.model_copy(update={"eligible": False}) for dyad in state.world.dyads
+        )
+        state = state.model_copy(
+            update={"world": state.world.model_copy(update={"dyads": dyads_disabled})}
+        )
     save = new_game(state, save_format_version=SAVE_FORMAT_VERSION)
     for _ in range(max_turns):
         current = save.current_state()
@@ -464,7 +576,13 @@ class TestLowLoyaltyCoupSucceedsAgainstTheRealEngine:
     declared seed until the coup succeeds -- seed 40, turn 5 (found by a declared, bounded search
     over the first 60 seeds x 32 turns each, the same "reachable, not cherry-picked" discipline
     the election sweep above uses). Confirms this is a real, checkable removal, not merely a risk
-    number, and that the closing state faithfully records it."""
+    number, and that the closing state faithfully records it.
+
+    The government-structure feature moved the risk figure 623 -> 643 and nothing else about this
+    case: seed 40 turn 5 is still the first success in the same bounded search, re-run after the
+    change rather than assumed. `tiny_valid` is an accountable electoral government, so its
+    structural charge is only 20 bps -- this campaign is lost to a disloyal army, not to its
+    constitution."""
 
     def test_seed_40_turn_5_coup_succeeds_with_the_exact_computed_risk_figures(self) -> None:
         state = load_scenario_file(SCENARIO_DIR / "tiny_valid.yaml")
@@ -485,7 +603,14 @@ class TestLowLoyaltyCoupSucceedsAgainstTheRealEngine:
         report = save.entries[-1].report()
         assert report is not None and report.coup_unrest is not None
         coup = report.coup_unrest.coup
-        assert coup.attempt_risk_bps == 623
+        assert coup.attempt_risk_bps == 643
+        # 585 of those bps are the disloyal army and only 20 are `tiny_valid`'s constitutional
+        # form. An electoral democracy whose military has turned on it is in far more danger than
+        # an untroubled dictatorship -- which is the "democracies remain susceptible under adverse
+        # conditions" property, shown here on a real removal rather than argued.
+        assert coup.loyalty_contribution_bps == 585
+        assert coup.structural_exposure_bps == 500
+        assert coup.structural_contribution_bps == 20
         assert coup.attempted is True
         assert coup.succeeded is True
         assert report.coup_unrest.removal_triggered is not None

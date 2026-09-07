@@ -22,7 +22,7 @@ from app.core.errors import (
     UnsupportedSaveFormatVersionError,
 )
 from app.saves import read_save_file
-from app.simulation.save_format import load_save_json
+from app.simulation.save_format import SUPPORTED_CONTENT_VERSIONS, load_save_json
 from app.simulation.state import RULESET_VERSION
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -45,6 +45,15 @@ before `strategic_map` existed as a concept, let alone a required field. This is
 this build will ever be able to prove pre-parse rejection against for that missing field: once
 the `"0.14.0"` bump landed, every subsequently-generated `"0.13.0"` save became impossible to
 produce."""
+
+GOVERNMENT_STRUCTURE_SAVE_PATH = FIXTURES_DIR / "government_structure_save_ruleset_0.16.0.json"
+"""Frozen by the unmodified `"0.16.0"` engine, before government structure entered the coup and
+popular-unrest formulas. Unlike every other fixture here it records no missing FIELD -- a 0.16.0
+save is structurally complete under 0.17.0. What it records is a missing RULE: its turns were
+resolved when constitutional form did not affect violent-removal risk, so its stored figures and
+hashes are the output of arithmetic this build no longer performs. Loading it and continuing would
+apply the new rules to a campaign never exposed to them; re-deriving its history under them would
+contradict its own hashes. Rejected, and impossible to produce again once the bump landed."""
 
 MAP_RESOURCES_SAVE_PATH = FIXTURES_DIR / "map_resources_save_ruleset_0.15.0.json"
 """Frozen by the unmodified `"0.15.0"` engine (map-resources slice, gold commit) -- after
@@ -439,7 +448,7 @@ def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
     from app.simulation.resolver import resolve_turn
 
     state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
-    assert state.ruleset_version == RULESET_VERSION == "0.16.0"
+    assert state.ruleset_version == RULESET_VERSION == "0.17.0"
     decisions = DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
     )
@@ -605,7 +614,7 @@ def test_frozen_military_movement_save_fixture_declares_the_old_ruleset_version(
     raw = json.loads(MILITARY_MOVEMENT_SAVE_PATH.read_text(encoding="utf-8"))
     assert raw["ruleset_version"] == "0.14.0"
     assert raw["ruleset_version"] != RULESET_VERSION
-    assert RULESET_VERSION == "0.16.0"
+    assert RULESET_VERSION == "0.17.0"
 
 
 def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
@@ -622,7 +631,7 @@ def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_e
 
     message = str(exc_info.value)
     assert "0.14.0" in message
-    assert "0.16.0" in message
+    assert "0.17.0" in message
     assert RULESET_VERSION in message
 
 
@@ -686,6 +695,49 @@ def test_map_resources_save_rejection_happens_before_any_state_json_is_parsed() 
     """The ordering claim made falsifiable: with every `state_json` replaced by text that is not
     valid JSON, the failure is still the version error, not a parse error."""
     raw = json.loads(read_save_file(MAP_RESOURCES_SAVE_PATH))
+    for entry in raw["entries"]:
+        entry["state_json"] = "{not even valid json"
+
+    with pytest.raises(UnsupportedRulesetVersionError):
+        load_save_json(json.dumps(raw), source="corrupted-and-incompatible")
+
+
+def test_frozen_government_structure_save_fixture_declares_the_old_ruleset_version() -> None:
+    """The sanity half of the pair: the fixture really is a `"0.16.0"` save, so the rejection test
+    below proves something rather than passing because it was regenerated under this engine."""
+    raw = json.loads(GOVERNMENT_STRUCTURE_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.16.0"
+    assert raw["ruleset_version"] != RULESET_VERSION
+
+
+def test_government_structure_save_declares_a_content_version_this_build_still_supports() -> None:
+    """The distinguishing property of THIS bump, made explicit: `content_version` did not move.
+    The fixture is refused on its ruleset alone -- its authored content is still perfectly valid
+    shape for 0.17.0, because the change was to engine rules and not to anything a scenario
+    declares. Without this, a reader could mistake the rejection below for a content problem."""
+    raw = json.loads(GOVERNMENT_STRUCTURE_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["content_version"] == "0.16.0"
+    assert raw["content_version"] in SUPPORTED_CONTENT_VERSIONS
+
+
+def test_government_structure_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
+    """Rejected at the ruleset gate, naming both versions, before any entry payload is parsed --
+    so a player is told their save predates this build's rules rather than being silently
+    continued under them."""
+    raw_text = read_save_file(GOVERNMENT_STRUCTURE_SAVE_PATH)
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(raw_text, source=str(GOVERNMENT_STRUCTURE_SAVE_PATH))
+
+    message = str(exc_info.value)
+    assert "0.16.0" in message
+    assert RULESET_VERSION in message
+    assert "not loaded" in message
+
+
+def test_government_structure_save_rejection_happens_before_any_state_json_is_parsed() -> None:
+    """The ordering claim made falsifiable: with every `state_json` replaced by text that is not
+    valid JSON, the failure is still the version error, not a parse error."""
+    raw = json.loads(read_save_file(GOVERNMENT_STRUCTURE_SAVE_PATH))
     for entry in raw["entries"]:
         entry["state_json"] = "{not even valid json"
 

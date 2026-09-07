@@ -134,6 +134,7 @@ from app.simulation.government_survival import (
     legislative_support_bps,
     population_weighted_mean_bps,
     resolve_transition_pressure_bps,
+    structural_removal_exposure_bps,
     transition_pressure_added_bps,
     unrest_attempt_risk_bps,
     unrest_success_probability_bps,
@@ -1297,12 +1298,37 @@ def reconcile_political_legislative_and_survival_report(
                     f"coup_unrest.coup.{field_name}={report_value} does not match closing_state "
                     f"({state_value})"
                 )
+        # Derived from the closing state's CONSTITUTION, never from either report row. This is
+        # what makes a forged structural figure fail: a tamperer who raises the exposure and
+        # rescales the contribution to match keeps both report self-validators happy, and still
+        # disagrees with the constitution the save actually stores.
+        expected_exposure = structural_removal_exposure_bps(
+            executive_selection=closing_politics.constitution.executive_selection,
+            decree_authority=closing_politics.constitution.decree_authority,
+            legislature=closing_politics.constitution.legislature,
+            judicial_review=closing_politics.constitution.judicial_review,
+            national_election_interval_turns=(
+                closing_politics.constitution.national_election_interval_turns
+            ),
+        )
+        for channel_name, reported_exposure in (
+            ("coup", coup_unrest.coup.structural_exposure_bps),
+            ("popular_unrest", coup_unrest.popular_unrest.structural_exposure_bps),
+        ):
+            if reported_exposure != expected_exposure.exposure_bps:
+                problems.append(
+                    f"coup_unrest.{channel_name}.structural_exposure_bps={reported_exposure} does "
+                    "not match the exposure recomputed from closing_state's constitution "
+                    f"({expected_exposure.exposure_bps})"
+                )
+
         expected_coup_risk = coup_attempt_risk_bps(
             military_loyalty_bps=military.loyalty,
             military_power_bps=military.power,
             legitimacy_bps=closing_politics.legitimacy_bps,
             opposition_seat_share_bps=opposition_seat_share_bps,
             transition_pressure_bps=coup_unrest.closing_transition_pressure_bps,
+            structural_exposure_bps=expected_exposure.exposure_bps,
         )
         for field_name, report_value, expected_value in (
             (
@@ -1324,6 +1350,11 @@ def reconcile_political_legislative_and_survival_report(
                 "transition_pressure_contribution_bps",
                 coup_unrest.coup.transition_pressure_contribution_bps,
                 expected_coup_risk.transition_pressure_contribution_bps,
+            ),
+            (
+                "structural_contribution_bps",
+                coup_unrest.coup.structural_contribution_bps,
+                expected_coup_risk.structural_contribution_bps,
             ),
             (
                 "attempt_risk_bps",
@@ -1420,6 +1451,7 @@ def reconcile_political_legislative_and_survival_report(
             radicalization_bps=radicalization_bps,
             organization_bps=organization_bps,
             disapproval_bps=disapproval_bps,
+            structural_exposure_bps=expected_exposure.exposure_bps,
         )
         for field_name, report_value, expected_value in (
             (
@@ -1431,6 +1463,11 @@ def reconcile_political_legislative_and_survival_report(
                 "disapproval_contribution_bps",
                 coup_unrest.popular_unrest.disapproval_contribution_bps,
                 expected_unrest_risk.disapproval_contribution_bps,
+            ),
+            (
+                "structural_contribution_bps",
+                coup_unrest.popular_unrest.structural_contribution_bps,
+                expected_unrest_risk.structural_contribution_bps,
             ),
             (
                 "attempt_risk_bps",

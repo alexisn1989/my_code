@@ -394,9 +394,16 @@ def _render_coup_risk_assessed(params: dict[str, str | int]) -> str:
     eligible = bool(params["impeachment_eligible"])
     impeachment_bps = int(params["impeachment_attempt_risk_bps"])
     impeachment_note = _bps_to_percent_str(impeachment_bps) if eligible else "ineligible this turn"
+    coup_structural_bps = int(params["coup_structural_contribution_bps"])
+    unrest_structural_bps = int(params["unrest_structural_contribution_bps"])
+    # These are risks of an ATTEMPT being made, never of the government falling -- an attempt can
+    # and usually does fail. The wording keeps that distinction, and never states an outcome.
     return (
         f"Survival risk assessed: coup {_bps_to_percent_str(coup_bps)}, unrest "
-        f"{_bps_to_percent_str(unrest_bps)}, impeachment {impeachment_note}."
+        f"{_bps_to_percent_str(unrest_bps)}, impeachment {impeachment_note}. Of the coup and "
+        f"unrest figures, {_bps_to_percent_str(coup_structural_bps)} and "
+        f"{_bps_to_percent_str(unrest_structural_bps)} come from the shape of the government "
+        "itself rather than from current conditions."
     )
 
 

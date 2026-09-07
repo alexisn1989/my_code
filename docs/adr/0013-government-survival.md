@@ -60,6 +60,15 @@ None of the three channels reads a constitutional axis directly; every input is 
 competence, corruption, radicalization, approval, organization, or legitimacy — the same
 government-form-neutrality guarantee every prior political formula in this codebase carries.
 
+> **Superseded in part by ADR 0019 (ruleset 0.17.0).** The paragraph above records Phase 3C's
+> decision as it was made and is left unedited. It is no longer a description of current behaviour:
+> the coup and popular-unrest channels now take a structural contribution derived from
+> `executive_selection`, `decree_authority`, `legislature`, `judicial_review` and
+> `national_election_interval_turns`. Impeachment and the conditional success formulas are
+> unchanged, and the neutrality of legitimacy, political capital and production is unchanged — see
+> `docs/adr/0019-government-structure-and-violent-removal-risk.md` for what that ADR does and does
+> not supersede.
+
 ### Constitutional amendments: five axes, one route choice, one vote formula
 
 `ConstitutionalAmendmentDecision` (`simulation/decisions.py`) is a tuple of `axis`-discriminated
