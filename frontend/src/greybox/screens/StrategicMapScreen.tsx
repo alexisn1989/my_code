@@ -28,6 +28,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type {
   StrategicMapProjection,
+  StrategicRiverProjection,
   StrategicShapeProjection,
   StrategicTheaterProjection,
 } from "../../api/client";
@@ -76,9 +77,11 @@ const MAP_VIEWBOX = "0 0 10000 10000";
 // --- Map ground, frame and decoration --------------------------------------
 //
 // Chart furniture, and nothing more. The engine authors five theaters, a handful of directed
-// routes and one open ring per sovereign; it authors no coastline, terrain, river, city, road or
-// border. So this layer adds a ground, a frame, a decorative grid and a compass -- presentation
-// that makes the authored content read as a strategic map -- and invents no geography whatsoever.
+// routes, one open ring per sovereign and (map-resources slice) a small number of named rivers;
+// it authors no coastline, terrain, city, road or border. So this layer adds a ground, a frame, a
+// decorative grid and a compass -- presentation that makes the authored content read as a
+// strategic map -- and invents no geography whatsoever. Rivers are NOT invented here: every
+// vertex drawn in layer 2b comes from the projection.
 // The grid is coordinate paper, not a graticule of anything: it carries no degrees, no
 // coordinates and no distances, and the screen states in words that it is schematic.
 
@@ -137,6 +140,13 @@ const SHAPE_OUTLINE_FOREIGN = "var(--color-parchment-200)";
 const SHAPE_OUTLINE_WIDTH = 26;
 const SHAPE_OUTLINE_OPACITY = 0.75;
 const SHAPE_FILL_OPACITY = 0.62;
+
+/** Rivers (map-resources slice). Authored natural features, drawn over the land fill and under
+ * the routes, so a river never sits on top of a line the player can act on. Decoration: no hit
+ * target, no selection, no affordance -- a river is not clickable because there is nothing to
+ * click it for. */
+const RIVER_LINE = "var(--color-navy-800)";
+const RIVER_LINE_WIDTH = 34;
 
 const HATCH_LINE = "var(--color-parchment-200)";
 const HATCH_LINE_WIDTH = 26;
@@ -309,6 +319,14 @@ function styleForShape(shape: StrategicShapeProjection, styles: OwnerStyles): Ow
  * joined -- never sorted, rotated, normalized or recomputed (frozen plan §5.4). */
 function polygonPoints(shape: StrategicShapeProjection): string {
   return shape.polygon.map(([x, y]) => `${x},${y}`).join(" ");
+}
+
+/** The same shape as `polygonPoints`, for an OPEN polyline. Separate function rather than a
+ * shared one taking a coordinate list, because the two feed different SVG elements -- `<polygon>`
+ * closes its ring implicitly and `<polyline>` does not -- and collapsing them would make it easy
+ * to render a river as a closed loop by passing it to the wrong caller. */
+function riverPoints(river: StrategicRiverProjection): string {
+  return river.polyline.map(([x, y]) => `${x},${y}`).join(" ");
 }
 
 /**
@@ -810,6 +828,29 @@ export function StrategicMapScreen(_props: ScreenProps) {
                       pointerEvents="none"
                     />
                   ))}
+              </g>
+
+              {/* Layer 2b -- authored rivers (map-resources slice). Natural features: drawn and
+                  named by the server, never derived here, and carrying no meaning for movement.
+                  A river crossing the line between two theaters neither opens passage nor blocks
+                  it -- only a route does that -- so this layer is placed under the routes and
+                  takes no pointer events. */}
+              <g data-layer="rivers">
+                {data.rivers.map((river) => (
+                  <polyline
+                    key={river.river_id}
+                    data-river={river.river_id}
+                    points={riverPoints(river)}
+                    fill="none"
+                    stroke={RIVER_LINE}
+                    strokeWidth={RIVER_LINE_WIDTH}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    pointerEvents="none"
+                  >
+                    <title>{river.display_name}</title>
+                  </polyline>
+                ))}
               </g>
 
               {/* Layer 3 -- routes. One line per PROJECTED row: the contract already collapses a

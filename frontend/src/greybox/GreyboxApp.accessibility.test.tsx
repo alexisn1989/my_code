@@ -132,6 +132,7 @@ const STRATEGIC_MAP = {
   ],
   routes: [{ from_theater_id: "capital", to_theater_id: "frontier", bidirectional: true }],
   shapes: [],
+  rivers: [],
 };
 
 function mockFullApp() {

@@ -1744,6 +1744,13 @@
             "title": "Map Id",
             "type": "string"
           },
+          "rivers": {
+            "items": {
+              "$ref": "#/components/schemas/StrategicRiverProjection"
+            },
+            "title": "Rivers",
+            "type": "array"
+          },
           "routes": {
             "items": {
               "$ref": "#/components/schemas/StrategicRouteProjection"
@@ -1771,9 +1778,48 @@
           "capital_theater_id",
           "theaters",
           "routes",
-          "shapes"
+          "shapes",
+          "rivers"
         ],
         "title": "StrategicMapProjection",
+        "type": "object"
+      },
+      "StrategicRiverProjection": {
+        "additionalProperties": false,
+        "description": "One authored river (map-resources slice). Presentation only, exactly like a shape: it is\ndrawn and named, and it never implies passage. A client that renders rivers and a client that\nignores them see the same set of legal moves.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "polyline": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Polyline",
+            "type": "array"
+          },
+          "river_id": {
+            "title": "River Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "river_id",
+          "display_name",
+          "polyline"
+        ],
+        "title": "StrategicRiverProjection",
         "type": "object"
       },
       "StrategicRouteProjection": {

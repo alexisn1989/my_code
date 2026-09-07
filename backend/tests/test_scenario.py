@@ -161,14 +161,30 @@ def test_scenario_unknown_resource_category_rejected(tiny_valid_scenario_path: P
 # --- Strategic Military Map Gate M0: exact authored geometry, pinned ----------
 #
 # Each digest is the canonical-JSON BLAKE2b digest of the loaded scenario's
-# `strategic_map` (via `app.core.canonical_json.canonical_digest`), recorded at
-# authoring time. Any accidental edit to a theater, route or shape -- including
-# reordering, a moved centroid, or a changed vertex -- changes the digest and
-# fails this test, rather than silently drifting.
+# `strategic_map` WITHOUT its `rivers` key (via `app.core.canonical_json.canonical_digest`),
+# recorded at M0 authoring time. Any accidental edit to a theater, route or shape -- including
+# reordering, a moved centroid, or a changed vertex -- changes the digest and fails this test,
+# rather than silently drifting.
+#
+# The `rivers` key is excluded rather than the digests re-pinned. The map-resources slice authored
+# rivers into every scenario, which necessarily moves the whole-map digest; excluding exactly that
+# one key and requiring the ORIGINAL M0 value to come back is what proves the river authoring
+# touched no theater, route or vertex. The rivers themselves are pinned separately just below, so
+# nothing goes unchecked -- and `test_the_map_digest_covers_rivers_when_they_are_not_excluded`
+# keeps this exclusion from being a place things could hide.
 _STRATEGIC_MAP_DIGEST_BLAKE2B: dict[str, str] = {
     "tiny_valid.yaml": "920b3a149f909267d9fa82eb564b77dc5fc1c51758152aa28ee6f09faf78281e",
     "decree_state.yaml": "a4480c83d1d6f298baf7c7e3711d748b3f21b7336bf0bce5a4438cfa51fd6e99",
     "deficit_demo.yaml": "d542a2cf42b1451b234c36871cc80a9cae5a4724954d57feb32a126a172ff067",
+}
+
+# The authored river courses, digested on their own (map-resources slice). Separate table rather
+# than a re-pin of the one above, so the two claims stay independently readable: "M0's geometry is
+# unchanged" and "these are the rivers".
+_RIVER_DIGEST_BLAKE2B: dict[str, str] = {
+    "tiny_valid.yaml": "1f89af0e1fa6aa25f8ef37241a870e897c9adefd65b9b6faad596bce7b5631e8",
+    "decree_state.yaml": "88d6735e99b94ae637b1c548878f267283728b78ca7f5b132b44b4ee13ff0ddd",
+    "deficit_demo.yaml": "53abe7280e0f64e876bf6043e698c357e1c1ad3d4963d0ff34ae5ae8f1490728",
 }
 
 
@@ -177,8 +193,33 @@ _STRATEGIC_MAP_DIGEST_BLAKE2B: dict[str, str] = {
 )
 def test_strategic_map_geometry_digest_is_pinned(scenario_file: str) -> None:
     state = load_scenario_file(SCENARIO_DIR / scenario_file)
-    digest = canonical_digest(state.world.strategic_map.model_dump(mode="json"))
-    assert digest == _STRATEGIC_MAP_DIGEST_BLAKE2B[scenario_file]
+    payload = state.world.strategic_map.model_dump(mode="json")
+    payload.pop("rivers")
+    assert canonical_digest(payload) == _STRATEGIC_MAP_DIGEST_BLAKE2B[scenario_file]
+
+
+@pytest.mark.parametrize(
+    "scenario_file", ["tiny_valid.yaml", "decree_state.yaml", "deficit_demo.yaml"]
+)
+def test_the_map_digest_covers_rivers_when_they_are_not_excluded(scenario_file: str) -> None:
+    """Anti-vacuity for the exclusion above: with `rivers` left in, the digest does NOT match the
+    M0 pin. Without this, an exclusion that silently dropped more than one key would still look
+    like a passing proof."""
+    state = load_scenario_file(SCENARIO_DIR / scenario_file)
+    whole = canonical_digest(state.world.strategic_map.model_dump(mode="json"))
+    assert whole != _STRATEGIC_MAP_DIGEST_BLAKE2B[scenario_file]
+
+
+@pytest.mark.parametrize(
+    "scenario_file", ["tiny_valid.yaml", "decree_state.yaml", "deficit_demo.yaml"]
+)
+def test_authored_river_courses_are_pinned(scenario_file: str) -> None:
+    """The other half: the rivers get their own pin, so "excluded from that digest" never means
+    "unchecked". A moved vertex, a reordered course or a renamed river fails here."""
+    state = load_scenario_file(SCENARIO_DIR / scenario_file)
+    rivers = state.world.strategic_map.model_dump(mode="json")["rivers"]
+    assert len(rivers) == 2
+    assert canonical_digest(rivers) == _RIVER_DIGEST_BLAKE2B[scenario_file]
 
 
 @pytest.mark.parametrize(
@@ -199,4 +240,5 @@ def test_authoring_a_military_roster_did_not_move_the_map_digest(scenario_file: 
 
     map_payload = state.world.strategic_map.model_dump(mode="json")
     assert "military" not in canonical_dumps(map_payload)
+    map_payload.pop("rivers")
     assert canonical_digest(map_payload) == _STRATEGIC_MAP_DIGEST_BLAKE2B[scenario_file]

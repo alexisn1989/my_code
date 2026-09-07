@@ -470,5 +470,6 @@ def test_the_scenario_files_still_parse_as_yaml_with_only_the_expected_map_keys(
             "theaters",
             "routes",
             "shapes",
+            "rivers",
         }
         assert Path(SCENARIO_DIR / f"{scenario}.yaml").read_bytes().count(b"\x00") == 0

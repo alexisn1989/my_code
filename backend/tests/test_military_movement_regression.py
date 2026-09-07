@@ -91,14 +91,19 @@ PRE_EXISTING_RNG_STREAMS = (
 #: subtree -- precisely what the fixture exists to record.
 EXPECTED_ENVELOPE_DIFFERENCES = {"content_version", "ruleset_version"}
 
-#: The state paths the map-resources slice authored. Kept as its own set rather than folded into
-#: the envelope set above, so each named difference still says WHY it is there: these two are
-#: authored economy content (a ninth deposit, a ninth coefficient and crude_oil's offset), not a
-#: version stamp.
 EXPECTED_MAP_RESOURCES_DIFFERENCES = {
     f"world.countries.{PLAYER}.economy.resource_deposits",
     f"world.countries.{PLAYER}.economy.resource_output_coefficients",
+    "world.strategic_map.rivers",
 }
+"""The three paths the map-resources slice authors, kept as their own set rather than folded into
+the envelope set above so each named difference still says WHY it is there: authored economy
+content (a ninth deposit, a ninth coefficient and crude_oil's offset) and authored map content
+(rivers). None is a version stamp.
+
+`world.strategic_map.rivers` is the ONLY map path here, which is the statement: no theater, route,
+shape, centroid or vertex moved when rivers were authored. `test_scenario.py` makes the same claim
+about the authored file; this makes it about the loaded state a real turn resolves against."""
 
 
 # --------------------------------------------------------------------------
@@ -328,7 +333,7 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
                 base_row["report"]["foreign_affairs"], sort_keys=True
             )
 
-    def test_3_closing_state_differs_only_by_military_the_envelope_and_the_gold_authoring(
+    def test_3_closing_state_differs_only_by_military_the_envelope_and_this_slices_authoring(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """Stated as an EXACT remaining-difference set, not as a wider exclusion.

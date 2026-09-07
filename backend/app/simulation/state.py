@@ -46,6 +46,9 @@ from app.core.quantity import (
 from app.simulation.constitution import ConstitutionState, Legislature
 from app.simulation.foreign_conflict import TERMINAL_STATUSES, ConflictStatus, WarAim
 from app.simulation.geography import (
+    RIVER_ID_DUPLICATE,
+    RIVER_NOT_CANONICAL,
+    RIVER_REPEATS_VERTEX,
     ROUTE_DUPLICATE,
     ROUTE_NOT_CANONICAL,
     ROUTE_SELF_EDGE,
@@ -1380,6 +1383,51 @@ class CountryShapeState(BaseModel):
         return self
 
 
+class RiverState(BaseModel):
+    """One authored river (map-resources slice).
+
+    A NATURAL feature, and presentation only -- the first thing on this map that is neither a
+    political outline nor a military adjacency. It is drawn and named; nothing reads it. A river
+    running straight between two theaters neither creates passage nor blocks it, exactly as a
+    shared polygon border does not: only `RouteState` decides adjacency, and that stays true here
+    on purpose. Crossing costs would need a movement cost to attach to, and movement is still
+    free (ADR 0018), so authoring a mechanical river now would ship a rule with nothing to
+    charge.
+
+    Vertex representation: an OPEN POLYLINE in AUTHORED ORDER -- not a ring. Unlike
+    `CountryShapeState.polygon` there is no implicit closing vertex, because a river's two ends
+    are genuinely its ends. `min_length=2`: a one-vertex river is a point, not a course.
+
+    No rotation and no direction normalization. A river authored mouth-to-source and the same
+    river authored source-to-mouth are DIFFERENT authored values that serialize to different
+    bytes, the same rule `polygon` already follows for winding.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    river_id: StrictMapId
+    display_name: StrictDisplayName
+    polyline: tuple[tuple[StrictGridCoord, StrictGridCoord], ...] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def _no_repeated_consecutive_vertex(self) -> RiverState:
+        """Emits `RIVER_REPEATS_VERTEX`.
+
+        A repeated consecutive vertex is a zero-length segment: it draws nothing and changes no
+        shape, so two authored courses that differ only by such a vertex would render identically
+        while serializing to different bytes. Rejected rather than collapsed, the repository rule
+        for every ordered collection. This also rules out the degenerate two-vertex river whose
+        endpoints coincide, which is why there is no separate zero-length code.
+        """
+        for first, second in zip(self.polyline, self.polyline[1:], strict=False):
+            if first == second:
+                raise ValueError(
+                    f"{RIVER_REPEATS_VERTEX}: river {self.river_id!r} has a duplicate "
+                    f"consecutive vertex {first!r}"
+                )
+        return self
+
+
 class StrategicMapState(BaseModel):
     """The authoritative strategic map (Strategic Military Map, Gate M0).
 
@@ -1404,6 +1452,12 @@ class StrategicMapState(BaseModel):
     """
     routes: tuple[RouteState, ...] = ()
     shapes: tuple[CountryShapeState, ...] = Field(min_length=1)
+    rivers: tuple[RiverState, ...] = ()
+    """Authored natural features. Defaults to empty, and that is a principled shape rather than a
+    convenience: a map with no rivers is a complete map, so "no rivers" and "rivers not authored"
+    are the same statement -- unlike a country's `resource_deposits`, where a missing category
+    would be genuinely ambiguous against a zero one. A 0.15.0-shaped scenario therefore satisfies
+    this field without authoring anything, and no content-version bump is owed to it."""
 
     @model_validator(mode="after")
     def _routes_unique_and_ordered(self) -> StrategicMapState:
@@ -1443,6 +1497,25 @@ class StrategicMapState(BaseModel):
         if shape_ids != sorted(shape_ids):
             raise ValueError(
                 f"{SHAPE_NOT_CANONICAL}: shapes are not in canonical shape_id order: {shape_ids!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _rivers_unique_and_ordered(self) -> StrategicMapState:
+        """Emits `RIVER_ID_DUPLICATE` or `RIVER_NOT_CANONICAL`.
+
+        Structurally identical to `_shapes_unique_and_ordered` above, and reachable independently
+        for the same reason: ['r_a', 'r_a'] is already sorted and trips ONLY the duplicate check,
+        while ['r_b', 'r_a'] has no duplicate and trips ONLY the ordering check.
+        """
+        river_ids = [r.river_id for r in self.rivers]
+        if len(set(river_ids)) != len(river_ids):
+            raise ValueError(
+                f"{RIVER_ID_DUPLICATE}: duplicate river_id(s) in the map: {river_ids!r}"
+            )
+        if river_ids != sorted(river_ids):
+            raise ValueError(
+                f"{RIVER_NOT_CANONICAL}: rivers are not in canonical river_id order: {river_ids!r}"
             )
         return self
 

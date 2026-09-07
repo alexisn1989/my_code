@@ -204,6 +204,35 @@ strategic_map:
     - [6580, 3100]
     - [6720, 2500]
 
+  # Authored NATURAL features (map-resources slice). Presentation only, exactly like `shapes`
+  # above: a river is drawn and named, and no formula, validator or legality rule reads it.
+  # A river between two theaters neither opens passage nor blocks it -- only `routes` decides
+  # adjacency. Courses are open polylines in authored order (no implicit closing vertex, no
+  # direction normalization), sorted by `river_id`, with noncanonical order rejected rather than
+  # sorted for you.
+  rivers:
+  - river_id: river_arke
+    display_name: River Arke
+    polyline:
+    - [2450, 1450]
+    - [2380, 2100]
+    - [2200, 2750]
+    - [2120, 3400]
+    - [1980, 4150]
+    - [1820, 4900]
+    - [1640, 5600]
+    - [1480, 6300]
+    - [1300, 6900]
+  - river_id: river_kessel
+    display_name: River Kessel
+    polyline:
+    - [4900, 1600]
+    - [5000, 2400]
+    - [5150, 3200]
+    - [5250, 4000]
+    - [5100, 4800]
+    - [4850, 5600]
+
 countries:
   - id: arken
     name: "Republic of Arken"

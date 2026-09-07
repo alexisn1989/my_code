@@ -39,6 +39,7 @@ export type DestinationOption = Schemas["DestinationOption"];
 export type StrategicTheaterProjection = Schemas["StrategicTheaterProjection"];
 export type StrategicRouteProjection = Schemas["StrategicRouteProjection"];
 export type StrategicShapeProjection = Schemas["StrategicShapeProjection"];
+export type StrategicRiverProjection = Schemas["StrategicRiverProjection"];
 
 /** A raw, unvalidated decision payload. The server's own reject-not-normalize
  * validators are the only authority on whether one is legal; this client

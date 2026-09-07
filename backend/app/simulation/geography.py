@@ -50,6 +50,9 @@ SHAPE_NOT_CANONICAL = "shape_not_canonical"
 SHAPE_POLYGON_CLOSING_VERTEX_REPEATED = "shape_polygon_closing_vertex_repeated"
 SHAPE_POLYGON_REPEATS_VERTEX = "shape_polygon_repeats_vertex"
 SHAPE_POLYGON_ZERO_AREA = "shape_polygon_zero_area"
+RIVER_ID_DUPLICATE = "river_id_duplicate"
+RIVER_NOT_CANONICAL = "river_not_canonical"
+RIVER_REPEATS_VERTEX = "river_repeats_vertex"
 
 MAP_CONSTRUCTION_CODES: frozenset[str] = frozenset(
     {
@@ -61,11 +64,14 @@ MAP_CONSTRUCTION_CODES: frozenset[str] = frozenset(
         SHAPE_POLYGON_CLOSING_VERTEX_REPEATED,
         SHAPE_POLYGON_REPEATS_VERTEX,
         SHAPE_POLYGON_ZERO_AREA,
+        RIVER_ID_DUPLICATE,
+        RIVER_NOT_CANONICAL,
+        RIVER_REPEATS_VERTEX,
     }
 )
-"""Every construction code M0 can emit. `test_geography.py` asserts that each member is
-reachable by a real constructor call, so a code that stops firing fails the suite instead of
-lingering as dead documentation."""
+"""Every construction code the strategic map can emit. `test_geography.py` asserts that each
+member is reachable by a real constructor call, so a code that stops firing fails the suite
+instead of lingering as dead documentation."""
 
 
 class TheaterKind(StrEnum):

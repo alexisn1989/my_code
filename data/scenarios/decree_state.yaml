@@ -215,6 +215,34 @@ strategic_map:
     - [4380, 2900]
     - [4520, 2300]
 
+  # Authored NATURAL features (map-resources slice). Presentation only, exactly like `shapes`
+  # above: a river is drawn and named, and no formula, validator or legality rule reads it.
+  # A river between two theaters neither opens passage nor blocks it -- only `routes` decides
+  # adjacency. Courses are open polylines in authored order (no implicit closing vertex, no
+  # direction normalization), sorted by `river_id`, with noncanonical order rejected rather than
+  # sorted for you.
+  rivers:
+  - river_id: river_talen
+    display_name: River Talen
+    polyline:
+    - [2900, 1400]
+    - [2850, 2100]
+    - [2760, 2800]
+    - [2700, 3500]
+    - [2560, 4250]
+    - [2380, 5000]
+    - [2200, 5750]
+    - [2000, 6450]
+  - river_id: river_vess
+    display_name: River Vess
+    polyline:
+    - [5600, 1600]
+    - [5700, 2400]
+    - [5750, 3200]
+    - [5600, 4000]
+    - [5400, 4800]
+    - [5200, 5600]
+
 countries:
   - id: valdrun
     name: "Kingdom of Valdrun"

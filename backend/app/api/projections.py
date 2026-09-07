@@ -279,6 +279,20 @@ class StrategicShapeProjection(BaseModel):
     """Open ring, emitted in stored authored order. No rotation or winding normalization."""
 
 
+class StrategicRiverProjection(BaseModel):
+    """One authored river (map-resources slice). Presentation only, exactly like a shape: it is
+    drawn and named, and it never implies passage. A client that renders rivers and a client that
+    ignores them see the same set of legal moves."""
+
+    model_config = _STRICT
+
+    river_id: str
+    display_name: str
+    polyline: tuple[tuple[int, int], ...]
+    """Open polyline, emitted in stored authored order. No direction normalization -- a course
+    authored source-to-mouth is not silently reversed."""
+
+
 class StrategicMapProjection(BaseModel):
     """The whole read-only strategic map (Strategic Military Map, Gate M0). Contains no order,
     no command, no pending action and no affordance for one."""
@@ -290,6 +304,9 @@ class StrategicMapProjection(BaseModel):
     theaters: tuple[StrategicTheaterProjection, ...]
     routes: tuple[StrategicRouteProjection, ...]
     shapes: tuple[StrategicShapeProjection, ...]
+    rivers: tuple[StrategicRiverProjection, ...]
+    """Server-sorted by `river_id`. Always present, empty when the map authors none -- a client
+    never has to distinguish "no rivers" from "field missing"."""
 
 
 class TerminalSummary(BaseModel):
@@ -1148,6 +1165,26 @@ def _build_strategic_shapes(
     return tuple(sorted(shapes, key=lambda s: s.shape_id))
 
 
+def _build_strategic_rivers(
+    strategic_map: StrategicMapState,
+) -> tuple[StrategicRiverProjection, ...]:
+    """Takes no `state`: a river has no owner to resolve, which is the whole difference between a
+    natural feature and a political one."""
+    return tuple(
+        sorted(
+            (
+                StrategicRiverProjection(
+                    river_id=river.river_id,
+                    display_name=river.display_name,
+                    polyline=river.polyline,
+                )
+                for river in strategic_map.rivers
+            ),
+            key=lambda r: r.river_id,
+        )
+    )
+
+
 # --------------------------------------------------------------------------
 # Military -- current positions and destination options (Military Movement, commit 6)
 # --------------------------------------------------------------------------
@@ -1216,7 +1253,8 @@ class MilitaryProjection(BaseModel):
 def build_strategic_map(state: GameState) -> StrategicMapProjection:
     """The whole read-only strategic map, resolved for display. Pure: reads `state` only, never
     mutates it, never draws RNG. Every collection is emitted in server-sorted (and therefore
-    insertion-order-independent) order except `polygon`, which stays in stored authored order."""
+    insertion-order-independent) order except `polygon` and `polyline`, which stay in stored
+    authored order."""
     strategic_map = state.world.strategic_map
     return StrategicMapProjection(
         map_id=strategic_map.map_id,
@@ -1224,6 +1262,7 @@ def build_strategic_map(state: GameState) -> StrategicMapProjection:
         theaters=_build_strategic_theaters(strategic_map, state),
         routes=_build_strategic_routes(strategic_map.routes),
         shapes=_build_strategic_shapes(strategic_map, state),
+        rivers=_build_strategic_rivers(strategic_map),
     )
 
 

@@ -19,6 +19,9 @@ from pydantic import ValidationError
 from app.simulation.geography import (
     MAP_CONSTRUCTION_CODES,
     MAP_GRID_MAX,
+    RIVER_ID_DUPLICATE,
+    RIVER_NOT_CANONICAL,
+    RIVER_REPEATS_VERTEX,
     ROUTE_DUPLICATE,
     ROUTE_NOT_CANONICAL,
     ROUTE_SELF_EDGE,
@@ -37,6 +40,7 @@ from app.simulation.state import (
     CountryShapeState,
     ForeignProfileRef,
     PlayerCountryRef,
+    RiverState,
     RouteState,
     StrategicMapState,
     TheaterPresentation,
@@ -65,7 +69,7 @@ class TestEnums:
 
 
 class TestConstructionCodes:
-    def test_map_construction_codes_contains_exactly_the_eight_named_constants(self) -> None:
+    def test_map_construction_codes_contains_exactly_the_eleven_named_constants(self) -> None:
         assert (
             frozenset(
                 {
@@ -77,13 +81,16 @@ class TestConstructionCodes:
                     SHAPE_POLYGON_CLOSING_VERTEX_REPEATED,
                     SHAPE_POLYGON_REPEATS_VERTEX,
                     SHAPE_POLYGON_ZERO_AREA,
+                    RIVER_ID_DUPLICATE,
+                    RIVER_NOT_CANONICAL,
+                    RIVER_REPEATS_VERTEX,
                 }
             )
             == MAP_CONSTRUCTION_CODES
         )
 
     def test_every_construction_code_is_a_distinct_nonempty_string(self) -> None:
-        assert len(MAP_CONSTRUCTION_CODES) == 8
+        assert len(MAP_CONSTRUCTION_CODES) == 11
         for code in MAP_CONSTRUCTION_CODES:
             assert isinstance(code, str)
             assert code
@@ -214,6 +221,10 @@ def _shape(shape_id: str = "s", owner_country_id: str = "arken") -> CountryShape
         owner=PlayerCountryRef(country_id=owner_country_id),
         polygon=((0, 0), (10, 0), (10, 10), (0, 10)),
     )
+
+
+def _river(river_id: str = "r") -> RiverState:
+    return RiverState(river_id=river_id, display_name="A River", polyline=((0, 0), (10, 10)))
 
 
 class TestRouteSelfEdge:
@@ -391,7 +402,7 @@ class TestConstructionCodeReachability:
     call -- so a code that stops firing fails this suite rather than lingering as dead
     documentation, per `MAP_CONSTRUCTION_CODES`'s own docstring."""
 
-    def test_all_eight_codes_are_reachable(self) -> None:
+    def test_all_eleven_codes_are_reachable(self) -> None:
         reached: set[str] = set()
 
         try:
@@ -458,5 +469,25 @@ class TestConstructionCodeReachability:
             )
         except ValidationError:
             reached.add(SHAPE_NOT_CANONICAL)
+
+        try:
+            RiverState(river_id="r", display_name="R", polyline=((0, 0), (0, 0)))
+        except ValidationError:
+            reached.add(RIVER_REPEATS_VERTEX)
+
+        for river_ids, code in (
+            (("r_a", "r_a"), RIVER_ID_DUPLICATE),
+            (("r_b", "r_a"), RIVER_NOT_CANONICAL),
+        ):
+            try:
+                StrategicMapState(
+                    map_id="m",
+                    capital_theater_id="a",
+                    theaters={"a": _theater()},
+                    shapes=(_shape(),),
+                    rivers=tuple(_river(river_id) for river_id in river_ids),
+                )
+            except ValidationError:
+                reached.add(code)
 
         assert reached == MAP_CONSTRUCTION_CODES

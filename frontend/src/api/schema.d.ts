@@ -1138,12 +1138,31 @@ export interface components {
             capital_theater_id: string;
             /** Map Id */
             map_id: string;
+            /** Rivers */
+            rivers: components["schemas"]["StrategicRiverProjection"][];
             /** Routes */
             routes: components["schemas"]["StrategicRouteProjection"][];
             /** Shapes */
             shapes: components["schemas"]["StrategicShapeProjection"][];
             /** Theaters */
             theaters: components["schemas"]["StrategicTheaterProjection"][];
+        };
+        /**
+         * StrategicRiverProjection
+         * @description One authored river (map-resources slice). Presentation only, exactly like a shape: it is
+         *     drawn and named, and it never implies passage. A client that renders rivers and a client that
+         *     ignores them see the same set of legal moves.
+         */
+        StrategicRiverProjection: {
+            /** Display Name */
+            display_name: string;
+            /** Polyline */
+            polyline: [
+                number,
+                number
+            ][];
+            /** River Id */
+            river_id: string;
         };
         /**
          * StrategicRouteProjection

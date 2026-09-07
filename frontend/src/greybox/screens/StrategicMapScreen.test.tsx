@@ -75,6 +75,7 @@ const RECIPROCAL_MAP = {
   ],
   routes: [{ from_theater_id: "capital", to_theater_id: "frontier", bidirectional: true }],
   shapes: [],
+  rivers: [],
 };
 
 const ONE_WAY_MAP = {
@@ -148,6 +149,7 @@ const ONE_WAY_MAP = {
     { from_theater_id: "capital", to_theater_id: "coast", bidirectional: false },
   ],
   shapes: [],
+  rivers: [],
 };
 
 const DECREE_MAP = {
@@ -172,6 +174,7 @@ const DECREE_MAP = {
   ],
   routes: [],
   shapes: [],
+  rivers: [],
 };
 
 function dashboard(revision: string, overrides: Record<string, unknown> = {}) {
@@ -708,6 +711,27 @@ const SVG_MAP = {
       ],
     },
   ],
+  rivers: [
+    {
+      river_id: "river_alpha",
+      display_name: "River Alpha",
+      polyline: [
+        [1000, 1500],
+        [1400, 3000],
+        [1200, 4500],
+        [1600, 6000],
+      ],
+    },
+    {
+      river_id: "river_beta",
+      display_name: "River Beta",
+      polyline: [
+        [5000, 2000],
+        [5400, 3400],
+        [5200, 4800],
+      ],
+    },
+  ],
 };
 
 /** A map whose route names a theater the same response does not contain. */
@@ -758,6 +782,58 @@ describe("StrategicMapScreen: SVG shapes and owner styling", () => {
       // Joined, never sorted/rotated/normalized: the authored ring exactly as stored.
       expect(element?.getAttribute("points")).toBe(pointsOf(shape.polygon));
     }
+  });
+
+  it("renders one open polyline per projected river, in authored vertex order", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const rivers = container.querySelectorAll("[data-river]");
+    expect(rivers).toHaveLength(SVG_MAP.rivers.length);
+
+    for (const river of SVG_MAP.rivers) {
+      const element = container.querySelector(`[data-river="${river.river_id}"]`);
+      expect(element).not.toBeNull();
+      // A river is an OPEN course: `polyline`, never `polygon`, so the last vertex is not joined
+      // back to the first.
+      expect(element?.tagName.toLowerCase()).toBe("polyline");
+      // Authored order, exactly as stored -- not reversed, not sorted.
+      expect(element?.getAttribute("points")).toBe(pointsOf(river.polyline));
+      expect(element?.getAttribute("fill")).toBe("none");
+    }
+  });
+
+  it("names each river without making it a control", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    for (const river of SVG_MAP.rivers) {
+      const element = container.querySelector(`[data-river="${river.river_id}"]`);
+      expect(element?.querySelector("title")?.textContent).toBe(river.display_name);
+      // Decoration: no pointer target, no tab stop, no role. There is nothing to do with a
+      // river, so it must not look like there is.
+      expect(element?.getAttribute("pointer-events")).toBe("none");
+      expect(element?.getAttribute("tabindex")).toBeNull();
+      expect(element?.getAttribute("role")).toBeNull();
+    }
+  });
+
+  it("draws rivers under the routes, so no river covers a line the player can read", async () => {
+    const { container } = renderScreen(SVG_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const layers = Array.from(container.querySelectorAll("[data-layer]")).map((element) =>
+      element.getAttribute("data-layer"),
+    );
+    expect(layers).toContain("rivers");
+    expect(layers.indexOf("rivers")).toBeGreaterThan(layers.indexOf("shapes"));
+    expect(layers.indexOf("rivers")).toBeLessThan(layers.indexOf("routes"));
+  });
+
+  it("renders no river layer content for a map that authors none", async () => {
+    const { container } = renderScreen(RECIPROCAL_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+    expect(container.querySelectorAll("[data-river]")).toHaveLength(0);
   });
 
   it("renders a hatch overlay for every foreign shape and none for the player's", async () => {

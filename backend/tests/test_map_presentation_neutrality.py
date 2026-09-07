@@ -1,8 +1,9 @@
 """Strategic Military Map Gate M0 commit 8 -- the sec.10.2 simulation-inertness proof.
 
 A variant of `tiny_valid` is built that changes ONLY genuinely presentational values: theater
-centroids, label anchors, and shape polygon vertices. Theater ids, kinds, owners, the capital,
-every route row and every shape id -- and their ordering -- are all held fixed.
+centroids, label anchors, shape polygon vertices, and (map-resources slice) river polylines.
+Theater ids, kinds, owners, the capital, every route row, every shape id and every river id -- and
+their ordering -- are all held fixed.
 
 Resolving several turns from both the baseline and the variant must produce: identical turn
 reports (every domain field, so every RNG-observable outcome too), identical closing state
@@ -41,10 +42,10 @@ map to something different, so the projection-level "did change" assertions are 
 
 
 def _presentation_only_variant(map_state: StrategicMapState) -> StrategicMapState:
-    """A variant of `map_state` differing ONLY in centroid/label-anchor/polygon values.
+    """A variant of `map_state` differing ONLY in centroid/label-anchor/polygon/polyline values.
 
-    Theater ids (the dict keys), kinds, owners, `capital_theater_id`, and every route and shape id
-    -- plus their ordering -- are copied through untouched.
+    Theater ids (the dict keys), kinds, owners, `capital_theater_id`, and every route, shape and
+    river id -- plus their ordering -- are copied through untouched.
     """
     translated_theaters = {
         theater_id: theater.model_copy(
@@ -68,8 +69,20 @@ def _presentation_only_variant(map_state: StrategicMapState) -> StrategicMapStat
         )
         for shape in map_state.shapes
     )
+    translated_rivers = tuple(
+        river.model_copy(
+            update={
+                "polyline": tuple((x + _COORD_OFFSET, y + _COORD_OFFSET) for x, y in river.polyline)
+            }
+        )
+        for river in map_state.rivers
+    )
     return map_state.model_copy(
-        update={"theaters": translated_theaters, "shapes": translated_shapes}
+        update={
+            "theaters": translated_theaters,
+            "shapes": translated_shapes,
+            "rivers": translated_rivers,
+        }
     )
 
 
@@ -95,6 +108,8 @@ def test_variant_construction_actually_changes_every_presentation_field_and_noth
     assert baseline_map.routes == variant_map.routes
     assert list(baseline_map.theaters) == list(variant_map.theaters)
     assert [s.shape_id for s in baseline_map.shapes] == [s.shape_id for s in variant_map.shapes]
+    assert [r.river_id for r in baseline_map.rivers] == [r.river_id for r in variant_map.rivers]
+    assert len(baseline_map.rivers) >= 1, "a zero-river map would make the river cases vacuous"
 
     for theater_id, baseline_theater in baseline_map.theaters.items():
         variant_theater = variant_map.theaters[theater_id]
@@ -111,6 +126,11 @@ def test_variant_construction_actually_changes_every_presentation_field_and_noth
         assert baseline_shape.shape_id == variant_shape.shape_id
         assert baseline_shape.owner == variant_shape.owner
         assert baseline_shape.polygon != variant_shape.polygon
+
+    for baseline_river, variant_river in zip(baseline_map.rivers, variant_map.rivers, strict=True):
+        assert baseline_river.river_id == variant_river.river_id
+        assert baseline_river.display_name == variant_river.display_name
+        assert baseline_river.polyline != variant_river.polyline
 
 
 def test_presentation_only_variant_leaves_reports_and_non_map_state_byte_identical() -> None:
@@ -185,3 +205,13 @@ def test_presentation_only_variant_changes_the_projection_in_exactly_the_changed
         assert baseline_shape.owner_namespace == variant_shape.owner_namespace
         assert baseline_shape.owner_display_name == variant_shape.owner_display_name
         assert baseline_shape.polygon != variant_shape.polygon
+
+    baseline_rivers = {r.river_id: r for r in baseline_projection.rivers}
+    variant_rivers = {r.river_id: r for r in variant_projection.rivers}
+    assert set(baseline_rivers) == set(variant_rivers)
+    for river_id, baseline_river in baseline_rivers.items():
+        variant_river = variant_rivers[river_id]
+        assert baseline_river.display_name == variant_river.display_name
+        # Moving a river reaches the API and changes nothing else -- the same two-sided statement
+        # every other presentation field above makes.
+        assert baseline_river.polyline != variant_river.polyline

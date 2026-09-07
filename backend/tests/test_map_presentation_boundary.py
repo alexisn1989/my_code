@@ -2,10 +2,15 @@
 
 Mirrors `test_legislative_neutrality.py`'s AST-based module scans: no module under
 `app/simulation/` OTHER THAN `geography.py` and `state.py` may reference `TheaterPresentation`,
-`CountryShapeState`, `centroid_x`, `centroid_y`, `label_anchor` or `polygon`. Those are the map's
-presentation-only vocabulary (`TheaterPresentation`'s own docstring, `app/simulation/state.py`):
-read by the map projection and by the renderer, by NO formula and by no validator that decides
-legality.
+`CountryShapeState`, `RiverState`, `centroid_x`, `centroid_y`, `label_anchor`, `polygon` or
+`polyline`. Those are the map's presentation-only vocabulary (`TheaterPresentation`'s own
+docstring, `app/simulation/state.py`): read by the map projection and by the renderer, by NO
+formula and by no validator that decides legality.
+
+`RiverState`/`polyline` join the set with the map-resources slice. A river is the first NATURAL
+feature on this map, and adding it to this scan is what keeps "natural" from quietly becoming
+"mechanical": the moment some phase or classifier reads a river course, this test fails and the
+change has to be argued for rather than absorbed.
 
 Checked against the real parsed AST -- every `Name`/`Attribute` identifier and every import alias
 -- so a reference added inside a function body, a decorator, an f-string interpolation
@@ -28,10 +33,12 @@ FORBIDDEN_IDENTIFIERS = frozenset(
     {
         "TheaterPresentation",
         "CountryShapeState",
+        "RiverState",
         "centroid_x",
         "centroid_y",
         "label_anchor",
         "polygon",
+        "polyline",
     }
 )
 
