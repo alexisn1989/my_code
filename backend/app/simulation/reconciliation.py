@@ -79,6 +79,7 @@ from app.core.politics import (
 )
 from app.core.rng import derive_rng
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
+from app.simulation.cabinet import holder_competence_bps
 from app.simulation.constitution import (
     DecreeAuthority,
     ExecutiveSelection,
@@ -158,6 +159,7 @@ from app.simulation.legitimacy import (
 )
 from app.simulation.report import ConstitutionalAmendmentReport, MovementReport, TurnReport
 from app.simulation.state import (
+    CabinetPost,
     FormationBranch,
     FormationState,
     GameState,
@@ -1250,6 +1252,33 @@ def reconcile_political_legislative_and_survival_report(
                     f"political_relationship.blocs row ({memory_row.party_id!r}, {memory_row.bloc_id!r}): "
                     f"spending_preference_bps={memory_row.spending_preference_bps} does not match "
                     f"opening_state spending_preference_bps={bloc.spending_preference_bps}"
+                )
+
+        # Group 56 (characters slice): the chief-of-staff competence each row used, re-derived
+        # from the OPENING cabinet and character registry rather than read off the report.
+        #
+        # This is what makes a forged competence fail. The row's own validator re-derives the gain
+        # formula from its stored fields, so raising `chief_of_staff_competence_bps` and raising
+        # `investment_component_bps` to match leaves the row perfectly self-consistent -- and buys
+        # a larger relationship improvement out of nothing. Only a comparison against the state can
+        # catch that, and it must use the OPENING cabinet for the same reason group 14 pins the
+        # vote's relationship to the opening value: an appointment made this turn is not effective
+        # until the next one, so a row scored against a mid-turn cabinet would be scored against a
+        # holder who was not yet doing the job.
+        expected_competence = holder_competence_bps(
+            cabinet=opening_player.cabinet,
+            characters=opening_state.world.characters,
+            post=CabinetPost.CHIEF_OF_STAFF,
+            resolving_turn=opening_state.turn,
+        )
+        for memory_row in political_relationship_report.blocs:
+            if memory_row.chief_of_staff_competence_bps != expected_competence:
+                problems.append(
+                    f"political_relationship.blocs row ({memory_row.party_id!r}, "
+                    f"{memory_row.bloc_id!r}): "
+                    f"chief_of_staff_competence_bps={memory_row.chief_of_staff_competence_bps} "
+                    "does not match the competence of the chief of staff serving in opening_state "
+                    f"({expected_competence}) (group 56)"
                 )
 
     # Group 45 (plan §8, Gate 3C1's slice of the coup/unrest backstop): terminal-outcome

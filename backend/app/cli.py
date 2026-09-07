@@ -58,6 +58,7 @@ from app.core.errors import (
 )
 from app.core.money import format_money
 from app.saves import read_save_file, write_save_atomic
+from app.simulation.cabinet import effective_holder_id
 from app.simulation.decisions import DecisionSet
 from app.simulation.foreign_conflict import TERMINAL_STATUSES, ConflictStatus, WarAim
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
@@ -90,6 +91,8 @@ from app.simulation.report import (
 from app.simulation.save_format import SAVE_FORMAT_VERSION, dump_save_json, load_save_json
 from app.simulation.state import (
     RESOURCE_UNITS,
+    CabinetPost,
+    CountryState,
     ForeignConflictState,
     ForeignProfileState,
     InstitutionState,
@@ -716,6 +719,43 @@ def _print_institutions(institutions: list[InstitutionState]) -> None:
         )
 
 
+def _print_cabinet(country: CountryState, world: WorldState, resolving_turn: int) -> None:
+    """(Characters slice) `inspect --cabinet`: who holds each post, from when, and what they are.
+
+    Prints EVERY post, including the vacant ones, because a vacancy is a real and costly condition
+    rather than an absence of news -- a player who cannot see the empty chair cannot see the
+    decision. `serving` is `simulation.cabinet`'s own answer for this save's turn, so the line
+    that says a holder is not contributing yet is the same rule the resolver applies, not a
+    second reading of `effective_from_turn`.
+
+    Traits are printed for the serving holder because they are what the post is worth: an office
+    with no visible officeholder would be exactly the decorative score this layer is not.
+    """
+    print("  cabinet:")
+    cabinet = country.cabinet
+    for post in CabinetPost:
+        appointment = None if cabinet is None else cabinet.offices.get(post)
+        if appointment is None:
+            print(f"    {post.value}: vacant")
+            continue
+        holder = world.characters.get(appointment.character_id)
+        serving = (
+            effective_holder_id(cabinet=cabinet, post=post, resolving_turn=resolving_turn)
+            is not None
+        )
+        status = "serving" if serving else f"takes office on turn {appointment.effective_from_turn}"
+        name = appointment.character_id if holder is None else holder.display_name
+        print(f"    {post.value}: {name} ({appointment.character_id}) -- {status}")
+        if holder is not None:
+            print(
+                f"      competence={_bps_to_percent_str(holder.competence)} "
+                f"loyalty={_bps_to_percent_str(holder.loyalty)} "
+                f"independence={_bps_to_percent_str(holder.independence)} "
+                f"ambition={_bps_to_percent_str(holder.ambition)} "
+                f"personal_trust={_bps_to_percent_str(holder.personal_trust)}"
+            )
+
+
 def _print_capital_relationships(politics: PoliticalState) -> None:
     """(Phase 3B2A, §16) `inspect --capital`: every bloc's CURRENT `government_relationship_bps`,
     read directly from state. The political-capital figure itself is already printed unconditionally
@@ -1049,6 +1089,12 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
             _print_baseline_relationships(politics)
         if args.institutions:
             _print_institutions(player.institutions)
+
+    # Deliberately OUTSIDE the `player.politics is not None` block above, for the same reason
+    # `--conflicts` is: a cabinet lives on the COUNTRY, not on its politics, so a save whose
+    # player has no politics block can still be asked who holds which post.
+    if args.cabinet:
+        _print_cabinet(player, current.world, current.turn)
 
     # Deliberately OUTSIDE the `player.politics is not None` block above: foreign conflicts are
     # world-level state between foreign actors, not player politics, so a save whose player has
@@ -1800,6 +1846,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="also show every authored institution's strict-bps metrics (loyalty, power, "
         "competence, corruption), read directly from state (Phase 3C, Gate 3C2) -- the coup "
         "channel's own inputs",
+    )
+    p_inspect.add_argument(
+        "--cabinet",
+        action="store_true",
+        help="also show every cabinet post (characters slice), read directly from state: its "
+        "holder, the turn they take office, whether they are serving on this save's turn, and "
+        "that person's five traits. Vacant posts are listed as vacant",
     )
     p_inspect.add_argument(
         "--conflicts",

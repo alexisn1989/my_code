@@ -36,11 +36,13 @@ from app.core.errors import ScenarioValidationError
 from app.simulation.invariants import check_invariants
 from app.simulation.state import (
     RULESET_VERSION,
+    CharacterState,
     ConflictDyadState,
     CountryState,
     ForeignProfileState,
     GameState,
     StrategicMapState,
+    StrictCharacterId,
     WorldState,
 )
 
@@ -69,6 +71,12 @@ class ScenarioDefinition(BaseModel):
     """Strategic Military Map Gate M0: the campaign's defining map (`StrategicMapState`'s
     docstring). Required, matching `WorldState.strategic_map` -- every scenario authors its own
     map; there is no default map to fall back to."""
+    characters: dict[StrictCharacterId, CharacterState] = {}
+    """The character roster (`WorldState.characters`' docstring). Defaults to empty so the field
+    itself imposes no shape on a scenario that names nobody -- an empty world is a coherent one.
+    What every SHIPPED scenario must author is a cabinet for the player (`player_cabinet_required`),
+    and a cabinet whose posts are filled needs people for them to be filled by, so in practice the
+    two arrive together."""
 
 
 def _parse(source: str, raw_text: str) -> ScenarioDefinition:
@@ -121,6 +129,7 @@ def _to_game_state(source: str, scenario: ScenarioDefinition) -> GameState:
             # (reject-not-normalize, matching `resource_deposits`'s policy).
             dyads=tuple(scenario.dyads),
             strategic_map=scenario.strategic_map,
+            characters=scenario.characters,
         ),
     )
 

@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.money import Money, StrictBps, StrictMoney
 from app.core.politics import (
+    StrictCharacterTraitBps,
     StrictInstitutionMetricBps,
     StrictLegitimacyBps,
     StrictPoliticalCapital,
@@ -1060,6 +1061,126 @@ class MilitaryState(BaseModel):
     formations: dict[StrictFormationId, FormationState]
 
 
+StrictCharacterId: TypeAlias = Annotated[str, Field(strict=True, min_length=1, max_length=64)]
+"""A character's stable identifier, and its OWN namespace.
+
+Structurally identical to `StrictFormationId` and `geography.StrictMapId`, and deliberately a
+distinct alias for the same reason those two are distinct from each other: a person is not a
+formation and not a map object, and a future rename or widening of one must not silently move the
+others.
+"""
+
+
+class CabinetPost(StrEnum):
+    """The cabinet posts that actually do something.
+
+    Two, and only two, because two is what this slice gives real mechanical consequences: the chief
+    of staff makes relationship investment more effective, and the foreign minister strengthens the
+    government's hand in a foreign negotiation. Health, education, finance, defence and the rest are
+    deliberately ABSENT rather than declared-and-inert -- the same rule `FormationBranch` follows in
+    shipping `ARMY` alone, and the same reason `TheaterKind` never declared `SEA`. A post whose
+    holder changes nothing is a promise the engine does not keep.
+
+    Declaration order is canonical order and the values are alphabetical, so any ordered collection
+    keyed by post sorts the same way with no second convention to remember. These values serialize
+    into `state_json` and are covered by the entry hash -- renaming one is a save-format change, not
+    a refactor.
+    """
+
+    CHIEF_OF_STAFF = "chief_of_staff"
+    FOREIGN_MINISTER = "foreign_minister"
+
+
+class CharacterState(BaseModel):
+    """One named person.
+
+    There is no `character_id` field and no `owner` field: identity comes from the
+    `WorldState.characters` key and allegiance from `affiliation` -- the same rule
+    `ForeignProfileState`, `TheaterState` and `FormationState` already follow, so key and value can
+    never disagree.
+
+    **The five traits are five distinct concepts, not one dressed five ways.** Each names a
+    different question about a person, and each has its own consumer:
+
+    * `competence` -- how well the person does the job. The only trait office performance reads.
+    * `loyalty` -- loyalty to the PLAYER as a superior: whether they will take a post on the terms
+      offered. Distinct from `InstitutionState.loyalty`, which is a body's loyalty to the office,
+      and from `LegislativeBlocState.government_relationship_bps`, which is a caucus's standing with
+      the government. One source of truth each; no character score is ever copied into either.
+    * `independence` -- how much autonomy they demand. Raises the price of hiring them and makes
+      them harder to bargain with. Deliberately NOT the inverse of loyalty: a person can be both
+      devoted and opinionated (loyal disagreement), or neither (obedient opportunism).
+    * `ambition` -- what they want for themselves; drives which posts they will accept and how
+      hard they push in a bargain.
+    * `personal_trust` -- how far they trust the player to keep their word. The ONLY trait this
+      slice ever mutates, and only on a kept or broken promise: there is no per-turn drift, so a
+      character's trust is a record of what the player actually did.
+
+    `loyalty` is emphatically not `BPS_DENOMINATOR - competence`. The shipped rosters include a
+    loyal weak administrator, an independent expert, an ambitious expert AND a competent loyal
+    professional precisely so no such correlation can be inferred from the content either.
+
+    Of the five, `competence` is the one the engine reads TODAY -- through `simulation.cabinet`,
+    into the chief of staff's contribution to relationship investment. The other four are read by
+    the recruitment, bargaining and promise machinery that completes this slice, and are authored
+    here rather than bolted on later because a person's character is not something a scenario can
+    honestly start without: a roster gaining new traits mid-series would be a second content-shape
+    change asserting facts about people the earlier scenarios never stated.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    display_name: StrictDisplayName
+    affiliation: SovereignRef
+    """Whose person this is, through the two EXISTING authoritative namespaces. A foreign
+    profile's leader stays the representative of an abstract actor -- affiliation grants that
+    profile no population, treasury, economy or politics, exactly as owning map area does not."""
+    party_id: str | None = None
+    """Set only for a domestic character who LEADS a party, and only for a party that actually
+    exists. Optional because most people lead no party: the player's candidates for office are
+    private citizens. `simulation.invariants` enforces both halves -- that the party exists, and
+    that a foreign-affiliated character never claims one."""
+    competence: StrictCharacterTraitBps
+    loyalty: StrictCharacterTraitBps
+    independence: StrictCharacterTraitBps
+    ambition: StrictCharacterTraitBps
+    personal_trust: StrictCharacterTraitBps
+
+
+class CabinetAppointment(BaseModel):
+    """Who holds one post, and from which turn they actually do the job.
+
+    `effective_from_turn` is what makes "opening officeholders supply this turn's bonuses"
+    a property of state rather than of bookkeeping. A holder contributes on a resolving turn `t`
+    if and only if `effective_from_turn <= t`, which is a single comparison every consumer makes
+    the same way. A scenario authors its incumbents at `0` -- they are incumbents, already in post
+    at genesis. An appointment resolved on turn `t` is stored at `t + 1`, so it cannot supply the
+    very turn that hired it, and cycling through appointees within a turn cannot stack anything.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    character_id: StrictCharacterId
+    effective_from_turn: int = Field(strict=True, ge=0)
+
+
+class CabinetState(BaseModel):
+    """A country's cabinet, keyed by post.
+
+    An ABSENT key means the post is vacant -- a real, playable condition with a real cost, since a
+    vacant post supplies no bonus. That is deliberately distinct from `CountryState.cabinet is
+    None`, which means the country does not model a cabinet at all. Collapsing the two would erase
+    the difference between "nobody holds this job" and "this country has no such job", exactly the
+    distinction `MilitaryState` preserves between an empty roster and an unmodelled military.
+
+    `CabinetState(offices={})` is therefore valid: a government with both posts vacant.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    offices: dict[CabinetPost, CabinetAppointment] = Field(default_factory=dict)
+
+
 class CountryState(BaseModel):
     """A single country: player-controlled or AI-controlled.
 
@@ -1083,6 +1204,11 @@ class CountryState(BaseModel):
     politics for a country with no economy to derive performance from
     (`non_player_politics_not_supported`). Required for the player, enforced by
     `player_politics_required`, mirroring `player_finance_required`/`player_economy_required`."""
+    cabinet: CabinetState | None = None
+    """Optional on the model, REQUIRED for the player by invariant (`player_cabinet_required`) --
+    the established pattern every country sub-model above already follows. A non-player country may
+    keep `cabinet=None`; making it required on the model would force every future AI country to
+    author one."""
     military: MilitaryState | None = None
     """Optional on the model, REQUIRED for the player by invariant — the established pattern every
     country sub-model above already follows. `player_military_state_required` enforces it, and is
@@ -1564,6 +1690,17 @@ class WorldState(BaseModel):
     `resource_deposits`' policy (ADR 0007 R3), not `sectors`' normalize-on-reorder one."""
     conflicts: tuple[ForeignConflictState, ...] = Field(default_factory=tuple)
     """Canonical by `conflict_id`, **reject-not-normalize**."""
+    characters: dict[StrictCharacterId, CharacterState] = Field(default_factory=dict)
+    """Every named person in the world, keyed by stable id.
+
+    ONE registry, at world level, rather than a per-country list: a foreign profile's leader has no
+    `CountryState` to live in, and splitting people across two containers by allegiance would make
+    "who is this?" a question with two possible places to look. Allegiance is a field
+    (`CharacterState.affiliation`) precisely so identity can stay in one place.
+
+    Like `foreign_profiles` above, every read iterates `sorted(characters)`; canonical JSON already
+    sorts mapping keys, so construction order cannot reach the digest.
+    """
     strategic_map: StrategicMapState
     """The campaign's defining strategic map (Strategic Military Map, Gate M0). REQUIRED: no
     default, no `| None`.
@@ -1604,7 +1741,7 @@ class WorldState(BaseModel):
         return self
 
 
-RULESET_VERSION = "0.17.0"
+RULESET_VERSION = "0.18.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -1724,6 +1861,15 @@ apply the new rules to a campaign that was never exposed to them, and re-derivin
 under them would contradict the hashes it stores. It is rejected. `SAVE_FORMAT_VERSION` stays `1`
 and `content_version` stays `"0.16.0"` -- no scenario authored field changes shape, and the two
 new weights are engine constants, not content.
+
+Bumped `"0.17.0" -> "0.18.0"` for the character layer: `WorldState` gains a
+`characters` registry and `CountryState` a `cabinet`, the player's being required by
+`player_cabinet_required`. A 0.17.0 save has no people in it at all, and there is nothing to
+migrate from -- inventing a roster would assert names, competences and loyalties the save never
+recorded, and inventing an empty one would assert that the country deliberately has nobody, which
+is a different claim again. This bump also changes turn resolution: a serving chief of staff makes
+relationship investment measurably more effective, so replaying 0.17.0-authored decisions under
+0.18.0 rules does not reproduce the 0.17.0 turn. `SAVE_FORMAT_VERSION` stays `1`.
 """
 
 

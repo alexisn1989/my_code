@@ -430,7 +430,10 @@ class TestApprovedRosters:
         with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
             document = yaml.safe_load(handle)
 
-        assert document["content_version"] == "0.16.0"
+        # Bumped by each later slice that changes authored SHAPE, most recently the characters
+        # slice ("0.16.0" -> "0.17.0"): the roster this class guards is unchanged, and the pin is
+        # here so a bump has to be a deliberate edit in every file that records one.
+        assert document["content_version"] == "0.17.0"
         for country in document["countries"]:
             if country["id"] == country_id:
                 assert "military" in country

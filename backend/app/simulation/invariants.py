@@ -1290,6 +1290,18 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
                     ),
                 )
             )
+        if player.cabinet is None:
+            violations.append(
+                InvariantViolation(
+                    code="player_cabinet_required",
+                    message=(
+                        f"player country {player.id!r} has no CabinetState; the cabinet is the "
+                        "player's own instrument of government — AI countries may omit it, the "
+                        "player country may not. A government with both posts vacant is expressed "
+                        "as an empty `offices` mapping, never as an absent cabinet"
+                    ),
+                )
+            )
         if player.politics is None:
             violations.append(
                 InvariantViolation(
@@ -1339,6 +1351,7 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
     violations.extend(_check_strategic_map(state.world))
     violations.extend(_check_formation_locations(state.world))
     violations.extend(_check_deposit_locations(state.world))
+    violations.extend(_check_characters_and_cabinet(state.world))
 
     return violations
 
@@ -1460,5 +1473,120 @@ def _check_deposit_locations(world: WorldState) -> list[InvariantViolation]:
                     ),
                 )
             )
+
+    return violations
+
+
+def _check_characters_and_cabinet(world: WorldState) -> list[InvariantViolation]:
+    """Every character resolves, and every cabinet post is held by somebody who could hold it.
+
+    Six codes, each naming a distinct way the layer can be incoherent. They are character-scoped
+    rather than reusing the map's own `map_owner_*` codes, but the *rule* for whether an
+    affiliation resolves is not duplicated: `_sovereign_ref_violation` above stays the single
+    definition, and its detail text is carried into the message. One definition of validity, one
+    message that names the right subject.
+
+    Iterates `sorted(...)` at every level, so emitted order depends on ids rather than on mapping
+    insertion order.
+    """
+    violations: list[InvariantViolation] = []
+
+    for character_id in sorted(world.characters):
+        character = world.characters[character_id]
+        ref_problem = _sovereign_ref_violation(character.affiliation, world)
+        if ref_problem is not None:
+            violations.append(
+                InvariantViolation(
+                    code="character_affiliation_unresolved",
+                    message=(
+                        f"character {character_id!r} has an affiliation that does not resolve: "
+                        f"{ref_problem[1]}"
+                    ),
+                )
+            )
+        if character.party_id is None:
+            continue
+        if not isinstance(character.affiliation, PlayerCountryRef):
+            violations.append(
+                InvariantViolation(
+                    code="character_party_on_foreign_affiliation",
+                    message=(
+                        f"character {character_id!r} claims party {character.party_id!r} but is "
+                        "affiliated with a foreign profile — a foreign leader represents an "
+                        "abstract actor and sits in no domestic legislature"
+                    ),
+                )
+            )
+            continue
+        country = world.countries.get(character.affiliation.country_id)
+        politics = None if country is None else country.politics
+        legislature = None if politics is None else politics.legislature
+        if legislature is None:
+            # No legislature, nothing to check against -- and deliberately NOT a violation.
+            # Abolishing the legislature is a legal constitutional amendment (`Legislature.NONE`),
+            # and a state that a legal player action can turn invalid is a broken invariant rather
+            # than a caught error. The person who led a party does not stop existing when the
+            # chamber they sat in is dissolved; the engine simply has no roster left to check the
+            # claim against, and an unverifiable claim is not a false one.
+            continue
+        known_parties = tuple(party.id for party in legislature.parties)
+        if character.party_id not in known_parties:
+            violations.append(
+                InvariantViolation(
+                    code="character_party_unknown",
+                    message=(
+                        f"character {character_id!r} claims party {character.party_id!r}, which is "
+                        f"not a party of country {character.affiliation.country_id!r} "
+                        f"(known: {sorted(known_parties)!r})"
+                    ),
+                )
+            )
+
+    for country_id in sorted(world.countries):
+        cabinet = world.countries[country_id].cabinet
+        if cabinet is None:
+            continue
+        seen_holders: dict[str, str] = {}
+        for post in sorted(cabinet.offices, key=lambda p: p.value):
+            appointment = cabinet.offices[post]
+            holder = world.characters.get(appointment.character_id)
+            if holder is None:
+                violations.append(
+                    InvariantViolation(
+                        code="cabinet_holder_unknown",
+                        message=(
+                            f"country {country_id!r} seats {appointment.character_id!r} as "
+                            f"{post.value}, which is not a key of world.characters"
+                        ),
+                    )
+                )
+                continue
+            if (
+                not isinstance(holder.affiliation, PlayerCountryRef)
+                or holder.affiliation.country_id != country_id
+            ):
+                violations.append(
+                    InvariantViolation(
+                        code="cabinet_holder_not_of_this_country",
+                        message=(
+                            f"country {country_id!r} seats {appointment.character_id!r} as "
+                            f"{post.value}, but that character is not affiliated with it — a "
+                            "government may only appoint its own people"
+                        ),
+                    )
+                )
+            previous_post = seen_holders.get(appointment.character_id)
+            if previous_post is not None:
+                violations.append(
+                    InvariantViolation(
+                        code="cabinet_holder_holds_two_posts",
+                        message=(
+                            f"country {country_id!r} seats {appointment.character_id!r} as both "
+                            f"{previous_post} and {post.value}; one person holds at most one post"
+                        ),
+                    )
+                )
+            else:
+                seen_holders[appointment.character_id] = post.value
 
     return violations

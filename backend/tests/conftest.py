@@ -21,7 +21,9 @@ from app.simulation.state import (
     RENEWABLE_RESOURCES,
     RULESET_VERSION,
     BlocSeats,
+    CabinetState,
     ChamberState,
+    CharacterState,
     ConflictDyadState,
     ConstitutionState,
     CountryShapeState,
@@ -395,6 +397,8 @@ def make_country(
     politics: PoliticalState | None = None,
     with_military: bool = True,
     military: MilitaryState | None = None,
+    with_cabinet: bool = True,
+    cabinet: CabinetState | None = None,
 ) -> CountryState:
     """Build a minimal, valid `CountryState` for unit tests that don't need YAML.
 
@@ -413,6 +417,16 @@ def make_country(
     here would put a location in every unit test that no test asked for. A test needing one passes
     `military=...`, and its `location_theater_id` must be a theater the same country owns (see
     `make_minimal_strategic_map`, whose single theater is `"capital"`).
+
+    `with_cabinet` (characters slice) follows exactly that pattern for exactly that reason:
+    `player_cabinet_required` makes `CabinetState` mandatory for the player. It defaults to an
+    EXPLICITLY EMPTY `CabinetState(offices={})` -- both posts vacant -- rather than a seated
+    cabinet, because the invariant requires the state to be present and never that anyone holds a
+    post, and seating somebody here would give every unit test a bonus it did not ask for. That
+    default is also what keeps this factory's numbers identical to what they were before this
+    layer existed: an empty cabinet contributes zero. A test that wants a serving officeholder
+    passes `cabinet=...`, and the holder must be a character in `WorldState.characters` affiliated
+    with this same country (`cabinet_holder_unknown`, `cabinet_holder_not_of_this_country`).
     """
     groups = [
         PopulationGroupState(id=f"group_{i}", name=f"Group {i}", population_share=share)
@@ -432,6 +446,9 @@ def make_country(
         if military is not None
         else (MilitaryState(formations={}) if with_military else None)
     )
+    resolved_cabinet = (
+        cabinet if cabinet is not None else (CabinetState(offices={}) if with_cabinet else None)
+    )
     return CountryState(
         id=country_id,
         name=country_id.title(),
@@ -445,6 +462,7 @@ def make_country(
         finance=resolved_finance,
         economy=resolved_economy,
         politics=resolved_politics,
+        cabinet=resolved_cabinet,
         military=resolved_military,
     )
 
@@ -493,6 +511,7 @@ def make_game_state(
     dyads: tuple[ConflictDyadState, ...] = (),
     conflicts: tuple[ForeignConflictState, ...] = (),
     strategic_map: StrategicMapState | None = None,
+    characters: dict[str, CharacterState] | None = None,
 ) -> GameState:
     """Build a minimal, valid `GameState` for unit tests that don't need YAML.
 
@@ -510,6 +529,12 @@ def make_game_state(
     by `player_country_id`, via `make_minimal_strategic_map` -- `WorldState.strategic_map` has no
     default of its own, so every existing call site needs an explicit map from somewhere, and
     this is that somewhere.
+
+    `characters` (characters slice) defaults to empty, matching `WorldState`'s own default and
+    `make_country`'s empty cabinet: a world with nobody named in it and a government with both
+    posts vacant is exactly the world every pre-existing unit test was written against, so no
+    call site changes meaning. A test that seats an officeholder passes both this and
+    `make_country(cabinet=...)`.
     """
     if countries is None:
         politics = (
@@ -524,7 +549,7 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id, politics=politics)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.16.0",
+        content_version="0.17.0",
         seed=seed,
         turn=turn,
         state_version=state_version,
@@ -535,6 +560,7 @@ def make_game_state(
             dyads=dyads,
             conflicts=conflicts,
             strategic_map=strategic_map or make_minimal_strategic_map(player_country_id),
+            characters=characters or {},
         ),
     )
 

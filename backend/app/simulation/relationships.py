@@ -95,7 +95,42 @@ before Phase 3B2B introduces decay and adverse reactions to counterweight it.
 """
 
 
-def relationship_gain_bps(*, opening_relationship_bps: int, political_capital: int) -> int:
+CHIEF_OF_STAFF_MAX_BONUS_BPS = 2_500
+"""What a maximally competent chief of staff adds to a relationship investment, as a further
+fraction of the gain -- 25% at competence 10,000, nothing at competence 0, linear in between.
+
+A GAME-BALANCE CHOICE, not a measurement. Sized to be worth hiring for and impossible to build a
+strategy on alone: on `deficit_demo`'s cheapest bargaining target it turns a 162-capital bargain
+into roughly a 130-capital one, which is a real saving and nowhere near free.
+
+The bonus scales the GAIN, never the capital. Scaling capital is structurally closed off --
+`relationship_gain_bps` asserts `[1, RELATIONSHIP_INVESTMENT_CAP]` and `core.politics` names that
+schema/formula pairing as load-bearing -- and scaling a further fraction of the same gap keeps the
+module's stated guarantee that the closing relationship stays strictly below the ceiling, which a
+naive multiplier on the result would break.
+"""
+
+
+def chief_of_staff_gain_bonus_bps(*, base_gain_bps: int, competence_bps: int) -> int:
+    """The extra gain a serving chief of staff's competence adds to `base_gain_bps`.
+
+    Two truncating divisions, in this order: the competence-scaled share of the maximum bonus
+    weight, then that weight applied to the base gain. Both go through `trunc_div_toward_zero`, so
+    the result is exactly reproducible and never depends on a float.
+
+    Returns `0` for a vacant post (the caller passes `competence_bps=0`), which is the same answer
+    as an utterly incompetent holder -- correct, because both contribute nothing, and it keeps the
+    caller free of a special case.
+    """
+    weight_bps = trunc_div_toward_zero(
+        competence_bps * CHIEF_OF_STAFF_MAX_BONUS_BPS, BPS_DENOMINATOR
+    )
+    return trunc_div_toward_zero(base_gain_bps * weight_bps, BPS_DENOMINATOR)
+
+
+def relationship_gain_bps(
+    *, opening_relationship_bps: int, political_capital: int, chief_of_staff_competence_bps: int = 0
+) -> int:
     """The improvement `political_capital` buys against `opening_relationship_bps`.
 
     `political_capital` is **asserted** in `[1, RELATIONSHIP_INVESTMENT_CAP]` rather than clamped.
@@ -103,10 +138,17 @@ def relationship_gain_bps(*, opening_relationship_bps: int, political_capital: i
     the band means those two have drifted apart -- and silently clamping is precisely how that
     drift would go unnoticed. Raising is the point.
 
+    `chief_of_staff_competence_bps` is the competence of the character holding that post **and
+    already effective this turn** (`CabinetAppointment.effective_from_turn <= resolving turn`), or
+    `0` for a vacant post. It defaults to `0` so every existing caller and test keeps its exact
+    former meaning: a government with no chief of staff gets precisely the Phase 3B2A number.
+
     Returns `0` when the gap is already closed, and can also return `0` for a small gap that
     truncates away. Callers must treat "no applied change" as a decision to reject
     (`phases._validate_and_reserve_actions`), and must test the **computed gain** rather than
-    `gap == 0`: at a gap of 100, one point of capital also buys nothing.
+    `gap == 0`: at a gap of 100, one point of capital also buys nothing. A chief of staff cannot
+    rescue that case either -- a bonus is a fraction of the base gain, so 25% of nothing is
+    nothing, and hiring one never makes a rejected investment legal.
     """
     if not 1 <= political_capital <= RELATIONSHIP_INVESTMENT_CAP:
         raise ValueError(
@@ -115,6 +157,9 @@ def relationship_gain_bps(*, opening_relationship_bps: int, political_capital: i
             "decisions.BlocInvestment is expected to have rejected this already"
         )
     gap = RELATIONSHIP_CEILING_BPS - opening_relationship_bps
-    return trunc_div_toward_zero(
+    base_gain_bps = trunc_div_toward_zero(
         gap * political_capital, RELATIONSHIP_HALF_GAP_CAPITAL + political_capital
+    )
+    return base_gain_bps + chief_of_staff_gain_bonus_bps(
+        base_gain_bps=base_gain_bps, competence_bps=chief_of_staff_competence_bps
     )

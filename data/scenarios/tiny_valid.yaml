@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.16.0"
+content_version: "0.17.0"
 seed: 42
 player_country_id: arken
 
@@ -232,6 +232,96 @@ strategic_map:
     - [5250, 4000]
     - [5100, 4800]
     - [4850, 5600]
+
+# Named people (characters slice). Identity is the mapping KEY; allegiance is `affiliation`, a
+# tagged reference into the two namespaces that already exist -- so a person can never disagree
+# with `countries`/`foreign_profiles` about who they belong to.
+#
+# The four candidates below exist to make hiring a real choice rather than a ranking. Note in
+# particular that `loyalty` is NOT `10,000 - competence` for any of them, and that the professional
+# is deliberately both capable and loyal: a correlation the player could rely on would collapse the
+# whole tradeoff into one number.
+characters:
+  hal_verrin:
+    display_name: Hal Verrin
+    affiliation: {kind: player_country, country_id: arken}
+    competence: 3200      # the loyal weak administrator -- devoted, and not very good
+    loyalty: 8800
+    independence: 1500
+    ambition: 2000
+    personal_trust: 6500
+  ilse_marovec:
+    display_name: Ilse Marovec
+    affiliation: {kind: player_country, country_id: arken}
+    competence: 8600      # the independent expert -- excellent, and hard to keep
+    loyalty: 3400
+    independence: 8700
+    ambition: 5200
+    personal_trust: 4200
+  tomas_bekker:
+    display_name: Tomas Bekker
+    affiliation: {kind: player_country, country_id: arken}
+    competence: 8100      # the ambitious expert -- excellent, and playing his own game
+    loyalty: 4100
+    independence: 6200
+    ambition: 9100
+    personal_trust: 3800
+  wren_hollis:
+    display_name: Wren Hollis
+    affiliation: {kind: player_country, country_id: arken}
+    competence: 7400      # the rare competent loyal professional
+    loyalty: 7900
+    independence: 4300
+    ambition: 3600
+    personal_trust: 6800
+  # Party leaders. Only parties that actually exist get one, and `party_id` is validated against
+  # the country's own legislature (`character_party_unknown`).
+  leader_civic_union:
+    display_name: Anneke Vos
+    affiliation: {kind: player_country, country_id: arken}
+    party_id: civic_union
+    competence: 6400
+    loyalty: 7200
+    independence: 4800
+    ambition: 5500
+    personal_trust: 6600
+  leader_national_front:
+    display_name: Gustav Reiner
+    affiliation: {kind: player_country, country_id: arken}
+    party_id: national_front
+    competence: 7000
+    loyalty: 1200
+    independence: 7600
+    ambition: 8200
+    personal_trust: 2400
+  leader_rural_alliance:
+    display_name: Maret Kuusk
+    affiliation: {kind: player_country, country_id: arken}
+    party_id: rural_alliance
+    competence: 5600
+    loyalty: 5000
+    independence: 6100
+    ambition: 4400
+    personal_trust: 5200
+  # Foreign counterparts. A foreign profile's leader REPRESENTS an abstract actor -- affiliation
+  # grants that profile no population, treasury, economy or politics, exactly as owning map area
+  # does not.
+  leader_kessia:
+    display_name: Chancellor Dietrich Halm
+    affiliation: {kind: foreign_profile, foreign_profile_id: kessia}
+    competence: 6800
+    loyalty: 0
+    independence: 9000
+    ambition: 7000
+    personal_trust: 4000
+  leader_vetruska:
+    display_name: Premier Sanna Ilves
+    affiliation: {kind: foreign_profile, foreign_profile_id: vetruska}
+    competence: 7300
+    loyalty: 0
+    independence: 9400
+    ambition: 6200
+    personal_trust: 3200
 
 countries:
   - id: arken
@@ -638,6 +728,19 @@ countries:
     # Military Movement vertical slice, commit 3: the approved roster. Exactly one
     # abstract Army formation, starting in this country's own capital theater. No
     # manpower, strength or equipment is stated or implied.
+    cabinet:
+      # Both posts filled, and the general-purpose scenario is where the office bonus actually
+      # bites: `decree_state` and `deficit_demo` are both calibration fixtures whose relationship
+      # arithmetic is quoted in docs and constants, so neither seats a chief of staff.
+      #
+      # The chief of staff is deliberately the WEAK administrator (`hal_verrin`, competence
+      # 3,200). A small bonus that still has to show up is a harder proof than a large one, and
+      # it leaves somewhere to go: replacing him is a real decision rather than a formality.
+      # `effective_from_turn: 0` marks an INCUMBENT -- already in post at genesis, contributing
+      # from the first resolved turn. An appointment made during play is stored at `turn + 1`.
+      offices:
+        chief_of_staff: {character_id: hal_verrin, effective_from_turn: 0}
+        foreign_minister: {character_id: ilse_marovec, effective_from_turn: 0}
     military:
       formations:
         arken_first_army:

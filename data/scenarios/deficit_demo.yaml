@@ -25,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.16.0"
+content_version: "0.17.0"
 seed: 99
 player_country_id: strapped
 
@@ -213,6 +213,91 @@ strategic_map:
     - [5300, 3600]
     - [5150, 4400]
     - [4950, 5200]
+
+# Named people (characters slice). Identity is the mapping KEY; allegiance is `affiliation`, a
+# tagged reference into the two namespaces that already exist -- so a person can never disagree
+# with `countries`/`foreign_profiles` about who they belong to.
+#
+# The four candidates below exist to make hiring a real choice rather than a ranking. Note in
+# particular that `loyalty` is NOT `10,000 - competence` for any of them, and that the professional
+# is deliberately both capable and loyal: a correlation the player could rely on would collapse the
+# whole tradeoff into one number.
+characters:
+  bela_ronsard:
+    display_name: Bela Ronsard
+    affiliation: {kind: player_country, country_id: strapped}
+    competence: 3200      # the loyal weak administrator
+    loyalty: 8800
+    independence: 1500
+    ambition: 2000
+    personal_trust: 6500
+  clara_venn:
+    display_name: Clara Venn
+    affiliation: {kind: player_country, country_id: strapped}
+    competence: 8600      # the independent expert
+    loyalty: 3400
+    independence: 8700
+    ambition: 5200
+    personal_trust: 4200
+  dorin_akel:
+    display_name: Dorin Akel
+    affiliation: {kind: player_country, country_id: strapped}
+    competence: 8100      # the ambitious expert
+    loyalty: 4100
+    independence: 6200
+    ambition: 9100
+    personal_trust: 3800
+  freya_lund:
+    display_name: Freya Lund
+    affiliation: {kind: player_country, country_id: strapped}
+    competence: 7400      # the competent loyal professional
+    loyalty: 7900
+    independence: 4300
+    ambition: 3600
+    personal_trust: 6800
+  leader_citizens_bloc:
+    display_name: Petra Almas
+    affiliation: {kind: player_country, country_id: strapped}
+    party_id: citizens_bloc
+    competence: 7200
+    loyalty: 1500
+    independence: 7900
+    ambition: 8000
+    personal_trust: 2600
+  leader_governing_party:
+    display_name: Henrik Dahl
+    affiliation: {kind: player_country, country_id: strapped}
+    party_id: governing_party
+    competence: 6000
+    loyalty: 7800
+    independence: 3900
+    ambition: 4200
+    personal_trust: 6900
+  leader_independents:
+    display_name: Sofia Renn
+    affiliation: {kind: player_country, country_id: strapped}
+    party_id: independents
+    competence: 5800
+    loyalty: 4600
+    independence: 7400
+    ambition: 3900
+    personal_trust: 5400
+  leader_marnil:
+    display_name: Chancellor Otto Falk
+    affiliation: {kind: foreign_profile, foreign_profile_id: marnil}
+    competence: 6600
+    loyalty: 0
+    independence: 9100
+    ambition: 6800
+    personal_trust: 3600
+  leader_tolvane:
+    display_name: First Minister Rhys Talen
+    affiliation: {kind: foreign_profile, foreign_profile_id: tolvane}
+    competence: 6900
+    loyalty: 0
+    independence: 8600
+    ambition: 5500
+    personal_trust: 4800
 
 countries:
   - id: strapped
@@ -571,6 +656,21 @@ countries:
     # Military Movement vertical slice, commit 3: the approved roster. Exactly one
     # abstract Army formation, starting in this country's own capital theater. No
     # manpower, strength or equipment is stated or implied.
+    cabinet:
+      # Both posts deliberately VACANT. An empty `offices` mapping is a real, playable government,
+      # and it is what proves a country with no office bonuses computes exactly the figures it
+      # computed before this layer existed.
+      #
+      # This scenario specifically, because it is the repository's relationship-calibration
+      # fixture: `simulation/relationships.py`'s own docstring derives RELATIONSHIP_HALF_GAP_CAPITAL
+      # from its cheapest bargaining target (a 162-capital bargain against citizens_bloc/moderates),
+      # and several calibration tests pin the resulting trajectory. Seating a chief of staff here
+      # would move every one of those figures and leave the constant justified by numbers the
+      # scenario no longer produces. `decree_state` is vacant in that post for the same class of
+      # reason (its documented 85/118/300 campaign), so `tiny_valid` is the scenario that seats
+      # one -- and between the three, all three occupancy states are exercised by real content:
+      # both posts filled, one filled, neither.
+      offices: {}
     military:
       formations:
         strapped_first_army:

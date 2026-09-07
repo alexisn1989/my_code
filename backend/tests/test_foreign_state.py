@@ -558,7 +558,12 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
     is new authored content that gate added, not something the pre-W1 baseline ever had an opinion
     on. `military` (Military Movement, commit 3) is excluded for exactly that reason too -- and it
     is stripped per COUNTRY rather than as a top-level key, because that is where the roster
-    actually lives.
+    actually lives. `characters` and each country's `cabinet` (characters slice) are excluded on
+    exactly the same footing and for exactly the same reason: both are new authored keys, one
+    top-level and one per country, that the pre-W1 baseline never had an opinion on. Neither
+    touches a pre-existing key, so unlike the map-resources slice below there is nothing to invert
+    -- and both are asserted PRESENT before they are removed, so a strip can never quietly become
+    a no-op that would hide their later disappearance.
 
     The map-resources slice is the first gate to change authored ECONOMIC content, so a strip
     alone can no longer restore the pre-W1 bytes. Rather than re-pin the digests -- which would
@@ -574,13 +579,16 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
     performs no git invocation."""
     with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
         current = yaml.safe_load(handle)
+    assert "characters" in current
     stripped = {
         key: value
         for key, value in current.items()
-        if key not in ("content_version", "foreign_profiles", "dyads", "strategic_map")
+        if key
+        not in ("content_version", "foreign_profiles", "dyads", "strategic_map", "characters")
     }
+    assert any("cabinet" in country for country in stripped["countries"])
     stripped["countries"] = [
-        {key: value for key, value in country.items() if key != "military"}
+        {key: value for key, value in country.items() if key not in ("military", "cabinet")}
         for country in stripped["countries"]
     ]
     assert canonical_digest(stripped) != _PRE_W1_SCENARIO_DIGEST_BLAKE2B[scenario_file], (
@@ -597,7 +605,7 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
 def test_every_scenario_has_exactly_the_w1_paths_present(scenario_file: str) -> None:
     with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
         current = yaml.safe_load(handle)
-    assert current["content_version"] == "0.16.0"
+    assert current["content_version"] == "0.17.0"
     assert isinstance(current["foreign_profiles"], dict) and len(current["foreign_profiles"]) == 2
     assert isinstance(current["dyads"], list) and len(current["dyads"]) == 1
     assert isinstance(current["strategic_map"], dict)
@@ -638,7 +646,7 @@ def test_phase4a_save_compatibility_is_checked_before_any_entry_payload_is_parse
 
 
 def test_ruleset_and_save_format_versions_are_current() -> None:
-    assert RULESET_VERSION == "0.17.0"
+    assert RULESET_VERSION == "0.18.0"
     assert SAVE_FORMAT_VERSION == 1
 
 
@@ -646,4 +654,4 @@ def test_no_migration_path_exists_for_the_pre_w1_ruleset() -> None:
     """`SUPPORTED_RULESET_VERSIONS` names exactly one version -- the current one. A migration
     path would need a second, older version present in this set; there is none, and no
     foreign-conflict state is ever synthesized for a save that predates it."""
-    assert frozenset({"0.17.0"}) == SUPPORTED_RULESET_VERSIONS
+    assert frozenset({"0.18.0"}) == SUPPORTED_RULESET_VERSIONS

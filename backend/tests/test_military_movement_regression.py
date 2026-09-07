@@ -114,6 +114,24 @@ content (a ninth deposit, a ninth coefficient and crude_oil's offset) and author
 shape, centroid or vertex moved when rivers were authored. `test_scenario.py` makes the same claim
 about the authored file; this makes it about the loaded state a real turn resolves against."""
 
+EXPECTED_CHARACTERS_DIFFERENCES = {
+    "world.characters",
+    f"world.countries.{PLAYER}.cabinet",
+    "world.countries.neighbor.cabinet",
+}
+"""The three paths the characters slice adds, again as their own named set rather than folded into
+either set above.
+
+Two are authored content -- the world's character registry and the player's cabinet. The third is
+the shape claim that goes with them: `neighbor` gains a `cabinet` PATH whose value is `null`,
+because `CountryState.cabinet` is optional on the model and required only of the player. An AI
+country that quietly acquired a cabinet, or a player whose cabinet went missing, both fail here.
+
+What is NOT in this set is the point of it. No economic, fiscal, political, constitutional,
+legislative or map path moved: on a quiet turn nobody invests, so the chief of staff's only
+consumer contributes nothing and the closing state is otherwise byte-identical to a run of the
+engine that had never heard of him."""
+
 
 # --------------------------------------------------------------------------
 # The named exclusion helper, and nothing broader
@@ -436,17 +454,36 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
                 )
             )
             assert differences == (
-                EXPECTED_ENVELOPE_DIFFERENCES | EXPECTED_MAP_RESOURCES_DIFFERENCES
+                EXPECTED_ENVELOPE_DIFFERENCES
+                | EXPECTED_MAP_RESOURCES_DIFFERENCES
+                | EXPECTED_CHARACTERS_DIFFERENCES
             ), f"turn {live_row['turn']}: {sorted(differences)}"
 
     def test_3a_the_envelope_difference_is_exactly_the_ruleset_bump(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """So the pinned set above can never quietly absorb a different meaning."""
-        assert live[-1]["state"]["ruleset_version"] == "0.17.0"
-        assert live[-1]["state"]["content_version"] == "0.16.0"
+        assert live[-1]["state"]["ruleset_version"] == "0.18.0"
+        assert live[-1]["state"]["content_version"] == "0.17.0"
         assert baseline[-1]["state"]["ruleset_version"] == "0.14.0"
         assert baseline[-1]["state"]["content_version"] == "0.14.0"
+
+    def test_3b_the_characters_difference_is_a_roster_a_cabinet_and_an_absence(
+        self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
+    ) -> None:
+        """The same anti-absorption check for `EXPECTED_CHARACTERS_DIFFERENCES`: each of its three
+        paths is pinned to the shape it is there to record, so none of them can start meaning
+        something else while the set above still passes."""
+        live_world = live[-1]["state"]["world"]
+        assert "characters" not in baseline[-1]["state"]["world"]
+        assert live_world["characters"], "the live run authors a roster"
+        assert live_world["countries"][PLAYER]["cabinet"] == {
+            "offices": {
+                "chief_of_staff": {"character_id": "hal_verrin", "effective_from_turn": 0},
+                "foreign_minister": {"character_id": "ilse_marovec", "effective_from_turn": 0},
+            }
+        }
+        assert live_world["countries"]["neighbor"]["cabinet"] is None
 
     def test_4_military_state_is_unchanged_from_opening_on_a_quiet_turn(
         self, live: list[dict[str, Any]]

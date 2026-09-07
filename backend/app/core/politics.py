@@ -304,6 +304,16 @@ points. Replaces the Phase-1 float (0.0-100.0) fields on `PopulationGroupState` 
 same commit as `InstitutionState`'s metrics, not bridged from floats, since this phase is the first
 real formula consumer of both."""
 
+StrictCharacterTraitBps: TypeAlias = Annotated[int, Field(strict=True, ge=0, le=BPS_DENOMINATOR)]
+"""One named person's competence/loyalty/independence/ambition/personal_trust, in basis points on
+the same 0..10,000 scale as the two aliases above.
+
+A distinct alias rather than a reuse of `StrictInstitutionMetricBps`, even though the bounds are
+identical: the two describe different subjects and must be free to diverge. An institution's
+`loyalty` is a body's loyalty to the office; a character's is a person's loyalty to the player.
+Sharing one alias would make that distinction a comment instead of a type, and would mean widening
+one silently widened the other."""
+
 StrictTermsHeld: TypeAlias = Annotated[int, Field(strict=True, ge=1)]
 """How many consecutive terms the incumbent government has held, counting the term already
 underway at scenario genesis as term 1."""

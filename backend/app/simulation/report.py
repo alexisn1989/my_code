@@ -53,6 +53,7 @@ from app.core.politics import (
     POLICY_REACTION_WEIGHT_BPS,
     RELATIONSHIP_DECAY_DENOMINATOR,
     RELATIONSHIP_DECAY_NUMERATOR,
+    StrictCharacterTraitBps,
     StrictInstitutionMetricBps,
     StrictLegitimacyBps,
     StrictPoliticalCapital,
@@ -163,7 +164,11 @@ from app.simulation.legitimacy import (
     UNEMPLOYMENT_SENSITIVITY_BPS,
 )
 from app.simulation.political_memory import SPENDING_REACTION_WEIGHT_BPS, TAX_REACTION_WEIGHT_BPS
-from app.simulation.relationships import RELATIONSHIP_CEILING_BPS, RELATIONSHIP_HALF_GAP_CAPITAL
+from app.simulation.relationships import (
+    CHIEF_OF_STAFF_MAX_BONUS_BPS,
+    RELATIONSHIP_CEILING_BPS,
+    RELATIONSHIP_HALF_GAP_CAPITAL,
+)
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
@@ -2415,6 +2420,17 @@ class BlocRelationshipMemoryReport(BaseModel):
     """The capital committed to THIS bloc's relationship investment this turn, or `0` when none
     was — unlike 3B2A's `BlocRelationshipChangeReport.political_capital` (`StrictPoliticalCapitalCommitment`,
     `ge=1`), a row can now exist for a bloc that received no investment at all."""
+    chief_of_staff_competence_bps: StrictCharacterTraitBps = 0
+    """The competence of the chief of staff ALREADY SERVING this turn, or `0` for a vacant post.
+
+    Stored here rather than looked up, because this row's whole discipline is that it re-derives
+    its own arithmetic from its own stored fields: without the competence, the gain formula stops
+    being checkable at all the moment an office affects it. Defaults to `0`, so a row from a
+    government with no cabinet means exactly what it always meant.
+
+    Reconciliation proves this value against the OPENING state's cabinet and character registry --
+    which is what stops a forged competence from buying a larger relationship gain that this row's
+    own arithmetic would happily confirm."""
     tax_preference_bps: StrictPreferenceBps
     spending_preference_bps: StrictPreferenceBps
     policy_reaction_component_bps: StrictRelationshipChangeBps
@@ -2457,14 +2473,26 @@ class BlocRelationshipMemoryReport(BaseModel):
             expected = 0
         else:
             gap_bps = RELATIONSHIP_CEILING_BPS - self.opening_relationship_bps
-            expected = trunc_div_toward_zero(
+            base_gain_bps = trunc_div_toward_zero(
                 gap_bps * self.investment_capital,
                 RELATIONSHIP_HALF_GAP_CAPITAL + self.investment_capital,
+            )
+            # Re-derived here rather than by calling
+            # `relationships.chief_of_staff_gain_bonus_bps`, for the reason this class's docstring
+            # gives: a second independent transcription of the arithmetic is what makes a bug in
+            # one code path likely to be caught by the other. Only the constant is shared, exactly
+            # as `RELATIONSHIP_CEILING_BPS` and `RELATIONSHIP_HALF_GAP_CAPITAL` already are.
+            weight_bps = trunc_div_toward_zero(
+                self.chief_of_staff_competence_bps * CHIEF_OF_STAFF_MAX_BONUS_BPS, BPS_DENOMINATOR
+            )
+            expected = base_gain_bps + trunc_div_toward_zero(
+                base_gain_bps * weight_bps, BPS_DENOMINATOR
             )
         if self.investment_component_bps != expected:
             raise ValueError(
                 f"investment_component_bps={self.investment_component_bps} does not match the "
-                f"relationship-gain formula over investment_capital ({expected})"
+                "relationship-gain formula over investment_capital and "
+                f"chief_of_staff_competence_bps ({expected})"
             )
         if (self.investment_capital == 0) != (self.investment_component_bps == 0):
             raise ValueError(

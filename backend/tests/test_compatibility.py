@@ -22,7 +22,11 @@ from app.core.errors import (
     UnsupportedSaveFormatVersionError,
 )
 from app.saves import read_save_file
-from app.simulation.save_format import SUPPORTED_CONTENT_VERSIONS, load_save_json
+from app.simulation.save_format import (
+    SUPPORTED_CONTENT_VERSIONS,
+    SUPPORTED_RULESET_VERSIONS,
+    load_save_json,
+)
 from app.simulation.state import RULESET_VERSION
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -45,6 +49,16 @@ before `strategic_map` existed as a concept, let alone a required field. This is
 this build will ever be able to prove pre-parse rejection against for that missing field: once
 the `"0.14.0"` bump landed, every subsequently-generated `"0.13.0"` save became impossible to
 produce."""
+
+CHARACTERS_SAVE_PATH = FIXTURES_DIR / "characters_save_ruleset_0.17.0.json"
+"""Frozen by the unmodified `"0.17.0"` engine, before the character layer existed.
+
+It records no missing FIELD in the ordinary sense -- its economy, politics, map and world are all
+complete -- but it has nobody in it, and under `"0.18.0"` the player's cabinet is required. There is
+nothing to migrate from: inventing a roster would assert names, competences and loyalties the save
+never recorded, and inventing an empty cabinet would assert that the country deliberately has
+nobody, which is a different claim again. Impossible to produce once the bump landed, which is why
+it was frozen in its own commit beforehand."""
 
 GOVERNMENT_STRUCTURE_SAVE_PATH = FIXTURES_DIR / "government_structure_save_ruleset_0.16.0.json"
 """Frozen by the unmodified `"0.16.0"` engine, before government structure entered the coup and
@@ -448,7 +462,7 @@ def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
     from app.simulation.resolver import resolve_turn
 
     state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
-    assert state.ruleset_version == RULESET_VERSION == "0.17.0"
+    assert state.ruleset_version == RULESET_VERSION == "0.18.0"
     decisions = DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
     )
@@ -486,7 +500,7 @@ def test_scenario_content_version_is_current(scenario_name: str) -> None:
     since it changes field TYPES (float -> strict bps) as well as adding/removing whole rows --
     not a case a line-level text rebuild can express cleanly."""
     state = load_scenario_file(SCENARIOS_DIR / scenario_name)
-    assert state.content_version == "0.16.0"
+    assert state.content_version == "0.17.0"
 
 
 @pytest.mark.parametrize(
@@ -614,7 +628,7 @@ def test_frozen_military_movement_save_fixture_declares_the_old_ruleset_version(
     raw = json.loads(MILITARY_MOVEMENT_SAVE_PATH.read_text(encoding="utf-8"))
     assert raw["ruleset_version"] == "0.14.0"
     assert raw["ruleset_version"] != RULESET_VERSION
-    assert RULESET_VERSION == "0.17.0"
+    assert RULESET_VERSION == "0.18.0"
 
 
 def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
@@ -631,7 +645,7 @@ def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_e
 
     message = str(exc_info.value)
     assert "0.14.0" in message
-    assert "0.17.0" in message
+    assert "0.18.0" in message
     assert RULESET_VERSION in message
 
 
@@ -710,14 +724,21 @@ def test_frozen_government_structure_save_fixture_declares_the_old_ruleset_versi
     assert raw["ruleset_version"] != RULESET_VERSION
 
 
-def test_government_structure_save_declares_a_content_version_this_build_still_supports() -> None:
-    """The distinguishing property of THIS bump, made explicit: `content_version` did not move.
-    The fixture is refused on its ruleset alone -- its authored content is still perfectly valid
-    shape for 0.17.0, because the change was to engine rules and not to anything a scenario
-    declares. Without this, a reader could mistake the rejection below for a content problem."""
+def test_government_structure_save_is_now_out_of_date_on_both_counts() -> None:
+    """This fixture was frozen at `0.16.0`/`0.16.0`, and BOTH halves have since moved on.
+
+    When it was added it was refused on its ruleset alone: the government-structure bump changed
+    engine rules and deliberately left `content_version` where it was. The character layer then
+    moved content too, so the same file is now doubly out of date. Recorded rather than quietly
+    flipped, because it says something about the ORDER of the checks: `check_compatibility` tests
+    the ruleset first, so the rejection below still names the ruleset even though the content is
+    equally stale. A reader who assumed the error message listed everything wrong with a save would
+    be mistaken."""
     raw = json.loads(GOVERNMENT_STRUCTURE_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.16.0"
+    assert raw["ruleset_version"] not in SUPPORTED_RULESET_VERSIONS
     assert raw["content_version"] == "0.16.0"
-    assert raw["content_version"] in SUPPORTED_CONTENT_VERSIONS
+    assert raw["content_version"] not in SUPPORTED_CONTENT_VERSIONS
 
 
 def test_government_structure_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
@@ -743,3 +764,61 @@ def test_government_structure_save_rejection_happens_before_any_state_json_is_pa
 
     with pytest.raises(UnsupportedRulesetVersionError):
         load_save_json(json.dumps(raw), source="corrupted-and-incompatible")
+
+
+def test_frozen_characters_save_fixture_declares_the_old_versions() -> None:
+    """The sanity half: the fixture really is a `"0.17.0"` ruleset save carrying `"0.16.0"`
+    content, so the rejection tests below prove something rather than passing because someone
+    regenerated it under the current engine."""
+    raw = json.loads(CHARACTERS_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.17.0"
+    assert raw["content_version"] == "0.16.0"
+    assert raw["ruleset_version"] != RULESET_VERSION
+
+
+def test_characters_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
+    """Rejected at the ruleset gate, naming both versions, before any entry payload is parsed -- so
+    a player learns their save predates this build rather than having a cabinet invented for
+    them."""
+    raw_text = read_save_file(CHARACTERS_SAVE_PATH)
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(raw_text, source=str(CHARACTERS_SAVE_PATH))
+
+    message = str(exc_info.value)
+    assert "0.17.0" in message
+    assert RULESET_VERSION in message
+    assert "not loaded" in message
+
+
+def test_characters_save_rejection_happens_before_any_state_json_is_parsed() -> None:
+    """The ordering claim made falsifiable: with every `state_json` replaced by text that is not
+    valid JSON, the failure is still the version error, not a parse error. That matters more here
+    than usual -- a 0.17.0 state would otherwise fail deep inside country construction on a missing
+    cabinet, which is a far worse message than "this save predates this build"."""
+    raw = json.loads(read_save_file(CHARACTERS_SAVE_PATH))
+    for entry in raw["entries"]:
+        entry["state_json"] = "{not even valid json"
+
+    with pytest.raises(UnsupportedRulesetVersionError):
+        load_save_json(json.dumps(raw), source="corrupted-and-incompatible")
+
+
+def test_the_previous_content_version_is_no_longer_accepted() -> None:
+    """The content half of this bump, shown separately from the ruleset half.
+
+    `check_compatibility` tests the ruleset FIRST, so the characters fixture above is refused
+    before its content version is ever looked at -- which means no fixture on its own can
+    demonstrate that `"0.16.0"` content is now refused too. This forces the second gate by handing
+    the loader a save that is current on its ruleset and stale on its content: exactly the shape a
+    campaign started from a scenario nobody re-authored would have."""
+    assert frozenset({"0.17.0"}) == SUPPORTED_CONTENT_VERSIONS
+    raw = json.loads(read_save_file(CHARACTERS_SAVE_PATH))
+    raw["ruleset_version"] = RULESET_VERSION
+    assert raw["content_version"] == "0.16.0"
+
+    with pytest.raises(UnsupportedContentVersionError) as exc_info:
+        load_save_json(json.dumps(raw), source="ruleset-current-content-stale")
+
+    message = str(exc_info.value)
+    assert "0.16.0" in message
+    assert "0.17.0" in message

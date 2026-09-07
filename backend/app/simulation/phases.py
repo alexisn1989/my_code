@@ -46,6 +46,7 @@ from app.simulation.accounting import (
     resolve_cash_and_debt,
 )
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
+from app.simulation.cabinet import holder_competence_bps
 from app.simulation.constitution import (
     ConstitutionState,
     DecreeAuthority,
@@ -228,6 +229,7 @@ from app.simulation.resource_output import (
     compute_resource_output_contributions,
 )
 from app.simulation.state import (
+    CabinetPost,
     ConflictDyadState,
     EconomicBaselineState,
     ForeignConflictState,
@@ -841,6 +843,17 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
         else {}
     )
 
+    # The chief of staff's contribution to every relationship investment this turn, read ONCE from
+    # the opening cabinet so slot 1's no-op guard and slot 11's application cannot disagree about
+    # it. `holder_competence_bps` applies the effectivity rule, so an appointment resolving in this
+    # same decision set contributes nothing here -- see `CabinetAppointment.effective_from_turn`.
+    chief_of_staff_competence = holder_competence_bps(
+        cabinet=player.cabinet,
+        characters=ctx.state.world.characters,
+        post=CabinetPost.CHIEF_OF_STAFF,
+        resolving_turn=ctx.resolving_turn,
+    )
+
     # --- relationship investment: resolved independently of the budget route (§9) -------------
     # (Phase 3B2B) Only the no-op guard and the expenditure row are built here; the actual
     # investment COMPONENT (and its combination with decay/policy/decree-bypass into one closing
@@ -865,6 +878,10 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
             gain = relationship_gain_bps(
                 opening_relationship_bps=opening_relationship_bps,
                 political_capital=investment.political_capital,
+                # The OPENING cabinet, and only a holder already effective this turn: an
+                # appointment in this same decision set is stored at `turn + 1` and so cannot
+                # inflate the gain that decides whether this very investment is a legal no-op.
+                chief_of_staff_competence_bps=chief_of_staff_competence,
             )
             if gain == 0:
                 # (R13) A guaranteed no-op, knowable before resolution -- not an attempted
@@ -2665,6 +2682,17 @@ def _apply_bloc_relationship_investments(ctx: PhaseContext) -> None:
 
     memory_rows: list[BlocRelationshipMemoryReport] = []
 
+    # The same read slot 1 made, from the same effectivity rule. Slot 2 may already have committed
+    # an appointment into `player.cabinet` by now, but it is stored at `turn + 1`, so
+    # `holder_competence_bps` still returns the OPENING holder's competence and the two slots agree
+    # by construction rather than by convention.
+    chief_of_staff_competence = holder_competence_bps(
+        cabinet=player.cabinet,
+        characters=ctx.state.world.characters,
+        post=CabinetPost.CHIEF_OF_STAFF,
+        resolving_turn=ctx.resolving_turn,
+    )
+
     if legislature is not None:
         investment_by_key = {
             (row.party_id, row.bloc_id): row.political_capital
@@ -2701,6 +2729,7 @@ def _apply_bloc_relationship_investments(ctx: PhaseContext) -> None:
                     relationship_gain_bps(
                         opening_relationship_bps=opening_relationship_bps,
                         political_capital=investment_capital,
+                        chief_of_staff_competence_bps=chief_of_staff_competence,
                     )
                     if investment_capital > 0
                     else 0
@@ -2745,6 +2774,7 @@ def _apply_bloc_relationship_investments(ctx: PhaseContext) -> None:
                         decay_component_bps=decay_component_bps,
                         investment_component_bps=investment_component_bps,
                         investment_capital=investment_capital,
+                        chief_of_staff_competence_bps=chief_of_staff_competence,
                         tax_preference_bps=bloc.tax_preference_bps,
                         spending_preference_bps=bloc.spending_preference_bps,
                         policy_reaction_component_bps=policy_reaction_component_bps,

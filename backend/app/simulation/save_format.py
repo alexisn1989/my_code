@@ -91,7 +91,7 @@ with an actionable message, same as the save-format-version case above. See
 `docs/adr/0013-government-survival.md`.
 """
 
-SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.16.0"})
+SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.17.0"})
 """Tracks content-*schema* compatibility (what shape scenario-authored data must have), not a
 fingerprint of any scenario's actual parameter values — two scenarios sharing a content_version
 routinely carry different `resource_output_coefficients`/`resource_deposits`/`sectors` values
@@ -127,7 +127,13 @@ map-resources slice: `ResourceCategory` gains a ninth member, so every scenario'
 Both blocks are validated as covering every category exactly once, which is a *shape* requirement
 no 0.15.0-shaped scenario can satisfy -- not a claim about what any scenario's gold numbers are.
 `tiny_valid`/`decree_state` author a producing gold deposit and `deficit_demo` a zero one, at the
-same content version, exactly as they already differ on every other deposit."""
+same content version, exactly as they already differ on every other deposit. Bumped
+`"0.16.0" -> "0.17.0"` for the character layer: every scenario gains a `characters:` roster and a
+`cabinet:` on its player country. That is a genuine schema addition with no principled empty shape
+to omit-as-absent -- `player_cabinet_required` makes the cabinet mandatory for the player, so no
+0.16.0-shaped scenario can satisfy 0.17.0. As always this is a claim about SHAPE and not about
+values: the three scenarios author three different rosters and three different cabinets (a weak
+incumbent, both posts vacant, and two strong incumbents) at the same content version."""
 
 _REQUIRED_ENVELOPE_KEYS = {
     "save_format_version",
