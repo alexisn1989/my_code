@@ -422,8 +422,9 @@ export interface components {
          * CabinetCandidateOption
          * @description One person, considered for ONE post. There is a row per `(post, candidate)` pair.
          *
-         *     `eligible` and `refusal_code` are **intrinsic**: they answer "would this person take this post
-         *     in this state", and nothing else. They carry only the three per-`(post, candidate)` refusals
+         *     `candidate_accepts_post` and `refusal_code` are **intrinsic**: they answer "would this person
+         *     take this post in this state", and nothing else. They carry only the three
+         *     per-`(post, candidate)` refusals
          *     (`cabinet_character_leads_a_party`, `cabinet_candidate_refuses_low_legitimacy`,
          *     `cabinet_candidate_refuses_this_post`).
          *
@@ -431,7 +432,9 @@ export interface components {
          *     ending up in two posts, and the total commitment exceeding opening capital. Those are not facts
          *     about a candidate, and stating them here would make them unconditional refusals: the same
          *     person is illegal as a lone appointment and perfectly legal when the same decision vacates the
-         *     post they already hold. `/game/preview` scores the assembled draft and reports both, which is
+         *     post they already hold -- which is also why this field is `candidate_accepts_post` and not
+         *     `eligible`: it is a statement about the PERSON, never a verdict on the order.
+         *     `/game/preview` scores the assembled draft and reports both, which is
          *     the split this projection's own contract already draws -- it says what exists to choose from
          *     and never scores a draft.
          *
@@ -444,6 +447,8 @@ export interface components {
             ambition_bps: number;
             /** Appointment Cost */
             appointment_cost: number;
+            /** Candidate Accepts Post */
+            candidate_accepts_post: boolean;
             /** Character Id */
             character_id: string;
             /** Competence Bps */
@@ -452,8 +457,6 @@ export interface components {
             currently_holds_post?: string | null;
             /** Display Name */
             display_name: string;
-            /** Eligible */
-            eligible: boolean;
             /** Independence Bps */
             independence_bps: number;
             /** Loyalty Bps */

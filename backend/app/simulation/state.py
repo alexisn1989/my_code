@@ -1091,6 +1091,23 @@ class CabinetPost(StrEnum):
     FOREIGN_MINISTER = "foreign_minister"
 
 
+POST_DISPLAY_NAMES: dict[CabinetPost, str] = {
+    CabinetPost.CHIEF_OF_STAFF: "chief of staff",
+    CabinetPost.FOREIGN_MINISTER: "foreign minister",
+}
+"""How each post is named to a player.
+
+Authored here rather than derived at render time by rewriting the enum value, so a post's label is
+a fact the engine states once instead of a string transformation every renderer repeats -- and so a
+label can stop matching its identifier ("foreign minister" could become "minister for foreign
+affairs") without the identifier moving.
+
+`CabinetPostReport` and the cabinet report entries SNAPSHOT the label rather than looking it up,
+for the same reason they snapshot character names: a turn from ten turns ago renders the words it
+was resolved under. Changing a value here therefore changes future reports only.
+"""
+
+
 class CharacterState(BaseModel):
     """One named person.
 

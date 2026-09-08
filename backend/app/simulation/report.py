@@ -171,6 +171,7 @@ from app.simulation.relationships import (
 )
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
+    POST_DISPLAY_NAMES,
     RENEWABLE_RESOURCES,
     CabinetPost,
     FormationBranch,
@@ -4091,6 +4092,12 @@ class CabinetPostReport(BaseModel):
     model_config = _STRICT_CONFIG
 
     post: CabinetPost
+    post_display_name: StrictDisplayName
+    """The post's own label, snapshotted from `state.POST_DISPLAY_NAMES` at resolution.
+
+    Stored for exactly the reason the holder names are: every word a rendered sentence uses comes
+    from the row, so a renderer never rewrites an identifier into prose and a relabelled post
+    cannot change what a past turn said."""
     opening_holder_id: StrictCharacterId | None
     opening_holder_display_name: StrictDisplayName | None
     opening_holder_competence_bps: StrictCharacterTraitBps
@@ -4109,6 +4116,19 @@ class CabinetPostReport(BaseModel):
     """The `cabinet_decision_digest` of the decision that produced this change, or `None` when
     nothing changed. Only syntax is checked here; group 57 proves it against the real submitted
     `DecisionSet`."""
+
+    @model_validator(mode="after")
+    def _post_display_name_matches_this_build(self) -> CabinetPostReport:
+        """A stored label still has to be a label this build recognises for that post -- otherwise
+        a row could name a post one thing and describe another. Historical rows keep their own
+        wording only in the sense that this map is append-and-amend, never per-row free text."""
+        expected = POST_DISPLAY_NAMES[self.post]
+        if self.post_display_name != expected:
+            raise ValueError(
+                f"post_display_name={self.post_display_name!r} is not this build's label for "
+                f"{self.post.value!r} ({expected!r})"
+            )
+        return self
 
     @model_validator(mode="after")
     def _change_matches_the_holder_pair(self) -> CabinetPostReport:

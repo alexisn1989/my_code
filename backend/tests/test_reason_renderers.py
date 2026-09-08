@@ -196,12 +196,14 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
     # it was resolved under.
     "cabinet_appointed": {
         "post": "foreign_minister",
+        "post_display_name": "foreign minister",
         "capital_committed": 197,
         "character_id": "wren_hollis",
         "character_display_name": "Wren Hollis",
     },
     "cabinet_replaced": {
         "post": "chief_of_staff",
+        "post_display_name": "chief of staff",
         "capital_committed": 276,
         "character_id": "ilse_marovec",
         "character_display_name": "Ilse Marovec",
@@ -210,6 +212,7 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
     },
     "cabinet_dismissed": {
         "post": "foreign_minister",
+        "post_display_name": "foreign minister",
         "capital_committed": 0,
         "outgoing_character_id": "ilse_marovec",
         "outgoing_character_display_name": "Ilse Marovec",

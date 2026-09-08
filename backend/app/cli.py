@@ -531,11 +531,6 @@ def _render_formation_moved(params: dict[str, str | int]) -> str:
     )
 
 
-def _post_label(post: str | int) -> str:
-    """`chief_of_staff` -> `chief of staff`. Presentation only; the stored value never changes."""
-    return str(post).replace("_", " ")
-
-
 def _render_cabinet_appointed(params: dict[str, str | int]) -> str:
     """(Characters slice) One appointment, in one sentence, from the entry's own stored params.
 
@@ -545,7 +540,7 @@ def _render_cabinet_appointed(params: dict[str, str | int]) -> str:
     renamed or dropped from the roster entirely.
     """
     return (
-        f"{params['character_display_name']} was appointed {_post_label(params['post'])} "
+        f"{params['character_display_name']} was appointed {params['post_display_name']} "
         f"for {params['capital_committed']} political capital."
     )
 
@@ -555,7 +550,7 @@ def _render_cabinet_replaced(params: dict[str, str | int]) -> str:
     served the whole turn being reported, so a sentence that omitted them would misdescribe it."""
     return (
         f"{params['character_display_name']} replaced "
-        f"{params['outgoing_character_display_name']} as {_post_label(params['post'])} "
+        f"{params['outgoing_character_display_name']} as {params['post_display_name']} "
         f"for {params['capital_committed']} political capital."
     )
 
@@ -566,7 +561,7 @@ def _render_cabinet_dismissed(params: dict[str, str | int]) -> str:
     subtree, which is precisely why the entry exists."""
     return (
         f"{params['outgoing_character_display_name']} was dismissed as "
-        f"{_post_label(params['post'])}; the post is now vacant."
+        f"{params['post_display_name']}; the post is now vacant."
     )
 
 

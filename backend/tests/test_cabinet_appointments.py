@@ -22,12 +22,16 @@ alongside the rest of the office-bonus proofs; this file covers the decision its
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from app.api.decision_preflight import first_decision_problem
 from app.api.preview import preview_decisions
 from app.api.projections import build_decision_options, build_turn_result
+from app.cli import REASON_RENDERERS, main
 from app.content.scenarios import load_scenario_file
 from app.core.errors import TurnResolutionError
 from app.simulation.cabinet import (
@@ -39,6 +43,7 @@ from app.simulation.cabinet import (
     CabinetRefusal,
     appointment_cost_capital,
     appointment_refusal,
+    is_domestic_to,
 )
 from app.simulation.decisions import (
     CabinetDecision,
@@ -52,7 +57,7 @@ from app.simulation.reconciliation import reconcile_political_legislative_and_su
 from app.simulation.report import CabinetChange
 from app.simulation.resolver import resolve_turn
 from app.simulation.save_format import SAVE_FORMAT_VERSION
-from app.simulation.state import CabinetPost, GameState
+from app.simulation.state import POST_DISPLAY_NAMES, CabinetPost, GameState
 from tests.conftest import SCENARIO_DIR
 
 _CoS = CabinetPost.CHIEF_OF_STAFF
@@ -383,7 +388,8 @@ def test_a_same_turn_transfer_is_legal_and_charged_once() -> None:
 def test_a_lone_order_that_would_seat_one_person_twice_is_refused() -> None:
     """The same appointment WITHOUT the origin order. This is why the projection reports
     `requires_vacating_post` rather than marking the candidate ineligible: she is perfectly
-    appointable, and it is this decision that is incomplete."""
+    appointable -- `candidate_accepts_post` is true -- and it is this decision that is
+    incomplete."""
     state = _load("tiny_valid.yaml")
     decisions = _decide(state, CabinetOrder(post=_CoS, character_id="ilse_marovec"))
     with pytest.raises(TurnResolutionError) as exc_info:
@@ -635,20 +641,61 @@ def test_a_stripped_or_forged_entry_is_caught() -> None:
 # --- the API surfaces ----------------------------------------------------------------------------
 
 
-def test_a_transfer_candidate_is_eligible_and_names_the_post_to_vacate() -> None:
-    """The correction this projection exists for. `ilse_marovec` is illegal as a LONE chief-of-staff
-    appointment and perfectly legal when the same decision vacates her ministry, so a per-candidate
-    `eligible` flag alone would be untruthful. Her row says `eligible=True` and tells the client
-    what else the decision needs."""
+def test_a_transfer_candidate_accepts_the_post_and_names_the_one_to_vacate() -> None:
+    """The correction this projection exists for, in one candidate.
+
+    `ilse_marovec` is illegal as a LONE chief-of-staff appointment and perfectly legal when the
+    same decision vacates her ministry, so a single per-candidate verdict could never be truthful
+    about her. The field is therefore named `candidate_accepts_post` -- a statement about the
+    PERSON -- and the two structural facts are given separately, as instructions rather than as
+    refusals.
+    """
     options = build_decision_options(_load("tiny_valid.yaml"))
     (chief,) = [post for post in options.cabinet_posts if post.post == "chief_of_staff"]
     (ilse,) = [c for c in chief.candidates if c.character_id == "ilse_marovec"]
-    assert ilse.eligible is True
-    assert ilse.refusal_code is None
-    assert ilse.requires_vacating_post == "foreign_minister"
+
+    assert ilse.candidate_accepts_post is True
     assert ilse.currently_holds_post == "foreign_minister"
+    assert ilse.requires_vacating_post == "foreign_minister"
+
+    assert ilse.refusal_code is None
     assert ilse.verb == "replace"
     assert ilse.appointment_cost == 276
+
+
+def test_no_foreign_character_ever_appears_as_a_candidate() -> None:
+    """A government may only appoint its own people, so a foreign profile's leader is not a
+    candidate anywhere -- not listed-and-refused, ABSENT. Offering somebody the resolver would
+    reject with `cabinet_character_not_domestic` would be inviting a decision that cannot succeed.
+
+    Checked against every scenario, and against the roster rather than a hand-written list: any
+    character whose affiliation is not this player country must be missing from every candidate
+    collection, whatever their traits.
+    """
+    for scenario in ("tiny_valid.yaml", "decree_state.yaml", "deficit_demo.yaml"):
+        state = _load(scenario)
+        player_id = state.world.player_country_id
+        foreign = {
+            character_id
+            for character_id, character in state.world.characters.items()
+            if not is_domestic_to(character=character, country_id=player_id)
+        }
+        assert foreign, scenario  # every scenario authors foreign leaders; else this proves nothing
+
+        options = build_decision_options(state)
+        assert options.cabinet_posts, scenario
+        offered = {
+            candidate.character_id
+            for post in options.cabinet_posts
+            for candidate in post.candidates
+        }
+        assert offered, scenario
+        assert not (offered & foreign), (scenario, sorted(offered & foreign))
+        # And the exclusion is by AFFILIATION, not by luck: every offered candidate is domestic.
+        for character_id in offered:
+            assert is_domestic_to(
+                character=state.world.characters[character_id], country_id=player_id
+            ), (scenario, character_id)
 
 
 def test_the_incumbent_of_a_post_is_marked_rather_than_refused() -> None:
@@ -656,6 +703,7 @@ def test_the_incumbent_of_a_post_is_marked_rather_than_refused() -> None:
     (chief,) = [post for post in options.cabinet_posts if post.post == "chief_of_staff"]
     (hal,) = [c for c in chief.candidates if c.character_id == "hal_verrin"]
     assert hal.currently_holds_post == "chief_of_staff"
+    assert hal.candidate_accepts_post is True
     assert hal.requires_vacating_post is None
     assert chief.holder_character_id == "hal_verrin"
     assert chief.can_dismiss is True
@@ -672,7 +720,10 @@ def test_no_candidate_ever_carries_a_whole_decision_failure() -> None:
         for post in options.cabinet_posts:
             for candidate in post.candidates:
                 assert candidate.refusal_code not in forbidden, (scenario, candidate.character_id)
-                assert (candidate.refusal_code is None) == candidate.eligible
+                assert (candidate.refusal_code is None) == candidate.candidate_accepts_post, (
+                    scenario,
+                    candidate.character_id,
+                )
 
 
 def test_preview_prices_the_draft_and_reports_unaffordability() -> None:
@@ -752,3 +803,132 @@ def test_a_campaign_that_hires_replaces_and_dismisses_replays_cleanly() -> None:
             if row.change is not CabinetChange.UNCHANGED
         )
     assert changes == ["replaced", "dismissed", "appointed"]
+
+
+# --- the post's own label is stored, and the quiet line is said exactly once ----------------------
+
+
+def test_the_row_and_the_entry_both_store_the_posts_display_name() -> None:
+    """Every word a rendered sentence uses comes from the report, not from a transformation of an
+    identifier. That is what lets a post be relabelled without rewriting what past turns said."""
+    state = _load("tiny_valid.yaml")
+    resolution = resolve_turn(
+        state, _decide(state, CabinetOrder(post=_CoS, character_id="wren_hollis"))
+    )
+    assert resolution.report.governance is not None
+    labels = {row.post.value: row.post_display_name for row in resolution.report.governance.posts}
+    assert labels == {"chief_of_staff": "chief of staff", "foreign_minister": "foreign minister"}
+    assert labels == {post.value: name for post, name in POST_DISPLAY_NAMES.items()}
+
+    (entry,) = [e for e in resolution.report.entries if e.category == "government"]
+    assert entry.params["post"] == "chief_of_staff"
+    assert entry.params["post_display_name"] == "chief of staff"
+
+
+def test_an_old_turn_keeps_its_own_post_label_when_the_build_relabels_the_post() -> None:
+    """The snapshot's whole purpose, checked the only way that means anything: render a stored
+    entry through the real renderer with no access to `POST_DISPLAY_NAMES` at all."""
+    params: dict[str, str | int] = {
+        "post": "foreign_minister",
+        "post_display_name": "minister for foreign affairs",
+        "capital_committed": 0,
+        "outgoing_character_id": "ilse_marovec",
+        "outgoing_character_display_name": "Ilse Marovec",
+    }
+    sentence = REASON_RENDERERS["cabinet_dismissed"](params)
+    assert "minister for foreign affairs" in sentence
+    assert "foreign_minister" not in sentence
+
+
+def test_a_quiet_turn_says_no_cabinet_changes_exactly_once_on_each_surface(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Once in the API's "what did not change" channel, once in the CLI -- and once only.
+
+    The CLI count is the regression test for double-printing: both CLI paths render
+    `report.entries` first and the per-report blocks second, so a block that also printed changes
+    would say them twice. It prints only the quiet sentence, which is exactly why a QUIET turn is
+    where "exactly once" is worth pinning.
+    """
+    state = _load("tiny_valid.yaml")
+    quiet = resolve_turn(
+        state, DecisionSet(expected_turn=state.turn, expected_state_version=state.state_version)
+    )
+    projection = build_turn_result(quiet.state, quiet.report)
+    assert [line for line in projection.unchanged if line == "No cabinet changes."] == [
+        "No cabinet changes."
+    ]
+    assert not [item for item in projection.drivers if item.reason_id.startswith("cabinet_")]
+
+    save = tmp_path / "save0.json"
+    assert (
+        main(["new", "--scenario", str(SCENARIO_DIR / "tiny_valid.yaml"), "--out", str(save)]) == 0
+    )
+    resolved = tmp_path / "save1.json"
+    capsys.readouterr()
+    assert main(["resolve", "--state", str(save), "--turns", "1", "--out", str(resolved)]) == 0
+    assert capsys.readouterr().out.count("No cabinet changes.") == 1
+
+    assert main(["history", "--state", str(resolved), "--turn", "1"]) == 0
+    assert capsys.readouterr().out.count("No cabinet changes.") == 1
+
+
+def test_a_turn_with_changes_says_the_quiet_line_on_neither_surface() -> None:
+    """The anti-vacuity half: "exactly once" must not be satisfied by a line that is always
+    printed. A turn that DID change the cabinet says nothing of the kind, anywhere."""
+    state = _load("tiny_valid.yaml")
+    busy = resolve_turn(state, _decide(state, CabinetOrder(post=_FM)))
+    projection = build_turn_result(busy.state, busy.report)
+    assert "No cabinet changes." not in projection.unchanged
+    assert [item for item in projection.drivers if item.reason_id == "cabinet_dismissed"]
+
+
+def test_the_cli_prints_a_real_change_exactly_once_in_both_paths(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The other half of the double-print guarantee, on the loud path."""
+    save = tmp_path / "save0.json"
+    assert (
+        main(["new", "--scenario", str(SCENARIO_DIR / "tiny_valid.yaml"), "--out", str(save)]) == 0
+    )
+    orders = tmp_path / "orders.json"
+    orders.write_text(
+        json.dumps(
+            {
+                "expected_turn": 0,
+                "expected_state_version": 0,
+                "decisions": [
+                    {
+                        "kind": "cabinet",
+                        "orders": [{"post": "chief_of_staff", "character_id": "wren_hollis"}],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    resolved = tmp_path / "save1.json"
+    capsys.readouterr()
+    assert (
+        main(
+            [
+                "resolve",
+                "--state",
+                str(save),
+                "--turns",
+                "1",
+                "--decisions-file",
+                str(orders),
+                "--out",
+                str(resolved),
+            ]
+        )
+        == 0
+    )
+    resolve_out = capsys.readouterr().out
+    sentence = "Wren Hollis replaced Hal Verrin as chief of staff for 197 political capital."
+    assert resolve_out.count(sentence) == 1
+    assert resolve_out.count("No cabinet changes.") == 0
+
+    assert main(["history", "--state", str(resolved), "--turn", "1"]) == 0
+    assert capsys.readouterr().out.count(sentence) == 1

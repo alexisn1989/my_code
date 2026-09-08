@@ -41,7 +41,7 @@ from app.simulation.legislative_voting import (
 )
 from app.simulation.legislature import LegislativeOutcome, ProposalRoute
 from app.simulation.military import classify_destinations
-from app.simulation.report import TurnReport
+from app.simulation.report import CabinetChange, TurnReport
 from app.simulation.state import (
     CabinetPost,
     GameState,
@@ -788,8 +788,9 @@ class DecisionOptionsProjection(BaseModel):
 class CabinetCandidateOption(BaseModel):
     """One person, considered for ONE post. There is a row per `(post, candidate)` pair.
 
-    `eligible` and `refusal_code` are **intrinsic**: they answer "would this person take this post
-    in this state", and nothing else. They carry only the three per-`(post, candidate)` refusals
+    `candidate_accepts_post` and `refusal_code` are **intrinsic**: they answer "would this person
+    take this post in this state", and nothing else. They carry only the three
+    per-`(post, candidate)` refusals
     (`cabinet_character_leads_a_party`, `cabinet_candidate_refuses_low_legitimacy`,
     `cabinet_candidate_refuses_this_post`).
 
@@ -797,7 +798,9 @@ class CabinetCandidateOption(BaseModel):
     ending up in two posts, and the total commitment exceeding opening capital. Those are not facts
     about a candidate, and stating them here would make them unconditional refusals: the same
     person is illegal as a lone appointment and perfectly legal when the same decision vacates the
-    post they already hold. `/game/preview` scores the assembled draft and reports both, which is
+    post they already hold -- which is also why this field is `candidate_accepts_post` and not
+    `eligible`: it is a statement about the PERSON, never a verdict on the order.
+    `/game/preview` scores the assembled draft and reports both, which is
     the split this projection's own contract already draws -- it says what exists to choose from
     and never scores a draft.
 
@@ -824,14 +827,19 @@ class CabinetCandidateOption(BaseModel):
 
     When it equals THIS row's post the person is the incumbent, and ordering them here is a no-op
     the resolver refuses outright (`cabinet_post_already_held_by_this_character`) -- so a client
-    should not offer the order, whatever `eligible` says. `eligible` stays a statement about
-    willingness, not about whether this particular order is worth making; an incumbent who would
-    decline a *fresh* appointment under today's legitimacy is still serving, because the acceptance
-    gate is asked when somebody is hired and never re-asked of a sitting holder."""
+    should not offer the order, whatever `candidate_accepts_post` says. That field is willingness,
+    not a verdict on this particular order: an incumbent who would decline a *fresh* appointment
+    under today's legitimacy is still serving, because the acceptance gate is asked when somebody
+    is hired and never re-asked of a sitting holder."""
     requires_vacating_post: str | None = None
     """Set when this person holds a DIFFERENT post: appointing them here is legal only if the same
     decision also orders that post. An instruction, not a refusal."""
-    eligible: bool
+    candidate_accepts_post: bool
+    """Whether this person would take THIS post in THIS state -- willingness, and nothing else.
+
+    Named for what it asserts rather than for a generic verdict: `eligible` invited the reading
+    "this order is legal", which it is not and cannot be. Whether an order is legal also depends on
+    what else the decision contains, and those failures live on `/preview`."""
     refusal_code: str | None = None
 
 
@@ -906,7 +914,7 @@ def _cabinet_post_options(state: GameState) -> tuple[CabinetPostOption, ...]:
                     requires_vacating_post=(
                         held.value if held is not None and held is not post else None
                     ),
-                    eligible=refusal is None,
+                    candidate_accepts_post=refusal is None,
                     refusal_code=None if refusal is None else refusal.value,
                 )
             )
@@ -1648,4 +1656,13 @@ def _unchanged_statements(report: TurnReport) -> tuple[str, ...]:
     # entirely, which is not the same statement as "nothing moved".
     if report.movement is not None and report.movement.movements == ():
         lines.append("No formations moved.")
+    # (Characters slice) The same channel, for the same reason, and with the same condition shape:
+    # `governance` is present on every resolved turn, so "every post unchanged" is the quiet
+    # statement and `governance is None` means a report predating these fields -- a different
+    # thing. Said exactly ONCE per surface: here for the API, and once in the CLI's own governance
+    # block, which prints nothing when something did change because the entries already said it.
+    if report.governance is not None and all(
+        post.change is CabinetChange.UNCHANGED for post in report.governance.posts
+    ):
+        lines.append("No cabinet changes.")
     return tuple(lines)

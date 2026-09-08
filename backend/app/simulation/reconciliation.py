@@ -3728,6 +3728,7 @@ def _reconcile_cabinet_entries(governance: GovernanceReport, report: TurnReport)
             )
         expected_params: dict[str, str | int] = {
             "post": row.post.value,
+            "post_display_name": row.post_display_name,
             "capital_committed": row.capital_committed,
         }
         if row.closing_holder_id is not None:

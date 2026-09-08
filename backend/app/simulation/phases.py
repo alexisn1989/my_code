@@ -239,6 +239,7 @@ from app.simulation.resource_output import (
     compute_resource_output_contributions,
 )
 from app.simulation.state import (
+    POST_DISPLAY_NAMES,
     CabinetAppointment,
     CabinetPost,
     CabinetState,
@@ -980,6 +981,7 @@ def _resolve_cabinet_orders(ctx: PhaseContext) -> CabinetScratch:
         post_rows.append(
             CabinetPostReport(
                 post=post,
+                post_display_name=POST_DISPLAY_NAMES[post],
                 opening_holder_id=opening_holder_id,
                 opening_holder_display_name=(
                     None if opening_holder is None else opening_holder.display_name
@@ -1008,6 +1010,7 @@ def _resolve_cabinet_orders(ctx: PhaseContext) -> CabinetScratch:
         # dropped from the roster. `_render_formation_moved` sets the precedent and the reason.
         params: dict[str, str | int] = {
             "post": post.value,
+            "post_display_name": POST_DISPLAY_NAMES[post],
             "capital_committed": committed,
         }
         if closing_holder_id is not None and closing_holder is not None:
