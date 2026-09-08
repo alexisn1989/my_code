@@ -418,6 +418,73 @@ export interface components {
             /** Spending Updates */
             spending_updates?: components["schemas"]["SpendingUpdate"][];
         };
+        /**
+         * CabinetCandidateOption
+         * @description One person, considered for ONE post. There is a row per `(post, candidate)` pair.
+         *
+         *     `eligible` and `refusal_code` are **intrinsic**: they answer "would this person take this post
+         *     in this state", and nothing else. They carry only the three per-`(post, candidate)` refusals
+         *     (`cabinet_character_leads_a_party`, `cabinet_candidate_refuses_low_legitimacy`,
+         *     `cabinet_candidate_refuses_this_post`).
+         *
+         *     They deliberately do NOT carry the two failures that depend on the whole decision -- one person
+         *     ending up in two posts, and the total commitment exceeding opening capital. Those are not facts
+         *     about a candidate, and stating them here would make them unconditional refusals: the same
+         *     person is illegal as a lone appointment and perfectly legal when the same decision vacates the
+         *     post they already hold. `/game/preview` scores the assembled draft and reports both, which is
+         *     the split this projection's own contract already draws -- it says what exists to choose from
+         *     and never scores a draft.
+         *
+         *     The two structural facts a client needs in order to assemble a legal draft are given directly
+         *     instead: `currently_holds_post` (so the incumbent can be shown as such rather than as a
+         *     refusal) and `requires_vacating_post` (the origin post a transfer must also order).
+         */
+        CabinetCandidateOption: {
+            /** Ambition Bps */
+            ambition_bps: number;
+            /** Appointment Cost */
+            appointment_cost: number;
+            /** Character Id */
+            character_id: string;
+            /** Competence Bps */
+            competence_bps: number;
+            /** Currently Holds Post */
+            currently_holds_post?: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Eligible */
+            eligible: boolean;
+            /** Independence Bps */
+            independence_bps: number;
+            /** Loyalty Bps */
+            loyalty_bps: number;
+            /** Personal Trust Bps */
+            personal_trust_bps: number;
+            /** Refusal Code */
+            refusal_code?: string | null;
+            /** Requires Vacating Post */
+            requires_vacating_post?: string | null;
+            /** Verb */
+            verb: string;
+        };
+        /**
+         * CabinetPostOption
+         * @description One cabinet post: who holds it now, whether it can be vacated, and who could take it.
+         */
+        CabinetPostOption: {
+            /** Can Dismiss */
+            can_dismiss: boolean;
+            /** Candidates */
+            candidates: components["schemas"]["CabinetCandidateOption"][];
+            /** Holder Character Id */
+            holder_character_id?: string | null;
+            /** Holder Competence Bps */
+            holder_competence_bps?: number | null;
+            /** Holder Display Name */
+            holder_display_name?: string | null;
+            /** Post */
+            post: string;
+        };
         /** CapitalSummary */
         CapitalSummary: {
             /** Capacity */
@@ -557,6 +624,11 @@ export interface components {
         DecisionOptionsProjection: {
             /** Blocs */
             blocs: components["schemas"]["BlocOption"][];
+            /**
+             * Cabinet Posts
+             * @default []
+             */
+            cabinet_posts: components["schemas"]["CabinetPostOption"][];
             /** Campaign Id */
             campaign_id?: string | null;
             /** Chambers */
@@ -960,6 +1032,11 @@ export interface components {
              * @default true
              */
             affordable: boolean;
+            /**
+             * Cabinet Capital
+             * @default 0
+             */
+            cabinet_capital: number;
             /**
              * Chambers
              * @default []

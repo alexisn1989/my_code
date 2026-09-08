@@ -69,6 +69,10 @@ def test_capital_expenditure_category_values_and_declaration_order_are_stable() 
     members changes every entry hash in every save that carries a ledger."""
     assert [category.value for category in CapitalExpenditureCategory] == [
         "bloc_relationship_investment",
+        # Characters slice: the untargeted appointment sink. Inserted in its ALPHABETICAL place
+        # rather than appended, because declaration order and sorted-by-value are deliberately the
+        # same order here (see the test below) -- appending would have made them differ.
+        "cabinet_appointment",
         "constitutional_amendment",
         "decree",
         "legislative_influence",

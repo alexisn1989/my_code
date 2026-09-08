@@ -320,7 +320,7 @@ def test_5_decree_row_carrying_a_target_is_rejected(load) -> None:
     )
     decree_row["party_id"] = "citizens_bloc"
     decree_row["bloc_id"] = "moderates"
-    with pytest.raises(ValidationError, match="category=DECREE must carry no party_id/bloc_id"):
+    with pytest.raises(ValidationError, match="category='decree' must carry no party_id/bloc_id"):
         load(data)
 
 

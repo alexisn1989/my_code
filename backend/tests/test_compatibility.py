@@ -50,11 +50,25 @@ this build will ever be able to prove pre-parse rejection against for that missi
 the `"0.14.0"` bump landed, every subsequently-generated `"0.13.0"` save became impossible to
 produce."""
 
+CABINET_SAVE_PATH = FIXTURES_DIR / "cabinet_save_ruleset_0.18.0.json"
+"""Frozen by the unmodified `"0.18.0"` engine, before appointments existed.
+
+Unlike the 0.17.0 fixture beside it, this one HAS the character layer: nine named people and both
+cabinet posts filled. What it lacks is the fifteenth domain report. Its turns were resolved when no
+appointment could be made and no `governance` subtree existed, so every stored `report_json` carries
+fourteen reports and omits the fifteenth -- which `TurnReport`'s all-present-or-all-absent rule
+reads, correctly, as exactly the proper nonempty subset it exists to reject.
+
+There is nothing to migrate from. Synthesising an empty governance report for an old turn would
+assert that the engine looked at the cabinet on a turn when no such step ran, and would claim
+`unchanged` for posts nobody could have changed. Impossible to produce once `"0.19.0"` landed,
+which is why it was frozen in its own commit beforehand."""
+
 CHARACTERS_SAVE_PATH = FIXTURES_DIR / "characters_save_ruleset_0.17.0.json"
 """Frozen by the unmodified `"0.17.0"` engine, before the character layer existed.
 
 It records no missing FIELD in the ordinary sense -- its economy, politics, map and world are all
-complete -- but it has nobody in it, and under `"0.18.0"` the player's cabinet is required. There is
+complete -- but it has nobody in it, and from `"0.18.0"` onward the player's cabinet is required. There is
 nothing to migrate from: inventing a roster would assert names, competences and loyalties the save
 never recorded, and inventing an empty cabinet would assert that the country deliberately has
 nobody, which is a different claim again. Impossible to produce once the bump landed, which is why
@@ -462,7 +476,7 @@ def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
     from app.simulation.resolver import resolve_turn
 
     state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
-    assert state.ruleset_version == RULESET_VERSION == "0.18.0"
+    assert state.ruleset_version == RULESET_VERSION == "0.19.0"
     decisions = DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
     )
@@ -628,7 +642,7 @@ def test_frozen_military_movement_save_fixture_declares_the_old_ruleset_version(
     raw = json.loads(MILITARY_MOVEMENT_SAVE_PATH.read_text(encoding="utf-8"))
     assert raw["ruleset_version"] == "0.14.0"
     assert raw["ruleset_version"] != RULESET_VERSION
-    assert RULESET_VERSION == "0.18.0"
+    assert RULESET_VERSION == "0.19.0"
 
 
 def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
@@ -645,7 +659,7 @@ def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_e
 
     message = str(exc_info.value)
     assert "0.14.0" in message
-    assert "0.18.0" in message
+    assert "0.19.0" in message
     assert RULESET_VERSION in message
 
 
@@ -822,3 +836,68 @@ def test_the_previous_content_version_is_no_longer_accepted() -> None:
     message = str(exc_info.value)
     assert "0.16.0" in message
     assert "0.17.0" in message
+
+
+def test_frozen_cabinet_save_fixture_declares_the_old_ruleset_version() -> None:
+    """The sanity half: the fixture really is a `"0.18.0"` ruleset save, so the rejection tests
+    below prove something rather than passing because someone regenerated it under this engine.
+
+    Its `content_version` is `"0.17.0"` -- the CURRENT one -- which is the distinguishing property
+    of this bump and the reason it is asserted here rather than assumed: appointments changed
+    engine rules only, so a 0.17.0 scenario is still exactly the shape this build reads. Without
+    this line a reader could mistake the rejection below for a content problem.
+    """
+    raw = json.loads(CABINET_SAVE_PATH.read_text(encoding="utf-8"))
+    assert raw["ruleset_version"] == "0.18.0"
+    assert raw["ruleset_version"] != RULESET_VERSION
+    assert raw["content_version"] == "0.17.0"
+    assert raw["content_version"] in SUPPORTED_CONTENT_VERSIONS
+
+
+def test_cabinet_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
+    """Rejected at the ruleset gate, naming both versions -- so a player learns their save predates
+    this build rather than having an empty cabinet history invented for them."""
+    raw_text = read_save_file(CABINET_SAVE_PATH)
+    with pytest.raises(UnsupportedRulesetVersionError) as exc_info:
+        load_save_json(raw_text, source=str(CABINET_SAVE_PATH))
+
+    message = str(exc_info.value)
+    assert "0.18.0" in message
+    assert RULESET_VERSION in message
+    assert "not loaded" in message
+
+
+def test_cabinet_save_rejection_happens_before_any_report_json_is_parsed() -> None:
+    """The ordering claim made falsifiable, and it matters more here than usual.
+
+    Every `report_json` in this fixture carries fourteen domain reports and no `governance`, which
+    under this build is a shape `TurnReport` refuses outright. If the version gate did not run
+    first, the player would get a completeness-validation failure from deep inside report parsing
+    instead of "this save predates this build" -- a strictly worse message about the same fact.
+    With every `report_json` replaced by text that is not valid JSON, the failure is still the
+    version error.
+    """
+    raw = json.loads(read_save_file(CABINET_SAVE_PATH))
+    for entry in raw["entries"]:
+        if entry.get("report_json") is not None:
+            entry["report_json"] = "{not even valid json"
+
+    with pytest.raises(UnsupportedRulesetVersionError):
+        load_save_json(json.dumps(raw), source="corrupted-and-incompatible")
+
+
+def test_the_previous_ruleset_is_the_only_thing_that_moved_for_appointments() -> None:
+    """The characters-slice pair, stated together: ruleset moved twice, content once.
+
+    `0.17.0 -> 0.18.0` was the character LAYER, which changed scenario shape, so content moved with
+    it. `0.18.0 -> 0.19.0` is appointments, which are player decisions, so content did NOT. Two
+    axes exist precisely so a rules change that content did not cause cannot force every scenario
+    to be re-authored, and this is the test that keeps that split honest.
+    """
+    assert frozenset({"0.19.0"}) == SUPPORTED_RULESET_VERSIONS
+    assert frozenset({"0.17.0"}) == SUPPORTED_CONTENT_VERSIONS
+    characters_save = json.loads(CHARACTERS_SAVE_PATH.read_text(encoding="utf-8"))
+    cabinet_save = json.loads(CABINET_SAVE_PATH.read_text(encoding="utf-8"))
+    assert characters_save["content_version"] == "0.16.0"
+    assert cabinet_save["content_version"] == "0.17.0"
+    assert characters_save["ruleset_version"] != cabinet_save["ruleset_version"]

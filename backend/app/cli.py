@@ -58,7 +58,6 @@ from app.core.errors import (
 )
 from app.core.money import format_money
 from app.saves import read_save_file, write_save_atomic
-from app.simulation.cabinet import effective_holder_id
 from app.simulation.decisions import DecisionSet
 from app.simulation.foreign_conflict import TERMINAL_STATUSES, ConflictStatus, WarAim
 from app.simulation.history import GameSave, advance_game, new_game, validate_history
@@ -71,11 +70,13 @@ from app.simulation.legislature import (
 )
 from app.simulation.report import (
     BlocVoteReport,
+    CabinetChange,
     ConstitutionalAmendmentReport,
     CoupUnrestReport,
     ElectionReport,
     FinanceReport,
     ForeignAffairsReport,
+    GovernanceReport,
     LaborMarketReport,
     LegislativeReport,
     MovementReport,
@@ -530,6 +531,45 @@ def _render_formation_moved(params: dict[str, str | int]) -> str:
     )
 
 
+def _post_label(post: str | int) -> str:
+    """`chief_of_staff` -> `chief of staff`. Presentation only; the stored value never changes."""
+    return str(post).replace("_", " ")
+
+
+def _render_cabinet_appointed(params: dict[str, str | int]) -> str:
+    """(Characters slice) One appointment, in one sentence, from the entry's own stored params.
+
+    Composed exclusively from what the entry snapshotted -- never from current state, and never
+    falling back to a raw id -- for the reason `_render_formation_moved` gives: a turn from ten
+    turns ago must render the names it was resolved under, even if that person has since been
+    renamed or dropped from the roster entirely.
+    """
+    return (
+        f"{params['character_display_name']} was appointed {_post_label(params['post'])} "
+        f"for {params['capital_committed']} political capital."
+    )
+
+
+def _render_cabinet_replaced(params: dict[str, str | int]) -> str:
+    """Names BOTH people, because who left is half of what happened -- and the outgoing holder
+    served the whole turn being reported, so a sentence that omitted them would misdescribe it."""
+    return (
+        f"{params['character_display_name']} replaced "
+        f"{params['outgoing_character_display_name']} as {_post_label(params['post'])} "
+        f"for {params['capital_committed']} political capital."
+    )
+
+
+def _render_cabinet_dismissed(params: dict[str, str | int]) -> str:
+    """Says no capital figure, because a dismissal costs none -- and therefore produces no ledger
+    row at all. This sentence is the ONLY place a dismissal appears outside the governance
+    subtree, which is precisely why the entry exists."""
+    return (
+        f"{params['outgoing_character_display_name']} was dismissed as "
+        f"{_post_label(params['post'])}; the post is now vacant."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -568,6 +608,9 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "foreign_conflict_terminated": _render_foreign_conflict_terminated,
     "foreign_security_anxiety_applied": _render_foreign_security_anxiety_applied,
     "formation_moved": _render_formation_moved,
+    "cabinet_appointed": _render_cabinet_appointed,
+    "cabinet_replaced": _render_cabinet_replaced,
+    "cabinet_dismissed": _render_cabinet_dismissed,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id
@@ -719,14 +762,20 @@ def _print_institutions(institutions: list[InstitutionState]) -> None:
         )
 
 
-def _print_cabinet(country: CountryState, world: WorldState, resolving_turn: int) -> None:
+def _print_cabinet(country: CountryState, world: WorldState) -> None:
     """(Characters slice) `inspect --cabinet`: who holds each post, from when, and what they are.
 
     Prints EVERY post, including the vacant ones, because a vacancy is a real and costly condition
     rather than an absence of news -- a player who cannot see the empty chair cannot see the
-    decision. `serving` is `simulation.cabinet`'s own answer for this save's turn, so the line
-    that says a holder is not contributing yet is the same rule the resolver applies, not a
-    second reading of `effective_from_turn`.
+    decision.
+
+    There is deliberately no "takes office next turn" branch. An order resolved on turn `t` is
+    stored at `t + 1` and the closing state is already at `t + 1`, so a stored appointment is
+    always already serving -- `cabinet_appointment_not_yet_effective` makes that a structural fact
+    rather than a coincidence. A status line for a state the engine cannot produce would be dead
+    code pretending to be a feature. (`simulation.cabinet` still carries the not-yet-effective
+    branch, because it is live INSIDE a resolution, between slot 2's write and the end of the
+    turn.)
 
     Traits are printed for the serving holder because they are what the post is worth: an office
     with no visible officeholder would be exactly the decorative score this layer is not.
@@ -739,13 +788,11 @@ def _print_cabinet(country: CountryState, world: WorldState, resolving_turn: int
             print(f"    {post.value}: vacant")
             continue
         holder = world.characters.get(appointment.character_id)
-        serving = (
-            effective_holder_id(cabinet=cabinet, post=post, resolving_turn=resolving_turn)
-            is not None
-        )
-        status = "serving" if serving else f"takes office on turn {appointment.effective_from_turn}"
         name = appointment.character_id if holder is None else holder.display_name
-        print(f"    {post.value}: {name} ({appointment.character_id}) -- {status}")
+        print(
+            f"    {post.value}: {name} ({appointment.character_id}) -- in post since turn "
+            f"{appointment.effective_from_turn}"
+        )
         if holder is not None:
             print(
                 f"      competence={_bps_to_percent_str(holder.competence)} "
@@ -1094,7 +1141,7 @@ def _cmd_inspect(args: argparse.Namespace) -> int:
     # `--conflicts` is: a cabinet lives on the COUNTRY, not on its politics, so a save whose
     # player has no politics block can still be asked who holds which post.
     if args.cabinet:
-        _print_cabinet(player, current.world, current.turn)
+        _print_cabinet(player, current.world)
 
     # Deliberately OUTSIDE the `player.politics is not None` block above: foreign conflicts are
     # world-level state between foreign actors, not player politics, so a save whose player has
@@ -1610,6 +1657,24 @@ def _print_movement_report(movement: MovementReport) -> None:
         print("    No formations moved.")
 
 
+def _print_governance_report(governance: GovernanceReport) -> None:
+    """(Characters slice) The QUIET sentence, and nothing else.
+
+    Wired into BOTH `_print_report` and `_cmd_history` from this single shared helper -- never a
+    second inline copy, the same discipline as `_print_movement_report` and
+    `_print_foreign_affairs_report`.
+
+    **Prints nothing when something changed, deliberately.** Both CLI paths render
+    `report.entries` FIRST and the per-report blocks second, and every cabinet change is already
+    one `cabinet_appointed`/`cabinet_replaced`/`cabinet_dismissed` entry rendered above. A block
+    that also printed them would print the identical sentence twice in each path -- exactly the
+    duplication `_print_movement_report` documents avoiding. A change's sentence IS its whole
+    content, so a second block would be repetition, not detail.
+    """
+    if all(post.change is CabinetChange.UNCHANGED for post in governance.posts):
+        print("    No cabinet changes.")
+
+
 def _print_report(report: TurnReport) -> None:
     print(f"  turn {report.resolved_turn} resolved:")
     for entry in report.entries:
@@ -1642,6 +1707,8 @@ def _print_report(report: TurnReport) -> None:
         _print_foreign_affairs_report(report.foreign_affairs)
     if report.movement is not None:
         _print_movement_report(report.movement)
+    if report.governance is not None:
+        _print_governance_report(report.governance)
     not_implemented = [
         phase_id
         for phase_id, status in report.dev.phase_statuses.items()
@@ -1789,6 +1856,12 @@ def _cmd_history(args: argparse.Namespace) -> int:
             # `_print_report` uses. Applied movements are printed by the entry loop above, in both
             # paths; this block only ever prints the quiet sentence.
             _print_movement_report(report.movement)
+        # AFTER movement, matching `_print_report`'s order exactly. Both call sites must render a
+        # given turn identically -- `test_both_report_call_sites_render_the_same_turn_identically`
+        # compares them character for character, and it is what caught these two blocks being
+        # emitted in opposite orders here.
+        if report.governance is not None:
+            _print_governance_report(report.governance)
     return 0
 
 

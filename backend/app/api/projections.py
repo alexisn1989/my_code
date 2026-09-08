@@ -27,6 +27,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.money import BPS_DENOMINATOR, format_money
 from app.core.politics import RELATIONSHIP_INVESTMENT_CAP
+from app.simulation.cabinet import (
+    appointment_cost_capital,
+    appointment_refusal,
+    is_domestic_to,
+)
 from app.simulation.constitution import DecreeAuthority, ExecutiveSelection, ExecutiveSystem
 from app.simulation.decisions import BudgetDecision, ConstitutionalAmendmentDecision
 from app.simulation.geography import outgoing_and_incoming
@@ -38,6 +43,7 @@ from app.simulation.legislature import LegislativeOutcome, ProposalRoute
 from app.simulation.military import classify_destinations
 from app.simulation.report import TurnReport
 from app.simulation.state import (
+    CabinetPost,
     GameState,
     OutcomeBucket,
     PlayerCountryRef,
@@ -118,6 +124,9 @@ REASON_LABELS: dict[str, str] = {
     # through the existing generic `DriverItem`. No new endpoint, projection model, field or
     # payload shape -- and therefore no OpenAPI change.
     "formation_moved": "A formation moved.",
+    "cabinet_appointed": "A cabinet post was filled.",
+    "cabinet_replaced": "A cabinet post changed hands.",
+    "cabinet_dismissed": "A cabinet post was vacated.",
 }
 
 
@@ -445,6 +454,7 @@ class PreviewProjection(BaseModel):
     route_capital_cost: int = 0
     influence_capital: int = 0
     investment_capital: int = 0
+    cabinet_capital: int = 0
     committed_capital: int = 0
     opening_capital: int = 0
     affordable: bool = True
@@ -768,6 +778,149 @@ class DecisionOptionsProjection(BaseModel):
     chambers: tuple[str, ...]
     blocs: tuple[BlocOption, ...]
     constitutional_axes: tuple[ConstitutionalAxisOption, ...]
+    cabinet_posts: tuple[CabinetPostOption, ...] = ()
+    """(Characters slice) Every cabinet post, canonical by post, each with every candidate this
+    government could consider for it. Read from state and the engine's own constants; nothing
+    invented. Intrinsic eligibility only -- see `CabinetCandidateOption` for why the
+    whole-decision failures live on `/preview` instead."""
+
+
+class CabinetCandidateOption(BaseModel):
+    """One person, considered for ONE post. There is a row per `(post, candidate)` pair.
+
+    `eligible` and `refusal_code` are **intrinsic**: they answer "would this person take this post
+    in this state", and nothing else. They carry only the three per-`(post, candidate)` refusals
+    (`cabinet_character_leads_a_party`, `cabinet_candidate_refuses_low_legitimacy`,
+    `cabinet_candidate_refuses_this_post`).
+
+    They deliberately do NOT carry the two failures that depend on the whole decision -- one person
+    ending up in two posts, and the total commitment exceeding opening capital. Those are not facts
+    about a candidate, and stating them here would make them unconditional refusals: the same
+    person is illegal as a lone appointment and perfectly legal when the same decision vacates the
+    post they already hold. `/game/preview` scores the assembled draft and reports both, which is
+    the split this projection's own contract already draws -- it says what exists to choose from
+    and never scores a draft.
+
+    The two structural facts a client needs in order to assemble a legal draft are given directly
+    instead: `currently_holds_post` (so the incumbent can be shown as such rather than as a
+    refusal) and `requires_vacating_post` (the origin post a transfer must also order).
+    """
+
+    model_config = _STRICT
+
+    character_id: str
+    display_name: str
+    competence_bps: int
+    loyalty_bps: int
+    independence_bps: int
+    ambition_bps: int
+    personal_trust_bps: int
+    appointment_cost: int
+    verb: str
+    """`"appoint"` into a vacant post, `"replace"` into an occupied one -- read from THIS post's
+    current holder, so a client never has to infer which order it is composing."""
+    currently_holds_post: str | None = None
+    """The post this person holds right now, or `None`.
+
+    When it equals THIS row's post the person is the incumbent, and ordering them here is a no-op
+    the resolver refuses outright (`cabinet_post_already_held_by_this_character`) -- so a client
+    should not offer the order, whatever `eligible` says. `eligible` stays a statement about
+    willingness, not about whether this particular order is worth making; an incumbent who would
+    decline a *fresh* appointment under today's legitimacy is still serving, because the acceptance
+    gate is asked when somebody is hired and never re-asked of a sitting holder."""
+    requires_vacating_post: str | None = None
+    """Set when this person holds a DIFFERENT post: appointing them here is legal only if the same
+    decision also orders that post. An instruction, not a refusal."""
+    eligible: bool
+    refusal_code: str | None = None
+
+
+class CabinetPostOption(BaseModel):
+    """One cabinet post: who holds it now, whether it can be vacated, and who could take it."""
+
+    model_config = _STRICT
+
+    post: str
+    holder_character_id: str | None = None
+    holder_display_name: str | None = None
+    holder_competence_bps: int | None = None
+    can_dismiss: bool
+    candidates: tuple[CabinetCandidateOption, ...]
+
+
+def _cabinet_post_options(state: GameState) -> tuple[CabinetPostOption, ...]:
+    """Every post, with every candidate the player could consider for it.
+
+    A candidate is any character of this country who leads no party -- the same population
+    `appointment_refusal` and the resolver's own rejection judge, so a person listed here is a
+    person the resolver would accept, subject only to the whole-decision rules `/preview` scores.
+
+    The incumbent of THIS post is listed too, marked `currently_holds_post`, rather than filtered
+    out: a client showing a post's options should show who is in it, and hiding them would leave
+    "why can I not pick this person" unanswerable.
+    """
+    player = state.world.countries[state.world.player_country_id]
+    politics = player.politics
+    cabinet = player.cabinet
+    if politics is None or cabinet is None:
+        return ()
+
+    holder_by_post = {
+        post: appointment.character_id for post, appointment in cabinet.offices.items()
+    }
+    post_by_holder = {holder: post for post, holder in holder_by_post.items()}
+    candidates = sorted(
+        (
+            (character_id, character)
+            for character_id, character in state.world.characters.items()
+            if character.party_id is None
+            and is_domestic_to(character=character, country_id=player.id)
+        ),
+        key=lambda pair: pair[0],
+    )
+
+    options: list[CabinetPostOption] = []
+    for post in sorted(CabinetPost, key=lambda p: p.value):
+        holder_id = holder_by_post.get(post)
+        holder = None if holder_id is None else state.world.characters.get(holder_id)
+        rows: list[CabinetCandidateOption] = []
+        for character_id, character in candidates:
+            refusal = appointment_refusal(
+                character=character, post=post, legitimacy_bps=politics.legitimacy_bps
+            )
+            held = post_by_holder.get(character_id)
+            rows.append(
+                CabinetCandidateOption(
+                    character_id=character_id,
+                    display_name=character.display_name,
+                    competence_bps=character.competence,
+                    loyalty_bps=character.loyalty,
+                    independence_bps=character.independence,
+                    ambition_bps=character.ambition,
+                    personal_trust_bps=character.personal_trust,
+                    appointment_cost=appointment_cost_capital(
+                        independence_bps=character.independence
+                    ),
+                    verb="replace" if holder_id is not None else "appoint",
+                    currently_holds_post=None if held is None else held.value,
+                    requires_vacating_post=(
+                        held.value if held is not None and held is not post else None
+                    ),
+                    eligible=refusal is None,
+                    refusal_code=None if refusal is None else refusal.value,
+                )
+            )
+        options.append(
+            CabinetPostOption(
+                post=post.value,
+                holder_character_id=holder_id,
+                holder_display_name=None if holder is None else holder.display_name,
+                holder_competence_bps=None if holder is None else holder.competence,
+                can_dismiss=holder_id is not None,
+                candidates=tuple(rows),
+            )
+        )
+    return tuple(options)
 
 
 def build_decision_options(
@@ -853,6 +1006,7 @@ def build_decision_options(
         chambers=chambers,
         blocs=tuple(blocs),
         constitutional_axes=constitutional_axes,
+        cabinet_posts=_cabinet_post_options(state),
     )
 
 

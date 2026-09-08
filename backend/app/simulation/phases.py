@@ -46,7 +46,13 @@ from app.simulation.accounting import (
     resolve_cash_and_debt,
 )
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
-from app.simulation.cabinet import holder_competence_bps
+from app.simulation.cabinet import (
+    appointment_cost_capital,
+    appointment_refusal,
+    effective_holder_id,
+    holder_competence_bps,
+    is_domestic_to,
+)
 from app.simulation.constitution import (
     ConstitutionState,
     DecreeAuthority,
@@ -63,6 +69,7 @@ from app.simulation.decisions import (
     InfluenceAllocation,
     bloc_relationship_investment_digest,
     budget_decision_digest,
+    cabinet_decision_digest,
     constitutional_amendment_decision_digest,
 )
 from app.simulation.foreign_conflict import (
@@ -173,6 +180,8 @@ from app.simulation.report import (
     BlocRelationshipMemoryReport,
     BlocVoteReport,
     BudgetChangeEntry,
+    CabinetChange,
+    CabinetPostReport,
     CapitalExpenditureReport,
     ChamberVoteReport,
     ChangeDirection,
@@ -190,6 +199,7 @@ from app.simulation.report import (
     ForeignConflictOutbreakReport,
     ForeignConflictProgressionRow,
     FormationMovementRow,
+    GovernanceReport,
     ImpeachmentChannelReport,
     LaborMarketReport,
     LegislativeReport,
@@ -229,7 +239,9 @@ from app.simulation.resource_output import (
     compute_resource_output_contributions,
 )
 from app.simulation.state import (
+    CabinetAppointment,
     CabinetPost,
+    CabinetState,
     ConflictDyadState,
     EconomicBaselineState,
     ForeignConflictState,
@@ -243,6 +255,7 @@ from app.simulation.state import (
     RemovalReason,
     SectorCategory,
     SpendingPlanState,
+    StrictCharacterId,
     TaxBaseState,
     TaxPolicyState,
     TerminalOutcomeState,
@@ -413,6 +426,42 @@ class CapitalLedgerScratch:
 
 
 @dataclass
+class CabinetScratch:
+    """Mutable, turn-local cabinet workspace threaded through `PhaseContext.cabinet_scratch`.
+
+    Populated ENTIRELY by slot 1 and never mutated afterwards, mirroring `CapitalLedgerScratch`.
+    That is not tidiness -- it is what makes "every turn-`t` effect reads the OPENING cabinet" a
+    property of the data rather than a convention every reader has to remember.
+
+    Slot 2 commits `closing_cabinet` onto the player. From that moment `ctx.state` no longer holds
+    the cabinet this turn was resolved under, so slot 11 (the chief-of-staff bonus) and slot 15
+    (the report) read `opening_cabinet` from here instead. Reading `ctx.state` there would be
+    correct for an appointment into a vacancy -- the newcomer is stored at `turn + 1` and is not
+    yet effective -- and WRONG for a replacement or a dismissal, which remove the outgoing holder
+    outright and would silently erase the contribution of somebody who served the whole turn.
+    """
+
+    opening_cabinet: CabinetState | None
+    closing_cabinet: CabinetState | None
+    """`None` only when the country models no cabinet at all. Otherwise always a real
+    `CabinetState`, equal to `opening_cabinet` on a turn with no cabinet decision."""
+    post_rows: tuple[CabinetPostReport, ...]
+    """Every post, canonical by `post.value`, already validated by `CabinetPostReport`'s own
+    validators. Slot 15 wraps these SAME rows into `GovernanceReport` -- never recomputing them --
+    so the report and the state provably came from identical validated values."""
+    entries: tuple[TurnReportEntry, ...]
+    """One entry per non-`UNCHANGED` post, built beside its row so the two cannot disagree.
+
+    These are what make a cabinet change VISIBLE. `api.projections.build_turn_result` derives its
+    `drivers` from `report.entries` and its `ledger` from the expenditure rows, and a dismissal
+    costs nothing and therefore has no expenditure row -- so without an entry a dismissal would be
+    invisible on the API turn-result and history surfaces entirely. Movement solved the same
+    problem the same way.
+    """
+    total_committed: int
+
+
+@dataclass
 class FinanceScratch:
     """Mutable, turn-local accounting workspace threaded through the Phase 2A/2B2 phases
     via `PhaseContext.finance`. Not itself part of `GameState` or the report — purely
@@ -462,6 +511,12 @@ class PhaseContext:
     capital_ledger: CapitalLedgerScratch | None = None
     """Set by `_validate_and_reserve_actions` (slot 1); read by slot 10 (total commitment), slot
     11 (relationship application) and slot 15 (report assembly). Phase 3B2A."""
+    cabinet_scratch: CabinetScratch | None = None
+    """Set by `_validate_and_reserve_actions` (slot 1); committed by slot 2, and read by slot 11
+    (the chief-of-staff bonus) and slot 15 (the governance report). Characters slice.
+
+    The opening cabinet lives here precisely because slot 2 overwrites the one on `ctx.state`; see
+    `CabinetScratch`."""
     political_capital_report: PoliticalCapitalReport | None = None
     """Set by `generate_turn_report` (slot 15) from `capital_ledger`; `resolver.py` copies this
     onto the final `TurnReport`. Phase 3B2A."""
@@ -535,6 +590,9 @@ class PhaseContext:
     assembly). Stays `()` on a turn with no movement decision, which is what makes a quiet turn's
     `MovementReport` present and empty rather than absent."""
     movement_report: MovementReport | None = None
+    governance_report: GovernanceReport | None = None
+    """Set by `generate_turn_report` (slot 15) from `cabinet_scratch.post_rows`; `resolver.py`
+    copies this onto the final `TurnReport`. Characters slice."""
     """Set by `generate_turn_report` (slot 15) from `movement_rows`; `resolver.py` copies this onto
     the final `TurnReport`. Assembled at slot 15 like every other report, never built by the phase
     that produced its rows."""
@@ -795,6 +853,187 @@ def _resolve_constitutional_amendment(
     return tuple(expenditure_rows), commitment
 
 
+def _resolve_cabinet_orders(ctx: PhaseContext) -> CabinetScratch:
+    """Slot 1's cabinet half: validate every order, build the closing cabinet, the report rows and
+    the entries, and total what it costs. Writes nothing to `ctx.state`.
+
+    **Apply first, then judge the result.** Every order is applied to a COPY of the opening
+    `offices` mapping and the resulting cabinet is what gets checked for one-person-two-posts. That
+    is not a stylistic choice: a pairwise check over orders cannot tell a genuine conflict from a
+    same-turn TRANSFER. Moving somebody from one post to another is two orders that are only legal
+    together, and only the assembled result knows whether anybody ends up seated twice.
+
+    Order of rejection is fixed so the reported reason never depends on evaluation accident:
+    per-order problems in canonical post order first (unknown, foreign, incumbent, empty
+    dismissal, refusal), then the whole-result duplicate-occupancy check. Affordability is NOT
+    here -- it is one guard, in `_finish_validate_and_reserve_actions`, against the summed total of
+    every sink.
+    """
+    player = ctx.state.world.countries[ctx.state.world.player_country_id]
+    characters = ctx.state.world.characters
+    politics = player.politics
+    assert politics is not None, "the caller has already refused a player with no politics"
+    opening_cabinet = player.cabinet
+    opening_offices = dict(opening_cabinet.offices) if opening_cabinet is not None else {}
+
+    decision = ctx.decisions.cabinet_decision()
+    closing_offices = dict(opening_offices)
+    total_committed = 0
+    digest_by_post: dict[CabinetPost, str] = {}
+
+    if decision is not None:
+        if opening_cabinet is None:
+            raise DecisionSetError(
+                "cabinet_not_modelled: this country models no cabinet, so it cannot be staffed"
+            )
+        digest = cabinet_decision_digest(decision)
+        for order in decision.orders:
+            incumbent_id = effective_holder_id(
+                cabinet=opening_cabinet, post=order.post, resolving_turn=ctx.resolving_turn
+            )
+            if order.character_id is None:
+                if incumbent_id is None:
+                    raise DecisionSetError(
+                        f"cabinet_dismissal_of_a_vacant_post: {order.post.value} is already "
+                        "vacant, so there is nobody to dismiss"
+                    )
+                del closing_offices[order.post]
+                digest_by_post[order.post] = digest
+                continue
+
+            character = characters.get(order.character_id)
+            if character is None:
+                raise DecisionSetError(
+                    f"cabinet_character_unknown: {order.character_id!r} is not a character in "
+                    "this world"
+                )
+            if not is_domestic_to(character=character, country_id=player.id):
+                raise DecisionSetError(
+                    f"cabinet_character_not_domestic: {order.character_id!r} is not affiliated "
+                    f"with {player.id!r}; a government may only appoint its own people"
+                )
+            if incumbent_id == order.character_id:
+                raise DecisionSetError(
+                    f"cabinet_post_already_held_by_this_character: {order.character_id!r} already "
+                    f"holds {order.post.value}, so this order would change nothing"
+                )
+            refusal = appointment_refusal(
+                character=character,
+                post=order.post,
+                legitimacy_bps=politics.legitimacy_bps,
+            )
+            if refusal is not None:
+                raise DecisionSetError(
+                    f"{refusal.value}: {character.display_name} will not take "
+                    f"{order.post.value} in this government"
+                )
+            closing_offices[order.post] = CabinetAppointment(
+                character_id=order.character_id,
+                # Next turn, never this one. An appointment cannot supply the turn that made it,
+                # which is what stops appoint-and-benefit-immediately and what keeps every slot
+                # below reading a cabinet nobody changed mid-resolution.
+                effective_from_turn=ctx.resolving_turn + 1,
+            )
+            total_committed += appointment_cost_capital(independence_bps=character.independence)
+            digest_by_post[order.post] = digest
+
+        seated: dict[StrictCharacterId, CabinetPost] = {}
+        for post in sorted(closing_offices, key=lambda p: p.value):
+            holder_id = closing_offices[post].character_id
+            first_post = seated.get(holder_id)
+            if first_post is not None:
+                raise DecisionSetError(
+                    f"cabinet_character_would_hold_two_posts: this decision would seat "
+                    f"{holder_id!r} as both {first_post.value} and {post.value}; to move somebody "
+                    "between posts, order the post they are leaving in the same decision"
+                )
+            seated[holder_id] = post
+
+    post_rows: list[CabinetPostReport] = []
+    entries: list[TurnReportEntry] = []
+    for post in sorted(CabinetPost, key=lambda p: p.value):
+        opening_holder_id = effective_holder_id(
+            cabinet=opening_cabinet, post=post, resolving_turn=ctx.resolving_turn
+        )
+        opening_holder = None if opening_holder_id is None else characters.get(opening_holder_id)
+        closing_appointment = closing_offices.get(post)
+        closing_holder_id = (
+            None if closing_appointment is None else closing_appointment.character_id
+        )
+        closing_holder = None if closing_holder_id is None else characters.get(closing_holder_id)
+
+        if opening_holder_id == closing_holder_id:
+            change = CabinetChange.UNCHANGED
+        elif opening_holder_id is None:
+            change = CabinetChange.APPOINTED
+        elif closing_holder_id is None:
+            change = CabinetChange.DISMISSED
+        else:
+            change = CabinetChange.REPLACED
+
+        committed = (
+            appointment_cost_capital(independence_bps=closing_holder.independence)
+            if change in (CabinetChange.APPOINTED, CabinetChange.REPLACED)
+            and closing_holder is not None
+            else 0
+        )
+        post_rows.append(
+            CabinetPostReport(
+                post=post,
+                opening_holder_id=opening_holder_id,
+                opening_holder_display_name=(
+                    None if opening_holder is None else opening_holder.display_name
+                ),
+                opening_holder_competence_bps=(
+                    0 if opening_holder is None else opening_holder.competence
+                ),
+                closing_holder_id=closing_holder_id,
+                closing_holder_display_name=(
+                    None if closing_holder is None else closing_holder.display_name
+                ),
+                closing_effective_from_turn=(
+                    None if closing_appointment is None else closing_appointment.effective_from_turn
+                ),
+                change=change,
+                capital_committed=committed,
+                decision_digest=(
+                    None if change is CabinetChange.UNCHANGED else digest_by_post[post]
+                ),
+            )
+        )
+        if change is CabinetChange.UNCHANGED:
+            continue
+        # Every param the renderer needs, snapshotted -- names included. A turn from ten turns ago
+        # must read the way it read when it resolved, even if the person has since been renamed or
+        # dropped from the roster. `_render_formation_moved` sets the precedent and the reason.
+        params: dict[str, str | int] = {
+            "post": post.value,
+            "capital_committed": committed,
+        }
+        if closing_holder_id is not None and closing_holder is not None:
+            params["character_id"] = closing_holder_id
+            params["character_display_name"] = closing_holder.display_name
+        if opening_holder_id is not None and opening_holder is not None:
+            params["outgoing_character_id"] = opening_holder_id
+            params["outgoing_character_display_name"] = opening_holder.display_name
+        entries.append(
+            TurnReportEntry(
+                category="government",
+                reason_id=f"cabinet_{change.value}",
+                params=params,
+            )
+        )
+
+    closing_cabinet = None if opening_cabinet is None else CabinetState(offices=closing_offices)
+    return CabinetScratch(
+        opening_cabinet=opening_cabinet,
+        closing_cabinet=closing_cabinet,
+        post_rows=tuple(post_rows),
+        entries=tuple(entries),
+        total_committed=total_committed,
+    )
+
+
 def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
     """Phase 3B1, slot 1: resolve this turn's budget proposal against the legislature (or decree
     authority) BEFORE anything is mutated (§9 of the plan). Computes the vote (or decree, or
@@ -843,12 +1082,18 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
         else {}
     )
 
+    # --- the cabinet: validated and priced here, committed by slot 2 -------------------------
+    # Built BEFORE the budget branch so both slot-1 paths (NO_PROPOSAL and budget) reach
+    # `_finish_validate_and_reserve_actions` with the same scratch, and so the opening cabinet is
+    # captured before slot 2 can overwrite it (R3).
+    ctx.cabinet_scratch = _resolve_cabinet_orders(ctx)
+
     # The chief of staff's contribution to every relationship investment this turn, read ONCE from
-    # the opening cabinet so slot 1's no-op guard and slot 11's application cannot disagree about
+    # the OPENING cabinet so slot 1's no-op guard and slot 11's application cannot disagree about
     # it. `holder_competence_bps` applies the effectivity rule, so an appointment resolving in this
     # same decision set contributes nothing here -- see `CabinetAppointment.effective_from_turn`.
     chief_of_staff_competence = holder_competence_bps(
-        cabinet=player.cabinet,
+        cabinet=ctx.cabinet_scratch.opening_cabinet,
         characters=ctx.state.world.characters,
         post=CabinetPost.CHIEF_OF_STAFF,
         resolving_turn=ctx.resolving_turn,
@@ -1189,14 +1434,34 @@ def _finish_validate_and_reserve_actions(
     commitment guard rather than two independently-maintained copies of it.
     """
     assert ctx.legislative_scratch is not None, "the caller always sets this first"
+    assert ctx.cabinet_scratch is not None, "slot 1 sets the cabinet scratch before branching"
     legislative_commitment = ctx.legislative_scratch.political_capital_committed
-    total_committed = legislative_commitment + investment_total + amendment_total
+    cabinet_total = ctx.cabinet_scratch.total_committed
+    total_committed = legislative_commitment + investment_total + amendment_total + cabinet_total
     if total_committed > opening.political_capital:
         raise DecisionSetError(
             f"total political capital commitment {total_committed} (route commitment "
             f"{legislative_commitment} + relationship investment {investment_total} + "
-            f"constitutional amendment {amendment_total}) exceeds "
-            f"opening political capital {opening.political_capital}"
+            f"constitutional amendment {amendment_total} + cabinet appointment {cabinet_total}) "
+            f"exceeds opening political capital {opening.political_capital}"
+        )
+
+    # (Characters slice) ONE aggregated row for every appointment this turn, or none at all when
+    # nothing was paid for. This category is untargeted, so two rows would share the sort key
+    # below exactly and their canonical order would fall back to insertion order -- see
+    # `CapitalExpenditureCategory`. A dismissal-only turn emits no row, which is correct: it costs
+    # nothing, and the change is carried by the governance subtree and its report entry instead.
+    cabinet_expenditure_rows: tuple[CapitalExpenditureReport, ...] = ()
+    cabinet_decision = ctx.decisions.cabinet_decision()
+    if cabinet_total > 0 and cabinet_decision is not None:
+        cabinet_expenditure_rows = (
+            CapitalExpenditureReport(
+                category=CapitalExpenditureCategory.CABINET_APPOINTMENT,
+                party_id=None,
+                bloc_id=None,
+                political_capital=cabinet_total,
+                decision_digest=cabinet_decision_digest(cabinet_decision),
+            ),
         )
 
     expenditures = tuple(
@@ -1205,6 +1470,7 @@ def _finish_validate_and_reserve_actions(
                 *legislative_expenditure_rows,
                 *investment_expenditure_rows,
                 *amendment_expenditure_rows,
+                *cabinet_expenditure_rows,
             ),
             key=lambda row: (row.category.value, row.party_id or "", row.bloc_id or ""),
         )
@@ -1284,6 +1550,17 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
         )
     scratch = ctx.legislative_scratch
     assert scratch is not None, "validate_and_reserve_actions always runs first (slot 1)"
+
+    # (Characters slice) Commit slot 1's already-validated cabinet, wholesale via `model_copy` --
+    # never by mutating `offices` in place, for the same reason the policy objects below are
+    # replaced rather than mutated. Every newly seated holder carries `effective_from_turn ==
+    # resolving_turn + 1`, so this write cannot change what any later slot computes for THIS turn;
+    # slot 11 and slot 15 read `ctx.cabinet_scratch.opening_cabinet` regardless.
+    cabinet_scratch = ctx.cabinet_scratch
+    assert cabinet_scratch is not None, "slot 1 always sets this"
+    if cabinet_scratch.closing_cabinet is not None:
+        player = player.model_copy(update={"cabinet": cabinet_scratch.closing_cabinet})
+        ctx.state.world.countries[player.id] = player
 
     # .model_copy() (not a bare reference) for every Pydantic-model-typed field:
     # TaxPolicyState/SpendingPlanState both have `validate_assignment=True`, which permits
@@ -2682,12 +2959,15 @@ def _apply_bloc_relationship_investments(ctx: PhaseContext) -> None:
 
     memory_rows: list[BlocRelationshipMemoryReport] = []
 
-    # The same read slot 1 made, from the same effectivity rule. Slot 2 may already have committed
-    # an appointment into `player.cabinet` by now, but it is stored at `turn + 1`, so
-    # `holder_competence_bps` still returns the OPENING holder's competence and the two slots agree
-    # by construction rather than by convention.
+    # The same read slot 1 made, from the same snapshot -- NOT from `player.cabinet`, which slot 2
+    # has already overwritten by now. For an appointment into a vacancy the two agree (the
+    # newcomer is stored at `turn + 1` and is not yet effective), but for a REPLACEMENT or a
+    # DISMISSAL they do not: those remove the outgoing holder outright, and reading `ctx.state`
+    # here would erase the contribution of somebody who served this entire turn.
+    cabinet_scratch = ctx.cabinet_scratch
+    assert cabinet_scratch is not None, "slot 1 always sets this"
     chief_of_staff_competence = holder_competence_bps(
-        cabinet=player.cabinet,
+        cabinet=cabinet_scratch.opening_cabinet,
         characters=ctx.state.world.characters,
         post=CabinetPost.CHIEF_OF_STAFF,
         resolving_turn=ctx.resolving_turn,
@@ -3611,6 +3891,20 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
     # `movement=None` alongside thirteen present reports is exactly what the completeness rule
     # rejects.
     ctx.movement_report = MovementReport(movements=ctx.movement_rows)
+
+    # (Characters slice) Wraps slot 1's already-validated rows -- never recomputed, and never
+    # re-read from current state, which by now carries the CLOSING cabinet. Built unconditionally,
+    # so a quiet turn gets two `UNCHANGED` rows rather than `None`: a report whose cardinality is
+    # fixed by `CabinetPost` is complete or it is broken, never empty.
+    cabinet_scratch = ctx.cabinet_scratch
+    assert cabinet_scratch is not None, "slot 1 always sets this"
+    ctx.governance_report = GovernanceReport(posts=cabinet_scratch.post_rows)
+
+    # The cabinet's own entries, appended with the other domain entries and BEFORE `turn_resolved`
+    # below. These are what put an appointment, a replacement or a dismissal onto the API's
+    # `drivers` and both CLI paths; a dismissal has no expenditure row, so without them it would
+    # be invisible everywhere outside the governance subtree.
+    ctx.report_entries.extend(cabinet_scratch.entries)
 
     # (Phase 3B1) Appended LAST, after every other phase and after this slot's own legislative
     # entries, so `turn_resolved` stays the final line of every report exactly as it was before

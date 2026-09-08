@@ -1351,7 +1351,7 @@ def check_invariants(state: GameState) -> list[InvariantViolation]:
     violations.extend(_check_strategic_map(state.world))
     violations.extend(_check_formation_locations(state.world))
     violations.extend(_check_deposit_locations(state.world))
-    violations.extend(_check_characters_and_cabinet(state.world))
+    violations.extend(_check_characters_and_cabinet(state.world, state.turn))
 
     return violations
 
@@ -1477,14 +1477,22 @@ def _check_deposit_locations(world: WorldState) -> list[InvariantViolation]:
     return violations
 
 
-def _check_characters_and_cabinet(world: WorldState) -> list[InvariantViolation]:
-    """Every character resolves, and every cabinet post is held by somebody who could hold it.
+def _check_characters_and_cabinet(world: WorldState, state_turn: int) -> list[InvariantViolation]:
+    """Every character resolves, and every cabinet post is held by somebody serving in it now.
 
-    Six codes, each naming a distinct way the layer can be incoherent. They are character-scoped
+    Seven codes, each naming a distinct way the layer can be incoherent. They are character-scoped
     rather than reusing the map's own `map_owner_*` codes, but the *rule* for whether an
     affiliation resolves is not duplicated: `_sovereign_ref_violation` above stays the single
     definition, and its detail text is carried into the message. One definition of validity, one
     message that names the right subject.
+
+    `state_turn` is needed for one of them: `cabinet_appointment_not_yet_effective` makes "a stored
+    state never holds a pending appointment" a structural fact rather than a coincidence.
+    `resolve_turn` sets `working.turn = resolving_turn + 1` BEFORE running phases and checks
+    invariants on both the opening state and the closing one, so an order resolved on turn `t` is
+    stored at exactly `t + 1` and is already effective by the time anything can observe it.
+    Equality on the turn of arrival, never greater. That is what lets every reader treat a stored
+    appointment as serving, with no "not yet" branch to get wrong.
 
     Iterates `sorted(...)` at every level, so emitted order depends on ids rather than on mapping
     insertion order.
@@ -1572,6 +1580,20 @@ def _check_characters_and_cabinet(world: WorldState) -> list[InvariantViolation]
                             f"country {country_id!r} seats {appointment.character_id!r} as "
                             f"{post.value}, but that character is not affiliated with it — a "
                             "government may only appoint its own people"
+                        ),
+                    )
+                )
+            if appointment.effective_from_turn > state_turn:
+                violations.append(
+                    InvariantViolation(
+                        code="cabinet_appointment_not_yet_effective",
+                        message=(
+                            f"country {country_id!r} seats {appointment.character_id!r} as "
+                            f"{post.value} from turn {appointment.effective_from_turn}, which is "
+                            f"after the state's own turn {state_turn} — no state a resolution "
+                            "produces can hold a pending appointment, because an order resolved "
+                            "on turn t is stored at t + 1 and the closing state is already at "
+                            "t + 1"
                         ),
                     )
                 )

@@ -66,6 +66,7 @@ def _turn_report(ctx: PhaseContext) -> TurnReport:
         constitutional_amendment=ctx.constitutional_amendment_report,
         foreign_affairs=ctx.foreign_affairs_report,
         movement=ctx.movement_report,
+        governance=ctx.governance_report,
     )
 
 

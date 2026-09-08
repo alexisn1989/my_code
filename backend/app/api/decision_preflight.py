@@ -34,6 +34,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.simulation.cabinet import (
+    CabinetRefusal,
+    appointment_refusal,
+    effective_holder_id,
+    is_domestic_to,
+)
 from app.simulation.constitution import (
     ConstitutionState,
     DecreeAuthority,
@@ -42,11 +48,12 @@ from app.simulation.constitution import (
 )
 from app.simulation.decisions import (
     BudgetDecision,
+    CabinetDecision,
     ConstitutionalAmendmentDecision,
     DecisionSet,
 )
 from app.simulation.legislature import ProposalRoute
-from app.simulation.state import GameState, PoliticalState
+from app.simulation.state import CabinetPost, GameState, PoliticalState
 
 
 @dataclass(frozen=True)
@@ -162,6 +169,110 @@ def _route_problem(
     return None
 
 
+def _cabinet_problem(state: GameState, decision: CabinetDecision) -> DecisionProblem | None:
+    """Mirrors `phases._resolve_cabinet_orders`' rejection order exactly, so a draft that previews
+    green cannot be refused at resolve -- and a draft that previews red names the same reason the
+    resolver would.
+
+    Per-order problems come first, in canonical post order, then the whole-RESULT duplicate check.
+    That ordering is what lets a same-turn transfer preview correctly: only the assembled result
+    knows whether anybody ends up holding two posts, so judging orders pairwise would refuse a
+    legal move.
+
+    Affordability is deliberately absent, matching this module's documented exclusion: it is a
+    property of the whole decision set's total, which `/preview` reports through `affordable` and
+    the capital terms beside it.
+    """
+    player = state.world.countries[state.world.player_country_id]
+    politics = player.politics
+    if politics is None:  # pragma: no cover - guarded by the caller
+        return None
+    cabinet = player.cabinet
+    if cabinet is None:
+        return DecisionProblem(
+            code="cabinet_not_modelled",
+            message="This country has no cabinet to staff.",
+        )
+
+    # Holder IDS only, not appointments: this function judges who ends up where, and the
+    # effectivity turn is the resolver's business. Keeping the value type simple is what makes the
+    # duplicate-occupancy check below a plain comparison.
+    closing: dict[CabinetPost, str] = {
+        post: appointment.character_id for post, appointment in cabinet.offices.items()
+    }
+    for order in decision.orders:
+        incumbent = effective_holder_id(cabinet=cabinet, post=order.post, resolving_turn=state.turn)
+        label = order.post.value.replace("_", " ")
+        if order.character_id is None:
+            if incumbent is None:
+                return DecisionProblem(
+                    code="cabinet_dismissal_of_a_vacant_post",
+                    message=f"The post of {label} is already vacant.",
+                )
+            del closing[order.post]
+            continue
+
+        character = state.world.characters.get(order.character_id)
+        if character is None:
+            return DecisionProblem(
+                code="cabinet_character_unknown",
+                message="There is no such person to appoint.",
+            )
+        if not is_domestic_to(character=character, country_id=player.id):
+            return DecisionProblem(
+                code="cabinet_character_not_domestic",
+                message=(
+                    f"{character.display_name} is not one of this country's own people, and a "
+                    "government may only appoint its own."
+                ),
+            )
+        if incumbent == order.character_id:
+            return DecisionProblem(
+                code="cabinet_post_already_held_by_this_character",
+                message=f"{character.display_name} already holds the post of {label}.",
+            )
+        refusal = appointment_refusal(
+            character=character, post=order.post, legitimacy_bps=politics.legitimacy_bps
+        )
+        if refusal is CabinetRefusal.LEADS_A_PARTY:
+            return DecisionProblem(
+                code=refusal.value,
+                message=(
+                    f"{character.display_name} leads a party, and a party leader does not take a "
+                    "cabinet post."
+                ),
+            )
+        if refusal is CabinetRefusal.LOW_LEGITIMACY:
+            return DecisionProblem(
+                code=refusal.value,
+                message=(
+                    f"{character.display_name} will not serve a government with this little "
+                    "legitimacy."
+                ),
+            )
+        if refusal is CabinetRefusal.THIS_POST:
+            return DecisionProblem(
+                code=refusal.value,
+                message=f"{character.display_name} considers {label} beneath them.",
+            )
+        closing[order.post] = order.character_id
+
+    seated: dict[str, str] = {}
+    for post in sorted(closing, key=lambda p: p.value):
+        holder_id = closing[post]
+        first = seated.get(holder_id)
+        if first is not None:
+            return DecisionProblem(
+                code="cabinet_character_would_hold_two_posts",
+                message=(
+                    "This would put one person in two cabinet posts at once. To move somebody "
+                    "between posts, order the post they are leaving in the same decision."
+                ),
+            )
+        seated[holder_id] = post.value
+    return None
+
+
 def first_decision_problem(state: GameState, decision_set: DecisionSet) -> DecisionProblem | None:
     """The first structural reason this decision set could not be resolved, if any.
 
@@ -178,7 +289,13 @@ def first_decision_problem(state: GameState, decision_set: DecisionSet) -> Decis
     budget = decision_set.budget_decision()
     amendment = decision_set.constitutional_amendment_decision()
     investment = decision_set.relationship_investment_decision()
+    cabinet = decision_set.cabinet_decision()
     proposal: BudgetDecision | ConstitutionalAmendmentDecision | None = budget or amendment
+
+    if cabinet is not None:
+        cabinet_problem = _cabinet_problem(state, cabinet)
+        if cabinet_problem is not None:
+            return cabinet_problem
 
     if amendment is not None:
         target_problem = _amendment_target_problem(politics, amendment)

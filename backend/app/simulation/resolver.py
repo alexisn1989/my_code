@@ -140,6 +140,7 @@ def resolve_turn(state: GameState, decisions: DecisionSet) -> TurnResolution:
         coup_unrest=ctx.coup_unrest_report,
         constitutional_amendment=ctx.constitutional_amendment_report,
         foreign_affairs=ctx.foreign_affairs_report,
+        governance=ctx.governance_report,
     )
 
     reconciliation_problems = reconcile_political_legislative_and_survival_report(

@@ -191,7 +191,7 @@ class TestTaxBaseDerivationReportSelfValidation:
 # --- R1: cross-report validation on TurnReport ------------------------------
 
 
-_FOURTEEN_REPORT_FIELDS = (
+_FIFTEEN_REPORT_FIELDS = (
     "labor_market",
     "resources",
     "production",
@@ -206,6 +206,7 @@ _FOURTEEN_REPORT_FIELDS = (
     "constitutional_amendment",
     "foreign_affairs",
     "movement",
+    "governance",
 )
 
 
@@ -281,32 +282,36 @@ class TestR1CrossReportValidation:
         "present_fields",
         [
             sorted(combo)
-            for r in range(1, 14)
-            for combo in itertools.combinations(_FOURTEEN_REPORT_FIELDS, r)
+            for r in range(1, 15)
+            for combo in itertools.combinations(_FIFTEEN_REPORT_FIELDS, r)
         ],
     )
-    def test_all_partial_combinations_of_fourteen_reports_are_rejected(
+    def test_all_partial_combinations_of_fifteen_reports_are_rejected(
         self, present_fields: list[str]
     ) -> None:
         """Phase 2B3 extended the completeness rule from three reports to four; Phase 2C1 extends
         it again to five; Phase 3A extends it again to six; Phase 3B1 extends it again to seven;
         Phase 3B2A extends it again to eight; Phase 3B2B extends it again to nine; Phase 3C
         extends it to twelve with `election`, `coup_unrest`, and `constitutional_amendment`; and
-        External Wars Gate W1 extends it to thirteen with `foreign_affairs`; and Military Movement
-        commit 5 completes the fourteen-report set with `movement`. Every proper nonempty subset
-        of {labor_market, resources, production, tax_base_derivation, finance, political,
-        legislative, political_capital, political_relationship, election, coup_unrest,
-        constitutional_amendment, foreign_affairs, movement} -- 2**14 - 2 = 16,382 of them --
-        must be rejected.
+        External Wars Gate W1 extends it to thirteen with `foreign_affairs`; Military Movement
+        commit 5 completes fourteen with `movement`; and the characters slice completes the
+        fifteen-report set with `governance`. Every proper nonempty subset of {labor_market,
+        resources, production, tax_base_derivation, finance, political, legislative,
+        political_capital, political_relationship, election, coup_unrest,
+        constitutional_amendment, foreign_affairs, movement, governance} -- 2**15 - 2 = 32,766 of
+        them -- must be rejected.
 
-        Exhaustive, still: the fourteenth field doubles the case count from 8,190, and the
-        completeness check is deliberately NOT weakened or sampled to avoid that. The ceiling is
-        now visible, though -- a fifteenth report is roughly four times this run again -- and the
-        successor question (property-based subset sampling with the exhaustive run kept nightly)
-        should be answered before report sixteen rather than at it.
+        Exhaustive, still: the fifteenth field doubles the case count from 16,382, and the
+        completeness check is deliberately NOT weakened or sampled to avoid that. Measured, the
+        doubling costs this module roughly 63 seconds more.
+
+        **The ceiling the fourteenth field made visible has not moved, and the answer is still
+        due before the sixteenth report, not at it.** A sixteenth would be 65,534 cases and
+        roughly four minutes in this one module. The successor -- property-based subset sampling
+        with the exhaustive run kept nightly -- is the thing to build before that lands.
         """
         data, _ = _valid_turn_report_dict()
-        for field in _FOURTEEN_REPORT_FIELDS:
+        for field in _FIFTEEN_REPORT_FIELDS:
             if field not in present_fields:
                 data[field] = None
         with pytest.raises(ValidationError, match="all present or all absent"):
@@ -360,18 +365,19 @@ class TestR1CrossReportValidation:
         with pytest.raises(ValidationError, match="does not match"):
             TurnReport.model_validate(data)
 
-    def test_all_fourteen_absent_is_valid(self) -> None:
+    def test_all_fifteen_absent_is_valid(self) -> None:
         """`_valid_turn_report_dict()` now comes from the real resolver, so `labor_market` and
         `resources` are also present by default (Phase 2B3 extended the completeness rule to
         four reports; Phase 2C1 extended it again to five; Phase 3A extended it again to six;
         Phase 3B1 extended it again to seven; Phase 3B2 completed nine; Phase 3C extends it to
         twelve; External Wars Gate W1 extends it to thirteen with `foreign_affairs`; and Military
-        Movement commit 5 completes fourteen with `movement`) — all must be nulled out here too,
+        Movement commit 5 completes fourteen with `movement`; and the characters slice completes
+        fifteen with `governance`) — all must be nulled out here too,
         or this becomes a partial (rejected) combination rather than the "all absent" case this
         test means to exercise.
         """
         data, _ = _valid_turn_report_dict()
-        for field in _FOURTEEN_REPORT_FIELDS:
+        for field in _FIFTEEN_REPORT_FIELDS:
             data[field] = None
         report = TurnReport.model_validate(data)
         assert report.labor_market is None

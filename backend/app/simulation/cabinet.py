@@ -1,4 +1,4 @@
-"""Who holds a cabinet post, and what their competence is worth this turn.
+"""Who holds a cabinet post, what their competence is worth, and what hiring them costs.
 
 Pure reads over already-parsed state: no I/O, no randomness, no mutation, no floating point. The
 module exists so that the two places which need the answer -- `phases.py`, which computes a turn,
@@ -14,10 +14,15 @@ threading a pre-flattened mapping through every caller would move the lookup rul
 
 from __future__ import annotations
 
+from enum import StrEnum
+
+from app.core.money import BPS_DENOMINATOR
+from app.core.politics import trunc_div_toward_zero
 from app.simulation.state import (
     CabinetPost,
     CabinetState,
     CharacterState,
+    PlayerCountryRef,
     StrictCharacterId,
 )
 
@@ -73,3 +78,118 @@ def holder_competence_bps(
         return 0
     holder = characters.get(holder_id)
     return 0 if holder is None else holder.competence
+
+
+CABINET_APPOINTMENT_BASE_COST = 120
+"""What any appointment costs before the appointee's own demands are counted.
+
+A GAME-BALANCE CHOICE, not a measurement, sized against the sinks that already exist: a decree is
+250, an amendment by decree 400, and a scenario opens with 300-500 capital. A cheap hire is
+affordable in the turn it is wanted; nobody can staff a government for free.
+"""
+
+CABINET_INDEPENDENCE_SURCHARGE_MAX = 180
+"""What a maximally independent appointee adds on top, linear in `independence`.
+
+This is the concession the mandate calls for: capable independent people generally demand more.
+It is `independence` that is read and never `competence`, so the price is what a person DEMANDS
+rather than what they are worth -- which is what keeps a cheap effective hire representable and
+stops cost from becoming a second competence score.
+"""
+
+MINIMUM_ACCEPTANCE_LOYALTY_BPS = 5_000
+"""Below this, a candidate's willingness depends on the government's legitimacy (see
+`appointment_refusal`). At or above it, they serve whoever asks."""
+
+GOVERNMENT_LEGITIMACY_FLOOR_BPS = 6_500
+"""The legitimacy a government must have before a low-loyalty candidate will attach themselves to
+it. Deliberately above every shipped scenario's authored 6,000 except `tiny_valid`'s 7,000, so both
+sides of the rule are reachable from content rather than only from constructed states."""
+
+FOREIGN_MINISTRY_AMBITION_CEILING_BPS = 8_000
+"""Above this, a candidate will not take the foreign ministry -- the junior chair is beneath them.
+They will still take the chief-of-staff post, which is what makes the refusal POST-specific rather
+than a second willingness score."""
+
+
+class CabinetRefusal(StrEnum):
+    """Why one named person will not take one named post, right now.
+
+    Values are the stable codes `app.api.decision_preflight` reports and slot 1 names in its
+    rejection message. They are per-`(post, candidate)` and INTRINSIC: each is a fact about this
+    person, this post and this state, true no matter what else the decision set contains. Failures
+    that depend on the whole decision -- one person ending up in two posts, or the total commitment
+    exceeding opening capital -- are deliberately NOT here, because a candidate cannot carry them
+    without asserting a refusal that is not true of the candidate.
+    """
+
+    LEADS_A_PARTY = "cabinet_character_leads_a_party"
+    LOW_LEGITIMACY = "cabinet_candidate_refuses_low_legitimacy"
+    THIS_POST = "cabinet_candidate_refuses_this_post"
+
+
+def appointment_cost_capital(*, independence_bps: int) -> int:
+    """The political capital `independence_bps` worth of demands costs to satisfy.
+
+    `120 + independence_bps * 180 // 10_000` in exact integers, so independence 0 / 5,000 / 10,000
+    costs exactly 120 / 210 / 300. `trunc_div_toward_zero` rather than `//` because that is the
+    house rule everywhere; the two agree here, since `independence_bps` is bounded `ge=0`.
+    """
+    return CABINET_APPOINTMENT_BASE_COST + trunc_div_toward_zero(
+        independence_bps * CABINET_INDEPENDENCE_SURCHARGE_MAX, BPS_DENOMINATOR
+    )
+
+
+def appointment_refusal(
+    *, character: CharacterState, post: CabinetPost, legitimacy_bps: int
+) -> CabinetRefusal | None:
+    """Why `character` would refuse `post` under a government at `legitimacy_bps`, or `None`.
+
+    Three rules, in a fixed order so the reported reason never depends on evaluation accident:
+
+    1. A party leader is not appointable at all. Their standing with the government is the
+       legislative bloc layer's business; letting one also hold a cabinet post would give the
+       engine two independent models of the same person's relationship to the player.
+    2. A candidate refuses outright when `loyalty < MINIMUM_ACCEPTANCE_LOYALTY_BPS` **and**
+       `legitimacy_bps < GOVERNMENT_LEGITIMACY_FLOOR_BPS`. A low-loyalty person will serve a
+       legitimate government out of careerism; they will not attach themselves to a weak one. Two
+       conditions with different subjects, so the same candidate accepts in one state and refuses
+       in another -- and since legitimacy moves during play, a refusal can become an acceptance
+       inside a single campaign.
+    3. Only then, the post-specific rule: too much ambition for the foreign ministry.
+
+    Rule 2 precedes rule 3 deliberately. Somebody who will not serve this government at all is not
+    usefully told that they dislike one particular chair.
+
+    **This is asked when an appointment is MADE. It never re-assesses a sitting holder.** A fall in
+    legitimacy does not empty the cabinet; resignation is a different mechanic and is not modelled
+    here. `decree_state` relies on exactly that: it seats a foreign minister whose loyalty is 3,400
+    at legitimacy 6,000, and he keeps serving although the same person would refuse a fresh
+    appointment there.
+    """
+    if character.party_id is not None:
+        return CabinetRefusal.LEADS_A_PARTY
+    if (
+        character.loyalty < MINIMUM_ACCEPTANCE_LOYALTY_BPS
+        and legitimacy_bps < GOVERNMENT_LEGITIMACY_FLOOR_BPS
+    ):
+        return CabinetRefusal.LOW_LEGITIMACY
+    if (
+        post is CabinetPost.FOREIGN_MINISTER
+        and character.ambition > FOREIGN_MINISTRY_AMBITION_CEILING_BPS
+    ):
+        return CabinetRefusal.THIS_POST
+    return None
+
+
+def is_domestic_to(*, character: CharacterState, country_id: str) -> bool:
+    """Whether `character` is this country's own person, and therefore appointable by it.
+
+    One definition, used by slot 1's rejection, the preflight's code, the API's candidate listing
+    and the `cabinet_holder_not_of_this_country` invariant -- so "a government may only appoint its
+    own people" cannot mean four subtly different things.
+    """
+    return (
+        isinstance(character.affiliation, PlayerCountryRef)
+        and character.affiliation.country_id == country_id
+    )

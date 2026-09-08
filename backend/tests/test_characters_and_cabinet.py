@@ -32,12 +32,15 @@ from pydantic import ValidationError
 
 from app.cli import main
 from app.content.scenarios import load_scenario_file
+from app.core.errors import TurnResolutionError
 from app.core.politics import BPS_DENOMINATOR
 from app.simulation.cabinet import effective_holder_id, holder_competence_bps
 from app.simulation.constitution import DecreeAuthority, Legislature
 from app.simulation.decisions import (
     BlocInvestment,
     BlocRelationshipInvestmentDecision,
+    CabinetDecision,
+    CabinetOrder,
     DecisionSet,
 )
 from app.simulation.history import advance_game, new_game, validate_history
@@ -106,18 +109,25 @@ def _load(scenario_file: str) -> GameState:
     return load_scenario_file(SCENARIO_DIR / scenario_file)
 
 
-def _invest(state: GameState, capital: int, target: tuple[str, str]) -> DecisionSet:
+def _invest(
+    state: GameState,
+    capital: int,
+    target: tuple[str, str],
+    *also: CabinetDecision,
+) -> DecisionSet:
+    """An investment, optionally alongside a cabinet decision, in canonical kind order.
+
+    `"bloc_relationship_investment"` sorts before `"cabinet"`, and `DecisionSet` REJECTS a
+    noncanonical tuple rather than sorting it, so the order here is part of building a legal set.
+    """
     party_id, bloc_id = target
+    investment = BlocRelationshipInvestmentDecision(
+        investments=(BlocInvestment(party_id=party_id, bloc_id=bloc_id, political_capital=capital),)
+    )
     return DecisionSet(
         expected_turn=state.turn,
         expected_state_version=state.state_version,
-        decisions=[
-            BlocRelationshipInvestmentDecision(
-                investments=(
-                    BlocInvestment(party_id=party_id, bloc_id=bloc_id, political_capital=capital),
-                )
-            )
-        ],
+        decisions=sorted([investment, *also], key=lambda decision: decision.kind),
     )
 
 
@@ -506,7 +516,7 @@ def test_a_seated_cabinet_over_a_real_roster_is_clean() -> None:
                 character_id="aide", effective_from_turn=0
             ),
             CabinetPost.FOREIGN_MINISTER: CabinetAppointment(
-                character_id="envoy", effective_from_turn=2
+                character_id="envoy", effective_from_turn=0
             ),
         }
     )
@@ -613,23 +623,84 @@ def test_a_serving_chief_of_staff_buys_a_strictly_larger_relationship_gain() -> 
     )
 
 
-def test_an_appointment_that_has_not_taken_effect_contributes_nothing_this_turn() -> None:
-    """`effective_from_turn > resolving turn` is indistinguishable from a vacancy, which is what
-    stops an appointment made this turn from paying for the very turn that made it."""
+def test_an_appointment_made_this_turn_does_not_pay_for_the_turn_that_made_it() -> None:
+    """The effectivity rule, proved through the REAL decision path.
+
+    Until appointments existed this was asserted against a hand-built state carrying
+    `effective_from_turn > state.turn` -- a state `cabinet_appointment_not_yet_effective` now
+    forbids outright, precisely because no resolution can produce one. The property is unchanged
+    and the proof is strictly stronger: submit a real appointment, and this turn's relationship
+    investment is still scored against the OPENING holder.
+    """
     state = _load("tiny_valid.yaml")
-    not_yet = CabinetState(
-        offices={
-            CabinetPost.CHIEF_OF_STAFF: CabinetAppointment(
-                character_id="ilse_marovec", effective_from_turn=state.turn + 1
-            )
-        }
+    hire = CabinetDecision(
+        orders=(
+            CabinetOrder(post=CabinetPost.CHIEF_OF_STAFF, character_id="ilse_marovec"),
+            # Ilse holds the foreign ministry, so the transfer must vacate it in the same
+            # decision; otherwise she would end up seated twice. Vacating it by DISMISSAL keeps
+            # this turn to one paid appointment (276) plus the 100 investment, inside the
+            # scenario's 500 opening capital.
+            CabinetOrder(post=CabinetPost.FOREIGN_MINISTER),
+        )
     )
-    row = _memory_row(_resolve_investment(_with_cabinet(state, not_yet)).report, _TINY_TARGET)
-    vacant = _memory_row(
-        _resolve_investment(_with_cabinet(state, CabinetState(offices={}))).report, _TINY_TARGET
+    resolution = resolve_turn(state, _invest(state, 100, _TINY_TARGET, hire))
+    row = _memory_row(resolution.report, _TINY_TARGET)
+
+    # `hal_verrin`, the OPENING chief of staff, not `ilse_marovec` (8,600) who was hired today.
+    assert row.chief_of_staff_competence_bps == 3_200
+    assert (
+        row.investment_component_bps
+        == _memory_row(_resolve_investment(state).report, _TINY_TARGET).investment_component_bps
     )
-    assert row.chief_of_staff_competence_bps == 0
-    assert row.investment_component_bps == vacant.investment_component_bps
+
+    seated = resolution.state.world.countries["arken"].cabinet
+    assert seated is not None
+    assert seated.offices[CabinetPost.CHIEF_OF_STAFF].character_id == "ilse_marovec"
+    assert seated.offices[CabinetPost.CHIEF_OF_STAFF].effective_from_turn == resolution.state.turn
+
+
+def test_a_replacement_does_not_erase_the_outgoing_holders_turn() -> None:
+    """The regression test for the defect this commit fixes.
+
+    Slot 2 commits the closing cabinet mid-resolution, so a slot 11 that read `ctx.state` would see
+    the outgoing holder GONE -- not "not yet effective", which is what an appointment into a
+    vacancy looks like, but absent -- and would score this turn's investment at competence 0. The
+    outgoing holder served the whole turn; the incoming one has not started. Both a replacement and
+    a dismissal must therefore leave this turn's figures exactly as a quiet turn would.
+    """
+    state = _load("tiny_valid.yaml")
+    quiet = _memory_row(_resolve_investment(state).report, _TINY_TARGET)
+    replaced = _memory_row(
+        resolve_turn(
+            state,
+            _invest(
+                state,
+                100,
+                _TINY_TARGET,
+                CabinetDecision(
+                    orders=(
+                        CabinetOrder(post=CabinetPost.CHIEF_OF_STAFF, character_id="wren_hollis"),
+                    )
+                ),
+            ),
+        ).report,
+        _TINY_TARGET,
+    )
+    dismissed = _memory_row(
+        resolve_turn(
+            state,
+            _invest(
+                state,
+                100,
+                _TINY_TARGET,
+                CabinetDecision(orders=(CabinetOrder(post=CabinetPost.CHIEF_OF_STAFF),)),
+            ),
+        ).report,
+        _TINY_TARGET,
+    )
+    for name, row in (("replaced", replaced), ("dismissed", dismissed)):
+        assert row.chief_of_staff_competence_bps == 3_200, name
+        assert row.investment_component_bps == quiet.investment_component_bps, name
 
 
 def test_a_better_chief_of_staff_is_worth_more_than_a_worse_one() -> None:
@@ -750,15 +821,18 @@ def test_reconciliation_scores_a_row_against_the_opening_cabinet_and_not_the_clo
             }
         ),
     )
-    assert (
-        reconcile_political_legislative_and_survival_report(
-            opening_state=state,
-            closing_state=seated_afterwards,
-            report=resolution.report,
-            decisions=None,
-        )
-        == []
+    problems = reconcile_political_legislative_and_survival_report(
+        opening_state=state,
+        closing_state=seated_afterwards,
+        report=resolution.report,
+        decisions=None,
     )
+    # Group 56 is satisfied -- the relationship rows were scored against the OPENING cabinet, which
+    # is what this test is about, and a cabinet seated afterwards does not retroactively change
+    # them. Group 57 legitimately objects, because the governance subtree really does disagree with
+    # this hand-built closing state; that is a different claim and is proved on its own elsewhere.
+    assert not [problem for problem in problems if "group 56" in problem]
+    assert all("group 57" in problem for problem in problems)
 
 
 # --- and it all survives being written down and read back ----------------------------------------
@@ -799,7 +873,7 @@ def test_inspect_cabinet_names_the_holder_and_shows_what_the_post_is_worth(
     layer is not: the traits print because they are what the appointment is FOR."""
     out = _inspect_cabinet(tmp_path, capsys, "tiny_valid.yaml", "--cabinet")
     assert "cabinet:" in out
-    assert "chief_of_staff: Hal Verrin (hal_verrin) -- serving" in out
+    assert "chief_of_staff: Hal Verrin (hal_verrin) -- in post since turn 0" in out
     assert "competence=32%" in out
     assert "loyalty=88%" in out
     assert "personal_trust=65%" in out
@@ -817,7 +891,7 @@ def test_inspect_cabinet_prints_a_vacancy_rather_than_omitting_it(
     decision."""
     decree = _inspect_cabinet(tmp_path, capsys, "decree_state.yaml", "--cabinet")
     assert "chief_of_staff: vacant" in decree
-    assert "foreign_minister: Raul Kesten (raul_kesten) -- serving" in decree
+    assert "foreign_minister: Raul Kesten (raul_kesten) -- in post since turn 0" in decree
     deficit = _inspect_cabinet(tmp_path, capsys, "deficit_demo.yaml", "--cabinet")
     assert "chief_of_staff: vacant" in deficit
     assert "foreign_minister: vacant" in deficit
@@ -827,11 +901,53 @@ def test_inspect_cabinet_shows_both_holders_when_both_posts_are_filled(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     out = _inspect_cabinet(tmp_path, capsys, "tiny_valid.yaml", "--cabinet")
-    assert "chief_of_staff: Hal Verrin (hal_verrin) -- serving" in out
-    assert "foreign_minister: Ilse Marovec (ilse_marovec) -- serving" in out
+    assert "chief_of_staff: Hal Verrin (hal_verrin) -- in post since turn 0" in out
+    assert "foreign_minister: Ilse Marovec (ilse_marovec) -- in post since turn 0" in out
 
 
 def test_the_cabinet_section_is_opt_in(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Matching every other `inspect` detail flag: a plain `inspect` stays the short summary it
     has always been."""
     assert "cabinet:" not in _inspect_cabinet(tmp_path, capsys, "tiny_valid.yaml")
+
+
+def test_the_affordability_guard_counts_appointments_with_every_other_sink() -> None:
+    """One guard, four terms, against OPENING capital -- and its message names all four.
+
+    The boundary is authored, not contrived: moving `ilse_marovec` (276) to chief of staff while
+    putting `hal_verrin` (147) in the ministry she leaves costs 423, which `tiny_valid` can afford
+    on its own; add a 100-capital investment and the total is 523 against an opening 500, so the
+    whole set is refused. Nothing is partially applied -- the closing state is never reached.
+    """
+    state = _load("tiny_valid.yaml")
+    transfer = CabinetDecision(
+        orders=(
+            CabinetOrder(post=CabinetPost.CHIEF_OF_STAFF, character_id="ilse_marovec"),
+            CabinetOrder(post=CabinetPost.FOREIGN_MINISTER, character_id="hal_verrin"),
+        )
+    )
+    affordable = resolve_turn(
+        state,
+        DecisionSet(
+            expected_turn=state.turn,
+            expected_state_version=state.state_version,
+            decisions=[transfer],
+        ),
+    )
+    seated = affordable.state.world.countries["arken"].cabinet
+    assert seated is not None
+    assert seated.offices[CabinetPost.CHIEF_OF_STAFF].character_id == "ilse_marovec"
+    assert seated.offices[CabinetPost.FOREIGN_MINISTER].character_id == "hal_verrin"
+    assert sum(post.capital_committed for post in affordable.report.governance.posts) == 423
+
+    with pytest.raises(TurnResolutionError) as exc_info:
+        resolve_turn(state, _invest(state, 100, _TINY_TARGET, transfer))
+    message = str(exc_info.value)
+    for term in (
+        "route commitment",
+        "relationship investment",
+        "constitutional amendment",
+        "cabinet appointment 423",
+    ):
+        assert term in message, term
+    assert "523" in message and "500" in message

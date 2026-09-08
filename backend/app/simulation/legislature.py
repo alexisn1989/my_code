@@ -135,9 +135,24 @@ class CapitalExpenditureCategory(StrEnum):
     Constitutional amendments are the one dual-shape exception: legislative influence rows target
     blocs, while the flat decree cost is untargeted; the amendment report cross-validates which
     shape the selected route permits.
+
+    `CABINET_APPOINTMENT` (characters slice) is the "untargeted national" case this docstring
+    anticipated, and it takes `DECREE`'s shape: `party_id` and `bloc_id` both `None`. Naming the
+    CHARACTER as a typed target would need POL-4's tagged-target union, a refactor of an existing
+    report that this slice does not authorize -- so POL-4 stays open, with the reasoning recorded
+    rather than silently closed.
+
+    **At most one such row per turn, carrying the summed cost.** This category is untargeted, so
+    two rows would share the sort key `(category, "", "")` exactly and their canonical order would
+    fall back to insertion order instead of being a property of the key -- which is the one thing
+    `sorted(...)` here is for. Aggregating keeps order a function of the key, matching `DECREE`,
+    which is likewise a single untargeted row. A turn whose only cabinet change is a dismissal
+    costs nothing and therefore emits NO row at all: `StrictPoliticalCapitalCommitment` is `ge=1`,
+    and the change is reported in the `governance` subtree and as a report entry instead.
     """
 
     BLOC_RELATIONSHIP_INVESTMENT = "bloc_relationship_investment"
+    CABINET_APPOINTMENT = "cabinet_appointment"
     CONSTITUTIONAL_AMENDMENT = "constitutional_amendment"
     DECREE = "decree"
     LEGISLATIVE_INFLUENCE = "legislative_influence"

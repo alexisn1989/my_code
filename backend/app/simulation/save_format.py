@@ -132,8 +132,14 @@ same content version, exactly as they already differ on every other deposit. Bum
 `cabinet:` on its player country. That is a genuine schema addition with no principled empty shape
 to omit-as-absent -- `player_cabinet_required` makes the cabinet mandatory for the player, so no
 0.16.0-shaped scenario can satisfy 0.17.0. As always this is a claim about SHAPE and not about
-values: the three scenarios author three different rosters and three different cabinets (a weak
-incumbent, both posts vacant, and two strong incumbents) at the same content version."""
+values: the three scenarios author three different rosters and three different cabinets (two
+seated posts, one, and none) at the same content version.
+
+Deliberately NOT bumped for cabinet appointments (ruleset `"0.18.0" -> "0.19.0"`): appointing,
+replacing and dismissing are player decisions resolved by the engine, and no scenario-authored
+field changes shape. A 0.17.0 scenario is still exactly the shape this build reads. That split is
+the point of having two version axes at all -- a rules change that content did not cause must not
+force every scenario to be re-authored."""
 
 _REQUIRED_ENVELOPE_KEYS = {
     "save_format_version",

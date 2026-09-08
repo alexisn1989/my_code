@@ -172,11 +172,13 @@ from app.simulation.relationships import (
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
     RENEWABLE_RESOURCES,
+    CabinetPost,
     FormationBranch,
     RemovalReason,
     ResourceCategory,
     SectorCategory,
     SpendingPlanState,
+    StrictCharacterId,
     StrictFormationId,
     TaxBaseCoefficients,
     TaxBaseState,
@@ -2367,10 +2369,18 @@ class CapitalExpenditureReport(BaseModel):
     def _target_identity_matches_category_shape(self) -> CapitalExpenditureReport:
         """A budget decree is untargeted; ordinary categories target one bloc. Constitutional
         amendments permit either shape because legislative influence targets blocs while the flat
-        amendment-decree cost does not. The cross-row half of the decree rule is
-        `PoliticalCapitalReport._at_most_one_decree_expenditure_row`'s job; a single row cannot
-        see its siblings."""
-        is_decree = self.category is CapitalExpenditureCategory.DECREE
+        amendment-decree cost does not. The cross-row half of the untargeted rule is
+        `PoliticalCapitalReport._at_most_one_untargeted_row_per_category`'s job; a single row
+        cannot see its siblings.
+
+        (Characters slice) `CABINET_APPOINTMENT` joins `DECREE` as untargeted. It is the
+        "untargeted national expenditure" case this row was always documented as able to take, and
+        naming the CHARACTER instead would need POL-4's tagged-target union."""
+        untargeted = {
+            CapitalExpenditureCategory.DECREE,
+            CapitalExpenditureCategory.CABINET_APPOINTMENT,
+        }
+        is_untargeted = self.category in untargeted
         is_amendment = self.category is CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT
         has_either_target = self.party_id is not None or self.bloc_id is not None
         has_both_targets = self.party_id is not None and self.bloc_id is not None
@@ -2381,12 +2391,12 @@ class CapitalExpenditureReport(BaseModel):
                     f"or neither, got ({self.party_id!r}, {self.bloc_id!r})"
                 )
             return self
-        if is_decree and has_either_target:
+        if is_untargeted and has_either_target:
             raise ValueError(
-                f"category=DECREE must carry no party_id/bloc_id target, got "
+                f"category={self.category.value!r} must carry no party_id/bloc_id target, got "
                 f"({self.party_id!r}, {self.bloc_id!r})"
             )
-        if not is_decree and (self.party_id is None or self.bloc_id is None):
+        if not is_untargeted and (self.party_id is None or self.bloc_id is None):
             raise ValueError(
                 f"category={self.category.value!r} must carry both party_id and bloc_id, got "
                 f"({self.party_id!r}, {self.bloc_id!r})"
@@ -2751,12 +2761,23 @@ class PoliticalCapitalReport(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _at_most_one_decree_expenditure_row(self) -> PoliticalCapitalReport:
-        decree_rows = sum(
-            1 for row in self.expenditures if row.category is CapitalExpenditureCategory.DECREE
-        )
-        if decree_rows > 1:
-            raise ValueError(f"at most one DECREE expenditure row is valid, got {decree_rows}")
+    def _at_most_one_untargeted_row_per_category(self) -> PoliticalCapitalReport:
+        """The sibling half of `CapitalExpenditureReport._target_identity_matches_category_shape`.
+
+        An untargeted category sorts on `(category, "", "")`, so two rows of one would tie exactly
+        and their canonical order would fall back to insertion order rather than being a property
+        of the key. One row per untargeted category keeps the ledger's ordering a function of its
+        own sort key -- which is why a turn's cabinet appointments are AGGREGATED into a single
+        row rather than listed per post."""
+        for category in (
+            CapitalExpenditureCategory.DECREE,
+            CapitalExpenditureCategory.CABINET_APPOINTMENT,
+        ):
+            rows = sum(1 for row in self.expenditures if row.category is category)
+            if rows > 1:
+                raise ValueError(
+                    f"at most one {category.name} expenditure row is valid, got {rows}"
+                )
         return self
 
     @model_validator(mode="after")
@@ -4035,6 +4056,176 @@ class MovementReport(BaseModel):
         return self
 
 
+class CabinetChange(StrEnum):
+    """What happened to one cabinet post over one turn.
+
+    DERIVED at resolution from the opening and closing holders, never authored by a client: a
+    decision that mislabelled its own intent could not make the report agree with it. Values are
+    alphabetical and declaration order is canonical order, the rule every enum here follows, and
+    they serialize into `report_json` and are covered by the entry hash -- renaming one is a
+    save-format change, not a refactor.
+    """
+
+    APPOINTED = "appointed"
+    DISMISSED = "dismissed"
+    REPLACED = "replaced"
+    UNCHANGED = "unchanged"
+
+
+class CabinetPostReport(BaseModel):
+    """One post's whole turn: who held it, who holds it now, what the change was and what it cost.
+
+    Re-derives every claim from its OWN stored fields, the discipline `BlocRelationshipMemoryReport`
+    follows: `change` must agree with the holder pair, the cost must agree with the change, and the
+    digest must be present exactly when something happened. Reconciliation (group 57) then proves
+    those same fields against `opening_state`, `closing_state` and the submitted decision -- so a
+    row that is internally perfect can still be caught lying about the world.
+
+    **Display names are stored, not looked up.** `opening_holder_display_name` and
+    `closing_holder_display_name` are snapshotted here for the same reason `FormationMovementRow`
+    snapshots both theater names: a turn from ten turns ago must render the names it was resolved
+    under, and a character later renamed -- or removed from the roster entirely -- must not be able
+    to rewrite what a past turn said.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    post: CabinetPost
+    opening_holder_id: StrictCharacterId | None
+    opening_holder_display_name: StrictDisplayName | None
+    opening_holder_competence_bps: StrictCharacterTraitBps
+    """The competence that was actually contributing this turn, or `0` for a post that opened
+    vacant -- `simulation.cabinet.holder_competence_bps`' own answer, so the office bonuses and
+    this report cannot disagree about who was serving."""
+    closing_holder_id: StrictCharacterId | None
+    closing_holder_display_name: StrictDisplayName | None
+    closing_effective_from_turn: int | None = Field(default=None, strict=True, ge=0)
+    change: CabinetChange
+    capital_committed: StrictPoliticalCapital
+    """`0` for `UNCHANGED` and `DISMISSED`; the appointee's `appointment_cost_capital` otherwise.
+    `StrictPoliticalCapital` is `ge=0`, unlike the ledger row's `ge=1`, which is exactly why a
+    dismissal can be reported here and correctly produces no ledger row at all."""
+    decision_digest: str | None = None
+    """The `cabinet_decision_digest` of the decision that produced this change, or `None` when
+    nothing changed. Only syntax is checked here; group 57 proves it against the real submitted
+    `DecisionSet`."""
+
+    @model_validator(mode="after")
+    def _change_matches_the_holder_pair(self) -> CabinetPostReport:
+        """The truth table, enforced rather than trusted. `change` is a FUNCTION of the two holder
+        ids, so a row cannot mislabel a replacement as an appointment to dodge a cost."""
+        opening, closing = self.opening_holder_id, self.closing_holder_id
+        if opening == closing:
+            expected = CabinetChange.UNCHANGED
+        elif opening is None:
+            expected = CabinetChange.APPOINTED
+        elif closing is None:
+            expected = CabinetChange.DISMISSED
+        else:
+            expected = CabinetChange.REPLACED
+        if self.change is not expected:
+            raise ValueError(
+                f"change={self.change.value!r} does not follow from opening_holder_id="
+                f"{opening!r} and closing_holder_id={closing!r} (expected {expected.value!r})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _cost_is_paid_exactly_when_somebody_was_hired(self) -> CabinetPostReport:
+        """Hiring costs capital; leaving does not. A positive cost on a dismissal would be capital
+        the player never agreed to spend, and a free appointment would be a hire out of nothing."""
+        paid = self.change in (CabinetChange.APPOINTED, CabinetChange.REPLACED)
+        if paid and self.capital_committed <= 0:
+            raise ValueError(
+                f"change={self.change.value!r} must commit positive capital, got "
+                f"{self.capital_committed}"
+            )
+        if not paid and self.capital_committed != 0:
+            raise ValueError(
+                f"change={self.change.value!r} commits no capital, got {self.capital_committed}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _digest_is_present_exactly_when_something_changed(self) -> CabinetPostReport:
+        if (self.change is not CabinetChange.UNCHANGED) != (self.decision_digest is not None):
+            raise ValueError(
+                f"change={self.change.value!r} and decision_digest="
+                f"{self.decision_digest!r} disagree about whether this post changed"
+            )
+        if self.decision_digest is not None and not _HEX_DIGEST_PATTERN.fullmatch(
+            self.decision_digest
+        ):
+            raise ValueError(
+                f"decision_digest={self.decision_digest!r} is not a lowercase 64-character "
+                "hexadecimal digest"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _a_holder_has_a_name_a_start_turn_and_nothing_else_does(self) -> CabinetPostReport:
+        """Names and the effectivity turn accompany a holder and are absent without one. A vacant
+        post carrying a display name would be a person the state does not have."""
+        if (self.opening_holder_id is None) != (self.opening_holder_display_name is None):
+            raise ValueError(
+                f"opening_holder_id={self.opening_holder_id!r} and opening_holder_display_name="
+                f"{self.opening_holder_display_name!r} must both be set or both be absent"
+            )
+        if (self.closing_holder_id is None) != (self.closing_holder_display_name is None):
+            raise ValueError(
+                f"closing_holder_id={self.closing_holder_id!r} and closing_holder_display_name="
+                f"{self.closing_holder_display_name!r} must both be set or both be absent"
+            )
+        if (self.closing_holder_id is None) != (self.closing_effective_from_turn is None):
+            raise ValueError(
+                f"closing_holder_id={self.closing_holder_id!r} and closing_effective_from_turn="
+                f"{self.closing_effective_from_turn!r} must both be set or both be absent"
+            )
+        if self.opening_holder_id is None and self.opening_holder_competence_bps != 0:
+            raise ValueError(
+                "a post that opened vacant contributed no competence, got "
+                f"{self.opening_holder_competence_bps}"
+            )
+        return self
+
+
+class GovernanceReport(BaseModel):
+    """The 15th domain report: this turn's cabinet, post by post.
+
+    Carries EVERY post every turn, including the unchanged and the vacant ones -- the
+    present-and-empty rule `MovementReport` documents, applied to a collection whose cardinality is
+    fixed by `CabinetPost` rather than by what happened. A quiet turn reports two `UNCHANGED` rows,
+    which is a complete report and not an empty one.
+
+    One subtree for the whole character layer, deliberately. `TurnReport`'s completeness rule is
+    paired with an exhaustive subset test, so each new TOP-LEVEL report doubles that test's case
+    count; the later commits of this slice add their content inside this report rather than beside
+    it.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    posts: tuple[CabinetPostReport, ...]
+
+    @model_validator(mode="after")
+    def _every_post_appears_exactly_once_in_canonical_order(self) -> GovernanceReport:
+        """Canonical by `post.value`, rejected rather than sorted (this report is hash-covered),
+        and COMPLETE: a missing post would make "nothing happened to it" indistinguishable from
+        "the report forgot about it"."""
+        values = [row.post.value for row in self.posts]
+        if len(set(values)) != len(values):
+            raise ValueError(f"duplicate post(s) in governance report: {values!r}")
+        if values != sorted(values):
+            raise ValueError(f"governance posts are not in canonical post order: {values!r}")
+        expected = sorted(post.value for post in CabinetPost)
+        if values != expected:
+            raise ValueError(
+                f"governance report must carry every cabinet post exactly once; got {values!r}, "
+                f"expected {expected!r}"
+            )
+        return self
+
+
 class TurnReport(BaseModel):
     """The full report produced by one `resolve_turn` call."""
 
@@ -4111,17 +4302,29 @@ class TurnReport(BaseModel):
     before resolution can even begin). Built for every resolved turn, including turns with no
     movement at all — an empty `movements` tuple is still a valid, complete report. Slot 8, before
     the W1 progression; assembled at slot 15; see `phases.py`."""
+    governance: GovernanceReport | None = None
+    """`None` only when the cabinet substep did not run (never for a successful characters-slice
+    turn on a valid player state — `simulation.invariants` requires a player cabinet before
+    resolution can even begin). Built for every resolved turn, including turns with no cabinet
+    change at all — two `UNCHANGED` rows are still a valid, complete report, and its cardinality is
+    fixed by `CabinetPost` rather than by what happened. Validated in slot 1 and assembled at slot
+    15 from those same rows; see `phases.py`."""
 
     @model_validator(mode="after")
-    def _all_fourteen_domain_reports_are_all_present_or_all_absent(
+    def _all_fifteen_domain_reports_are_all_present_or_all_absent(
         self,
     ) -> TurnReport:
         """R1 (extended, Phase 2B3; extended again, Phase 2C1, Phase 3A, Phase 3B1, Phase 3B2A,
-        Phase 3B2B, Phase 3C Gate 3C1, Gate 3C2, Gate 3C3, External Wars Gate W1, and Military
-        Movement commit 5): a partial combination of these fourteen
-        player-economy/politics/foreign-affairs/military reports would represent a broken audit
-        chain (e.g. production ran but derivation silently didn't) — reject it outright rather
-        than accepting whatever subset happens to be present.
+        Phase 3B2B, Phase 3C Gate 3C1, Gate 3C2, Gate 3C3, External Wars Gate W1, Military
+        Movement commit 5, and the characters slice): a partial combination of these fifteen
+        player-economy/politics/foreign-affairs/military/governance reports would represent a
+        broken audit chain (e.g. production ran but derivation silently didn't) — reject it
+        outright rather than accepting whatever subset happens to be present.
+
+        The fifteenth field doubles the exhaustive subset test in `tests/test_tax_base_report.py`
+        from 16,382 cases to 32,766. That is paid deliberately rather than sampled around: the
+        successor question that test poses -- property-based sampling with the exhaustive run kept
+        nightly -- is still the right one to answer before a SIXTEENTH report, not at this one.
         """
         present = (
             self.labor_market is not None,
@@ -4138,16 +4341,18 @@ class TurnReport(BaseModel):
             self.constitutional_amendment is not None,
             self.foreign_affairs is not None,
             self.movement is not None,
+            self.governance is not None,
         )
         if any(present) and not all(present):
             raise ValueError(
                 "labor_market, resources, production, tax_base_derivation, finance, political, "
                 "legislative, political_capital, political_relationship, election, coup_unrest, "
-                "constitutional_amendment, foreign_affairs, and movement must be all present or "
-                "all absent on a TurnReport — got "
+                "constitutional_amendment, foreign_affairs, movement, and governance must be all "
+                "present or all absent on a TurnReport — got "
                 f"present={present} (labor_market, resources, production, tax_base_derivation, "
                 "finance, political, legislative, political_capital, political_relationship, "
-                "election, coup_unrest, constitutional_amendment, foreign_affairs, movement)"
+                "election, coup_unrest, constitutional_amendment, foreign_affairs, movement, "
+                "governance)"
             )
         return self
 
@@ -4306,6 +4511,41 @@ class TurnReport(BaseModel):
                 "political_relationship.blocs' nonzero investment_capital does not correspond "
                 f"exactly to the BLOC_RELATIONSHIP_INVESTMENT expenditure rows: relationship="
                 f"{sorted(relationship_keys)!r}, expenditures={sorted(investment_keys)!r}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _cabinet_appointments_match_the_capital_ledger(self) -> TurnReport:
+        """(Characters slice) The `governance` subtree and the ledger agree about what hiring cost.
+
+        Genuinely cross-report, like the investment validator above, so it lives here rather than
+        on either report: `PoliticalCapitalReport` and `GovernanceReport` cannot see each other.
+
+        The identity is an AGGREGATE one, because `CABINET_APPOINTMENT` is an untargeted category
+        and therefore emits at most one row per turn (see `CapitalExpenditureCategory`). Both
+        directions matter: a ledger row with no appointment behind it is capital charged for
+        nothing, and an appointment with no ledger row is a hire that never reached the affordability
+        guard. A dismissal-only turn correctly has neither -- its rows commit `0`, and `ge=1` means
+        no row exists to match.
+        """
+        if self.political_capital is None or self.governance is None:
+            return self
+        rows = [
+            row
+            for row in self.political_capital.expenditures
+            if row.category is CapitalExpenditureCategory.CABINET_APPOINTMENT
+        ]
+        if len(rows) > 1:
+            raise ValueError(
+                f"at most one CABINET_APPOINTMENT expenditure row may exist per turn, got "
+                f"{len(rows)} — this category is untargeted, so two rows would share a sort key"
+            )
+        ledger_total = rows[0].political_capital if rows else 0
+        governance_total = sum(post.capital_committed for post in self.governance.posts)
+        if ledger_total != governance_total:
+            raise ValueError(
+                f"governance.posts committed {governance_total} of political capital but the "
+                f"CABINET_APPOINTMENT expenditure rows carry {ledger_total}"
             )
         return self
 

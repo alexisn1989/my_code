@@ -79,7 +79,11 @@ from app.core.politics import (
 )
 from app.core.rng import derive_rng
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
-from app.simulation.cabinet import holder_competence_bps
+from app.simulation.cabinet import (
+    appointment_cost_capital,
+    effective_holder_id,
+    holder_competence_bps,
+)
 from app.simulation.constitution import (
     DecreeAuthority,
     ExecutiveSelection,
@@ -93,6 +97,7 @@ from app.simulation.decisions import (
     DecisionSet,
     bloc_relationship_investment_digest,
     budget_decision_digest,
+    cabinet_decision_digest,
     constitutional_amendment_decision_digest,
 )
 from app.simulation.foreign_conflict import (
@@ -157,7 +162,13 @@ from app.simulation.legitimacy import (
     aggregate_security_contribution_bps,
     foreign_conflict_security_anxiety_bps,
 )
-from app.simulation.report import ConstitutionalAmendmentReport, MovementReport, TurnReport
+from app.simulation.report import (
+    CabinetChange,
+    ConstitutionalAmendmentReport,
+    GovernanceReport,
+    MovementReport,
+    TurnReport,
+)
 from app.simulation.state import (
     CabinetPost,
     FormationBranch,
@@ -1280,6 +1291,20 @@ def reconcile_political_legislative_and_survival_report(
                     "does not match the competence of the chief of staff serving in opening_state "
                     f"({expected_competence}) (group 56)"
                 )
+
+    # Group 57 (characters slice): the cabinet's three records of one turn agree -- the submitted
+    # `DecisionSet`, the closing state, and the report (both its `governance` subtree and its
+    # `government` entries). Group 54 makes the identical claim for movement, in the same shape and
+    # for the same reason: a change that the report, the API projection and the CLI could each
+    # describe differently is a change nobody can audit.
+    problems.extend(
+        _reconcile_cabinet(
+            opening_state=opening_state,
+            closing_state=closing_state,
+            report=report,
+            decisions=decisions,
+        )
+    )
 
     # Group 45 (plan §8, Gate 3C1's slice of the coup/unrest backstop): terminal-outcome
     # non-retroactivity. `opening_state.politics.terminal_outcome` must be `None` on every turn
@@ -3509,6 +3534,216 @@ def _player_deposits(state: GameState) -> dict[str, str] | None:
     return {
         deposit.category.value: deposit.theater_id for deposit in country.economy.resource_deposits
     }
+
+
+def _reconcile_cabinet(
+    *,
+    opening_state: GameState,
+    closing_state: GameState,
+    report: TurnReport,
+    decisions: DecisionSet | None,
+) -> list[str]:
+    """Group 57 -- the cabinet's records of one turn agree, and none of them can be forged alone.
+
+    `CabinetPostReport` already re-derives its own arithmetic from its own stored fields, so a row
+    can be internally perfect and still lie about the world: raise a competence, raise the cost to
+    match, and the row validates. Only a comparison against the STATE catches that, which is what
+    this group is.
+
+    Six checks, each closing a different channel:
+
+    1. **Opening holder and competence, re-derived from `opening_state`** through
+       `simulation.cabinet` -- never read off the report. The competence here is the same number
+       the chief-of-staff bonus used, so a forged one fails both this group and group 56.
+    2. **Closing holder and effectivity, against `closing_state`'s real cabinet**, with every newly
+       seated holder at exactly `opening_state.turn + 1`. An appointment that claimed to be
+       effective sooner would be one that paid for the turn that hired it.
+    3. **`change` re-derived from the holder pair**, so a replacement cannot be filed as an
+       appointment, or a dismissal as unchanged.
+    4. **Cost re-derived from the OPENING character registry** via `appointment_cost_capital`, and
+       **`decision_digest` recomputed from the real submitted decision**. Together these are what
+       make a forged price fail: the digest ties the row to one exact decision, and the cost ties
+       it to that appointee's authored independence.
+    5. **Report ENTRIES correspond one-for-one with the changed rows**, params included, display
+       names included. This is what stops the API's `drivers` and the CLI -- which read entries,
+       not the subtree -- from describing a cabinet change differently from the report that
+       authorised it.
+    6. **No decision means no change.** A turn that submitted no `CabinetDecision` must report
+       every post `unchanged`, committing nothing: the non-retroactivity backstop.
+
+    `decisions=None` skips only the checks that need the submitted set (the digest half of 4, and
+    6); every state-to-report check still runs, so a tampered save with its decisions stripped is
+    still caught.
+    """
+    problems: list[str] = []
+    governance = report.governance
+    if governance is None:
+        return ["governance report missing from a resolved turn (group 57)"]
+
+    opening_player = opening_state.world.countries[opening_state.world.player_country_id]
+    closing_player = closing_state.world.countries[closing_state.world.player_country_id]
+    opening_characters = opening_state.world.characters
+    cabinet_decision = None if decisions is None else decisions.cabinet_decision()
+    expected_digest = (
+        None if cabinet_decision is None else cabinet_decision_digest(cabinet_decision)
+    )
+
+    for row in governance.posts:
+        expected_opening = effective_holder_id(
+            cabinet=opening_player.cabinet,
+            post=row.post,
+            resolving_turn=opening_state.turn,
+        )
+        if row.opening_holder_id != expected_opening:
+            problems.append(
+                f"governance.posts[{row.post.value!r}]: opening_holder_id="
+                f"{row.opening_holder_id!r} does not match opening_state's serving holder "
+                f"({expected_opening!r}) (group 57)"
+            )
+        expected_competence = holder_competence_bps(
+            cabinet=opening_player.cabinet,
+            characters=opening_characters,
+            post=row.post,
+            resolving_turn=opening_state.turn,
+        )
+        if row.opening_holder_competence_bps != expected_competence:
+            problems.append(
+                f"governance.posts[{row.post.value!r}]: opening_holder_competence_bps="
+                f"{row.opening_holder_competence_bps} does not match opening_state "
+                f"({expected_competence}) (group 57)"
+            )
+
+        closing_cabinet = closing_player.cabinet
+        closing_appointment = (
+            None if closing_cabinet is None else closing_cabinet.offices.get(row.post)
+        )
+        actual_closing = None if closing_appointment is None else closing_appointment.character_id
+        if row.closing_holder_id != actual_closing:
+            problems.append(
+                f"governance.posts[{row.post.value!r}]: closing_holder_id="
+                f"{row.closing_holder_id!r} does not match closing_state ({actual_closing!r}) "
+                "(group 57)"
+            )
+        actual_effective = (
+            None if closing_appointment is None else closing_appointment.effective_from_turn
+        )
+        if row.closing_effective_from_turn != actual_effective:
+            problems.append(
+                f"governance.posts[{row.post.value!r}]: closing_effective_from_turn="
+                f"{row.closing_effective_from_turn!r} does not match closing_state "
+                f"({actual_effective!r}) (group 57)"
+            )
+
+        expected_change = _expected_cabinet_change(row.opening_holder_id, row.closing_holder_id)
+        if row.change is not expected_change:
+            problems.append(
+                f"governance.posts[{row.post.value!r}]: change={row.change.value!r} does not "
+                f"follow from the holder pair (expected {expected_change.value!r}) (group 57)"
+            )
+
+        expected_cost = 0
+        if expected_change in (CabinetChange.APPOINTED, CabinetChange.REPLACED):
+            appointee = (
+                None
+                if row.closing_holder_id is None
+                else opening_characters.get(row.closing_holder_id)
+            )
+            if appointee is None:
+                problems.append(
+                    f"governance.posts[{row.post.value!r}]: closing_holder_id="
+                    f"{row.closing_holder_id!r} is not a character of opening_state (group 57)"
+                )
+                expected_cost = row.capital_committed
+            else:
+                expected_cost = appointment_cost_capital(independence_bps=appointee.independence)
+        if row.capital_committed != expected_cost:
+            problems.append(
+                f"governance.posts[{row.post.value!r}]: capital_committed="
+                f"{row.capital_committed} does not match the appointment cost of "
+                f"{row.closing_holder_id!r} ({expected_cost}) (group 57)"
+            )
+
+        if (
+            decisions is not None
+            and row.change is not CabinetChange.UNCHANGED
+            and row.decision_digest != expected_digest
+        ):
+            problems.append(
+                f"governance.posts[{row.post.value!r}]: decision_digest="
+                f"{row.decision_digest!r} does not match the submitted cabinet decision "
+                f"({expected_digest!r}) (group 57)"
+            )
+
+    if decisions is not None and cabinet_decision is None:
+        for row in governance.posts:
+            if row.change is not CabinetChange.UNCHANGED or row.capital_committed != 0:
+                problems.append(
+                    f"governance.posts[{row.post.value!r}]: reports change={row.change.value!r} "
+                    f"committing {row.capital_committed}, but no cabinet decision was submitted "
+                    "this turn (group 57)"
+                )
+
+    problems.extend(_reconcile_cabinet_entries(governance, report))
+    return problems
+
+
+def _expected_cabinet_change(opening_id: str | None, closing_id: str | None) -> CabinetChange:
+    """The truth table, in one place, so slot 1 and reconciliation cannot each have their own."""
+    if opening_id == closing_id:
+        return CabinetChange.UNCHANGED
+    if opening_id is None:
+        return CabinetChange.APPOINTED
+    if closing_id is None:
+        return CabinetChange.DISMISSED
+    return CabinetChange.REPLACED
+
+
+def _reconcile_cabinet_entries(governance: GovernanceReport, report: TurnReport) -> list[str]:
+    """Group 57, check 5: the `government` report entries ARE the changed rows, restated.
+
+    Entries matter more here than they do for most reports, because they are the only surface some
+    changes reach. `api.projections.build_turn_result` derives its `drivers` from `report.entries`
+    and its `ledger` from the expenditure rows, and a dismissal costs nothing, so it has no
+    expenditure row at all -- without an entry it would be invisible on the API turn-result and
+    history views entirely. Pinning the params here is what keeps that entry honest, including its
+    snapshotted display names, which is what lets a ten-turn-old turn render the names it was
+    resolved under.
+    """
+    problems: list[str] = []
+    entries = [entry for entry in report.entries if entry.category == "government"]
+    changed = [row for row in governance.posts if row.change is not CabinetChange.UNCHANGED]
+
+    if len(entries) != len(changed):
+        return [
+            f"governance reports {len(changed)} changed post(s) but the turn carries "
+            f"{len(entries)} 'government' report entry/entries (group 57)"
+        ]
+
+    for row, entry in zip(changed, entries, strict=True):
+        expected_reason = f"cabinet_{row.change.value}"
+        if entry.reason_id != expected_reason:
+            problems.append(
+                f"government entry reason_id={entry.reason_id!r} does not match the "
+                f"{row.post.value!r} row's change ({expected_reason!r}) (group 57)"
+            )
+        expected_params: dict[str, str | int] = {
+            "post": row.post.value,
+            "capital_committed": row.capital_committed,
+        }
+        if row.closing_holder_id is not None:
+            expected_params["character_id"] = row.closing_holder_id
+            expected_params["character_display_name"] = row.closing_holder_display_name or ""
+        if row.opening_holder_id is not None:
+            expected_params["outgoing_character_id"] = row.opening_holder_id
+            expected_params["outgoing_character_display_name"] = (
+                row.opening_holder_display_name or ""
+            )
+        if dict(entry.params) != expected_params:
+            problems.append(
+                f"government entry params {dict(entry.params)!r} do not match the "
+                f"{row.post.value!r} row ({expected_params!r}) (group 57)"
+            )
+    return problems
 
 
 def reconcile_deposit_locations(

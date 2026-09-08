@@ -463,7 +463,7 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """So the pinned set above can never quietly absorb a different meaning."""
-        assert live[-1]["state"]["ruleset_version"] == "0.18.0"
+        assert live[-1]["state"]["ruleset_version"] == "0.19.0"
         assert live[-1]["state"]["content_version"] == "0.17.0"
         assert baseline[-1]["state"]["ruleset_version"] == "0.14.0"
         assert baseline[-1]["state"]["content_version"] == "0.14.0"

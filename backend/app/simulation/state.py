@@ -1741,7 +1741,7 @@ class WorldState(BaseModel):
         return self
 
 
-RULESET_VERSION = "0.18.0"
+RULESET_VERSION = "0.19.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -1870,6 +1870,15 @@ recorded, and inventing an empty one would assert that the country deliberately 
 is a different claim again. This bump also changes turn resolution: a serving chief of staff makes
 relationship investment measurably more effective, so replaying 0.17.0-authored decisions under
 0.18.0 rules does not reproduce the 0.17.0 turn. `SAVE_FORMAT_VERSION` stays `1`.
+
+Bumped `"0.18.0" -> "0.19.0"` for cabinet appointments. `TurnReport` gains a fifteenth domain
+report, `governance`, and its all-present-or-all-absent rule then makes every stored 0.18.0
+`report_json` -- fourteen reports present, `governance` absent -- exactly the proper nonempty
+subset that rule exists to reject. There is nothing to migrate from: synthesising an empty
+governance report for an old turn would assert that the engine looked at the cabinet on a turn when
+no such step existed, and would silently claim `unchanged` for posts nobody could have changed.
+`content_version` stays `"0.17.0"` -- appointments are player DECISIONS, and no scenario-authored
+field changes shape. `SAVE_FORMAT_VERSION` stays `1`.
 """
 
 

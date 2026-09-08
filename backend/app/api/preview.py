@@ -34,8 +34,10 @@ from __future__ import annotations
 
 from app.core.errors import DecisionSetError
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
+from app.simulation.cabinet import appointment_cost_capital
 from app.simulation.decisions import (
     BudgetDecision,
+    CabinetDecision,
     ConstitutionalAmendmentDecision,
     DecisionSet,
 )
@@ -149,6 +151,7 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
     budget = decision_set.budget_decision()
     amendment = decision_set.constitutional_amendment_decision()
     investment = decision_set.relationship_investment_decision()
+    cabinet = decision_set.cabinet_decision()
 
     proposal: BudgetDecision | ConstitutionalAmendmentDecision | None = budget or amendment
     _require_no_structural_problem(state, decision_set)
@@ -163,15 +166,21 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
         )
 
     # Affordability is a sum-and-compare of submitted quantities against opening
-    # capital -- the same three components `phases.py:1103` adds -- not a
+    # capital -- the same components `_finish_validate_and_reserve_actions` adds -- not a
     # simulation formula. The verdict is server-side so the client never has to
     # decide legality for itself.
+    #
+    # (Characters slice) The cabinet term is the fourth, and it is priced through the engine's own
+    # `appointment_cost_capital` rather than re-derived here, so a preview cannot quote a price
+    # the resolver would not charge. A dismissal contributes nothing, which is why it is the
+    # appointees that are summed and not the orders.
     route_cost = _route_cost(proposal) if proposal is not None else 0
     influence_total = sum(row.political_capital for row in proposal.influence) if proposal else 0
     investment_total = (
         sum(row.political_capital for row in investment.investments) if investment else 0
     )
-    committed = route_cost + influence_total + investment_total
+    cabinet_total = _cabinet_cost(state, cabinet)
+    committed = route_cost + influence_total + investment_total + cabinet_total
     opening_capital = politics.political_capital
 
     return PreviewProjection(
@@ -184,10 +193,31 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
         route_capital_cost=route_cost,
         influence_capital=influence_total,
         investment_capital=investment_total,
+        cabinet_capital=cabinet_total,
         committed_capital=committed,
         opening_capital=opening_capital,
         affordable=committed <= opening_capital,
     )
+
+
+def _cabinet_cost(state: GameState, decision: CabinetDecision | None) -> int:
+    """What this draft's appointments would cost, or `0`.
+
+    Prices only orders that actually name somebody: a dismissal is free. Unknown ids are skipped
+    rather than guessed at -- `first_decision_problem` has already refused the draft by the time
+    anything reads this number, and inventing a price for a person who does not exist would be a
+    worse answer than none.
+    """
+    if decision is None:
+        return 0
+    total = 0
+    for order in decision.orders:
+        if order.character_id is None:
+            continue
+        character = state.world.characters.get(order.character_id)
+        if character is not None:
+            total += appointment_cost_capital(independence_bps=character.independence)
+    return total
 
 
 def _preview_budget(

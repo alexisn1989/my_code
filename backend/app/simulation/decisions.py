@@ -44,7 +44,12 @@ from app.simulation.constitution import (
 )
 from app.simulation.geography import StrictMapId
 from app.simulation.legislature import ProposalRoute
-from app.simulation.state import SpendingCategory, StrictFormationId
+from app.simulation.state import (
+    CabinetPost,
+    SpendingCategory,
+    StrictCharacterId,
+    StrictFormationId,
+)
 
 _STRICT_CONFIG = ConfigDict(extra="forbid")
 
@@ -498,11 +503,110 @@ class MilitaryMovementDecision(BaseModel):
         return self
 
 
+CABINET_ORDERS_EMPTY = "cabinet_orders_empty"
+CABINET_DUPLICATE_POST = "cabinet_duplicate_post"
+CABINET_ORDERS_NOT_CANONICAL = "cabinet_orders_not_canonical"
+
+CABINET_SHAPE_CODES: frozenset[str] = frozenset(
+    {CABINET_ORDERS_EMPTY, CABINET_DUPLICATE_POST, CABINET_ORDERS_NOT_CANONICAL}
+)
+"""Every stable code `CabinetDecision`'s own validators can raise, mirroring
+`MOVEMENT_SHAPE_CODES`. SHAPE problems only -- whether the payload is a well-formed decision at
+all. Whether the people named in it exist, are appointable and are affordable is a resolution-time
+question that `phases.py` slot 1 and `app.api.decision_preflight` answer against `GameState`,
+exactly as this module's other decisions already split those concerns."""
+
+
+class CabinetOrder(BaseModel):
+    """One post's staffing order: who takes it, or that it is being vacated.
+
+    `character_id is None` IS the dismissal. A separate `dismiss: bool` flag would allow the
+    contradictory `(character_id="x", dismiss=True)`, and a separate decision kind would make
+    "replace" -- which is a dismissal and an appointment in one breath -- impossible to express as
+    a single atomic order. One optional field makes every verb representable and every
+    contradiction unconstructible.
+
+    The VERB is never authored. Appoint, replace and dismiss are read off the OPENING cabinet at
+    resolution: an order on a vacant post appoints, on an occupied post replaces, and a `None`
+    dismisses. A client that mislabelled its own intent could not make the engine agree with it.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    post: CabinetPost
+    character_id: StrictCharacterId | None = None
+
+
+class CabinetDecision(BaseModel):
+    """Staff the cabinet this turn (characters slice).
+
+    **One action carrying every post**, the shape `BlocRelationshipInvestmentDecision` and
+    `MilitaryMovementDecision` already use, and for the same reason: ordering and duplicate
+    questions are settled once inside this model rather than re-opened at `DecisionSet` level.
+
+    It is also what makes a same-turn TRANSFER expressible. Moving somebody from one post to
+    another is two orders that must be judged together -- the destination, and whatever happens to
+    the origin -- and slot 1 validates the RESULTING cabinet rather than the orders pairwise, so
+    the transfer is legal precisely when nobody ends up holding two posts. Split across two
+    decisions, or two turns, that judgement could not be made.
+
+    There is no cap on the number of orders: the bound is already `len(CabinetPost)`, which is
+    content-derived and finite, so an arbitrary numeric limit would be a rule with no mechanism
+    behind it. `MovementDecision`'s per-ruleset cap exists because its bound is the formation
+    roster, which is not.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    kind: Literal["cabinet"] = "cabinet"
+    orders: tuple[CabinetOrder, ...]
+
+    @model_validator(mode="after")
+    def _orders_are_not_empty(self) -> CabinetDecision:
+        """A quiet turn submits NO `CabinetDecision`; an empty one is a client bug. A validator
+        rather than `Field(min_length=1)` so the failure carries a stable code, matching
+        `MilitaryMovementDecision._orders_are_not_empty`."""
+        if not self.orders:
+            raise ValueError(
+                f"{CABINET_ORDERS_EMPTY}: a cabinet decision must carry at least one order; "
+                "submit no decision at all for a turn with no cabinet change"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _no_duplicate_posts(self) -> CabinetDecision:
+        """Two orders for one post ARE the contradiction. Runs BEFORE the ordering check because a
+        duplicated post is already in sorted order and would otherwise be misreported as an
+        ordering problem -- the same trap `MilitaryMovementDecision` documents."""
+        posts = [order.post for order in self.orders]
+        if len(set(posts)) != len(posts):
+            duplicates = sorted({p.value for p in posts if posts.count(p) > 1})
+            raise ValueError(
+                f"{CABINET_DUPLICATE_POST}: a post may be ordered at most once per turn, got "
+                f"repeated {duplicates}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _orders_are_in_canonical_post_order(self) -> CabinetDecision:
+        """Canonical by `post.value`, REJECTED rather than sorted: this tuple is serialized into
+        `decisions_json` and hash-covered, so two semantically identical sets listed in different
+        orders would digest differently."""
+        values = [order.post.value for order in self.orders]
+        if values != sorted(values):
+            raise ValueError(
+                f"{CABINET_ORDERS_NOT_CANONICAL}: orders must be sorted ascending by post, got "
+                f"{values!r}"
+            )
+        return self
+
+
 Decision: TypeAlias = Annotated[
     BudgetDecision
     | BlocRelationshipInvestmentDecision
     | ConstitutionalAmendmentDecision
-    | MilitaryMovementDecision,
+    | MilitaryMovementDecision
+    | CabinetDecision,
     Field(discriminator="kind"),
 ]
 """The tagged decision union this module's header anticipated (Phase 3B2A).
@@ -624,6 +728,28 @@ class DecisionSet(BaseModel):
             )
         return self
 
+    def cabinet_decision(self) -> CabinetDecision | None:
+        """The submitted cabinet decision, or `None`. Unique by `_at_most_one_cabinet_decision`.
+
+        Identity-based like every accessor above, never `decisions[0]`: `"cabinet"` sorts THIRD of
+        the five kinds, after `"budget"` and before `"constitutional_amendment"`, so its index
+        depends entirely on what else the turn carries -- index 0 on a cabinet-only turn, index 2
+        behind an investment and a budget.
+        """
+        return next((d for d in self.decisions if isinstance(d, CabinetDecision)), None)
+
+    @model_validator(mode="after")
+    def _at_most_one_cabinet_decision(self) -> DecisionSet:
+        """One decision carries every post (see `CabinetDecision`), so a second could only
+        duplicate or contradict the first -- and the per-decision duplicate-post rule could not see
+        across two decisions to detect it."""
+        cabinets = sum(1 for d in self.decisions if isinstance(d, CabinetDecision))
+        if cabinets > 1:
+            raise ValueError(
+                f"at most one cabinet decision may appear in a DecisionSet, got {cabinets}"
+            )
+        return self
+
     @model_validator(mode="after")
     def _at_most_one_policy_proposal(self) -> DecisionSet:
         proposals = sum(
@@ -668,6 +794,21 @@ def budget_decision_digest(decision: BudgetDecision) -> str:
     decision itself; `simulation.reconciliation` is the only place that recomputes it and compares
     — see that module's group 18 — so a report can be checked for provenance without ever growing
     a `GameState`- or `DecisionSet`-shaped field of its own.
+    """
+    return canonical_digest(decision.model_dump(mode="json"))
+
+
+def cabinet_decision_digest(decision: CabinetDecision) -> str:
+    """A deterministic content fingerprint of a submitted cabinet decision.
+
+    The exact shape of the three digest functions beside it, for the exact same reason: every field
+    covered by construction via `model_dump(mode="json")`, with no manual field selection to drift
+    as the model grows. `orders` is already in construction-time-enforced canonical post order, so
+    two semantically identical decisions cannot digest differently.
+
+    `GovernanceReport` and the `CABINET_APPOINTMENT` expenditure row store the RESULT of this
+    function, never the decision itself; `simulation.reconciliation` group 57 is the only place
+    that recomputes it and compares.
     """
     return canonical_digest(decision.model_dump(mode="json"))
 

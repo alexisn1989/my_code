@@ -190,6 +190,30 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
     "foreign_security_anxiety_applied": {"security_contribution_bps": -108},
     # Military Movement, commit 5. All seven canonical params, so this sample also pins that the
     # renderer composes its sentence from the STORED display names and never from an id.
+    # Characters slice. Each sample carries every param its renderer reads, INCLUDING the
+    # snapshotted display names -- so these also pin that the sentences are composed from stored
+    # params and never from current state, which is what lets a ten-turn-old turn render the names
+    # it was resolved under.
+    "cabinet_appointed": {
+        "post": "foreign_minister",
+        "capital_committed": 197,
+        "character_id": "wren_hollis",
+        "character_display_name": "Wren Hollis",
+    },
+    "cabinet_replaced": {
+        "post": "chief_of_staff",
+        "capital_committed": 276,
+        "character_id": "ilse_marovec",
+        "character_display_name": "Ilse Marovec",
+        "outgoing_character_id": "hal_verrin",
+        "outgoing_character_display_name": "Hal Verrin",
+    },
+    "cabinet_dismissed": {
+        "post": "foreign_minister",
+        "capital_committed": 0,
+        "outgoing_character_id": "ilse_marovec",
+        "outgoing_character_display_name": "Ilse Marovec",
+    },
     "formation_moved": {
         "formation_id": "arken_first_army",
         "formation_display_name": "First Army of Arken",

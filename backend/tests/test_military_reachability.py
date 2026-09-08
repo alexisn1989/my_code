@@ -472,9 +472,15 @@ class TestMovementIsAcceptedAndAppliedTogether:
     or a frozen plan cannot make it pass or fail.
     """
 
-    def test_the_decision_union_has_grown_by_exactly_one_kind(self) -> None:
-        """Reads the real `Decision` alias: `Annotated[A | B | C | D, FieldInfo(discriminator=...)]`,
-        so the members are the args of the union inside the annotation."""
+    def test_the_decision_union_contains_exactly_the_expected_kinds(self) -> None:
+        """Reads the real `Decision` alias: `Annotated[A | B | ..., FieldInfo(discriminator=...)]`,
+        so the members are the args of the union inside the annotation.
+
+        Renamed from `..._has_grown_by_exactly_one_kind`: the Military Movement slice added
+        `military_movement` and the characters slice added `cabinet`, so "one" stopped being true
+        while the structural claim -- these kinds and no others -- did not. A membership assertion
+        keeps catching an accidentally-added kind either way.
+        """
         import typing
 
         from app.simulation.decisions import Decision
@@ -484,6 +490,7 @@ class TestMovementIsAcceptedAndAppliedTogether:
         assert kinds == {
             "bloc_relationship_investment",
             "budget",
+            "cabinet",
             "constitutional_amendment",
             "military_movement",
         }
