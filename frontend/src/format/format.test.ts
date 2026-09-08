@@ -13,6 +13,7 @@ import {
   FORMATION_FAN_SLOTS,
   formationMarkerPlacements,
   formationOverflowLabel,
+  driverSentence,
   labelOffsetPosition,
   refusalReasonText,
   type LabelAnchorValue,
@@ -196,5 +197,61 @@ describe("refusalReasonText", () => {
 
   it("gives an unrecognised code generic prose that still reads as a refusal", () => {
     expect(refusalReasonText("cabinet_some_future_refusal")).toBe("Will not serve.");
+  });
+});
+
+
+describe("driverSentence", () => {
+  const cabinetParams = {
+    post: "chief_of_staff",
+    post_display_name: "chief of staff",
+    capital_committed: 276,
+    character_id: "ilse_marovec",
+    character_display_name: "Ilse Marovec",
+    outgoing_character_id: "hal_verrin",
+    outgoing_character_display_name: "Hal Verrin",
+  };
+
+  it("names both people in a replacement", () => {
+    expect(driverSentence("cabinet_replaced", cabinetParams, "A cabinet post changed hands.")).toBe(
+      "Ilse Marovec replaced Hal Verrin as chief of staff for 276 political capital.",
+    );
+  });
+
+  it("names the appointee in an appointment", () => {
+    expect(driverSentence("cabinet_appointed", cabinetParams, "A cabinet post was filled.")).toBe(
+      "Ilse Marovec was appointed chief of staff for 276 political capital.",
+    );
+  });
+
+  it("names the departing holder in a dismissal, and quotes no cost", () => {
+    const sentence = driverSentence("cabinet_dismissed", cabinetParams, "A cabinet post was vacated.");
+    expect(sentence).toBe("Hal Verrin was dismissed as chief of staff; the post is now vacant.");
+    expect(sentence).not.toContain("276");
+  });
+
+  it("composes from the STORED params, never from any current state", () => {
+    // The names a past turn was resolved under, even when they are nothing like today's roster.
+    const historical = { ...cabinetParams, character_display_name: "Someone Long Gone" };
+    expect(driverSentence("cabinet_replaced", historical, "x")).toContain("Someone Long Gone");
+  });
+
+  it("falls back to the generic label for an unknown reason, and for absent params", () => {
+    expect(driverSentence("formation_moved", cabinetParams, "A formation moved.")).toBe(
+      "A formation moved.",
+    );
+    expect(driverSentence("cabinet_replaced", undefined, "A cabinet post changed hands.")).toBe(
+      "A cabinet post changed hands.",
+    );
+    expect(driverSentence("cabinet_replaced", { post_display_name: "x" }, "fallback")).toBe("fallback");
+  });
+
+  it("never renders a raw identifier when it composes a sentence", () => {
+    for (const reason of ["cabinet_appointed", "cabinet_replaced", "cabinet_dismissed"]) {
+      const sentence = driverSentence(reason, cabinetParams, "generic");
+      expect(sentence).not.toContain("chief_of_staff");
+      expect(sentence).not.toContain("ilse_marovec");
+      expect(sentence).not.toContain("hal_verrin");
+    }
   });
 });

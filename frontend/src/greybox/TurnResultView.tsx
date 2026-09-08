@@ -13,6 +13,7 @@
 import { useState } from "react";
 
 import type { TurnResultProjection } from "../api/client";
+import { driverSentence } from "../format/format";
 import { DataTable, EmptyNote, Panel, ToneValue } from "./components";
 
 export function TurnResultView({
@@ -45,7 +46,11 @@ export function TurnResultView({
           <ul className="flex list-disc flex-col gap-2 pl-5 text-sm">
             {result.drivers.map((driver) => (
               <li key={driver.reason_id}>
-                {driver.label}{" "}
+                {/* Composed from the driver's OWN stored params where this build has wording for
+                    the reason, and from the generic `label` otherwise -- see `driverSentence`.
+                    A cabinet change carries its people in `params`, and a label that said only
+                    "a post changed hands" would tell a player less than the CLI does. */}
+                {driverSentence(driver.reason_id, driver.params, driver.label)}{" "}
                 <code className="text-xs text-parchment-200/50">{driver.reason_id}</code>
               </li>
             ))}

@@ -368,3 +368,45 @@ export function dismissedLine(holderName: string, postName: string): string {
 export function appointmentCostLine(cost: number): string {
   return `Costs ${cost} political capital.`;
 }
+
+/**
+ * A turn-result driver's sentence, composed from the entry's OWN stored params.
+ *
+ * `DriverItem.label` is a generic sentence per `reason_id` ("A cabinet post changed hands."), which
+ * is the right fallback and the wrong answer for a driver whose whole content is WHO. The engine
+ * already snapshots every name a cabinet sentence needs into the entry -- for exactly this, so a
+ * turn from ten turns ago renders the names it was resolved under -- and the CLI has composed from
+ * them since the day they existed. This is the same rule for the browser.
+ *
+ * Unknown `reason_id`s fall back to `label` verbatim, so this cannot silently restyle the rest of
+ * the screen and a future driver reads correctly before anyone writes wording for it here.
+ */
+export function driverSentence(
+  reasonId: string,
+  params: Record<string, string | number> | undefined,
+  label: string,
+): string {
+  if (params === undefined) {
+    return label;
+  }
+  const post = params["post_display_name"];
+  const who = params["character_display_name"];
+  const outgoing = params["outgoing_character_display_name"];
+  const cost = params["capital_committed"];
+  switch (reasonId) {
+    case "cabinet_appointed":
+      return post === undefined || who === undefined
+        ? label
+        : `${who} was appointed ${post} for ${cost} political capital.`;
+    case "cabinet_replaced":
+      return post === undefined || who === undefined || outgoing === undefined
+        ? label
+        : `${who} replaced ${outgoing} as ${post} for ${cost} political capital.`;
+    case "cabinet_dismissed":
+      return post === undefined || outgoing === undefined
+        ? label
+        : `${outgoing} was dismissed as ${post}; the post is now vacant.`;
+    default:
+      return label;
+  }
+}
