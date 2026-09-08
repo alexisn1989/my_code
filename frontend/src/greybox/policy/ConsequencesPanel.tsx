@@ -76,6 +76,10 @@ export function ConsequencesPanel({ preview }: { preview: PreviewProjection }) {
             <dd className="text-parchment-100">{formatAmount(preview.influence_capital)}</dd>
           </div>
           <div>
+            <dt>Cabinet</dt>
+            <dd className="text-parchment-100">{formatAmount(preview.cabinet_capital)}</dd>
+          </div>
+          <div>
             <dt>Investment</dt>
             <dd className="text-parchment-100">{formatAmount(preview.investment_capital)}</dd>
           </div>

@@ -306,10 +306,15 @@
           "post": {
             "title": "Post",
             "type": "string"
+          },
+          "post_display_name": {
+            "title": "Post Display Name",
+            "type": "string"
           }
         },
         "required": [
           "post",
+          "post_display_name",
           "can_dismiss",
           "candidates"
         ],

@@ -932,3 +932,58 @@ def test_the_cli_prints_a_real_change_exactly_once_in_both_paths(
 
     assert main(["history", "--state", str(resolved), "--turn", "1"]) == 0
     assert capsys.readouterr().out.count(sentence) == 1
+
+
+def test_the_projection_labels_every_post_from_the_authored_map() -> None:
+    """No client ever has to rewrite `chief_of_staff` into prose -- the transformation the CLI had
+    and lost. Checked against `POST_DISPLAY_NAMES` itself rather than against literals, so the map
+    stays the single source of the words."""
+    for scenario in ("tiny_valid.yaml", "decree_state.yaml", "deficit_demo.yaml"):
+        options = build_decision_options(_load(scenario))
+        labels = {post.post: post.post_display_name for post in options.cabinet_posts}
+        assert labels == {post.value: name for post, name in POST_DISPLAY_NAMES.items()}, scenario
+
+
+def test_every_post_a_candidate_references_resolves_to_a_projected_row() -> None:
+    """`currently_holds_post` and `requires_vacating_post` are identifiers a client matches against
+    `CabinetPostOption.post`. If one ever named a post the projection does not carry, the client
+    would be forced to invent a label -- so the lookup is proved total here rather than defended by
+    a fallback in the screen."""
+    for scenario in ("tiny_valid.yaml", "decree_state.yaml", "deficit_demo.yaml"):
+        options = build_decision_options(_load(scenario))
+        known = {post.post for post in options.cabinet_posts}
+        referenced = {
+            value
+            for post in options.cabinet_posts
+            for candidate in post.candidates
+            for value in (candidate.currently_holds_post, candidate.requires_vacating_post)
+            if value is not None
+        }
+        assert referenced <= known, (scenario, sorted(referenced - known))
+        # Anti-vacuity, where the content actually supports it: a scenario whose posts are all
+        # vacant legitimately references none, so requiring a non-empty set everywhere would only
+        # be asserting `deficit_demo`'s emptiness in a confusing place.
+        if any(post.holder_character_id is not None for post in options.cabinet_posts):
+            assert referenced, scenario
+
+
+def test_a_resolved_save_stores_no_client_side_provenance() -> None:
+    """The UI tracks WHY it added a companion dismissal (`origin`, `generatedBy`,
+    `requiresVacatingPost`). None of that is a decision, and `CabinetOrder` is `extra="forbid"`, so
+    none of it can reach the wire -- but `decisions_json` is hash-covered and permanent, so the
+    absence is worth asserting against the stored bytes rather than trusting the model."""
+    save = new_game(_load("tiny_valid.yaml"), save_format_version=SAVE_FORMAT_VERSION)
+    state = save.entries[-1].state()
+    save = advance_game(
+        save,
+        _decide(
+            state,
+            CabinetOrder(post=_CoS, character_id="ilse_marovec"),
+            CabinetOrder(post=_FM),
+        ),
+    )
+    stored = save.entries[-1].decisions_json
+    assert stored is not None
+    for ui_only in ("origin", "generatedBy", "requiresVacatingPost", "generated_by"):
+        assert ui_only not in stored, ui_only
+    assert "chief_of_staff" in stored and "ilse_marovec" in stored

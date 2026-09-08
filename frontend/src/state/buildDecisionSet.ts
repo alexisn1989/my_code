@@ -11,14 +11,24 @@
  * Reads `DraftState`'s free-form scratch shape and emits exactly what
  * `/api/game/resolve` and `/api/game/preview` accept: a `revision` echoed
  * unchanged, and a `decisions` array in canonical kind order
- * (`bloc_relationship_investment` < `budget` < `constitutional_amendment`,
- * alphabetical -- matches `DecisionSet._decisions_are_in_canonical_kind_order`
- * in `backend/app/simulation/decisions.py`), with every influence/investment
- * list sorted ascending by `(party_id, bloc_id)` and every amendment target
- * sorted ascending by axis name.
+ * (`bloc_relationship_investment` < `budget` < `cabinet` <
+ * `constitutional_amendment` < `military_movement`, alphabetical -- matches
+ * `DecisionSet._decisions_are_in_canonical_kind_order` in
+ * `backend/app/simulation/decisions.py`), with every influence/investment
+ * list sorted ascending by `(party_id, bloc_id)`, every amendment target
+ * sorted ascending by axis name, and every cabinet order sorted ascending by
+ * post.
+ *
+ * It is also where the cabinet draft's UI-only provenance STOPS. `origin`,
+ * `generatedBy` and `requiresVacatingPost` exist so the interface can tell a
+ * companion dismissal from one the player staged (see
+ * `cabinetCompanions.ts`); none of it is a decision, and none of it is
+ * emitted. A generated dismissal is still submitted -- it is a real order --
+ * and what is dropped is only the record of why the interface added it.
  */
 
 import type { Decision } from "../api/client";
+import type { CabinetOrders } from "./cabinetCompanions";
 import type { AmendmentDraft, BudgetDraft, DraftState } from "./draft";
 
 function sortedInfluence(record: Record<string, number>): { party_id: string; bloc_id: string; political_capital: number }[] {
@@ -108,6 +118,25 @@ function buildInvestmentDecision(investments: Record<string, number>): Decision 
   };
 }
 
+function buildCabinetDecision(orders: CabinetOrders): Decision | null {
+  const posts = Object.keys(orders).sort((a, b) => a.localeCompare(b));
+  if (posts.length === 0) {
+    return null;
+  }
+  return {
+    kind: "cabinet",
+    orders: posts.map((post) => {
+      const order = orders[post];
+      // `character_id` is OMITTED for a dismissal rather than sent as `null`, matching
+      // `CabinetOrder`'s own default and this builder's "omit what was not set" discipline. The
+      // three provenance fields are not read here at all, which is how they cannot leak.
+      return order?.characterId == null
+        ? { post }
+        : { post, character_id: order.characterId };
+    }),
+  };
+}
+
 /** Builds the canonically-ordered `decisions` array for the current draft.
  * `policySlot` selects which of budget/amendment (if either) contributes --
  * the two are mutually exclusive by construction here, matching the engine's
@@ -121,15 +150,23 @@ export function buildDecisions(draft: DraftState): Decision[] {
     decisions.push(investment); // "bloc_relationship_investment" sorts first
   }
 
+  const cabinet = buildCabinetDecision(draft.cabinetOrders);
+
   if (draft.policySlot === "budget") {
     const budget = buildBudgetDecision(draft.budget);
     if (budget !== null) {
       decisions.push(budget); // "budget" sorts second
     }
-  } else if (draft.policySlot === "amendment") {
+  }
+
+  if (cabinet !== null) {
+    decisions.push(cabinet); // "cabinet" sorts third, after "budget"
+  }
+
+  if (draft.policySlot === "amendment") {
     const amendment = buildAmendmentDecision(draft.amendment);
     if (amendment !== null) {
-      decisions.push(amendment); // "constitutional_amendment" sorts third
+      decisions.push(amendment); // "constitutional_amendment" sorts fourth
     }
   }
 
@@ -142,7 +179,7 @@ export function buildDecisions(draft: DraftState): Decision[] {
           destination_theater_id: draft.movement.destinationTheaterId,
         },
       ],
-    }); // "military_movement" sorts fourth -- last of the four kinds
+    }); // "military_movement" sorts last of the five kinds
   }
 
   return decisions;

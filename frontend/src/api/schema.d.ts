@@ -487,6 +487,8 @@ export interface components {
             holder_display_name?: string | null;
             /** Post */
             post: string;
+            /** Post Display Name */
+            post_display_name: string;
         };
         /** CapitalSummary */
         CapitalSummary: {

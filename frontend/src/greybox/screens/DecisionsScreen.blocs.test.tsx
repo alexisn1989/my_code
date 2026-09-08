@@ -46,6 +46,7 @@ const DECISION_OPTIONS = {
   ],
   chambers: ["lower", "upper"],
   constitutional_axes: [],
+  cabinet_posts: [],
   decree_amendment_capital_cost: 10,
   decree_available: true,
   policy_cards: [],

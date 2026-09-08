@@ -14,8 +14,11 @@
  * navigation tab. `GlossaryScreen` stays outside this list and is rendered by
  * `GreyboxApp`'s persistent header.
  *
- * Five of the eleven (Government, Economy, Legislature, Constitution,
- * Relationships) render `UnavailableScreen`: the real API's `DashboardProjection`
+ * FOUR of the eleven (Economy, Legislature, Constitution, Relationships) render
+ * `UnavailableScreen`. Government no longer does: the characters slice projects
+ * `cabinet_posts`, which is real per-office detail from the server, so the cabinet is live and
+ * that screen says plainly that the REST of the government breakdown still is not. The reason
+ * below is why the other four remain unavailable: the real API's `DashboardProjection`
  * gives only five SUMMARY concern cards, never the per-institution,
  * per-chamber, per-bloc, or per-budget-line breakdown these screens were
  * mocked up against in Gate 4A0. Building that breakdown client-side would be
@@ -27,6 +30,7 @@
 
 import type { ComponentType } from "react";
 
+import { CabinetScreen } from "./screens/CabinetScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { DecisionsScreen } from "./screens/DecisionsScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
@@ -83,8 +87,11 @@ export const SCREENS: readonly ScreenDefinition[] = [
     id: "government",
     label: "Government",
     heading: "Government",
-    component: unavailable("Government"),
+    component: CabinetScreen,
     showsGameplayChrome: true,
+    // Like Strategic map, and for the same reason: the screen reads the shared decision-options
+    // projection, which needs a campaign. A disabled control saying so beats an empty screen.
+    requiresActiveGame: true,
   },
   {
     id: "economy",

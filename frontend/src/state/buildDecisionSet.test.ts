@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildDecisions } from "./buildDecisionSet";
+import { reconcileCompanions } from "./cabinetCompanions";
 import { useDraftStore, type DraftState } from "./draft";
 
 function baseDraft(overrides: Partial<DraftState> = {}): DraftState {
@@ -18,6 +19,7 @@ function baseDraft(overrides: Partial<DraftState> = {}): DraftState {
     amendment: { targets: {}, route: "legislative", influence: {} },
     investments: {},
     movement: null,
+    cabinetOrders: {},
     dismissedHelp: false,
     glossaryOpen: false,
     setPolicySlot: () => {},
@@ -30,6 +32,9 @@ function baseDraft(overrides: Partial<DraftState> = {}): DraftState {
     setAmendmentRoute: () => {},
     setAmendmentInfluence: () => {},
     setMovementOrder: () => {},
+    confirmAppointment: () => {},
+    confirmDismissal: () => {},
+    cancelCabinetOrder: () => {},
     clearMovementOrder: () => {},
     setInvestment: () => {},
     clearDraft: () => {},
@@ -387,5 +392,130 @@ describe("the staged movement order's lifetime", () => {
       "military_movement",
     ]);
     expect(useDraftStore.getState().movement).not.toBeNull();
+  });
+});
+
+
+describe("buildDecisions: the cabinet decision", () => {
+  it("emits orders sorted by post, between budget and constitutional_amendment", () => {
+    const draft = baseDraft({
+      policySlot: "budget",
+      budget: { personalIncomeRateBps: 1500, spendingUpdates: {}, route: "legislative", influence: {} },
+      // Deliberately inserted foreign-minister-first, so a passing result cannot be insertion luck.
+      cabinetOrders: {
+        foreign_minister: { characterId: null, origin: "explicit" },
+        chief_of_staff: { characterId: "wren_hollis", origin: "explicit" },
+      },
+    });
+    const decisions = buildDecisions(draft);
+    expect(decisions.map((d) => (d as { kind: string }).kind)).toEqual(["budget", "cabinet"]);
+    const cabinet = decisions[1] as { orders: { post: string }[] };
+    expect(cabinet.orders.map((o) => o.post)).toEqual(["chief_of_staff", "foreign_minister"]);
+  });
+
+  it("omits character_id for a dismissal rather than sending null", () => {
+    const draft = baseDraft({
+      cabinetOrders: { foreign_minister: { characterId: null, origin: "explicit" } },
+    });
+    const cabinet = buildDecisions(draft)[0] as { orders: Record<string, unknown>[] };
+    expect(cabinet.orders[0]).toEqual({ post: "foreign_minister" });
+    expect("character_id" in (cabinet.orders[0] ?? {})).toBe(false);
+  });
+
+  it("submits a GENERATED companion -- it is a real order", () => {
+    const draft = baseDraft({
+      cabinetOrders: {
+        chief_of_staff: {
+          characterId: "ilse_marovec",
+          origin: "explicit",
+          requiresVacatingPost: "foreign_minister",
+        },
+        foreign_minister: { characterId: null, origin: "generated", generatedBy: "chief_of_staff" },
+      },
+    });
+    const cabinet = buildDecisions(draft)[0] as { orders: { post: string }[] };
+    expect(cabinet.orders.map((o) => o.post)).toEqual(["chief_of_staff", "foreign_minister"]);
+  });
+
+  it("strips every UI-only provenance field from the serialized payload", () => {
+    const draft = baseDraft({
+      cabinetOrders: {
+        chief_of_staff: {
+          characterId: "ilse_marovec",
+          origin: "explicit",
+          requiresVacatingPost: "foreign_minister",
+        },
+        foreign_minister: { characterId: null, origin: "generated", generatedBy: "chief_of_staff" },
+      },
+    });
+    const serialized = JSON.stringify(buildDecisions(draft));
+    for (const uiOnly of ["origin", "generatedBy", "requiresVacatingPost", "explicit", "generated"]) {
+      expect(serialized).not.toContain(uiOnly);
+    }
+  });
+
+  it("emits nothing at all when no cabinet order is staged", () => {
+    expect(buildDecisions(baseDraft())).toEqual([]);
+  });
+});
+
+describe("buildDecisions: cabinet order independence", () => {
+  /** The same two intentions, staged in both orders, must submit the same thing. */
+  function payloadAfter(steps: (() => void)[]): string {
+    useDraftStore.setState({ cabinetOrders: {} });
+    for (const step of steps) {
+      step();
+    }
+    return JSON.stringify(buildDecisions(useDraftStore.getState()));
+  }
+
+  const store = () => useDraftStore.getState();
+  const stageOriginFirst = [
+    () => store().confirmAppointment("foreign_minister", "hal_verrin"),
+    () => store().confirmAppointment("chief_of_staff", "ilse_marovec", "foreign_minister"),
+  ];
+  const stageTransferFirst = [
+    () => store().confirmAppointment("chief_of_staff", "ilse_marovec", "foreign_minister"),
+    () => store().confirmAppointment("foreign_minister", "hal_verrin"),
+  ];
+
+  it("produces a byte-identical payload from either operation order", () => {
+    expect(payloadAfter(stageOriginFirst)).toBe(payloadAfter(stageTransferFirst));
+  });
+
+  it("cancels the transfer identically from either history, keeping the origin order", () => {
+    const after = (steps: (() => void)[]): string => {
+      payloadAfter(steps);
+      store().cancelCabinetOrder("chief_of_staff");
+      return JSON.stringify(buildDecisions(useDraftStore.getState()));
+    };
+    const fromOriginFirst = after(stageOriginFirst);
+    expect(after(stageTransferFirst)).toBe(fromOriginFirst);
+    expect(fromOriginFirst).toContain("hal_verrin");
+    expect(fromOriginFirst).not.toContain("ilse_marovec");
+  });
+
+  it("leaves the record reconciled after every store action", () => {
+    const reconciledIsANoOp = (): void => {
+      const orders = useDraftStore.getState().cabinetOrders;
+      expect(reconcileCompanions(orders)).toEqual(orders);
+    };
+    useDraftStore.setState({ cabinetOrders: {} });
+    store().confirmAppointment("chief_of_staff", "ilse_marovec", "foreign_minister");
+    reconciledIsANoOp();
+    store().confirmDismissal("foreign_minister");
+    reconciledIsANoOp();
+    store().confirmAppointment("foreign_minister", "hal_verrin");
+    reconciledIsANoOp();
+    store().cancelCabinetOrder("chief_of_staff");
+    reconciledIsANoOp();
+  });
+
+  it("clearDraft removes every cabinet order", () => {
+    useDraftStore.setState({ cabinetOrders: {} });
+    store().confirmAppointment("chief_of_staff", "wren_hollis");
+    expect(Object.keys(useDraftStore.getState().cabinetOrders)).toHaveLength(1);
+    store().clearDraft();
+    expect(useDraftStore.getState().cabinetOrders).toEqual({});
   });
 });

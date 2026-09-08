@@ -14,6 +14,7 @@ import {
   formationMarkerPlacements,
   formationOverflowLabel,
   labelOffsetPosition,
+  refusalReasonText,
   type LabelAnchorValue,
 } from "./format";
 
@@ -163,5 +164,37 @@ describe("formationMarkerPlacements: no marker lands on its own theater's name",
     // position must fall under it, or the assertions would pass for any geometry at all.
     const label = labelAt("n");
     expect(Math.hypot(label.x - label.x, label.y - label.y)).toBeLessThan(400);
+  });
+});
+
+
+describe("refusalReasonText", () => {
+  it("gives plain English for every code this build emits", () => {
+    expect(refusalReasonText("cabinet_character_leads_a_party")).toContain("leads a party");
+    expect(refusalReasonText("cabinet_candidate_refuses_low_legitimacy")).toContain("legitimacy");
+    expect(refusalReasonText("cabinet_candidate_refuses_this_post")).toContain("beneath them");
+  });
+
+  it("never returns the raw code, for any code including unknown ones", () => {
+    const codes = [
+      "cabinet_character_leads_a_party",
+      "cabinet_candidate_refuses_low_legitimacy",
+      "cabinet_candidate_refuses_this_post",
+      "cabinet_some_future_refusal_nobody_has_worded_yet",
+      null,
+      undefined,
+    ];
+    for (const code of codes) {
+      const text = refusalReasonText(code);
+      expect(text).not.toMatch(/[a-z]+_[a-z]+/);
+      expect(text.length).toBeGreaterThan(0);
+      if (typeof code === "string") {
+        expect(text).not.toContain(code);
+      }
+    }
+  });
+
+  it("gives an unrecognised code generic prose that still reads as a refusal", () => {
+    expect(refusalReasonText("cabinet_some_future_refusal")).toBe("Will not serve.");
   });
 });

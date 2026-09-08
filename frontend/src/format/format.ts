@@ -286,3 +286,85 @@ export function orderStagedAnnouncement(
 ): string {
   return `Movement order added to this turn's draft: ${formationName} to ${destinationName}. Nothing has moved yet — resolve the turn to apply it.`;
 }
+
+/**
+ * The cabinet interaction's spoken sentences and its refusal wording.
+ *
+ * Here for the same reason the movement sentences are: composing a sentence from parts is string
+ * arithmetic, and `format-boundary.test.ts` walks the real AST and fails on any binary expression
+ * outside `src/format/**`. `refusalReasonText` joins them because it is a MAPPING worth testing on
+ * its own -- a switch buried in a screen can only be exercised through a rendered DOM, and the one
+ * thing most worth proving about it is what it does with a code nobody has written wording for yet.
+ */
+
+/**
+ * Plain English for a candidate's refusal, from the server's stable code.
+ *
+ * Never the raw code. `cabinet_candidate_refuses_low_legitimacy` is a contract identifier, not a
+ * sentence, and showing it to a player would be the raw-identifier failure this codebase tests for
+ * everywhere else. An UNRECOGNISED code gets generic prose rather than a blank or the code itself:
+ * a future refusal that arrives before its wording does should read as a refusal, not as a leak.
+ */
+export function refusalReasonText(code: string | null | undefined): string {
+  switch (code) {
+    case "cabinet_character_leads_a_party":
+      return "Will not serve — leads a party, and a party leader does not take a cabinet post.";
+    case "cabinet_candidate_refuses_low_legitimacy":
+      return "Will not serve — this government does not command enough legitimacy for them.";
+    case "cabinet_candidate_refuses_this_post":
+      return "Will not serve — considers this post beneath them.";
+    default:
+      return "Will not serve.";
+  }
+}
+
+export function postSelectedAnnouncement(postName: string, candidateCount: number): string {
+  const plural = candidateCount === 1 ? "candidate" : "candidates";
+  return `${postName} selected, ${candidateCount} ${plural} available`;
+}
+
+export function candidateSelectedAnnouncement(candidateName: string, postName: string): string {
+  return `${candidateName} proposed as ${postName}. Nothing is staged until you confirm.`;
+}
+
+/** Explicit that nothing has happened: confirming changes the draft, never the game. */
+export function appointmentStagedAnnouncement(candidateName: string, postName: string): string {
+  return `Added to this turn's draft: ${candidateName} as ${postName}. Nobody has been appointed yet — resolve the turn to apply it.`;
+}
+
+export function transferStagedAnnouncement(
+  candidateName: string,
+  postName: string,
+  vacatedPostName: string,
+): string {
+  return `Added to this turn's draft: ${candidateName} as ${postName}, leaving ${vacatedPostName} vacant. Nothing has changed yet — resolve the turn to apply it.`;
+}
+
+export function dismissalStagedAnnouncement(holderName: string, postName: string): string {
+  return `Added to this turn's draft: ${holderName} dismissed as ${postName}. Nobody has been dismissed yet — resolve the turn to apply it.`;
+}
+
+export function cabinetOrderRemovedAnnouncement(postName: string): string {
+  return `Order removed for ${postName}. Nothing has changed.`;
+}
+
+/** The review's line for a post whose staged order this action deliberately leaves alone. */
+export function keepsStagedOrderLine(postName: string, description: string): string {
+  return `${postName} keeps its staged order: ${description}.`;
+}
+
+export function becomesLine(candidateName: string, postName: string): string {
+  return `${candidateName} becomes ${postName}.`;
+}
+
+export function leftVacantLine(postName: string): string {
+  return `${postName} is left vacant.`;
+}
+
+export function dismissedLine(holderName: string, postName: string): string {
+  return `${holderName} is dismissed as ${postName}.`;
+}
+
+export function appointmentCostLine(cost: number): string {
+  return `Costs ${cost} political capital.`;
+}

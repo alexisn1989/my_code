@@ -12,6 +12,8 @@
 
 import { create } from "zustand";
 
+import { reconcileCompanions, type CabinetOrders } from "./cabinetCompanions";
+
 export type PolicySlotKind = "budget" | "amendment";
 export type ProposalRoute = "legislative" | "decree";
 
@@ -75,6 +77,16 @@ export interface DraftState {
    * and because staging a second REPLACES the first (see `setMovementOrder`), which makes the cap
    * unreachable from the interface rather than merely refused by the server. */
   movement: { formationId: string; destinationTheaterId: string } | null;
+  /** Cabinet orders staged for this turn, keyed by post value.
+   *
+   * A record rather than a single nullable order, because a TRANSFER is irreducibly two orders and
+   * they are written independently -- see `cabinetCompanions.ts`, which owns the rules that keep
+   * the two coherent. Every action below mutates naively and then reconciles, so no action carries
+   * a copy of those rules.
+   *
+   * Only ever changed by a CONFIRMED action. Browsing candidates, selecting one, and cancelling
+   * before confirming are component state on the screen and never reach here. */
+  cabinetOrders: CabinetOrders;
 
   dismissedHelp: boolean;
   glossaryOpen: boolean;
@@ -108,6 +120,18 @@ export interface DraftState {
    * first rather than accumulating one the server would reject. */
   setMovementOrder: (formationId: string, destinationTheaterId: string) => void;
   clearMovementOrder: () => void;
+  /** Appoint (or replace) somebody, explicitly.
+   *
+   * `requiresVacatingPost` is passed by the caller from the candidate's own projected row and is
+   * stored on the order, which is what makes this entry recognisable as a transfer later. Also the
+   * path that PROMOTES a generated companion: writing here makes the post's order explicit, so a
+   * later cancellation of the transfer can no longer remove it. */
+  confirmAppointment: (post: string, characterId: string, requiresVacatingPost?: string) => void;
+  /** Dismiss the holder of one post, explicitly. Promotes a companion for the same reason. */
+  confirmDismissal: (post: string) => void;
+  /** Remove one post's order. Reconciliation then drops the companion of a transfer this
+   * cancelled, and restores the companion of any transfer this left with an empty origin. */
+  cancelCabinetOrder: (post: string) => void;
   /** Clears every draft field. Called ONLY after a successful resolve
    * (mandate: "Clear the committed draft only after success"). */
   clearDraft: () => void;
@@ -149,6 +173,7 @@ export const useDraftStore = create<DraftState>((set) => ({
   amendment: EMPTY_AMENDMENT,
   investments: {},
   movement: null,
+  cabinetOrders: {},
   dismissedHelp: false,
   glossaryOpen: false,
 
@@ -224,6 +249,31 @@ export const useDraftStore = create<DraftState>((set) => ({
 
   clearMovementOrder: () => set({ movement: null }),
 
+  confirmAppointment: (post, characterId, requiresVacatingPost) =>
+    set((state) => ({
+      cabinetOrders: reconcileCompanions({
+        ...state.cabinetOrders,
+        [post]:
+          requiresVacatingPost === undefined
+            ? { characterId, origin: "explicit" }
+            : { characterId, origin: "explicit", requiresVacatingPost },
+      }),
+    })),
+
+  confirmDismissal: (post) =>
+    set((state) => ({
+      cabinetOrders: reconcileCompanions({
+        ...state.cabinetOrders,
+        [post]: { characterId: null, origin: "explicit" },
+      }),
+    })),
+
+  cancelCabinetOrder: (post) =>
+    set((state) => {
+      const { [post]: _removed, ...rest } = state.cabinetOrders;
+      return { cabinetOrders: reconcileCompanions(rest) };
+    }),
+
   clearDraft: () =>
     set({
       policySlot: null,
@@ -234,6 +284,9 @@ export const useDraftStore = create<DraftState>((set) => ({
       // campaign -- an id that may not even exist in the new one -- from being submitted after a
       // New Game or Load.
       movement: null,
+      // Cleared for exactly that reason too: a `characterId` from a previous campaign names
+      // somebody the new one may not have.
+      cabinetOrders: {},
     }),
 
   dismissHelp: () => set({ dismissedHelp: true }),

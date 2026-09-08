@@ -43,6 +43,7 @@ from app.simulation.legislature import LegislativeOutcome, ProposalRoute
 from app.simulation.military import classify_destinations
 from app.simulation.report import CabinetChange, TurnReport
 from app.simulation.state import (
+    POST_DISPLAY_NAMES,
     CabinetPost,
     GameState,
     OutcomeBucket,
@@ -849,6 +850,13 @@ class CabinetPostOption(BaseModel):
     model_config = _STRICT
 
     post: str
+    """The post's identifier, and the value `currently_holds_post` / `requires_vacating_post` on a
+    candidate row are matched against. A client resolves those to words through THESE rows, never
+    by transforming the identifier."""
+    post_display_name: str
+    """The post's label, from the same authored `state.POST_DISPLAY_NAMES` the report row and the
+    report entries use. Carried here so no client ever has to rewrite `chief_of_staff` into prose --
+    the transformation the CLI had and lost for exactly this reason."""
     holder_character_id: str | None = None
     holder_display_name: str | None = None
     holder_competence_bps: int | None = None
@@ -921,6 +929,7 @@ def _cabinet_post_options(state: GameState) -> tuple[CabinetPostOption, ...]:
         options.append(
             CabinetPostOption(
                 post=post.value,
+                post_display_name=POST_DISPLAY_NAMES[post],
                 holder_character_id=holder_id,
                 holder_display_name=None if holder is None else holder.display_name,
                 holder_competence_bps=None if holder is None else holder.competence,

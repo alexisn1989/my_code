@@ -79,6 +79,7 @@ const DECISION_OPTIONS = {
   blocs: [],
   chambers: [],
   constitutional_axes: [],
+  cabinet_posts: [],
   decree_amendment_capital_cost: 10,
   decree_available: true,
   policy_cards: [],
