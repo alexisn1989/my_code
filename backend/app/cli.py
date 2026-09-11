@@ -565,6 +565,26 @@ def _render_cabinet_dismissed(params: dict[str, str | int]) -> str:
     )
 
 
+def _render_legislative_bargain_accepted(params: dict[str, str | int]) -> str:
+    """(Characters slice) One purchased endorsement, composed only from the entry's own snapshotted
+    params -- the leader, their party, the proposal and the price actually paid."""
+    return (
+        f"{params['character_display_name']} of the {params['party_display_name']} backed "
+        f"{params['proposal_display_name']}, for {params['asking_price']} political capital."
+    )
+
+
+def _render_legislative_bargain_refused_will_not_deal(params: dict[str, str | int]) -> str:
+    """States NO figure, and structurally cannot: a refusal commits nothing, so its entry carries
+    neither `asking_price` nor `endorsement_bps`. That absence is deliberate -- naming what the
+    leader would have wanted is precisely the counteroffer this design does not have, and putting
+    it here would reintroduce the mechanic as display text."""
+    return (
+        f"{params['character_display_name']} of the {params['party_display_name']} would not deal "
+        f"over {params['proposal_display_name']}."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -606,6 +626,10 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "cabinet_appointed": _render_cabinet_appointed,
     "cabinet_replaced": _render_cabinet_replaced,
     "cabinet_dismissed": _render_cabinet_dismissed,
+    "legislative_bargain_accepted": _render_legislative_bargain_accepted,
+    "legislative_bargain_refused_will_not_deal": (
+        _render_legislative_bargain_refused_will_not_deal
+    ),
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id

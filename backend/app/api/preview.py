@@ -41,6 +41,10 @@ from app.simulation.decisions import (
     ConstitutionalAmendmentDecision,
     DecisionSet,
 )
+from app.simulation.legislative_bargaining import (
+    LEGISLATIVE_ENDORSEMENT_BPS,
+    assess_legislative_bargain,
+)
 from app.simulation.legislative_voting import (
     CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
@@ -152,6 +156,7 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
     amendment = decision_set.constitutional_amendment_decision()
     investment = decision_set.relationship_investment_decision()
     cabinet = decision_set.cabinet_decision()
+    bargain_price, endorsed_party_id = _legislative_bargain_preview(state, decision_set)
 
     proposal: BudgetDecision | ConstitutionalAmendmentDecision | None = budget or amendment
     _require_no_structural_problem(state, decision_set)
@@ -160,9 +165,9 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
     legislature = politics.legislature
     if proposal is not None and legislature is not None:
         chambers = (
-            _preview_amendment(politics, legislature, amendment)
+            _preview_amendment(politics, legislature, amendment, endorsed_party_id)
             if amendment is not None
-            else _preview_budget(politics, legislature, budget, finance)
+            else _preview_budget(politics, legislature, budget, finance, endorsed_party_id)
         )
 
     # Affordability is a sum-and-compare of submitted quantities against opening
@@ -180,7 +185,7 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
         sum(row.political_capital for row in investment.investments) if investment else 0
     )
     cabinet_total = _cabinet_cost(state, cabinet)
-    committed = route_cost + influence_total + investment_total + cabinet_total
+    committed = route_cost + influence_total + investment_total + cabinet_total + bargain_price
     opening_capital = politics.political_capital
 
     return PreviewProjection(
@@ -194,6 +199,7 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
         influence_capital=influence_total,
         investment_capital=investment_total,
         cabinet_capital=cabinet_total,
+        legislative_bargain_capital=bargain_price,
         committed_capital=committed,
         opening_capital=opening_capital,
         affordable=committed <= opening_capital,
@@ -220,11 +226,46 @@ def _cabinet_cost(state: GameState, decision: CabinetDecision | None) -> int:
     return total
 
 
+def _legislative_bargain_preview(
+    state: GameState, decision_set: DecisionSet
+) -> tuple[int, str | None]:
+    """What this draft's bargain would cost, and whose blocs it would move.
+
+    Returns `(0, None)` for a draft with no bargain AND for one whose counterparty will not deal --
+    a refusal commits nothing, so the panel shows a Bargaining term of `0` rather than a charge that
+    never happens.
+
+    Priced and gated through `simulation.legislative_bargaining` rather than re-derived here, so a
+    preview cannot quote a figure the resolver would not charge. The endorsement is returned
+    alongside because the chamber tallies below must include it: a preview that omitted it would
+    tell the player their proposal fails and then watch it pass, which is the one thing preview
+    exists to prevent.
+    """
+    decision = decision_set.legislative_bargain_decision()
+    if decision is None:
+        return 0, None
+    character = state.world.characters.get(decision.character_id)
+    if character is None or character.party_id is None:
+        # `first_decision_problem` has already refused this draft by the time anything reads these
+        # numbers; guessing a price for a person who does not exist would be worse than none.
+        return 0, None
+    assessment = assess_legislative_bargain(
+        loyalty_bps=character.loyalty,
+        independence_bps=character.independence,
+        ambition_bps=character.ambition,
+        personal_trust_bps=character.personal_trust,
+    )
+    if not assessment.will_deal or assessment.asking_price is None:
+        return 0, None
+    return assessment.asking_price, character.party_id
+
+
 def _preview_budget(
     politics: PoliticalState,
     legislature: LegislatureState,
     budget: BudgetDecision | None,
     finance: object,
+    endorsed_party_id: str | None,
 ) -> tuple[ChamberPreview, ...]:
     """The legislative tally, composed exactly as `phases.py:953-1042` composes it."""
     if budget is None or finance is None:
@@ -267,6 +308,9 @@ def _preview_budget(
                 spending_preference_bps=bloc.spending_preference_bps,  # type: ignore[attr-defined]
                 allocated_political_capital=allocation_by_key.get((party_id, bloc_id), 0),
                 discipline_bps=bloc.discipline_bps,  # type: ignore[attr-defined]
+                endorsement_bps=(
+                    LEGISLATIVE_ENDORSEMENT_BPS if party_id == endorsed_party_id else 0
+                ),
             )
             supports.append(
                 SeatSupport(
@@ -297,6 +341,7 @@ def _preview_amendment(
     politics: PoliticalState,
     legislature: LegislatureState,
     amendment: ConstitutionalAmendmentDecision,
+    endorsed_party_id: str | None,
 ) -> tuple[ChamberPreview, ...]:
     """The amendment tally, composed exactly as `phases.py:620-672` composes it."""
     threshold = AmendmentThreshold(politics.constitution.amendment_difficulty.value)
@@ -315,6 +360,9 @@ def _preview_amendment(
                 relationship_bps=bloc.government_relationship_bps,  # type: ignore[attr-defined]
                 discipline_bps=bloc.discipline_bps,  # type: ignore[attr-defined]
                 allocated_political_capital=allocation_by_key.get((party_id, bloc_id), 0),
+                endorsement_bps=(
+                    LEGISLATIVE_ENDORSEMENT_BPS if party_id == endorsed_party_id else 0
+                ),
             )
             supports.append(
                 SeatSupport(

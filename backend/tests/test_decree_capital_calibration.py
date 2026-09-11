@@ -128,6 +128,7 @@ def _effective_support(
         spending_preference_bps=bloc.spending_preference_bps,
         allocated_political_capital=capital,
         discipline_bps=bloc.discipline_bps,
+        endorsement_bps=0,
     ).effective_support_bps
 
 

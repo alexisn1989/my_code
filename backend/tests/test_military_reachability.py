@@ -477,9 +477,13 @@ class TestMovementIsAcceptedAndAppliedTogether:
         so the members are the args of the union inside the annotation.
 
         Renamed from `..._has_grown_by_exactly_one_kind`: the Military Movement slice added
-        `military_movement` and the characters slice added `cabinet`, so "one" stopped being true
-        while the structural claim -- these kinds and no others -- did not. A membership assertion
-        keeps catching an accidentally-added kind either way.
+        `military_movement`, the characters slice added `cabinet` and then `legislative_bargain`, so
+        "one" stopped being true while the structural claim -- these kinds and no others -- did not.
+        A membership assertion keeps catching an accidentally-added kind either way.
+
+        Deliberately kept as SET EQUALITY rather than relaxed to a subset check when the union grew:
+        a subset assertion would stop catching the very thing this test exists for, an accidentally
+        added sixth or seventh kind.
         """
         import typing
 
@@ -492,6 +496,7 @@ class TestMovementIsAcceptedAndAppliedTogether:
             "budget",
             "cabinet",
             "constitutional_amendment",
+            "legislative_bargain",
             "military_movement",
         }
 

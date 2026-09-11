@@ -476,7 +476,7 @@ def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
     from app.simulation.resolver import resolve_turn
 
     state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
-    assert state.ruleset_version == RULESET_VERSION == "0.19.0"
+    assert state.ruleset_version == RULESET_VERSION == "0.20.0"
     decisions = DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
     )
@@ -642,7 +642,7 @@ def test_frozen_military_movement_save_fixture_declares_the_old_ruleset_version(
     raw = json.loads(MILITARY_MOVEMENT_SAVE_PATH.read_text(encoding="utf-8"))
     assert raw["ruleset_version"] == "0.14.0"
     assert raw["ruleset_version"] != RULESET_VERSION
-    assert RULESET_VERSION == "0.19.0"
+    assert RULESET_VERSION == "0.20.0"
 
 
 def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
@@ -659,7 +659,7 @@ def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_e
 
     message = str(exc_info.value)
     assert "0.14.0" in message
-    assert "0.19.0" in message
+    assert "0.20.0" in message
     assert RULESET_VERSION in message
 
 
@@ -894,7 +894,7 @@ def test_the_previous_ruleset_is_the_only_thing_that_moved_for_appointments() ->
     axes exist precisely so a rules change that content did not cause cannot force every scenario
     to be re-authored, and this is the test that keeps that split honest.
     """
-    assert frozenset({"0.19.0"}) == SUPPORTED_RULESET_VERSIONS
+    assert frozenset({"0.20.0"}) == SUPPORTED_RULESET_VERSIONS
     assert frozenset({"0.17.0"}) == SUPPORTED_CONTENT_VERSIONS
     characters_save = json.loads(CHARACTERS_SAVE_PATH.read_text(encoding="utf-8"))
     cabinet_save = json.loads(CABINET_SAVE_PATH.read_text(encoding="utf-8"))

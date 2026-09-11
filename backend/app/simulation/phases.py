@@ -71,6 +71,7 @@ from app.simulation.decisions import (
     budget_decision_digest,
     cabinet_decision_digest,
     constitutional_amendment_decision_digest,
+    legislative_bargain_decision_digest,
 )
 from app.simulation.foreign_conflict import (
     CEASEFIRE_BREAKDOWN_BPS,
@@ -138,6 +139,10 @@ from app.simulation.labor_allocation import (
     compute_effective_labor_force,
     compute_required_workers,
 )
+from app.simulation.legislative_bargaining import (
+    LEGISLATIVE_ENDORSEMENT_BPS,
+    assess_legislative_bargain,
+)
 from app.simulation.legislative_voting import (
     CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
@@ -202,6 +207,8 @@ from app.simulation.report import (
     GovernanceReport,
     ImpeachmentChannelReport,
     LaborMarketReport,
+    LegislativeBargainOutcome,
+    LegislativeBargainReport,
     LegislativeReport,
     MovementReport,
     PartyElectionStanceReport,
@@ -239,6 +246,7 @@ from app.simulation.resource_output import (
     compute_resource_output_contributions,
 )
 from app.simulation.state import (
+    LEGISLATIVE_PROPOSAL_DISPLAY_NAMES,
     POST_DISPLAY_NAMES,
     CabinetAppointment,
     CabinetPost,
@@ -463,6 +471,43 @@ class CabinetScratch:
 
 
 @dataclass
+class LegislativeBargainScratch:
+    """Mutable, turn-local workspace for this turn's one approach to a party leader.
+
+    Populated ENTIRELY by slot 1 from the OPENING state, before the vote is resolved and before
+    anything is written -- the same discipline `CabinetScratch` follows, and for a sharper reason
+    here: the endorsement this produces is an INPUT to the vote held later in the same slot. If it
+    were computed anywhere else, the vote and the report could disagree about whether a party was
+    backed.
+    """
+
+    row: LegislativeBargainReport | None
+    """The single bargain row, or `None` when no bargain was submitted. Slot 15 puts it into
+    `LegislativeReport.bargains` without recomputing anything."""
+    entries: tuple[TurnReportEntry, ...]
+    """One entry when a bargain was submitted, empty otherwise. Built beside the row so the two
+    cannot disagree -- and load-bearing for visibility: a REFUSED bargain commits no capital and so
+    has no ledger row, which would make it invisible on every API surface without this."""
+    expenditures: tuple[CapitalExpenditureReport, ...]
+    """At most one untargeted `LEGISLATIVE_BARGAIN` row, present only when the bargain was
+    accepted."""
+    endorsed_party_id: str | None
+    """The party whose blocs receive `LEGISLATIVE_ENDORSEMENT_BPS` in every chamber this turn, or
+    `None`. Read by both vote paths; the single source for the endorsement, computed once."""
+    total_committed: int
+
+    def endorsement_for(self, party_id: str) -> int:
+        """The endorsement one party's blocs receive, applied EXACTLY ONCE per bloc.
+
+        A function rather than a precomputed per-bloc mapping so the vote loops cannot accumulate:
+        every call is a fresh lookup returning the constant or zero, so calling it twice for the
+        same bloc still yields the constant, and a bloc sitting in two chambers gets the same value
+        in each rather than a running sum.
+        """
+        return LEGISLATIVE_ENDORSEMENT_BPS if party_id == self.endorsed_party_id else 0
+
+
+@dataclass
 class FinanceScratch:
     """Mutable, turn-local accounting workspace threaded through the Phase 2A/2B2 phases
     via `PhaseContext.finance`. Not itself part of `GameState` or the report — purely
@@ -518,6 +563,12 @@ class PhaseContext:
 
     The opening cabinet lives here precisely because slot 2 overwrites the one on `ctx.state`; see
     `CabinetScratch`."""
+    legislative_bargain_scratch: LegislativeBargainScratch | None = None
+    """Set by `_validate_and_reserve_actions` (slot 1) BEFORE the vote it feeds, and read by the
+    vote itself, by the affordability guard and by slot 15. Characters slice.
+
+    Never `None` once slot 1 has run: a turn with no bargain still gets a scratch, carrying no row,
+    no entries and `endorsed_party_id=None`, so every reader takes one code path."""
     political_capital_report: PoliticalCapitalReport | None = None
     """Set by `generate_turn_report` (slot 15) from `capital_ledger`; `resolver.py` copies this
     onto the final `TurnReport`. Phase 3B2A."""
@@ -653,6 +704,11 @@ def _resolve_constitutional_amendment(
     player = ctx.state.world.countries[ctx.state.world.player_country_id]
     politics = player.politics
     assert politics is not None, "checked by the caller"
+    # The endorsement is an INPUT to this vote, so the caller resolves the bargain before calling
+    # here. A bargain struck over an amendment must reach `resolve_amendment_support` or the player
+    # would have paid for nothing on this route specifically.
+    bargain_scratch = ctx.legislative_bargain_scratch
+    assert bargain_scratch is not None, "slot 1 resolves the bargain before any vote"
     opening_constitution = politics.constitution.model_copy()
 
     if decision is None:
@@ -779,6 +835,7 @@ def _resolve_constitutional_amendment(
                         relationship_bps=bloc.government_relationship_bps,
                         discipline_bps=bloc.discipline_bps,
                         allocated_political_capital=allocation_by_key.get((party.id, bloc.id), 0),
+                        endorsement_bps=bargain_scratch.endorsement_for(party.id),
                     )
                     support_rows.append(
                         SeatSupport(
@@ -1037,6 +1094,157 @@ def _resolve_cabinet_orders(ctx: PhaseContext) -> CabinetScratch:
     )
 
 
+def _resolve_legislative_bargain(
+    ctx: PhaseContext, *, legislature: LegislatureState | None
+) -> LegislativeBargainScratch:
+    """Slot 1's bargain half: validate the approach, price it, and decide whether it lands.
+
+    Writes nothing to `ctx.state`, and runs BEFORE the vote in the same slot, because the
+    endorsement it produces is one of the vote's inputs.
+
+    Six rejection codes in a fixed precedence, so the reported reason never depends on evaluation
+    accident. The order is not arbitrary: an unknown id has no affiliation to test (1 before 2); a
+    foreign leader's `party_id` is meaningless rather than absent (2 before 3); a null `party_id`
+    cannot be looked up in a legislature (3 before 4); `government_role` is a property of a party
+    that must first be found (4 before 5); and the proposal check comes last because it is the only
+    one about the REST of the decision set rather than about the counterparty, so a request naming
+    nobody real should say so before it complains about the target.
+
+    A REFUSAL is not one of these. A structurally valid leader who will not deal resolves the turn
+    normally, commits nothing, and gets a report row saying so -- deliberately unlike a refused
+    cabinet appointment, which IS a rejection. The difference is that a refused appointment leaves
+    nothing to report (its post row would read `unchanged`, byte-identical to never having tried)
+    while a refused bargain has a row of its own. The gate also reads `personal_trust`, which a
+    later slice makes mutable, so rejecting it at submission would encode "permanently impossible"
+    for something that is only currently impossible.
+    """
+    decision = ctx.decisions.legislative_bargain_decision()
+    if decision is None:
+        return LegislativeBargainScratch(
+            row=None,
+            entries=(),
+            expenditures=(),
+            endorsed_party_id=None,
+            total_committed=0,
+        )
+
+    characters = ctx.state.world.characters
+    character = characters.get(decision.character_id)
+    if character is None:
+        raise DecisionSetError(
+            f"legislative_bargain_character_unknown: {decision.character_id!r} is not a character "
+            "in this world"
+        )
+    if not is_domestic_to(character=character, country_id=ctx.state.world.player_country_id):
+        raise DecisionSetError(
+            f"legislative_bargain_character_not_domestic: {decision.character_id!r} is not this "
+            "country's own person, so they lead no party in its legislature"
+        )
+    if character.party_id is None:
+        raise DecisionSetError(
+            f"legislative_bargain_character_leads_no_party: {decision.character_id!r} leads no "
+            "party, so has no endorsement to sell"
+        )
+    party = (
+        next((p for p in legislature.parties if p.id == character.party_id), None)
+        if legislature is not None
+        else None
+    )
+    if party is None:
+        # Also the absent-legislature case: a country with no legislature has no party in one, so
+        # this single code covers both rather than splitting a distinction with no consequence.
+        raise DecisionSetError(
+            f"legislative_bargain_party_not_in_legislature: {character.party_id!r} is not a party "
+            "of this legislature"
+        )
+    if party.government_role is GovernmentRole.COALITION:
+        raise DecisionSetError(
+            f"legislative_bargain_party_is_in_government: {party.id!r} is in government, so it has "
+            "no endorsement to sell"
+        )
+    submitted_kinds = {d.kind for d in ctx.decisions.decisions}
+    if decision.proposal_kind not in submitted_kinds:
+        # `proposal_kind` is an assertion of intent, never a selector: `_at_most_one_policy_proposal`
+        # already makes "the proposal in this set" unique. What this catches is a client that
+        # bargained for a budget while the set carries an amendment -- buying an endorsement for the
+        # wrong vote, silently.
+        raise DecisionSetError(
+            f"legislative_bargain_proposal_absent: this decision set carries no "
+            f"{decision.proposal_kind!r} proposal for the bargain to support"
+        )
+
+    assessment = assess_legislative_bargain(
+        loyalty_bps=character.loyalty,
+        independence_bps=character.independence,
+        ambition_bps=character.ambition,
+        personal_trust_bps=character.personal_trust,
+    )
+    accepted = assessment.will_deal
+    committed = assessment.asking_price if accepted and assessment.asking_price else 0
+    proposal_display_name = LEGISLATIVE_PROPOSAL_DISPLAY_NAMES[decision.proposal_kind]
+
+    row = LegislativeBargainReport(
+        character_id=decision.character_id,
+        character_display_name=character.display_name,
+        party_id=party.id,
+        party_display_name=party.name,
+        proposal_kind=decision.proposal_kind,
+        proposal_display_name=proposal_display_name,
+        outcome=(
+            LegislativeBargainOutcome.ACCEPTED
+            if accepted
+            else LegislativeBargainOutcome.REFUSED_WILL_NOT_DEAL
+        ),
+        asking_price=assessment.asking_price,
+        capital_committed=committed,
+        endorsement_bps=LEGISLATIVE_ENDORSEMENT_BPS if accepted else 0,
+    )
+
+    # Snapshotted params, names included, so a turn from ten turns ago renders the words it was
+    # resolved under. The refused set is a STRICT SUBSET that omits every monetary field: a refusal
+    # has no field in which a price could travel, so no renderer on any surface can state one --
+    # which is the last trace of the deleted counteroffer.
+    params: dict[str, str | int] = {
+        "character_id": decision.character_id,
+        "character_display_name": character.display_name,
+        "party_id": party.id,
+        "party_display_name": party.name,
+        "proposal_kind": decision.proposal_kind,
+        "proposal_display_name": proposal_display_name,
+    }
+    if accepted and assessment.asking_price is not None:
+        params["asking_price"] = assessment.asking_price
+        params["endorsement_bps"] = LEGISLATIVE_ENDORSEMENT_BPS
+
+    entries = (
+        TurnReportEntry(
+            category="legislature",
+            reason_id=f"legislative_bargain_{row.outcome.value}",
+            params=params,
+        ),
+    )
+    expenditures = (
+        (
+            CapitalExpenditureReport(
+                category=CapitalExpenditureCategory.LEGISLATIVE_BARGAIN,
+                party_id=None,
+                bloc_id=None,
+                political_capital=committed,
+                decision_digest=legislative_bargain_decision_digest(decision),
+            ),
+        )
+        if committed > 0
+        else ()
+    )
+    return LegislativeBargainScratch(
+        row=row,
+        entries=entries,
+        expenditures=expenditures,
+        endorsed_party_id=party.id if accepted else None,
+        total_committed=committed,
+    )
+
+
 def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
     """Phase 3B1, slot 1: resolve this turn's budget proposal against the legislature (or decree
     authority) BEFORE anything is mutated (§9 of the plan). Computes the vote (or decree, or
@@ -1090,6 +1298,14 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
     # `_finish_validate_and_reserve_actions` with the same scratch, and so the opening cabinet is
     # captured before slot 2 can overwrite it (R3).
     ctx.cabinet_scratch = _resolve_cabinet_orders(ctx)
+
+    # --- the bargain: resolved here because the VOTE below consumes its endorsement -----------
+    # Placed after the cabinet and before every vote path so both slot-1 branches see the same
+    # scratch, and so the endorsement that reaches `resolve_bloc_support` is the very value the
+    # report will record. Reads the OPENING legislature and the opening character registry; writes
+    # nothing.
+    ctx.legislative_bargain_scratch = _resolve_legislative_bargain(ctx, legislature=legislature)
+    bargain_scratch = ctx.legislative_bargain_scratch
 
     # The chief of staff's contribution to every relationship investment this turn, read ONCE from
     # the OPENING cabinet so slot 1's no-op guard and slot 11's application cannot disagree about
@@ -1317,6 +1533,7 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
                         spending_preference_bps=bloc.spending_preference_bps,
                         allocated_political_capital=allocated,
                         discipline_bps=bloc.discipline_bps,
+                        endorsement_bps=bargain_scratch.endorsement_for(party.id),
                     )
                     seat_supports.append(
                         SeatSupport(
@@ -1348,6 +1565,7 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
                         raw_support_bps=support.raw_support_bps,
                         political_capital_allocated=allocated,
                         influence_bps=support.influence_bps,
+                        endorsement_bps=support.endorsement_bps,
                         final_support_bps=support.final_support_bps,
                         effective_support_bps=support.effective_support_bps,
                         numerator=apportioned.numerator,
@@ -1438,14 +1656,23 @@ def _finish_validate_and_reserve_actions(
     """
     assert ctx.legislative_scratch is not None, "the caller always sets this first"
     assert ctx.cabinet_scratch is not None, "slot 1 sets the cabinet scratch before branching"
+    assert ctx.legislative_bargain_scratch is not None, "slot 1 sets the bargain scratch too"
     legislative_commitment = ctx.legislative_scratch.political_capital_committed
     cabinet_total = ctx.cabinet_scratch.total_committed
-    total_committed = legislative_commitment + investment_total + amendment_total + cabinet_total
+    # (Characters slice) The fifth sink. Exact rather than pessimistic: slot 1 has already resolved
+    # the outcome from opening state, so a REFUSED bargain contributes 0 here and neither costs
+    # capital nor blocks the rest of the turn -- which is what makes approaching a leader who will
+    # not deal a free political act rather than a self-inflicted budget cut.
+    bargain_total = ctx.legislative_bargain_scratch.total_committed
+    total_committed = (
+        legislative_commitment + investment_total + amendment_total + cabinet_total + bargain_total
+    )
     if total_committed > opening.political_capital:
         raise DecisionSetError(
             f"total political capital commitment {total_committed} (route commitment "
             f"{legislative_commitment} + relationship investment {investment_total} + "
-            f"constitutional amendment {amendment_total} + cabinet appointment {cabinet_total}) "
+            f"constitutional amendment {amendment_total} + cabinet appointment {cabinet_total} + "
+            f"legislative bargain {bargain_total}) "
             f"exceeds opening political capital {opening.political_capital}"
         )
 
@@ -1474,6 +1701,7 @@ def _finish_validate_and_reserve_actions(
                 *investment_expenditure_rows,
                 *amendment_expenditure_rows,
                 *cabinet_expenditure_rows,
+                *ctx.legislative_bargain_scratch.expenditures,
             ),
             key=lambda row: (row.category.value, row.party_id or "", row.bloc_id or ""),
         )
@@ -3751,6 +3979,8 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
 
     legislative_scratch = ctx.legislative_scratch
     assert legislative_scratch is not None, "validate_and_reserve_actions always runs first"
+    bargain_scratch = ctx.legislative_bargain_scratch
+    assert bargain_scratch is not None, "validate_and_reserve_actions always runs first"
     ctx.legislative_report = LegislativeReport(
         outcome=legislative_scratch.outcome,
         route=legislative_scratch.route,
@@ -3764,6 +3994,9 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
         spending_intensity_bps=legislative_scratch.spending_intensity_bps,
         chambers=legislative_scratch.chambers,
         blocs=legislative_scratch.blocs,
+        # (Characters slice) Slot 1's already-validated row, wrapped and never recomputed -- the
+        # same relationship slot 15 has with every other scratch here.
+        bargains=() if bargain_scratch.row is None else (bargain_scratch.row,),
         opening_political_capital=legislative_scratch.opening.political_capital,
         political_capital_committed=legislative_scratch.political_capital_committed,
         budget_decision_digest=legislative_scratch.budget_decision_digest,
@@ -3908,6 +4141,13 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
     # `drivers` and both CLI paths; a dismissal has no expenditure row, so without them it would
     # be invisible everywhere outside the governance subtree.
     ctx.report_entries.extend(cabinet_scratch.entries)
+
+    # (Characters slice) The bargain's entry, for the same visibility reason and one sharper: a
+    # REFUSED approach commits no capital and so has no expenditure row at all, which would make it
+    # invisible on every API surface. A player who asked a leader for support and was turned down
+    # must be told, not shown a turn in which nothing happened.
+    assert bargain_scratch is not None, "slot 1 always sets this"
+    ctx.report_entries.extend(bargain_scratch.entries)
 
     # (Phase 3B1) Appended LAST, after every other phase and after this slot's own legislative
     # entries, so `turn_resolved` stays the final line of every report exactly as it was before

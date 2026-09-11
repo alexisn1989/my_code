@@ -63,6 +63,7 @@ def _tally_chamber(
                 spending_preference_bps=bloc.spending_preference_bps,
                 allocated_political_capital=allocations.get((party.id, bloc.id), 0),
                 discipline_bps=bloc.discipline_bps,
+                endorsement_bps=0,
             ).effective_support_bps
             rows.append(
                 SeatSupport(
@@ -110,6 +111,7 @@ def _cheapest_bargain(
                     spending_preference_bps=bloc.spending_preference_bps,
                     allocated_political_capital=capital,
                     discipline_bps=bloc.discipline_bps,
+                    endorsement_bps=0,
                 ).effective_support_bps
                 numerator = seats * support
                 if numerator > best:
@@ -214,6 +216,7 @@ def test_tiny_valid_opposition_blocs_never_supply_a_seat_to_this_proposal() -> N
             spending_preference_bps=bloc.spending_preference_bps,
             allocated_political_capital=0,
             discipline_bps=bloc.discipline_bps,
+            endorsement_bps=0,
         ).effective_support_bps
         assert support == 0
 
@@ -338,6 +341,7 @@ def test_deficit_demo_governing_blocs_alone_are_the_bulk_of_the_forty_seven() ->
                 spending_preference_bps=bloc.spending_preference_bps,
                 allocated_political_capital=0,
                 discipline_bps=bloc.discipline_bps,
+                endorsement_bps=0,
             ).effective_support_bps
             rows.append(
                 SeatSupport(

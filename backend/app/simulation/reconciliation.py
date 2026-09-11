@@ -145,6 +145,22 @@ from app.simulation.government_survival import (
     unrest_attempt_risk_bps,
     unrest_success_probability_bps,
 )
+
+# (Group 58) CONSTANTS ONLY, deliberately. `assess_legislative_bargain`, `asking_price_capital` and
+# `will_deal` are NOT imported: this module transcribes those formulas itself
+# (`_transcribed_bargain_price`, `_transcribed_bargain_will_deal`) so that the arithmetic is really
+# performed twice. `tests/test_legislative_bargain.py` enforces this with an AST scan written as an
+# allowlist, so a newly added helper in that module is refused here by default rather than needing
+# to be added to a denylist.
+from app.simulation.legislative_bargaining import (
+    LEGISLATIVE_BARGAIN_AMBITION_PRICE_MAX,
+    LEGISLATIVE_BARGAIN_BASE_PRICE,
+    LEGISLATIVE_BARGAIN_INDEPENDENCE_PRICE_MAX,
+    LEGISLATIVE_BARGAIN_LOYALTY_REFUSAL_CEILING_BPS,
+    LEGISLATIVE_BARGAIN_TRUST_DISCOUNT_MAX,
+    LEGISLATIVE_BARGAIN_TRUST_OVERRIDE_BPS,
+    LEGISLATIVE_ENDORSEMENT_BPS,
+)
 from app.simulation.legislative_voting import (
     CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     required_amendment_yes_seats,
@@ -166,10 +182,14 @@ from app.simulation.report import (
     CabinetChange,
     ConstitutionalAmendmentReport,
     GovernanceReport,
+    LegislativeBargainOutcome,
+    LegislativeBargainReport,
     MovementReport,
     TurnReport,
+    TurnReportEntry,
 )
 from app.simulation.state import (
+    LEGISLATIVE_PROPOSAL_DISPLAY_NAMES,
     CabinetPost,
     FormationBranch,
     FormationState,
@@ -295,6 +315,7 @@ def _reported_amendment_is_enacted(value: object) -> bool:
 def _expected_amendment_vote(
     opening_politics: PoliticalState,
     decision: ConstitutionalAmendmentDecision,
+    endorsed_party_id: str | None = None,
 ) -> tuple[tuple[dict[str, object], ...], LegislativeOutcome, tuple[str, ...]]:
     if decision.route is ProposalRoute.DECREE:
         if (
@@ -354,6 +375,9 @@ def _expected_amendment_vote(
                     relationship_bps=bloc.government_relationship_bps,
                     discipline_bps=bloc.discipline_bps,
                     allocated_political_capital=allocations.get((party.id, bloc.id), 0),
+                    endorsement_bps=(
+                        LEGISLATIVE_ENDORSEMENT_BPS if party.id == endorsed_party_id else 0
+                    ),
                 )
                 support_rows.append(
                     SeatSupport(
@@ -1306,6 +1330,19 @@ def reconcile_political_legislative_and_survival_report(
         )
     )
 
+    # Group 58 (characters slice): the legislative bargain's records agree -- and unlike most
+    # groups this one re-derives the gate and the price by TRANSCRIBING the formulas rather than
+    # calling `simulation.legislative_bargaining`. A check that called the function which produced
+    # the report could not fail when that function is wrong.
+    problems.extend(
+        _reconcile_legislative_bargain(
+            opening_state=opening_state,
+            closing_state=closing_state,
+            report=report,
+            decisions=decisions,
+        )
+    )
+
     # Group 45 (plan §8, Gate 3C1's slice of the coup/unrest backstop): terminal-outcome
     # non-retroactivity. `opening_state.politics.terminal_outcome` must be `None` on every turn
     # reconciliation is asked to check at all -- the redundant, independently-checkable backstop
@@ -1970,7 +2007,9 @@ def reconcile_political_legislative_and_survival_report(
         victory_amendment_outcome = LegislativeOutcome.NO_PROPOSAL
         if victory_amendment is not None:
             _, victory_amendment_outcome, _ = _expected_amendment_vote(
-                opening_politics, victory_amendment
+                opening_politics,
+                victory_amendment,
+                _endorsed_party_id_from_opening(opening_state, decisions),
             )
         pending_after_slot_2 = _pending_after_amendment(
             opening_politics=opening_politics,
@@ -2146,7 +2185,11 @@ def reconcile_political_legislative_and_survival_report(
             expected_amendment_chambers,
             expected_amendment_outcome,
             amendment_validation_problems,
-        ) = _expected_amendment_vote(opening_politics, amendment_decision)
+        ) = _expected_amendment_vote(
+            opening_politics,
+            amendment_decision,
+            _endorsed_party_id_from_opening(opening_state, decisions),
+        )
         problems.extend(amendment_validation_problems)
     amendment_enacted = expected_amendment_outcome in (
         LegislativeOutcome.PASSED_LEGISLATIVE,
@@ -3745,6 +3788,335 @@ def _reconcile_cabinet_entries(governance: GovernanceReport, report: TurnReport)
                 f"{row.post.value!r} row ({expected_params!r}) (group 57)"
             )
     return problems
+
+
+def _transcribed_bargain_will_deal(*, loyalty_bps: int, personal_trust_bps: int) -> bool:
+    """Group 58's OWN copy of the gate, deliberately not a call to
+    `legislative_bargaining.will_deal`.
+
+    A reconciliation check that calls the function which produced the report cannot fail when that
+    function is wrong: it agrees with the defect and certifies it. Transcribing the rule means the
+    arithmetic is genuinely performed twice, by two authors, so a mistake in either surfaces as a
+    disagreement.
+
+    Sharing the CONSTANTS is a different thing and is allowed: a constant is one number both sides
+    read, so a transcription error in the formula still shows up, while duplicating the numbers
+    would create a second calibration that could drift from the real one without anything noticing.
+    `tests/test_legislative_bargain.py` enforces the boundary with an AST scan rather than trusting
+    this docstring.
+    """
+    return not (
+        loyalty_bps < LEGISLATIVE_BARGAIN_LOYALTY_REFUSAL_CEILING_BPS
+        and personal_trust_bps < LEGISLATIVE_BARGAIN_TRUST_OVERRIDE_BPS
+    )
+
+
+def _transcribed_bargain_price(
+    *, independence_bps: int, ambition_bps: int, personal_trust_bps: int
+) -> int:
+    """Group 58's own copy of the price formula. See `_transcribed_bargain_will_deal`."""
+    return max(
+        1,
+        LEGISLATIVE_BARGAIN_BASE_PRICE
+        + trunc_div_toward_zero(
+            independence_bps * LEGISLATIVE_BARGAIN_INDEPENDENCE_PRICE_MAX, BPS_DENOMINATOR
+        )
+        + trunc_div_toward_zero(
+            ambition_bps * LEGISLATIVE_BARGAIN_AMBITION_PRICE_MAX, BPS_DENOMINATOR
+        )
+        - trunc_div_toward_zero(
+            personal_trust_bps * LEGISLATIVE_BARGAIN_TRUST_DISCOUNT_MAX, BPS_DENOMINATOR
+        ),
+    )
+
+
+def _endorsed_party_id_from_opening(
+    opening_state: GameState, decisions: DecisionSet | None
+) -> str | None:
+    """Which party the submitted bargain endorsed, re-derived from opening state by transcription.
+
+    Used both by group 58 and by the amendment-vote re-derivation, so reconciliation's independent
+    view of the vote includes the endorsement rather than expecting an un-endorsed tally and
+    reporting every endorsed row as wrong.
+    """
+    if decisions is None:
+        return None
+    decision = decisions.legislative_bargain_decision()
+    if decision is None:
+        return None
+    character = opening_state.world.characters.get(decision.character_id)
+    if character is None or character.party_id is None:
+        return None
+    if not _transcribed_bargain_will_deal(
+        loyalty_bps=character.loyalty, personal_trust_bps=character.personal_trust
+    ):
+        return None
+    return character.party_id
+
+
+def _reconcile_legislative_bargain(
+    *,
+    opening_state: GameState,
+    closing_state: GameState,
+    report: TurnReport,
+    decisions: DecisionSet | None,
+) -> list[str]:
+    """Group 58 (characters slice) -- the legislative bargain's records all agree, checked against
+    an INDEPENDENT re-derivation rather than against the engine's own answer.
+
+    1. **Counterparty and price re-derived from `opening_state`'s character registry** by
+       transcribing the formulas (see `_transcribed_bargain_price`), never by calling
+       `legislative_bargaining`. This is the check that can actually catch a wrong price.
+    2. **`proposal_kind` names a decision really present** in the submitted set, and
+       `proposal_display_name` is the authored label for it -- so a forged row cannot rename a
+       proposal in the historical record.
+    3. **Outcome re-derived from the gate**, with `asking_price` present exactly when accepted,
+       `capital_committed` equal to that price, and `endorsement_bps` following the outcome.
+    4. **Every bloc's `endorsement_bps` is the constant for the endorsed party's blocs and `0`
+       everywhere else, in every chamber** -- and equals it EXACTLY ONCE. Comparing against
+       `LEGISLATIVE_ENDORSEMENT_BPS` itself rather than against a tally is what makes a double
+       application detectable: `2 x 2,000` would often vanish into the `final` clamp on an
+       already-supportive bloc, so a check that only replayed the clamped sum could not see it.
+    5. **The `LEGISLATIVE_BARGAIN` ledger row is present iff accepted**, unique, untargeted, and
+       equal to the re-derived price.
+    6. **The report ENTRY corresponds one-for-one with the row**, params and snapshotted names
+       included -- and a refusal's params carry NO monetary keys, which is what stops the deleted
+       counteroffer from reappearing as display text.
+    7. **No decision means no bargain anywhere**: no row, no entry, no ledger row, no non-zero
+       endorsement. The non-retroactivity backstop.
+    8. **The character registry is untouched.** This slice reads `personal_trust` and never writes
+       it; a later slice is the only writer.
+    """
+    problems: list[str] = []
+    legislative = report.legislative
+    if legislative is None:
+        return problems
+
+    rows = legislative.bargains
+    decision = decisions.legislative_bargain_decision() if decisions is not None else None
+
+    # (8) Trust is read, never written by this slice.
+    if opening_state.world.characters != closing_state.world.characters:
+        problems.append(
+            "the character registry changed during a turn, but no mechanic in this ruleset writes "
+            "to it (group 58)"
+        )
+
+    ledger_rows = (
+        [
+            row
+            for row in report.political_capital.expenditures
+            if row.category is CapitalExpenditureCategory.LEGISLATIVE_BARGAIN
+        ]
+        if report.political_capital is not None
+        else []
+    )
+    entries = [
+        entry for entry in report.entries if entry.reason_id.startswith("legislative_bargain_")
+    ]
+
+    if decisions is not None and decision is None:
+        # (7) Nothing was submitted, so nothing may be reported.
+        if rows:
+            problems.append(
+                f"the turn reports {len(rows)} legislative bargain(s) but submitted none (group 58)"
+            )
+        if entries:
+            problems.append(
+                f"the turn carries {len(entries)} legislative-bargain entry/entries but submitted "
+                "no bargain (group 58)"
+            )
+        if ledger_rows:
+            problems.append(
+                "the turn carries a LEGISLATIVE_BARGAIN expenditure row but submitted no bargain "
+                "(group 58)"
+            )
+        for bloc in legislative.blocs:
+            if bloc.endorsement_bps != 0:
+                problems.append(
+                    f"bloc ({bloc.party_id!r}, {bloc.bloc_id!r}) carries "
+                    f"endorsement_bps={bloc.endorsement_bps} on a turn with no bargain (group 58)"
+                )
+        return problems
+
+    if decision is None:
+        # `decisions=None`: the submitted set is unavailable, so only state-to-report checks run.
+        return problems
+
+    if len(rows) != 1:
+        problems.append(
+            f"the turn submitted a legislative bargain but reports {len(rows)} row(s) (group 58)"
+        )
+        return problems
+    row = rows[0]
+
+    character = opening_state.world.characters.get(decision.character_id)
+    if character is None:
+        problems.append(
+            f"the submitted bargain names {decision.character_id!r}, who is not in opening_state's "
+            "character registry (group 58)"
+        )
+        return problems
+
+    if row.character_id != decision.character_id:
+        problems.append(
+            f"bargain row names {row.character_id!r} but the submitted decision named "
+            f"{decision.character_id!r} (group 58)"
+        )
+    if row.character_display_name != character.display_name:
+        problems.append(
+            f"bargain row character_display_name={row.character_display_name!r} does not match "
+            f"opening_state ({character.display_name!r}) (group 58)"
+        )
+    if row.party_id != character.party_id:
+        problems.append(
+            f"bargain row party_id={row.party_id!r} does not match the counterparty's opening "
+            f"party ({character.party_id!r}) (group 58)"
+        )
+
+    # (2) The named proposal was really submitted, and the label is the authored one.
+    submitted_kinds = {d.kind for d in decisions.decisions} if decisions is not None else set()
+    if decision.proposal_kind not in submitted_kinds:
+        problems.append(
+            f"the bargain names a {decision.proposal_kind!r} proposal that the submitted set does "
+            "not carry (group 58)"
+        )
+    if row.proposal_kind != decision.proposal_kind:
+        problems.append(
+            f"bargain row proposal_kind={row.proposal_kind!r} does not match the submitted "
+            f"{decision.proposal_kind!r} (group 58)"
+        )
+    expected_label = LEGISLATIVE_PROPOSAL_DISPLAY_NAMES.get(row.proposal_kind)
+    if row.proposal_display_name != expected_label:
+        problems.append(
+            f"bargain row proposal_display_name={row.proposal_display_name!r} is not the authored "
+            f"label for {row.proposal_kind!r} ({expected_label!r}) (group 58)"
+        )
+
+    # (1) and (3): the gate and the price, transcribed.
+    expected_deal = _transcribed_bargain_will_deal(
+        loyalty_bps=character.loyalty, personal_trust_bps=character.personal_trust
+    )
+    expected_outcome = (
+        LegislativeBargainOutcome.ACCEPTED
+        if expected_deal
+        else LegislativeBargainOutcome.REFUSED_WILL_NOT_DEAL
+    )
+    if row.outcome is not expected_outcome:
+        problems.append(
+            f"bargain row outcome={row.outcome.value!r} does not match the re-derived gate "
+            f"({expected_outcome.value!r}) (group 58)"
+        )
+    expected_price = (
+        _transcribed_bargain_price(
+            independence_bps=character.independence,
+            ambition_bps=character.ambition,
+            personal_trust_bps=character.personal_trust,
+        )
+        if expected_deal
+        else None
+    )
+    if row.asking_price != expected_price:
+        problems.append(
+            f"bargain row asking_price={row.asking_price!r} does not match the re-derived price "
+            f"({expected_price!r}) (group 58)"
+        )
+    expected_committed = expected_price if expected_deal and expected_price is not None else 0
+    if row.capital_committed != expected_committed:
+        problems.append(
+            f"bargain row capital_committed={row.capital_committed} does not match the re-derived "
+            f"commitment ({expected_committed}) (group 58)"
+        )
+    expected_endorsement = LEGISLATIVE_ENDORSEMENT_BPS if expected_deal else 0
+    if row.endorsement_bps != expected_endorsement:
+        problems.append(
+            f"bargain row endorsement_bps={row.endorsement_bps} does not match the re-derived "
+            f"outcome ({expected_endorsement}) (group 58)"
+        )
+
+    # (4) Every bloc, every chamber, exactly once.
+    endorsed_party = character.party_id if expected_deal else None
+    for bloc in legislative.blocs:
+        expected_bloc = LEGISLATIVE_ENDORSEMENT_BPS if bloc.party_id == endorsed_party else 0
+        if bloc.endorsement_bps != expected_bloc:
+            problems.append(
+                f"bloc ({bloc.party_id!r}, {bloc.bloc_id!r}) in chamber {bloc.chamber.value!r} "
+                f"carries endorsement_bps={bloc.endorsement_bps}, expected {expected_bloc} "
+                "(group 58)"
+            )
+
+    # (5) The ledger row.
+    if expected_committed > 0:
+        if len(ledger_rows) != 1:
+            problems.append(
+                f"an accepted bargain must produce exactly one LEGISLATIVE_BARGAIN expenditure "
+                f"row, got {len(ledger_rows)} (group 58)"
+            )
+        elif ledger_rows[0].political_capital != expected_committed:
+            problems.append(
+                f"the LEGISLATIVE_BARGAIN expenditure row carries "
+                f"{ledger_rows[0].political_capital} but the re-derived price is "
+                f"{expected_committed} (group 58)"
+            )
+        elif ledger_rows[0].party_id is not None or ledger_rows[0].bloc_id is not None:
+            problems.append(
+                "the LEGISLATIVE_BARGAIN expenditure row must be untargeted -- identity lives on "
+                "the bargain report, not the ledger (group 58)"
+            )
+    elif ledger_rows:
+        problems.append(
+            "a refused bargain must produce no LEGISLATIVE_BARGAIN expenditure row (group 58)"
+        )
+
+    # (6) The entry, params pinned exactly.
+    problems.extend(_reconcile_legislative_bargain_entry(row, entries))
+    return problems
+
+
+def _reconcile_legislative_bargain_entry(
+    row: LegislativeBargainReport, entries: list[TurnReportEntry]
+) -> list[str]:
+    """Group 58, check 6: the bargain's report entry IS its row, restated.
+
+    The entry is the only surface a REFUSAL reaches: it commits no capital, so it has no expenditure
+    row, and `api.projections.build_turn_result` builds `drivers` from entries and `ledger` from
+    expenditure rows. Without this entry a player who approached a leader and was turned down would
+    see a turn in which nothing happened.
+
+    The refused param set is a strict subset of the accepted one, omitting `asking_price` and
+    `endorsement_bps`. Pinning it by EQUALITY rather than checking for the absence of particular
+    keys is what makes that robust: a refusal has no field in which a price could travel at all, so
+    no renderer can state one, and any newly added monetary key fails here rather than leaking.
+    """
+    if len(entries) != 1:
+        return [
+            f"a submitted bargain must produce exactly one report entry, got {len(entries)} "
+            "(group 58)"
+        ]
+    entry = entries[0]
+    expected_reason = f"legislative_bargain_{row.outcome.value}"
+    if entry.reason_id != expected_reason:
+        return [
+            f"legislative-bargain entry reason_id={entry.reason_id!r} does not match the row's "
+            f"outcome ({expected_reason!r}) (group 58)"
+        ]
+    expected_params: dict[str, str | int] = {
+        "character_id": row.character_id,
+        "character_display_name": row.character_display_name,
+        "party_id": row.party_id,
+        "party_display_name": row.party_display_name,
+        "proposal_kind": row.proposal_kind,
+        "proposal_display_name": row.proposal_display_name,
+    }
+    if row.outcome is LegislativeBargainOutcome.ACCEPTED and row.asking_price is not None:
+        expected_params["asking_price"] = row.asking_price
+        expected_params["endorsement_bps"] = row.endorsement_bps
+    if dict(entry.params) != expected_params:
+        return [
+            f"legislative-bargain entry params {dict(entry.params)!r} do not match the row "
+            f"({expected_params!r}) (group 58)"
+        ]
+    return []
 
 
 def reconcile_deposit_locations(

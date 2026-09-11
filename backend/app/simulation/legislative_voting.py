@@ -133,6 +133,10 @@ class BlocSupport:
     baseline_support_bps: int
     policy_compatibility_bps: int
     influence_bps: int
+    endorsement_bps: int
+    """The party-leader endorsement applied to this bloc, or `0`. Carried alongside `influence_bps`
+    rather than folded into it because the two are different channels with different bounds, and
+    `BlocVoteReport` stores both so `_final_support_is_clamped_sum` can replay the step."""
     raw_support_bps: int
     final_support_bps: int
     effective_support_bps: int
@@ -250,6 +254,7 @@ def resolve_bloc_support(
     spending_preference_bps: int,
     allocated_political_capital: int,
     discipline_bps: int,
+    endorsement_bps: int,
 ) -> BlocSupport:
     """The whole chain for one bloc, from role anchor to whipped final position.
 
@@ -259,8 +264,28 @@ def resolve_bloc_support(
     distance from the midpoint, saturating at the ends of the scale. It is applied **last**, after
     influence, so bought support is amplified by the same whip as authentic support — a
     well-disciplined party delivers the votes it was paid for.
+
+    `endorsement_bps` is the SECOND support channel (characters slice): what a party leader's
+    purchased backing is worth to every bloc of that leader's party, and `0` for every other bloc.
+    It joins `influence` inside the EXISTING `final` clamp, which is three deliberate choices at
+    once. It introduces no new division and therefore no new rounding -- it is an integer addend.
+    It introduces no new clamp site, so it can never be the reason a value leaves `[0, 10_000]`.
+    And it lands pre-discipline, so the whip amplifies a party's public backing exactly as it
+    amplifies bought support, which is this function's own stated intent.
+
+    It is **not** capped by `MAX_INFLUENCE_BPS`. That constant bounds what capital can buy in ONE
+    bloc; an endorsement is a party-level fact that is not bought per bloc, and the two are
+    independent addends. Either can be pivotal alone, and their sum saturates at the `final` clamp
+    rather than at either bound -- which is the honest statement of how they interact, and is why
+    no code here tries to bound one against the other.
+
+    Required rather than defaulted to `0`: only four production call sites exist, and a default
+    would let one of them silently omit the endorsement, making a paid-for bargain inert on that one
+    vote path. Reconciliation group 58 would catch it, but a parameter that cannot be forgotten is
+    better than a check that notices afterwards.
     """
     _reject_out_of_range(discipline_bps, name="discipline_bps", signed=False)
+    _reject_out_of_range(endorsement_bps, name="endorsement_bps", signed=False)
 
     baseline = baseline_support_bps(role=role, relationship_bps=relationship_bps)
     compatibility = policy_compatibility_bps(
@@ -272,7 +297,7 @@ def resolve_bloc_support(
     influence = influence_bps(political_capital=allocated_political_capital)
 
     raw = clamp_bps(baseline + compatibility)
-    final = clamp_bps(raw + influence)
+    final = clamp_bps(raw + influence + endorsement_bps)
     midpoint = BPS_DENOMINATOR // 2
     effective = clamp_bps(
         final + trunc_div_toward_zero((final - midpoint) * discipline_bps, BPS_DENOMINATOR)
@@ -282,6 +307,7 @@ def resolve_bloc_support(
         baseline_support_bps=baseline,
         policy_compatibility_bps=compatibility,
         influence_bps=influence,
+        endorsement_bps=endorsement_bps,
         raw_support_bps=raw,
         final_support_bps=final,
         effective_support_bps=effective,
@@ -294,18 +320,24 @@ def resolve_amendment_support(
     relationship_bps: int,
     discipline_bps: int,
     allocated_political_capital: int,
+    endorsement_bps: int,
 ) -> BlocSupport:
     """Resolve support for a constitutional amendment without inventing policy content.
 
     The chain is the budget-vote chain with the tax/spending compatibility step fixed at zero:
     role plus relationship establishes the baseline, influence moves it, and discipline amplifies
     the resulting lean away from the midpoint.
+
+    `endorsement_bps` enters exactly as it does in `resolve_bloc_support`, and is required here for
+    the same reason: a bargain struck over a constitutional amendment would otherwise be paid for
+    and silently inert, since this is the function that resolves that vote.
     """
     _reject_out_of_range(discipline_bps, name="discipline_bps", signed=False)
+    _reject_out_of_range(endorsement_bps, name="endorsement_bps", signed=False)
 
     baseline = baseline_support_bps(role=role, relationship_bps=relationship_bps)
     influence = influence_bps(political_capital=allocated_political_capital)
-    final = clamp_bps(baseline + influence)
+    final = clamp_bps(baseline + influence + endorsement_bps)
     midpoint = BPS_DENOMINATOR // 2
     effective = clamp_bps(
         final + trunc_div_toward_zero((final - midpoint) * discipline_bps, BPS_DENOMINATOR)
@@ -314,6 +346,7 @@ def resolve_amendment_support(
         baseline_support_bps=baseline,
         policy_compatibility_bps=0,
         influence_bps=influence,
+        endorsement_bps=endorsement_bps,
         raw_support_bps=baseline,
         final_support_bps=final,
         effective_support_bps=effective,

@@ -194,6 +194,7 @@ def _tally(*, blocs: tuple[tuple[str, str, GovernmentRole, int, int, int, int], 
                 spending_preference_bps=0,
                 allocated_political_capital=0,
                 discipline_bps=discipline,
+                endorsement_bps=0,
             ).effective_support_bps,
         )
         for party, bloc, role, relationship, preference, discipline, seats in blocs

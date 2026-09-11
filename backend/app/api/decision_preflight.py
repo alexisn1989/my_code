@@ -52,7 +52,7 @@ from app.simulation.decisions import (
     ConstitutionalAmendmentDecision,
     DecisionSet,
 )
-from app.simulation.legislature import ProposalRoute
+from app.simulation.legislature import GovernmentRole, ProposalRoute
 from app.simulation.state import CabinetPost, GameState, PoliticalState
 
 
@@ -273,6 +273,73 @@ def _cabinet_problem(state: GameState, decision: CabinetDecision) -> DecisionPro
     return None
 
 
+def _legislative_bargain_problem(
+    state: GameState, decision_set: DecisionSet
+) -> DecisionProblem | None:
+    """The preflight mirror of slot 1's six legislative-bargain rejections, in the same precedence.
+
+    Codes and order are identical to `phases._resolve_legislative_bargain` so a draft cannot preview
+    green and then be refused; `tests/test_legislative_bargain.py` asserts both name the same
+    literal for the same payload rather than trusting this comment.
+
+    **A refusal is not here.** A structurally valid leader who will not deal previews and resolves
+    normally, commits nothing, and produces a report row saying so. Making it a preflight problem
+    would present a temporary state -- the gate reads `personal_trust`, which a later slice moves --
+    as a permanent structural error, and would leave `decree_state`, which has no acceptable
+    counterparty at all, showing a validation failure instead of a political answer.
+    """
+    decision = decision_set.legislative_bargain_decision()
+    if decision is None:
+        return None
+    politics = _politics(state)
+    player = state.world.countries[state.world.player_country_id]
+
+    character = state.world.characters.get(decision.character_id)
+    if character is None:
+        return DecisionProblem(
+            code="legislative_bargain_character_unknown",
+            message="There is no such person to bargain with.",
+        )
+    if not is_domestic_to(character=character, country_id=player.id):
+        return DecisionProblem(
+            code="legislative_bargain_character_not_domestic",
+            message=(
+                f"{character.display_name} is not one of this country's own people, and leads no "
+                "party in its legislature."
+            ),
+        )
+    if character.party_id is None:
+        return DecisionProblem(
+            code="legislative_bargain_character_leads_no_party",
+            message=f"{character.display_name} leads no party, and so has no support to offer.",
+        )
+    legislature = None if politics is None else politics.legislature
+    party = (
+        next((p for p in legislature.parties if p.id == character.party_id), None)
+        if legislature is not None
+        else None
+    )
+    if party is None:
+        return DecisionProblem(
+            code="legislative_bargain_party_not_in_legislature",
+            message=(
+                f"{character.display_name}'s party holds no seats in this legislature, so its "
+                "backing would change no vote."
+            ),
+        )
+    if party.government_role is GovernmentRole.COALITION:
+        return DecisionProblem(
+            code="legislative_bargain_party_is_in_government",
+            message=(f"{party.name} is already in government, so it has no endorsement to sell."),
+        )
+    if decision.proposal_kind not in {d.kind for d in decision_set.decisions}:
+        return DecisionProblem(
+            code="legislative_bargain_proposal_absent",
+            message="There is no such proposal in this turn for that support to apply to.",
+        )
+    return None
+
+
 def first_decision_problem(state: GameState, decision_set: DecisionSet) -> DecisionProblem | None:
     """The first structural reason this decision set could not be resolved, if any.
 
@@ -296,6 +363,10 @@ def first_decision_problem(state: GameState, decision_set: DecisionSet) -> Decis
         cabinet_problem = _cabinet_problem(state, cabinet)
         if cabinet_problem is not None:
             return cabinet_problem
+
+    bargain_problem = _legislative_bargain_problem(state, decision_set)
+    if bargain_problem is not None:
+        return bargain_problem
 
     if amendment is not None:
         target_problem = _amendment_target_problem(politics, amendment)

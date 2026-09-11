@@ -217,6 +217,28 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "outgoing_character_id": "ilse_marovec",
         "outgoing_character_display_name": "Ilse Marovec",
     },
+    # The legislative bargain. The refused sample is a STRICT SUBSET of the accepted one -- no
+    # `asking_price`, no `endorsement_bps` -- because a refusal commits nothing and its entry
+    # carries no field a price could travel in. The two use different leaders on purpose: Maret
+    # Kuusk genuinely accepts under the gate and Nadia Brekke genuinely refuses.
+    "legislative_bargain_accepted": {
+        "character_id": "leader_rural_alliance",
+        "character_display_name": "Maret Kuusk",
+        "party_id": "rural_alliance",
+        "party_display_name": "Rural Alliance",
+        "proposal_kind": "budget",
+        "proposal_display_name": "the budget",
+        "asking_price": 105,
+        "endorsement_bps": 2000,
+    },
+    "legislative_bargain_refused_will_not_deal": {
+        "character_id": "leader_opposition_party",
+        "character_display_name": "Nadia Brekke",
+        "party_id": "opposition_party",
+        "party_display_name": "Reform Opposition",
+        "proposal_kind": "budget",
+        "proposal_display_name": "the budget",
+    },
     "formation_moved": {
         "formation_id": "arken_first_army",
         "formation_display_name": "First Army of Arken",

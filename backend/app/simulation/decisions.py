@@ -601,12 +601,59 @@ class CabinetDecision(BaseModel):
         return self
 
 
+LegislativeProposalKind: TypeAlias = Literal["budget", "constitutional_amendment"]
+"""Which of the two policy proposals a legislative bargain is about.
+
+Declared once and shared by `LegislativeBargainDecision.proposal_kind` and
+`report.LegislativeBargainReport.proposal_kind`. Typing the report field as a bare `str` would let a
+stored row name a proposal kind no decision could ever have carried, so the two are the same type by
+construction rather than by agreement between two authors.
+
+The values are exactly the `kind` tags of `BudgetDecision` and `ConstitutionalAmendmentDecision`,
+which is what lets `_bargain_names_a_present_proposal`'s check be a comparison rather than a mapping.
+"""
+
+
+class LegislativeBargainDecision(BaseModel):
+    """Buy one party leader's endorsement for the one proposal this turn carries.
+
+    **Three fields, and none of them is money.** The price is a fact about the counterparty in the
+    opening state, derived by `simulation.legislative_bargaining` and by nothing else, so there is
+    nothing for a client to state and nothing it could get wrong. Two earlier designs carried an
+    `offered_capital`; both were removed because the price is projected on
+    `DecisionOptionsProjection.legislative_bargain_counterparties`, which left the offer a free
+    variable with exactly one rational value -- first "offer the cap, pay the price", then "offer the
+    price". A field whose only correct value is displayed elsewhere is a transcription task, not a
+    decision.
+
+    `proposal_kind` is an ASSERTION OF INTENT, never a selector. `_at_most_one_policy_proposal`
+    already guarantees a `DecisionSet` carries at most one budget-or-amendment, so "the proposal in
+    this set" is a unique referent and there is never a choice to disambiguate. What the field buys
+    is the ability to catch a client that bargained for a budget while the set carries an amendment
+    -- a real composition bug that would otherwise silently purchase an endorsement for the wrong
+    vote.
+
+    Deliberately NOT a digest of the target. The bargain and its proposal arrive atomically in one
+    `DecisionSet` already guarded by `expected_turn`/`expected_state_version`, so a digest would add
+    no integrity that is missing -- and it would force the frontend to reproduce this package's
+    canonical-JSON encoding byte for byte, which is precisely the duplicated canonicalization
+    `buildDecisionSet.ts` exists to prevent.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    kind: Literal["legislative_bargain"] = "legislative_bargain"
+    character_id: StrictCharacterId
+    proposal_kind: LegislativeProposalKind
+
+
 Decision: TypeAlias = Annotated[
     BudgetDecision
     | BlocRelationshipInvestmentDecision
     | ConstitutionalAmendmentDecision
     | MilitaryMovementDecision
-    | CabinetDecision,
+    | CabinetDecision
+    | LegislativeBargainDecision,
     Field(discriminator="kind"),
 ]
 """The tagged decision union this module's header anticipated (Phase 3B2A).
@@ -750,6 +797,37 @@ class DecisionSet(BaseModel):
             )
         return self
 
+    def legislative_bargain_decision(self) -> LegislativeBargainDecision | None:
+        """The submitted legislative bargain, or `None`. Unique by
+        `_at_most_one_legislative_bargain_decision`.
+
+        Identity-based like every accessor above, never `decisions[0]`: `"legislative_bargain"`
+        sorts FIFTH of the six kinds, between `"constitutional_amendment"` and
+        `"military_movement"`, so its index depends entirely on what else the turn carries.
+        """
+        return next((d for d in self.decisions if isinstance(d, LegislativeBargainDecision)), None)
+
+    @model_validator(mode="after")
+    def _at_most_one_legislative_bargain_decision(self) -> DecisionSet:
+        """One bargain per turn, so at most one party is endorsed.
+
+        This is not merely the "one decision carries every target" pattern the accessors above
+        follow -- there is no tuple of orders here to carry. It is a substantive rule: two accepted
+        bargains would put two endorsements onto one vote, and there is no defensible answer yet for
+        how they compose. Refusing the second at construction is better than inventing one.
+
+        A future ruleset that does allow several would carry them as an `orders`-style tuple inside
+        ONE decision, canonical ascending by `character_id` -- stated here so the ordering question
+        is answered before it is asked, exactly as `CabinetDecision` answered it for posts.
+        """
+        bargains = sum(1 for d in self.decisions if isinstance(d, LegislativeBargainDecision))
+        if bargains > 1:
+            raise ValueError(
+                "at most one legislative-bargain decision may appear in a DecisionSet, "
+                f"got {bargains}"
+            )
+        return self
+
     @model_validator(mode="after")
     def _at_most_one_policy_proposal(self) -> DecisionSet:
         proposals = sum(
@@ -809,6 +887,22 @@ def cabinet_decision_digest(decision: CabinetDecision) -> str:
     `GovernanceReport` and the `CABINET_APPOINTMENT` expenditure row store the RESULT of this
     function, never the decision itself; `simulation.reconciliation` group 57 is the only place
     that recomputes it and compares.
+    """
+    return canonical_digest(decision.model_dump(mode="json"))
+
+
+def legislative_bargain_decision_digest(decision: LegislativeBargainDecision) -> str:
+    """A deterministic content fingerprint of a submitted legislative bargain.
+
+    The exact shape of the digest functions beside it, and it exists for the same reason they do:
+    `CapitalExpenditureReport.decision_digest` is required on every ledger row, so the
+    `LEGISLATIVE_BARGAIN` row needs one that ties the spend to one exact decision.
+
+    Note what this is NOT. It is not a binding of the bargain to its target proposal -- that job
+    belongs to `proposal_kind`, deliberately, because a target digest would force the frontend to
+    reproduce this package's canonical-JSON encoding byte for byte. This digest covers the bargain's
+    own three fields and nothing else, which is precisely what a provenance field on an expenditure
+    row should be.
     """
     return canonical_digest(decision.model_dump(mode="json"))
 

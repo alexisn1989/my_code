@@ -1108,6 +1108,27 @@ was resolved under. Changing a value here therefore changes future reports only.
 """
 
 
+LEGISLATIVE_PROPOSAL_DISPLAY_NAMES: dict[str, str] = {
+    "budget": "the budget",
+    "constitutional_amendment": "the constitutional amendment",
+}
+"""How each policy proposal is named to a player, for the legislative-bargain surfaces.
+
+The exact counterpart of `POST_DISPLAY_NAMES`, and authored for the identical reason: the label is a
+fact the engine states once, never a string transformation a renderer repeats. Nothing anywhere
+turns `"constitutional_amendment"` into prose by replacing underscores -- the CLI does not, the API
+does not, and the frontend formatter does not.
+
+Keyed by `str` rather than by `decisions.LegislativeProposalKind` because `state` must not import
+`decisions` (the dependency runs the other way, and `decisions` already imports `StrictCharacterId`
+from here). The keys are exactly that `Literal`'s two members, which
+`tests/test_legislative_bargain.py` asserts directly rather than leaving to a comment.
+
+`LegislativeBargainReport` and the bargain report entries SNAPSHOT the label, so a past turn renders
+the words it was resolved under.
+"""
+
+
 class CharacterState(BaseModel):
     """One named person.
 
@@ -1758,7 +1779,7 @@ class WorldState(BaseModel):
         return self
 
 
-RULESET_VERSION = "0.19.0"
+RULESET_VERSION = "0.20.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -1896,6 +1917,19 @@ governance report for an old turn would assert that the engine looked at the cab
 no such step existed, and would silently claim `unchanged` for posts nobody could have changed.
 `content_version` stays `"0.17.0"` -- appointments are player DECISIONS, and no scenario-authored
 field changes shape. `SAVE_FORMAT_VERSION` stays `1`.
+
+Bumped `"0.19.0" -> "0.20.0"` for the legislative bargain. The breaking field is precisely
+`BlocVoteReport.endorsement_bps`: a new REQUIRED `StrictBps` on a model whose config is
+`_STRICT_CONFIG`, so a stored 0.19.0 `report_json` -- whose bloc-vote rows carry twenty-one fields
+and no `endorsement_bps` -- no longer parses. It is required rather than defaulted deliberately:
+defaulting it to `0` would make every old row parse and would quietly assert that a turn resolved
+before this mechanic existed had "no endorsement", which is a claim about a vote nobody could have
+influenced. `LegislativeReport.bargains` is NOT the breaking change -- it defaults to an empty tuple
+and would have accepted an old payload happily. Turn resolution changes too: a purchased endorsement
+adds 2,000 bps to every bloc of the endorsed party before discipline, so replaying 0.19.0 decisions
+under 0.20.0 rules does not reproduce the 0.19.0 turn. `content_version` stays `"0.17.0"` -- a
+bargain is a player DECISION and no scenario-authored field changes shape. `SAVE_FORMAT_VERSION`
+stays `1`.
 """
 
 

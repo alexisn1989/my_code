@@ -98,7 +98,7 @@ from app.simulation.constitution import (
     StrictTurnInterval,
     TerritorialOrganization,
 )
-from app.simulation.decisions import InfluenceAllocation
+from app.simulation.decisions import InfluenceAllocation, LegislativeProposalKind
 from app.simulation.foreign_conflict import (
     TERMINAL_STATUSES,
     ConflictStatus,
@@ -133,6 +133,7 @@ from app.simulation.government_survival import (
     impeachment_success_probability_bps,
     unrest_success_probability_bps,
 )
+from app.simulation.legislative_bargaining import LEGISLATIVE_ENDORSEMENT_BPS
 from app.simulation.legislative_voting import (
     CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
@@ -171,6 +172,7 @@ from app.simulation.relationships import (
 )
 from app.simulation.resource_extraction import DepositStatus
 from app.simulation.state import (
+    LEGISLATIVE_PROPOSAL_DISPLAY_NAMES,
     POST_DISPLAY_NAMES,
     RENEWABLE_RESOURCES,
     CabinetPost,
@@ -1826,6 +1828,19 @@ class BlocVoteReport(BaseModel):
     raw_support_bps: StrictBps
     political_capital_allocated: StrictPoliticalCapital
     influence_bps: StrictBps
+    endorsement_bps: StrictBps
+    """What a purchased party-leader endorsement added to this bloc, or `0` (characters slice).
+
+    REQUIRED, with no default, and that is the whole of what makes ruleset 0.19.0 incompatible: a
+    stored 0.19.0 bloc-vote row has no such field and no longer parses. Defaulting it to `0` would
+    have made every old row load and would have asserted that a turn resolved before this mechanic
+    existed had "no endorsement" -- a claim about a vote nobody could have influenced, which is
+    fabrication rather than migration.
+
+    Stored rather than re-derived so this row replays its own `final_support_bps` from its own
+    fields, the same discipline `chief_of_staff_competence_bps` follows on
+    `BlocRelationshipMemoryReport`.
+    """
     final_support_bps: StrictBps
     effective_support_bps: StrictBps
     numerator: StrictSeatNumerator
@@ -1875,11 +1890,32 @@ class BlocVoteReport(BaseModel):
 
     @model_validator(mode="after")
     def _final_support_is_clamped_sum(self) -> BlocVoteReport:
-        expected = clamp_bps(self.raw_support_bps + self.influence_bps)
+        """(Characters slice) `endorsement_bps` joins the sum, and had to move in lockstep with
+        `legislative_voting.resolve_bloc_support` -- an endorsed vote would otherwise fail this
+        check on every single row, which is the intended failure mode: the two must agree or
+        nothing resolves."""
+        expected = clamp_bps(self.raw_support_bps + self.influence_bps + self.endorsement_bps)
         if self.final_support_bps != expected:
             raise ValueError(
                 f"final_support_bps={self.final_support_bps} does not match "
-                f"clamp(raw_support_bps + influence_bps) ({expected})"
+                f"clamp(raw_support_bps + influence_bps + endorsement_bps) ({expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _endorsement_is_absent_or_exactly_the_constant(self) -> BlocVoteReport:
+        """An endorsement is all-or-nothing per bloc: a party's leader either sold their backing
+        this turn or did not, and there is no partial endorsement to represent.
+
+        Pinning the value here is what makes a DOUBLE application detectable. Adding the endorsement
+        twice would give `2 * LEGISLATIVE_ENDORSEMENT_BPS`, which the `final` clamp would often
+        absorb invisibly on an already-high bloc -- so a check that only replayed the clamped sum
+        could not see it. This one can.
+        """
+        if self.endorsement_bps not in (0, LEGISLATIVE_ENDORSEMENT_BPS):
+            raise ValueError(
+                f"endorsement_bps={self.endorsement_bps} must be either 0 or exactly "
+                f"LEGISLATIVE_ENDORSEMENT_BPS ({LEGISLATIVE_ENDORSEMENT_BPS})"
             )
         return self
 
@@ -1985,6 +2021,123 @@ class ChamberVoteReport(BaseModel):
         return self
 
 
+class LegislativeBargainOutcome(StrEnum):
+    """How a leader answered one approach.
+
+    **Exactly two members.** Earlier drafts had four, adding a `counteroffered` band and a
+    `refused_offer_too_low`; both existed only because the player named an offer, and both went when
+    the offer did. A leader either deals at their price or will not deal at all.
+
+    The surviving refusal keeps its explicit `_will_not_deal` suffix rather than collapsing to a bare
+    `REFUSED`: it names *why*, it stays truthful when a later slice adds a second refusal reason, and
+    it is the outcome the trust layer exists to convert -- the whole point there is that
+    `REFUSED_WILL_NOT_DEAL` becomes `ACCEPTED` as trust rises, with nothing else about the decision
+    changing.
+
+    Values are alphabetical and declaration order is canonical order, like every other enum here,
+    and they are serialised into `report_json` and covered by the entry hash.
+    """
+
+    ACCEPTED = "accepted"
+    REFUSED_WILL_NOT_DEAL = "refused_will_not_deal"
+
+
+class LegislativeBargainReport(BaseModel):
+    """One approach to one party leader: who, about what, and what it cost.
+
+    Lives inside `LegislativeReport` rather than as a sixteenth top-level domain report. An
+    endorsement is a legislative fact and belongs beside the votes it moved -- and a sixteenth
+    top-level report would double `TurnReport`'s all-present-or-all-absent subset test from 32,766
+    cases to 65,534, which is a real cost to pay for a subtree that is empty on most turns.
+
+    **This row carries all the identity the ledger cannot.** The `LEGISLATIVE_BARGAIN` expenditure
+    row is untargeted -- category and amount only -- because a bargain's subject is a PERSON while
+    the ledger's target fields are a bloc address. Every fact about who was approached, on whose
+    behalf, about which proposal, and how they answered is here instead, typed properly.
+
+    Self-validating in the discipline this module follows throughout: each validator re-derives one
+    rule from this row's OWN stored fields, never by calling `simulation.legislative_bargaining`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    character_id: StrictCharacterId
+    character_display_name: StrictDisplayName
+    party_id: str
+    party_display_name: StrictDisplayName
+    proposal_kind: LegislativeProposalKind
+    proposal_display_name: StrictDisplayName
+    outcome: LegislativeBargainOutcome
+    asking_price: StrictPoliticalCapitalCommitment | None
+    """What this leader charged, or `None` when they would not deal.
+
+    `StrictPoliticalCapitalCommitment` (`ge=1`) rather than `StrictPoliticalCapital` (`ge=0`),
+    because a price of zero is not a cheap bargain but a contradiction -- `asking_price_capital` is
+    floored at 1 and cannot produce one. The type carries the rule instead of a validator, exactly
+    as `CapitalExpenditureReport.political_capital` uses it to make a zero-value ledger row
+    unconstructible rather than merely invalid.
+
+    `None` on a refusal is deliberate and is the last trace of the deleted counteroffer. A refused
+    row stating "asking price 105" would tell the player precisely what the removed counteroffer
+    told them -- the number that would have worked -- and would smuggle the mechanic back in through
+    the turn result and the CLI. A leader who will not deal has no price, in the projection and in
+    the record alike.
+    """
+    capital_committed: StrictPoliticalCapital
+    endorsement_bps: StrictBps
+
+    @model_validator(mode="after")
+    def _price_is_present_exactly_when_accepted(self) -> LegislativeBargainReport:
+        accepted = self.outcome is LegislativeBargainOutcome.ACCEPTED
+        if accepted and self.asking_price is None:
+            raise ValueError("an accepted bargain must record the asking price it was struck at")
+        if not accepted and self.asking_price is not None:
+            raise ValueError(
+                f"a refused bargain must record no asking price, got {self.asking_price}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _committed_capital_follows_the_outcome(self) -> LegislativeBargainReport:
+        """The whole of the money rule, and the reason there is no offer to compare against: an
+        accepted bargain commits exactly the asking price, and a refusal commits nothing."""
+        expected = (
+            self.asking_price
+            if self.outcome is LegislativeBargainOutcome.ACCEPTED and self.asking_price is not None
+            else 0
+        )
+        if self.capital_committed != expected:
+            raise ValueError(
+                f"capital_committed={self.capital_committed} does not match the outcome "
+                f"({self.outcome.value}, expected {expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _endorsement_follows_the_outcome(self) -> LegislativeBargainReport:
+        expected = (
+            LEGISLATIVE_ENDORSEMENT_BPS if self.outcome is LegislativeBargainOutcome.ACCEPTED else 0
+        )
+        if self.endorsement_bps != expected:
+            raise ValueError(
+                f"endorsement_bps={self.endorsement_bps} does not match the outcome "
+                f"({self.outcome.value}, expected {expected})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _proposal_display_name_matches_the_kind(self) -> LegislativeBargainReport:
+        """The snapshot must be the label this engine states for that kind, not free text -- so a
+        forged row cannot rename a proposal in the historical record."""
+        expected = LEGISLATIVE_PROPOSAL_DISPLAY_NAMES.get(self.proposal_kind)
+        if self.proposal_display_name != expected:
+            raise ValueError(
+                f"proposal_display_name={self.proposal_display_name!r} does not match the authored "
+                f"label for {self.proposal_kind!r} ({expected!r})"
+            )
+        return self
+
+
 class LegislativeReport(BaseModel):
     """Structured, machine-readable Phase 3B1 legislative outcome for the player country's one
     budget proposal this turn: which route it took, how (if at all) each chamber voted, and how
@@ -2026,9 +2179,53 @@ class LegislativeReport(BaseModel):
     spending_intensity_bps: StrictBps
     chambers: tuple[ChamberVoteReport, ...] = Field(default_factory=tuple)
     blocs: tuple[BlocVoteReport, ...] = Field(default_factory=tuple)
+    bargains: tuple[LegislativeBargainReport, ...] = Field(default_factory=tuple)
+    """Approaches made to party leaders this turn (characters slice); empty on most turns.
+
+    Defaulted rather than required, and therefore NOT the field that breaks ruleset 0.19.0 -- an old
+    payload without it parses happily. `BlocVoteReport.endorsement_bps` is the breaking one.
+
+    Canonical ascending by `character_id`, rejected rather than sorted, like every other ordered
+    collection covered by the entry hash. At most one row is constructible today
+    (`_at_most_one_legislative_bargain_decision`), but the order rule is stated now so a future
+    multi-bargain ruleset inherits an answer instead of inventing one.
+    """
     opening_political_capital: StrictPoliticalCapital
     political_capital_committed: StrictPoliticalCapital
     budget_decision_digest: str | None
+
+    @model_validator(mode="after")
+    def _bargains_are_in_canonical_character_order(self) -> LegislativeReport:
+        ids = [bargain.character_id for bargain in self.bargains]
+        if ids != sorted(ids):
+            raise ValueError(f"bargains must be sorted ascending by character_id, got {ids!r}")
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"a leader may be approached at most once per turn, got {ids!r}")
+        return self
+
+    @model_validator(mode="after")
+    def _endorsed_blocs_are_exactly_the_endorsed_party(self) -> LegislativeReport:
+        """The endorsement reaches every bloc of the endorsed party, in every chamber, and no other
+        bloc -- checked here rather than per row because it is a claim ACROSS rows that a single
+        `BlocVoteReport` cannot see.
+
+        A turn with no accepted bargain must show a zero endorsement everywhere, which is the
+        non-retroactivity backstop: nothing can quietly credit an endorsement that was never bought.
+        """
+        endorsed = {
+            bargain.party_id
+            for bargain in self.bargains
+            if bargain.outcome is LegislativeBargainOutcome.ACCEPTED
+        }
+        for bloc in self.blocs:
+            expected = LEGISLATIVE_ENDORSEMENT_BPS if bloc.party_id in endorsed else 0
+            if bloc.endorsement_bps != expected:
+                raise ValueError(
+                    f"bloc ({bloc.party_id!r}, {bloc.bloc_id!r}) in chamber "
+                    f"{bloc.chamber.value!r} has endorsement_bps={bloc.endorsement_bps}, expected "
+                    f"{expected} for a turn endorsing {sorted(endorsed)!r}"
+                )
+        return self
 
     @model_validator(mode="after")
     def _chambers_use_simple_majority(self) -> LegislativeReport:
@@ -2380,6 +2577,7 @@ class CapitalExpenditureReport(BaseModel):
         untargeted = {
             CapitalExpenditureCategory.DECREE,
             CapitalExpenditureCategory.CABINET_APPOINTMENT,
+            CapitalExpenditureCategory.LEGISLATIVE_BARGAIN,
         }
         is_untargeted = self.category in untargeted
         is_amendment = self.category is CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT
@@ -2773,6 +2971,7 @@ class PoliticalCapitalReport(BaseModel):
         for category in (
             CapitalExpenditureCategory.DECREE,
             CapitalExpenditureCategory.CABINET_APPOINTMENT,
+            CapitalExpenditureCategory.LEGISLATIVE_BARGAIN,
         ):
             rows = sum(1 for row in self.expenditures if row.category is category)
             if rows > 1:
@@ -4566,6 +4765,39 @@ class TurnReport(BaseModel):
             raise ValueError(
                 f"governance.posts committed {governance_total} of political capital but the "
                 f"CABINET_APPOINTMENT expenditure rows carry {ledger_total}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _legislative_bargains_match_the_capital_ledger(self) -> TurnReport:
+        """(Characters slice) The bargain rows and the ledger agree about what an endorsement cost.
+
+        Exactly the cabinet identity above, for exactly the same reasons: cross-report, so neither
+        `PoliticalCapitalReport` nor `LegislativeReport` can check it alone; aggregate, because
+        `LEGISLATIVE_BARGAIN` is untargeted and emits at most one row; and two-directional, because
+        a ledger row with no bargain behind it is capital charged for nothing while a paid bargain
+        with no ledger row never reached the affordability guard.
+
+        A refused approach correctly has neither -- it commits `0`, and `ge=1` means no row exists.
+        """
+        if self.political_capital is None or self.legislative is None:
+            return self
+        rows = [
+            row
+            for row in self.political_capital.expenditures
+            if row.category is CapitalExpenditureCategory.LEGISLATIVE_BARGAIN
+        ]
+        if len(rows) > 1:
+            raise ValueError(
+                f"at most one LEGISLATIVE_BARGAIN expenditure row may exist per turn, got "
+                f"{len(rows)} — this category is untargeted, so two rows would share a sort key"
+            )
+        ledger_total = rows[0].political_capital if rows else 0
+        bargain_total = sum(bargain.capital_committed for bargain in self.legislative.bargains)
+        if ledger_total != bargain_total:
+            raise ValueError(
+                f"legislative.bargains committed {bargain_total} of political capital but the "
+                f"LEGISLATIVE_BARGAIN expenditure rows carry {ledger_total}"
             )
         return self
 

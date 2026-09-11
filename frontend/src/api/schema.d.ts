@@ -646,6 +646,11 @@ export interface components {
             decree_available: boolean;
             /** Decree Legislative Capital Cost */
             decree_legislative_capital_cost: number;
+            /**
+             * Legislative Bargain Counterparties
+             * @default []
+             */
+            legislative_bargain_counterparties: components["schemas"]["LegislativeBargainCounterpartyOption"][];
             /** Opening Capital */
             opening_capital: number;
             /**
@@ -855,6 +860,43 @@ export interface components {
             label: string;
             /** Target */
             target?: string | null;
+        };
+        /**
+         * LegislativeBargainCounterpartyOption
+         * @description One party leader the player could approach, and what they would say.
+         *
+         *     **`asking_price` and `refusal_reason` are mutually exclusive**, enforced below rather than left
+         *     to a convention. A leader who will never deal must not be shown a payable-looking price: that is
+         *     exactly the quotation the removed counteroffer used to give, and putting a number beside a
+         *     permanent refusal would reintroduce it through the interface instead of the engine.
+         *
+         *     The four traits stay on the row regardless of `will_deal`. They are what a player reads to
+         *     understand *why* somebody will not deal and what would have to change -- facts about the person,
+         *     not a quotation -- and `personal_trust_bps` in particular is the one a later slice moves.
+         */
+        LegislativeBargainCounterpartyOption: {
+            /** Ambition Bps */
+            ambition_bps: number;
+            /** Asking Price */
+            asking_price?: number | null;
+            /** Character Id */
+            character_id: string;
+            /** Display Name */
+            display_name: string;
+            /** Independence Bps */
+            independence_bps: number;
+            /** Loyalty Bps */
+            loyalty_bps: number;
+            /** Party Display Name */
+            party_display_name: string;
+            /** Party Id */
+            party_id: string;
+            /** Personal Trust Bps */
+            personal_trust_bps: number;
+            /** Refusal Reason */
+            refusal_reason?: "refused_will_not_deal" | null;
+            /** Will Deal */
+            will_deal: boolean;
         };
         /** LoadRequest */
         LoadRequest: {
@@ -1078,6 +1120,11 @@ export interface components {
              * @default 0
              */
             investment_capital: number;
+            /**
+             * Legislative Bargain Capital
+             * @default 0
+             */
+            legislative_bargain_capital: number;
             /**
              * Opening Capital
              * @default 0

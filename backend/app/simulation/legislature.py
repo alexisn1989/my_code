@@ -142,6 +142,20 @@ class CapitalExpenditureCategory(StrEnum):
     report that this slice does not authorize -- so POL-4 stays open, with the reasoning recorded
     rather than silently closed.
 
+    `LEGISLATIVE_BARGAIN` is the second entry against POL-4, and takes the same untargeted shape for
+    the same reason: what a bargain buys is a PERSON's endorsement, and the target fields here are a
+    bloc address, which is the wrong shape for a character. Its ledger row therefore carries only
+    the category and the amount; every scrap of identity -- which leader, which party, which
+    proposal, accepted or refused -- lives on `LegislativeBargainReport`, where it can be typed
+    properly. The endorsement's per-bloc effect is likewise recorded where bloc identity already
+    exists, on `BlocVoteReport.endorsement_bps`, and not here.
+
+    **Its position is fifth, and that is load-bearing rather than cosmetic.** Values are
+    alphabetical and declaration order IS canonical order, and `"legislative_bargain"` sorts before
+    `"legislative_influence"` -- so it belongs between `DECREE` and `LEGISLATIVE_INFLUENCE`.
+    Declaring it anywhere else would silently break the ledger's `(category, party_id, bloc_id)`
+    ordering rather than fail loudly.
+
     **At most one such row per turn, carrying the summed cost.** This category is untargeted, so
     two rows would share the sort key `(category, "", "")` exactly and their canonical order would
     fall back to insertion order instead of being a property of the key -- which is the one thing
@@ -155,4 +169,5 @@ class CapitalExpenditureCategory(StrEnum):
     CABINET_APPOINTMENT = "cabinet_appointment"
     CONSTITUTIONAL_AMENDMENT = "constitutional_amendment"
     DECREE = "decree"
+    LEGISLATIVE_BARGAIN = "legislative_bargain"
     LEGISLATIVE_INFLUENCE = "legislative_influence"

@@ -393,6 +393,12 @@ export function driverSentence(
   const who = params["character_display_name"];
   const outgoing = params["outgoing_character_display_name"];
   const cost = params["capital_committed"];
+  // Characters slice: the bargain's own params. `party` and `proposal` are server-supplied display
+  // names -- there is no transformation of `constitutional_amendment` into prose anywhere on this
+  // side, which is the same rule the cabinet rows follow for post labels.
+  const party = params["party_display_name"];
+  const proposal = params["proposal_display_name"];
+  const price = params["asking_price"];
   switch (reasonId) {
     case "cabinet_appointed":
       return post === undefined || who === undefined
@@ -406,6 +412,17 @@ export function driverSentence(
       return post === undefined || outgoing === undefined
         ? label
         : `${outgoing} was dismissed as ${post}; the post is now vacant.`;
+    case "legislative_bargain_accepted":
+      return who === undefined || party === undefined || proposal === undefined || price === undefined
+        ? label
+        : `${who} of the ${party} backed ${proposal}, for ${price} political capital.`;
+    case "legislative_bargain_refused_will_not_deal":
+      // States no figure, and cannot: a refusal's params carry neither `asking_price` nor
+      // `endorsement_bps`. Naming what the leader would have wanted is exactly the counteroffer
+      // this design does not have.
+      return who === undefined || party === undefined || proposal === undefined
+        ? label
+        : `${who} of the ${party} would not deal over ${proposal}.`;
     default:
       return label;
   }

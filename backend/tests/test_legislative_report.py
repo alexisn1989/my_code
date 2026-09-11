@@ -124,6 +124,12 @@ def _bloc_row(
         raw_support_bps=baseline,
         political_capital_allocated=allocated,
         influence_bps=influence,
+        # (Characters slice) Stated explicitly rather than defaulted: `endorsement_bps` is REQUIRED
+        # on the production model, which is what makes a stored ruleset-0.19.0 bloc-vote row fail to
+        # parse. A default would have made every one of those old rows load and quietly assert that
+        # a turn resolved before this mechanic existed had "no endorsement". These fixtures describe
+        # un-endorsed votes, so zero is the true value here and every figure below is unchanged.
+        endorsement_bps=0,
         final_support_bps=baseline,
         effective_support_bps=effective,
         numerator=numerator,

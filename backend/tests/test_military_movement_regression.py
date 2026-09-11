@@ -72,11 +72,26 @@ CHANGED_BY_THE_MAP_RESOURCES_SLICE = frozenset({"resources"})
 #: justify itself on its own. Assertion 1b pins exactly how this one differs.
 CHANGED_BY_THE_GOVERNMENT_STRUCTURE_FEATURE = frozenset({"coup_unrest"})
 
-ELEVEN_BYTE_IDENTICAL_REPORTS = tuple(
+#: And the one the LEGISLATIVE BARGAIN slice legitimately changes. `LegislativeReport` gained a
+#: `bargains` tuple, so its serialised form carries one key a pre-bargain engine never wrote --
+#: even on a quiet turn, where the value is the empty list. Named separately for the same reason
+#: the two above are, rather than folded into a shared "changed" bucket: each exclusion has to say
+#: WHICH change made it and justify itself alone. Assertion 1c pins exactly how this one differs,
+#: so "changed" never becomes "unchecked".
+#:
+#: Note what is NOT excluded here. `BlocVoteReport.endorsement_bps` is also new, but these are
+#: quiet turns with no vote and therefore no bloc rows, so it contributes no difference to compare.
+CHANGED_BY_THE_LEGISLATIVE_BARGAIN = frozenset({"legislative"})
+
+TEN_BYTE_IDENTICAL_REPORTS = tuple(
     field
     for field in THIRTEEN_PRE_EXISTING_REPORTS
     if field
-    not in (CHANGED_BY_THE_MAP_RESOURCES_SLICE | CHANGED_BY_THE_GOVERNMENT_STRUCTURE_FEATURE)
+    not in (
+        CHANGED_BY_THE_MAP_RESOURCES_SLICE
+        | CHANGED_BY_THE_GOVERNMENT_STRUCTURE_FEATURE
+        | CHANGED_BY_THE_LEGISLATIVE_BARGAIN
+    )
 )
 
 #: Every RNG stream the engine drew from before this commit. `foreign_conflict_progress:{id}` is
@@ -292,7 +307,7 @@ class TestTheExclusionHelperRemovesOnlyTwoPaths:
 
 
 class TestQuietTurnRegressionAgainstFrozenBaseline:
-    def test_1_the_eleven_untouched_pre_existing_report_subtrees_are_byte_identical(
+    def test_1_the_ten_untouched_pre_existing_report_subtrees_are_byte_identical(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """`production`, `tax_base_derivation` and `finance` are in this list, which is the whole
@@ -301,7 +316,7 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
         extracted every turn, and the country's output, tax bases, revenue and treasury did not
         move by one minor unit."""
         for live_row, base_row in zip(live[1:], baseline[1:], strict=True):
-            for field in ELEVEN_BYTE_IDENTICAL_REPORTS:
+            for field in TEN_BYTE_IDENTICAL_REPORTS:
                 assert json.dumps(live_row["report"][field], sort_keys=True) == json.dumps(
                     base_row["report"][field], sort_keys=True
                 ), f"turn {live_row['turn']}: {field}"
@@ -368,6 +383,34 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
                 - live_resources["unassigned_resource_workers"]
                 == 500
             )
+
+    def test_1c_the_legislative_report_differs_only_by_the_empty_bargains_tuple(
+        self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
+    ) -> None:
+        """The third excluded subtree, pinned as an EXACT difference set.
+
+        ONE leaf and no others: the `bargains` tuple `LegislativeReport` gained, empty on a quiet
+        turn. Everything else in the subtree is byte-identical to the 0.14.0 record -- the outcome,
+        the route, both spending totals, both intensities, the tax delta and direction, the opening
+        capital and the committed capital.
+
+        That set is the whole claim of this slice against a quiet turn: adding a mechanic for buying
+        a party leader's support did not move a single figure on a turn where nobody bought
+        anything. In particular `blocs` is unchanged and still empty, which is why the new REQUIRED
+        `BlocVoteReport.endorsement_bps` contributes nothing here -- there is no bloc row on a turn
+        with no vote, so the field's absence from this difference set is a fact about the turn
+        rather than an exclusion.
+        """
+        for live_row, base_row in zip(live[1:], baseline[1:], strict=True):
+            assert _differing_paths(
+                live_row["report"]["legislative"], base_row["report"]["legislative"]
+            ) == ["bargains"], f"turn {live_row['turn']}"
+
+            # The 0.14.0 row carries no such key at all -- asserted, so a future report that lost
+            # it would fail here instead of matching the old shape by omission.
+            assert "bargains" not in base_row["report"]["legislative"]
+            assert live_row["report"]["legislative"]["bargains"] == []
+            assert live_row["report"]["legislative"]["blocs"] == []
 
     def test_1b_the_coup_unrest_report_differs_only_by_the_structural_term(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
@@ -463,7 +506,7 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """So the pinned set above can never quietly absorb a different meaning."""
-        assert live[-1]["state"]["ruleset_version"] == "0.19.0"
+        assert live[-1]["state"]["ruleset_version"] == "0.20.0"
         assert live[-1]["state"]["content_version"] == "0.17.0"
         assert baseline[-1]["state"]["ruleset_version"] == "0.14.0"
         assert baseline[-1]["state"]["content_version"] == "0.14.0"

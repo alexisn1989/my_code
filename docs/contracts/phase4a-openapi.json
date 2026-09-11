@@ -715,6 +715,14 @@
             "title": "Decree Legislative Capital Cost",
             "type": "integer"
           },
+          "legislative_bargain_counterparties": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/LegislativeBargainCounterpartyOption"
+            },
+            "title": "Legislative Bargain Counterparties",
+            "type": "array"
+          },
           "opening_capital": {
             "title": "Opening Capital",
             "type": "integer"
@@ -1164,6 +1172,84 @@
           "amount_text"
         ],
         "title": "LedgerEntry",
+        "type": "object"
+      },
+      "LegislativeBargainCounterpartyOption": {
+        "additionalProperties": false,
+        "description": "One party leader the player could approach, and what they would say.\n\n**`asking_price` and `refusal_reason` are mutually exclusive**, enforced below rather than left\nto a convention. A leader who will never deal must not be shown a payable-looking price: that is\nexactly the quotation the removed counteroffer used to give, and putting a number beside a\npermanent refusal would reintroduce it through the interface instead of the engine.\n\nThe four traits stay on the row regardless of `will_deal`. They are what a player reads to\nunderstand *why* somebody will not deal and what would have to change -- facts about the person,\nnot a quotation -- and `personal_trust_bps` in particular is the one a later slice moves.",
+        "properties": {
+          "ambition_bps": {
+            "title": "Ambition Bps",
+            "type": "integer"
+          },
+          "asking_price": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asking Price"
+          },
+          "character_id": {
+            "title": "Character Id",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "independence_bps": {
+            "title": "Independence Bps",
+            "type": "integer"
+          },
+          "loyalty_bps": {
+            "title": "Loyalty Bps",
+            "type": "integer"
+          },
+          "party_display_name": {
+            "title": "Party Display Name",
+            "type": "string"
+          },
+          "party_id": {
+            "title": "Party Id",
+            "type": "string"
+          },
+          "personal_trust_bps": {
+            "title": "Personal Trust Bps",
+            "type": "integer"
+          },
+          "refusal_reason": {
+            "anyOf": [
+              {
+                "const": "refused_will_not_deal",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal Reason"
+          },
+          "will_deal": {
+            "title": "Will Deal",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "character_id",
+          "display_name",
+          "party_id",
+          "party_display_name",
+          "loyalty_bps",
+          "independence_bps",
+          "ambition_bps",
+          "personal_trust_bps",
+          "will_deal"
+        ],
+        "title": "LegislativeBargainCounterpartyOption",
         "type": "object"
       },
       "LoadRequest": {
@@ -1621,6 +1707,11 @@
           "investment_capital": {
             "default": 0,
             "title": "Investment Capital",
+            "type": "integer"
+          },
+          "legislative_bargain_capital": {
+            "default": 0,
+            "title": "Legislative Bargain Capital",
             "type": "integer"
           },
           "opening_capital": {
@@ -2375,7 +2466,7 @@
   "info": {
     "summary": "Local, loopback-only interface to the MANDATE simulation engine.",
     "title": "MANDATE local game API",
-    "version": "0.19.0"
+    "version": "0.20.0"
   },
   "openapi": "3.1.0",
   "paths": {

@@ -75,6 +75,11 @@ def test_capital_expenditure_category_values_and_declaration_order_are_stable() 
         "cabinet_appointment",
         "constitutional_amendment",
         "decree",
+        # Characters slice: the untargeted legislative-bargain sink, inserted FIFTH for the same
+        # reason `cabinet_appointment` was inserted second -- "legislative_bargain" sorts before
+        # "legislative_influence", so appending it would have broken the one-order invariant the
+        # test below states and silently changed the ledger's canonical sort.
+        "legislative_bargain",
         "legislative_influence",
     ]
 

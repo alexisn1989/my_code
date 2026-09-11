@@ -254,4 +254,78 @@ describe("driverSentence", () => {
       expect(sentence).not.toContain("hal_verrin");
     }
   });
+
+  // Characters slice: the legislative bargain. The two fixtures use DIFFERENT leaders on purpose --
+  // Maret Kuusk genuinely accepts under the engine's gate and Nadia Brekke genuinely refuses, so
+  // neither sentence is illustrated with somebody who would never produce it.
+  const acceptedParams = {
+    character_id: "leader_rural_alliance",
+    character_display_name: "Maret Kuusk",
+    party_id: "rural_alliance",
+    party_display_name: "Rural Alliance",
+    proposal_kind: "budget",
+    proposal_display_name: "the budget",
+    asking_price: 105,
+    endorsement_bps: 2000,
+  };
+
+  // A strict SUBSET: no `asking_price`, no `endorsement_bps`. A refusal commits nothing, so its
+  // entry has no field in which a price could travel.
+  const refusedParams = {
+    character_id: "leader_opposition_party",
+    character_display_name: "Nadia Brekke",
+    party_id: "opposition_party",
+    party_display_name: "Reform Opposition",
+    proposal_kind: "budget",
+    proposal_display_name: "the budget",
+  };
+
+  it("names the leader, the party, the proposal and the price paid on an acceptance", () => {
+    expect(
+      driverSentence(
+        "legislative_bargain_accepted",
+        acceptedParams,
+        "A party leader backed the proposal.",
+      ),
+    ).toBe("Maret Kuusk of the Rural Alliance backed the budget, for 105 political capital.");
+  });
+
+  it("states no figure on a refusal, because the params carry none", () => {
+    const sentence = driverSentence(
+      "legislative_bargain_refused_will_not_deal",
+      refusedParams,
+      "A party leader refused to deal.",
+    );
+    expect(sentence).toBe("Nadia Brekke of the Reform Opposition would not deal over the budget.");
+    // The removed counteroffer, kept removed: the sentence cannot name a price the player might
+    // have paid, because no such param exists on a refusal.
+    expect(sentence).not.toContain("105");
+    expect(Object.keys(refusedParams)).not.toContain("asking_price");
+    expect(Object.keys(refusedParams)).not.toContain("endorsement_bps");
+  });
+
+  it("falls back to the generic label when a bargain param is missing", () => {
+    const { asking_price: _price, ...withoutPrice } = acceptedParams;
+    expect(driverSentence("legislative_bargain_accepted", withoutPrice, "generic")).toBe("generic");
+  });
+
+  it("renders no raw identifier for either bargain outcome", () => {
+    const cases: [string, Record<string, string | number>][] = [
+      ["legislative_bargain_accepted", acceptedParams],
+      ["legislative_bargain_refused_will_not_deal", refusedParams],
+    ];
+    for (const [reason, params] of cases) {
+      const sentence = driverSentence(reason, params, "generic");
+      for (const raw of [
+        "leader_rural_alliance",
+        "leader_opposition_party",
+        "rural_alliance",
+        "opposition_party",
+        "constitutional_amendment",
+        "legislative_bargain",
+      ]) {
+        expect(sentence).not.toContain(raw);
+      }
+    }
+  });
 });

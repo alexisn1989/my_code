@@ -324,6 +324,7 @@ def _support(
         spending_preference_bps=0,
         allocated_political_capital=allocated_political_capital,
         discipline_bps=discipline_bps,
+        endorsement_bps=0,
     ).effective_support_bps
 
 
@@ -339,6 +340,7 @@ def test_the_chain_records_every_step_it_passed_through() -> None:
         spending_preference_bps=0,
         allocated_political_capital=100,
         discipline_bps=5_000,
+        endorsement_bps=0,
     )
     assert support.baseline_support_bps == 9_200  # 8,000 + 6,000 * 0.2
     assert support.policy_compatibility_bps == 200  # 2,000 * 0.5 * 0.2
@@ -478,6 +480,7 @@ def test_amendment_support_omits_policy_content_but_keeps_influence_and_discipli
         relationship_bps=10_000,
         allocated_political_capital=100,
         discipline_bps=5_000,
+        endorsement_bps=0,
     )
     # Baseline 4,000; influence +1,000 reaches the midpoint; discipline therefore adds zero.
     assert support.baseline_support_bps == 4_000
@@ -494,6 +497,7 @@ def test_amendment_support_matches_the_decree_state_calibration_ceiling() -> Non
         relationship_bps=10_000,
         allocated_political_capital=0,
         discipline_bps=8_000,
+        endorsement_bps=0,
     )
     assert unaided.effective_support_bps == 3_200
 
@@ -563,6 +567,7 @@ def _tally(*, allocations: dict[tuple[str, str], int]) -> int:
                 spending_preference_bps=0,
                 allocated_political_capital=allocations.get((party, bloc), 0),
                 discipline_bps=discipline,
+                endorsement_bps=0,
             ).effective_support_bps,
         )
         for party, bloc, role, relationship, preference, discipline, seats in _CHAMBER

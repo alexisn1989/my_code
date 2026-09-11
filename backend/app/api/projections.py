@@ -35,11 +35,12 @@ from app.simulation.cabinet import (
 from app.simulation.constitution import DecreeAuthority, ExecutiveSelection, ExecutiveSystem
 from app.simulation.decisions import BudgetDecision, ConstitutionalAmendmentDecision
 from app.simulation.geography import outgoing_and_incoming
+from app.simulation.legislative_bargaining import assess_legislative_bargain
 from app.simulation.legislative_voting import (
     CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
 )
-from app.simulation.legislature import LegislativeOutcome, ProposalRoute
+from app.simulation.legislature import GovernmentRole, LegislativeOutcome, ProposalRoute
 from app.simulation.military import classify_destinations
 from app.simulation.report import CabinetChange, TurnReport
 from app.simulation.state import (
@@ -128,6 +129,12 @@ REASON_LABELS: dict[str, str] = {
     "cabinet_appointed": "A cabinet post was filled.",
     "cabinet_replaced": "A cabinet post changed hands.",
     "cabinet_dismissed": "A cabinet post was vacated.",
+    # (Characters slice) Two ids, one per outcome. Generic labels, because every surface composes
+    # the real sentence from the entry's own snapshotted params -- the names, the party and (on an
+    # acceptance only) the price. The refused entry carries no monetary param at all, so no surface
+    # can state a figure for an approach that cost nothing.
+    "legislative_bargain_accepted": "A party leader backed the proposal.",
+    "legislative_bargain_refused_will_not_deal": "A party leader refused to deal.",
 }
 
 
@@ -456,6 +463,13 @@ class PreviewProjection(BaseModel):
     influence_capital: int = 0
     investment_capital: int = 0
     cabinet_capital: int = 0
+    legislative_bargain_capital: int = 0
+    """(Characters slice) The fifth capital term: what the drafted bargain would cost.
+
+    The counterparty's asking price when they would deal, and `0` both when there is no bargain and
+    when the leader will not deal at all -- a refusal commits nothing, so the panel must not show a
+    charge that never happens. A scalar on an existing model, so it adds no schema.
+    """
     committed_capital: int = 0
     opening_capital: int = 0
     affordable: bool = True
@@ -784,6 +798,15 @@ class DecisionOptionsProjection(BaseModel):
     government could consider for it. Read from state and the engine's own constants; nothing
     invented. Intrinsic eligibility only -- see `CabinetCandidateOption` for why the
     whole-decision failures live on `/preview` instead."""
+    legislative_bargain_counterparties: tuple[LegislativeBargainCounterpartyOption, ...] = ()
+    """(Characters slice) Every party leader whose endorsement is for sale, canonical by
+    `character_id`.
+
+    Coalition leaders are ABSENT rather than listed as refusing: being in government is a
+    structural fact about the party, not an opinion of the leader's, and listing one as a refusal
+    would tell the player a falsehood about a person. Leaders who fail the loyalty/trust gate ARE
+    listed, priced `None` -- approaching them is legal, costs nothing and produces a real report
+    row, and the gate reads `personal_trust`, which a later slice moves."""
 
 
 class CabinetCandidateOption(BaseModel):
@@ -862,6 +885,116 @@ class CabinetPostOption(BaseModel):
     holder_competence_bps: int | None = None
     can_dismiss: bool
     candidates: tuple[CabinetCandidateOption, ...]
+
+
+class LegislativeBargainCounterpartyOption(BaseModel):
+    """One party leader the player could approach, and what they would say.
+
+    **`asking_price` and `refusal_reason` are mutually exclusive**, enforced below rather than left
+    to a convention. A leader who will never deal must not be shown a payable-looking price: that is
+    exactly the quotation the removed counteroffer used to give, and putting a number beside a
+    permanent refusal would reintroduce it through the interface instead of the engine.
+
+    The four traits stay on the row regardless of `will_deal`. They are what a player reads to
+    understand *why* somebody will not deal and what would have to change -- facts about the person,
+    not a quotation -- and `personal_trust_bps` in particular is the one a later slice moves.
+    """
+
+    model_config = _STRICT
+
+    character_id: str
+    display_name: str
+    party_id: str
+    party_display_name: str
+    loyalty_bps: int
+    independence_bps: int
+    ambition_bps: int
+    personal_trust_bps: int
+    will_deal: bool
+    """Kept as an explicit boolean rather than left implicit in "is `asking_price` null", so the
+    interface branches on a field that says what it means."""
+    asking_price: int | None = None
+    refusal_reason: Literal["refused_will_not_deal"] | None = None
+    """A one-member `Literal`, not a bare `str`: the single legal value is part of the type, so this
+    field cannot carry a foreign-negotiation refusal from a later slice, and it widens by one member
+    only when a second legislative refusal is genuinely added.
+
+    Deliberately NOT typed as `report.LegislativeBargainOutcome` -- that enum has an `accepted`
+    member which is meaningless here, and referencing it would pull the enum into the contract. The
+    `Literal` inlines as a property-level enum exactly as `Tone` already does, so the stronger type
+    costs no schema.
+    """
+
+    @model_validator(mode="after")
+    def _price_and_refusal_are_exclusive(self) -> LegislativeBargainCounterpartyOption:
+        if self.will_deal and (self.asking_price is None or self.refusal_reason is not None):
+            raise ValueError(
+                "a willing counterparty carries an asking price and no refusal reason, got "
+                f"price={self.asking_price!r} reason={self.refusal_reason!r}"
+            )
+        if not self.will_deal and (self.asking_price is not None or self.refusal_reason is None):
+            raise ValueError(
+                "an unwilling counterparty carries a refusal reason and no asking price, got "
+                f"price={self.asking_price!r} reason={self.refusal_reason!r}"
+            )
+        return self
+
+
+def _legislative_bargain_counterparties(
+    state: GameState,
+) -> tuple[LegislativeBargainCounterpartyOption, ...]:
+    """Every leader whose endorsement is for sale, canonical by `character_id`.
+
+    Eligibility is the same three-part rule slot 1 applies: the character leads a party, that party
+    sits in this legislature, and it is not in government. A coalition party has no endorsement to
+    sell, so its leader is absent rather than listed as refusing -- being in government is a
+    structural fact about the party, not an opinion of the leader's, and conflating the two would
+    tell the player a falsehood about a person.
+
+    Gate-failing leaders ARE listed, priced at `None`. They are approachable: the approach costs
+    nothing, resolves as `refused_will_not_deal`, and produces a real report row -- and the gate
+    reads `personal_trust`, which a later slice moves, so hiding them would present a temporary
+    refusal as a permanent absence.
+    """
+    country = state.world.countries.get(state.world.player_country_id)
+    politics = None if country is None else country.politics
+    legislature = None if politics is None else politics.legislature
+    if legislature is None:
+        return ()
+    parties = {party.id: party for party in legislature.parties}
+
+    options: list[LegislativeBargainCounterpartyOption] = []
+    for character_id in sorted(state.world.characters):
+        character = state.world.characters[character_id]
+        if not is_domestic_to(character=character, country_id=state.world.player_country_id):
+            continue
+        if character.party_id is None:
+            continue
+        party = parties.get(character.party_id)
+        if party is None or party.government_role is GovernmentRole.COALITION:
+            continue
+        assessment = assess_legislative_bargain(
+            loyalty_bps=character.loyalty,
+            independence_bps=character.independence,
+            ambition_bps=character.ambition,
+            personal_trust_bps=character.personal_trust,
+        )
+        options.append(
+            LegislativeBargainCounterpartyOption(
+                character_id=character_id,
+                display_name=character.display_name,
+                party_id=party.id,
+                party_display_name=party.name,
+                loyalty_bps=character.loyalty,
+                independence_bps=character.independence,
+                ambition_bps=character.ambition,
+                personal_trust_bps=character.personal_trust,
+                will_deal=assessment.will_deal,
+                asking_price=assessment.asking_price,
+                refusal_reason=None if assessment.will_deal else "refused_will_not_deal",
+            )
+        )
+    return tuple(options)
 
 
 def _cabinet_post_options(state: GameState) -> tuple[CabinetPostOption, ...]:
@@ -1024,6 +1157,7 @@ def build_decision_options(
         blocs=tuple(blocs),
         constitutional_axes=constitutional_axes,
         cabinet_posts=_cabinet_post_options(state),
+        legislative_bargain_counterparties=_legislative_bargain_counterparties(state),
     )
 
 
