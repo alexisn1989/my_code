@@ -100,6 +100,24 @@ from app.simulation.decisions import (
     cabinet_decision_digest,
     constitutional_amendment_decision_digest,
 )
+
+# (Group 58) CONSTANTS ONLY, deliberately. `assess_legislative_bargain`, `asking_price_capital` and
+# `will_deal` are NOT imported: this module transcribes those formulas itself
+# (`_transcribed_bargain_price`, `_transcribed_bargain_will_deal`) so that the arithmetic is really
+# performed twice. `tests/test_legislative_bargain.py` enforces this with an AST scan written as an
+# allowlist, so a newly added helper in that module is refused here by default rather than needing
+# to be added to a denylist.
+# (Group 59) CONSTANTS ONLY, on the same footing as the bargaining import below:
+# `assess_foreign_assistance`, `assistance_share_bps` and `remaining_pool` are NOT imported,
+# because this module transcribes those formulas itself.
+from app.simulation.foreign_assistance import (
+    FOREIGN_ASSISTANCE_BASE_SHARE_BPS,
+    FOREIGN_ASSISTANCE_INDEPENDENCE_PENALTY_MAX_BPS,
+    FOREIGN_ASSISTANCE_STANDING_SHARE_MAX_BPS,
+    FOREIGN_ASSISTANCE_TRUST_SHARE_MAX_BPS,
+    FOREIGN_MINISTER_ASSISTANCE_SHARE_MAX_BPS,
+    MINIMUM_ASSISTANCE_STANDING_BPS,
+)
 from app.simulation.foreign_conflict import (
     MAX_CONCURRENT_CONFLICTS,
     MIN_ACTIVE_INTENSITY_BPS,
@@ -145,13 +163,6 @@ from app.simulation.government_survival import (
     unrest_attempt_risk_bps,
     unrest_success_probability_bps,
 )
-
-# (Group 58) CONSTANTS ONLY, deliberately. `assess_legislative_bargain`, `asking_price_capital` and
-# `will_deal` are NOT imported: this module transcribes those formulas itself
-# (`_transcribed_bargain_price`, `_transcribed_bargain_will_deal`) so that the arithmetic is really
-# performed twice. `tests/test_legislative_bargain.py` enforces this with an AST scan written as an
-# allowlist, so a newly added helper in that module is refused here by default rather than needing
-# to be added to a denylist.
 from app.simulation.legislative_bargaining import (
     LEGISLATIVE_BARGAIN_AMBITION_PRICE_MAX,
     LEGISLATIVE_BARGAIN_BASE_PRICE,
@@ -181,6 +192,8 @@ from app.simulation.legitimacy import (
 from app.simulation.report import (
     CabinetChange,
     ConstitutionalAmendmentReport,
+    ForeignAffairsReport,
+    ForeignAssistanceReport,
     GovernanceReport,
     LegislativeBargainOutcome,
     LegislativeBargainReport,
@@ -201,6 +214,7 @@ from app.simulation.state import (
     RemovalReason,
     SpendingCategory,
     VictoryReason,
+    leader_of_foreign_profile,
 )
 
 _COUP_UNREST_OWNED_REMOVAL_REASONS = frozenset(
@@ -2541,8 +2555,302 @@ def _is_live_conflict_status(status: ConflictStatus) -> bool:
     return status in _LIVE_CONFLICT_STATUSES
 
 
+def _transcribed_assistance_share_bps(
+    *,
+    personal_trust_bps: int,
+    standing_bps: int,
+    foreign_minister_competence_bps: int,
+    independence_bps: int,
+) -> int:
+    """Group 59's OWN copy of the share formula, deliberately not a call to
+    `foreign_assistance.assistance_share_bps`.
+
+    Same reasoning as `_transcribed_bargain_price`: a reconciliation check that calls the function
+    which produced the report cannot fail when that function is wrong -- it computes the same wrong
+    answer and certifies it. Transcribing means the arithmetic is genuinely performed twice, by two
+    authors. Sharing the CONSTANTS is a different thing and is allowed, because a constant is one
+    number both sides read and a transcription error in the formula still surfaces.
+
+    `tests/test_foreign_assistance.py` enforces the boundary with an AST allowlist scan rather than
+    trusting this docstring.
+    """
+    return max(
+        1,
+        FOREIGN_ASSISTANCE_BASE_SHARE_BPS
+        + trunc_div_toward_zero(
+            personal_trust_bps * FOREIGN_ASSISTANCE_TRUST_SHARE_MAX_BPS, BPS_DENOMINATOR
+        )
+        + trunc_div_toward_zero(
+            standing_bps * FOREIGN_ASSISTANCE_STANDING_SHARE_MAX_BPS, BPS_DENOMINATOR
+        )
+        + trunc_div_toward_zero(
+            foreign_minister_competence_bps * FOREIGN_MINISTER_ASSISTANCE_SHARE_MAX_BPS,
+            BPS_DENOMINATOR,
+        )
+        - trunc_div_toward_zero(
+            independence_bps * FOREIGN_ASSISTANCE_INDEPENDENCE_PENALTY_MAX_BPS, BPS_DENOMINATOR
+        ),
+    )
+
+
+def _reconcile_foreign_assistance(
+    *,
+    opening_state: GameState,
+    closing_state: GameState,
+    foreign_affairs: ForeignAffairsReport,
+    report: TurnReport,
+    decisions: DecisionSet | None,
+) -> list[str]:
+    """Group 59 (characters slice) -- foreign assistance, checked against an INDEPENDENT
+    re-derivation rather than against the engine's own answer.
+
+    Five things, as approved:
+
+    1. **The decision** -- the row names the counterpart the submitted request named, that
+       counterpart exists, and the snapshotted names match `opening_state`.
+    2. **Opening and closing capacity** -- `assistance_drawn` in `closing_state` equals
+       `opening_state`'s plus exactly the granted amount, never exceeds the authored capacity, and
+       no OTHER counterpart's draw moved.
+    3. **The finance term** -- `FinanceReport.external_assistance` equals the granted sum, and
+       `pre_financing_balance` still satisfies the UNCHANGED three-term identity, so a grant that
+       leaked into revenue fails here.
+    4. **The report** -- the share and the grant re-derived by transcription from `opening_state`,
+       and the entry matching the row param-for-param including snapshotted names.
+    5. **The resulting state** -- no request means no row, no entry, no transfer and no capacity
+       movement anywhere; and `world.characters` is byte-identical, since a later slice is the only
+       writer of `personal_trust`.
+    """
+    problems: list[str] = []
+    rows = foreign_affairs.assistance
+    opening_world = opening_state.world
+    closing_world = closing_state.world
+    decision = decisions.foreign_assistance_decision() if decisions is not None else None
+
+    # (5) Trust is read, never written by this slice.
+    if opening_world.characters != closing_world.characters:
+        problems.append(
+            "world.characters changed during a turn, but no mechanic in this ruleset writes to it "
+            "(group 59)"
+        )
+
+    granted_total = sum(row.granted for row in rows)
+    finance = report.finance
+    if finance is not None:
+        # (3) The finance term, both directions.
+        if finance.external_assistance != granted_total:
+            problems.append(
+                f"finance.external_assistance={finance.external_assistance} does not equal the "
+                f"assistance rows' granted total ({granted_total}) (group 59)"
+            )
+        expected_balance = (
+            finance.revenue.total_revenue
+            - finance.total_program_spending
+            - finance.quarterly_interest_expense
+        )
+        if finance.pre_financing_balance != expected_balance:
+            problems.append(
+                "finance.pre_financing_balance no longer equals revenue - spending - interest; a "
+                "grant must never enter the country's own fiscal position (group 59)"
+            )
+
+    # (2) No counterpart's draw may move except the one that was granted.
+    granted_by_profile = {row.profile_id: row.granted for row in rows}
+    for profile_id in sorted(
+        set(opening_world.foreign_relationships) | set(closing_world.foreign_relationships)
+    ):
+        opening_rel = opening_world.foreign_relationships.get(profile_id)
+        closing_rel = closing_world.foreign_relationships.get(profile_id)
+        if opening_rel is None or closing_rel is None:
+            problems.append(
+                f"foreign relationship {profile_id!r} appeared or vanished during a turn (group 59)"
+            )
+            continue
+        expected_drawn = opening_rel.assistance_drawn + granted_by_profile.get(profile_id, 0)
+        if closing_rel.assistance_drawn != expected_drawn:
+            problems.append(
+                f"{profile_id!r} assistance_drawn moved from {opening_rel.assistance_drawn} to "
+                f"{closing_rel.assistance_drawn}, expected {expected_drawn} (group 59)"
+            )
+        if opening_rel.standing_bps != closing_rel.standing_bps:
+            problems.append(
+                f"{profile_id!r} standing_bps changed during a turn, but no mechanic in this "
+                "ruleset writes it (group 59)"
+            )
+
+    if decisions is not None and decision is None:
+        # (5) Nothing submitted, so nothing may be reported.
+        if rows:
+            problems.append(
+                f"the turn reports {len(rows)} assistance row(s) but submitted no request "
+                "(group 59)"
+            )
+        if finance is not None and finance.external_assistance != 0:
+            problems.append(
+                "the turn transferred external assistance but submitted no request (group 59)"
+            )
+        return problems
+
+    if decision is None:
+        return problems
+
+    if len(rows) != 1:
+        problems.append(
+            f"the turn submitted an assistance request but reports {len(rows)} row(s) (group 59)"
+        )
+        return problems
+    row = rows[0]
+
+    # (1) The decision.
+    if row.profile_id != decision.profile_id:
+        problems.append(
+            f"assistance row names {row.profile_id!r} but the submitted decision named "
+            f"{decision.profile_id!r} (group 59)"
+        )
+        return problems
+    profile = opening_world.foreign_profiles.get(row.profile_id)
+    relationship = opening_world.foreign_relationships.get(row.profile_id)
+    if profile is None or relationship is None:
+        problems.append(
+            f"the submitted request names {row.profile_id!r}, which opening_state has no profile "
+            "or relationship for (group 59)"
+        )
+        return problems
+    if row.profile_display_name != profile.display_name:
+        problems.append(
+            f"assistance row profile_display_name={row.profile_display_name!r} does not match "
+            f"opening_state ({profile.display_name!r}) (group 59)"
+        )
+    if row.opening_capacity != profile.assistance_capacity:
+        problems.append(
+            f"assistance row opening_capacity={row.opening_capacity} does not match the authored "
+            f"capacity ({profile.assistance_capacity}) (group 59)"
+        )
+    if row.opening_drawn != relationship.assistance_drawn:
+        problems.append(
+            f"assistance row opening_drawn={row.opening_drawn} does not match opening_state "
+            f"({relationship.assistance_drawn}) (group 59)"
+        )
+    if row.standing_bps != relationship.standing_bps:
+        problems.append(
+            f"assistance row standing_bps={row.standing_bps} does not match opening_state "
+            f"({relationship.standing_bps}) (group 59)"
+        )
+
+    # (4) The share and the grant, transcribed.
+    found = leader_of_foreign_profile(opening_world.characters, row.profile_id)
+    leader_id, leader = (None, None) if found is None else found
+    if row.counterpart_character_id != leader_id:
+        problems.append(
+            f"assistance row names counterpart {row.counterpart_character_id!r} but "
+            f"{row.profile_id!r}'s leader in opening_state is {leader_id!r} (group 59)"
+        )
+
+    expected_competence = holder_competence_bps(
+        cabinet=opening_state.world.countries[opening_state.world.player_country_id].cabinet,
+        characters=opening_world.characters,
+        post=CabinetPost.FOREIGN_MINISTER,
+        resolving_turn=opening_state.turn,
+    )
+    if row.foreign_minister_competence_bps != expected_competence:
+        problems.append(
+            f"assistance row foreign_minister_competence_bps="
+            f"{row.foreign_minister_competence_bps} does not match the minister serving in "
+            f"opening_state ({expected_competence}) (group 59)"
+        )
+
+    pool = max(0, profile.assistance_capacity - relationship.assistance_drawn)
+    if relationship.standing_bps < MINIMUM_ASSISTANCE_STANDING_BPS:
+        expected_share, expected_granted = 0, 0
+        expected_refusal: str | None = "foreign_assistance_counterpart_is_hostile"
+    elif pool <= 0:
+        expected_share, expected_granted = 0, 0
+        expected_refusal = "foreign_assistance_pool_exhausted"
+    else:
+        share = _transcribed_assistance_share_bps(
+            personal_trust_bps=0 if leader is None else leader.personal_trust,
+            standing_bps=relationship.standing_bps,
+            foreign_minister_competence_bps=expected_competence,
+            independence_bps=0 if leader is None else leader.independence,
+        )
+        # Transcribed, not called: the grant is floored at 1 INSIDE the `min`, so a willing
+        # counterpart with a positive pool always transfers between 1 and the whole remainder.
+        # `foreign_assistance_pool_exhausted` is therefore reachable from exactly one place --
+        # the `pool <= 0` branch above -- which is what makes a row claiming exhaustion against a
+        # pool that still has money in it fail here.
+        expected_share = share
+        expected_granted = min(pool, max(1, trunc_div_toward_zero(pool * share, BPS_DENOMINATOR)))
+        expected_refusal = None
+
+    if row.share_bps != expected_share:
+        problems.append(
+            f"assistance row share_bps={row.share_bps} does not match the re-derived share "
+            f"({expected_share}) (group 59)"
+        )
+    if row.granted != expected_granted:
+        problems.append(
+            f"assistance row granted={row.granted} does not match the re-derived grant "
+            f"({expected_granted}) (group 59)"
+        )
+    if row.refusal_code != expected_refusal:
+        problems.append(
+            f"assistance row refusal_code={row.refusal_code!r} does not match the re-derived "
+            f"outcome ({expected_refusal!r}) (group 59)"
+        )
+
+    problems.extend(_reconcile_foreign_assistance_entry(row, report))
+    return problems
+
+
+def _reconcile_foreign_assistance_entry(
+    row: ForeignAssistanceReport, report: TurnReport
+) -> list[str]:
+    """Group 59, check 4's second half: the entry IS the row, restated.
+
+    The entry is the only surface a REFUSAL reaches -- it moves no money, so it leaves no trace in
+    the finance report, and `build_turn_result` derives its drivers from entries. Without this a
+    player who asked a hostile counterpart for help would see a turn in which nothing happened.
+
+    Params are pinned by EQUALITY, so a refused row's set cannot silently acquire a monetary key.
+    """
+    entries = [
+        entry for entry in report.entries if entry.reason_id.startswith("foreign_assistance_")
+    ]
+    if len(entries) != 1:
+        return [
+            f"a submitted assistance request must produce exactly one report entry, got "
+            f"{len(entries)} (group 59)"
+        ]
+    entry = entries[0]
+    expected_reason = row.refusal_code or "foreign_assistance_granted"
+    if entry.reason_id != expected_reason:
+        return [
+            f"assistance entry reason_id={entry.reason_id!r} does not match the row's outcome "
+            f"({expected_reason!r}) (group 59)"
+        ]
+    expected_params: dict[str, str | int] = {
+        "profile_id": row.profile_id,
+        "profile_display_name": row.profile_display_name,
+    }
+    if row.counterpart_character_id is not None and row.counterpart_display_name is not None:
+        expected_params["counterpart_character_id"] = row.counterpart_character_id
+        expected_params["counterpart_display_name"] = row.counterpart_display_name
+    if row.refusal_code is None:
+        expected_params["granted"] = row.granted
+        expected_params["remaining_capacity"] = row.opening_capacity - row.closing_drawn
+    if dict(entry.params) != expected_params:
+        return [
+            f"assistance entry params {dict(entry.params)!r} do not match the row "
+            f"({expected_params!r}) (group 59)"
+        ]
+    return []
+
+
 def reconcile_foreign_affairs_report(
-    *, opening_state: GameState, closing_state: GameState, report: TurnReport
+    *,
+    opening_state: GameState,
+    closing_state: GameState,
+    report: TurnReport,
+    decisions: DecisionSet | None = None,
 ) -> list[str]:
     """Return every disagreement between `report.foreign_affairs` and the REAL opening/closing
     `WorldState` and the REAL seeded RNG streams (External Wars Gate W1, frozen plan sec.12,
@@ -2565,6 +2873,17 @@ def reconcile_foreign_affairs_report(
     opening_world = opening_state.world
     closing_world = closing_state.world
     outbreak = foreign_affairs.outbreak
+
+    # ---- Group 59 (characters slice): foreign assistance -----------------------------------
+    problems.extend(
+        _reconcile_foreign_assistance(
+            opening_state=opening_state,
+            closing_state=closing_state,
+            foreign_affairs=foreign_affairs,
+            report=report,
+            decisions=decisions,
+        )
+    )
 
     # ---- Group 49: authored staticness ---------------------------------------------------
     # Plain `==` on the `foreign_profiles` dict is already insertion-order-independent (Python

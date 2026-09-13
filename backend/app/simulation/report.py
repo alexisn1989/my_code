@@ -302,6 +302,16 @@ class FinanceReport(BaseModel):
     total_program_spending: StrictMoney
     quarterly_interest_expense: StrictMoney
     pre_financing_balance: StrictSignedMoney
+    external_assistance: StrictMoney
+    """A foreign counterpart's grant this turn, or `0` (characters slice).
+
+    REQUIRED, with no default, and that is the whole of what makes ruleset 0.20.0 incompatible: a
+    stored 0.20.0 finance report has no such field and no longer parses. Defaulting it to `0` would
+    have made every old report load and would have asserted that a turn resolved before this
+    mechanic existed had "no assistance" -- a claim about money nobody could have received.
+
+    It sits beside `pre_financing_balance` rather than inside it because it is not part of the
+    country's own fiscal position; see `_borrowing_and_closing_cash_match_formula`."""
     new_borrowing: StrictMoney
     closing_cash: StrictMoney
     closing_debt: StrictMoney
@@ -386,18 +396,28 @@ class FinanceReport(BaseModel):
 
     @model_validator(mode="after")
     def _borrowing_and_closing_cash_match_formula(self) -> FinanceReport:
-        cash_before_financing = self.opening_cash + self.pre_financing_balance
+        """(Characters slice) `external_assistance` joins the financing step, and had to move in
+        lockstep with `accounting.resolve_cash_and_debt`.
+
+        This is the ONLY finance validator the assistance term touches.
+        `_pre_financing_balance_matches_formula` above is deliberately unchanged: a foreign grant is
+        not part of the country's own fiscal position, and every figure that validator guards keeps
+        exactly the meaning it had before this slice."""
+        cash_before_financing = (
+            self.opening_cash + self.pre_financing_balance + self.external_assistance
+        )
         expected_borrowing = max(0, -cash_before_financing)
         expected_closing_cash = max(0, cash_before_financing)
         if self.new_borrowing != expected_borrowing:
             raise ValueError(
                 f"new_borrowing={self.new_borrowing} does not equal the remaining shortfall "
-                f"after available cash ({expected_borrowing})"
+                f"after available cash and external assistance ({expected_borrowing})"
             )
         if self.closing_cash != expected_closing_cash:
             raise ValueError(
                 f"closing_cash={self.closing_cash} does not match "
-                f"max(0, opening_cash + pre_financing_balance) ({expected_closing_cash})"
+                f"max(0, opening_cash + pre_financing_balance + external_assistance) "
+                f"({expected_closing_cash})"
             )
         return self
 
@@ -413,12 +433,25 @@ class FinanceReport(BaseModel):
 
     @model_validator(mode="after")
     def _cash_flow_equation_holds(self) -> FinanceReport:
-        lhs = self.opening_cash + self.revenue.total_revenue + self.new_borrowing
+        """(Characters slice) `external_assistance` joins the INFLOW side.
+
+        The third and last finance identity the assistance term touches, and the one that makes the
+        other two honest: money in must equal money out, whatever its source. A grant is an inflow
+        the country did not raise itself, so it belongs on the left beside revenue and borrowing --
+        which is exactly why `pre_financing_balance`, on the right-hand side of nothing, stays
+        untouched.
+        """
+        lhs = (
+            self.opening_cash
+            + self.revenue.total_revenue
+            + self.new_borrowing
+            + self.external_assistance
+        )
         rhs = self.closing_cash + self.total_program_spending + self.quarterly_interest_expense
         if lhs != rhs:
             raise ValueError(
                 "cash-flow reconciliation failed: "
-                f"opening_cash + total_revenue + new_borrowing = {lhs}, but "
+                f"opening_cash + total_revenue + new_borrowing + external_assistance = {lhs}, but "
                 f"closing_cash + total_program_spending + quarterly_interest_expense = {rhs}"
             )
         return self
@@ -4153,6 +4186,73 @@ class ForeignConflictProgressionRow(BaseModel):
         return self
 
 
+class ForeignAssistanceReport(BaseModel):
+    """One approach to one foreign counterpart: who, how much, and what is left (characters slice).
+
+    Lives inside `ForeignAffairsReport` rather than as a sixteenth top-level domain report, exactly
+    as the legislative bargain lives inside `LegislativeReport`. A sixteenth report would double
+    `TurnReport`'s all-present-or-all-absent subset test from 32,766 cases to 65,534, which is a
+    steep price for a subtree that is empty on most turns.
+
+    **This row carries no political-capital figure, because a request costs none.** What a grant
+    costs is the counterpart's finite pool and, later, the relationship -- not the player's capital
+    budget. There is therefore no `CapitalExpenditureCategory` member and no ledger row for
+    assistance, and its absence is a design statement rather than an omission.
+
+    Self-validating in this module's usual discipline: each validator re-derives one rule from this
+    row's OWN stored fields, never by calling `simulation.foreign_assistance`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    profile_id: str
+    profile_display_name: StrictDisplayName
+    counterpart_character_id: StrictCharacterId | None
+    counterpart_display_name: StrictDisplayName | None
+    """The counterpart's leader, snapshotted. `None` when the profile has no authored leader -- a
+    foreign actor is not obliged to have one, and aid is still a transaction between STATES. The
+    trust term simply contributes nothing, the same collapse `holder_competence_bps` makes for a
+    vacant office."""
+    opening_capacity: StrictMoney
+    opening_drawn: StrictMoney
+    granted: StrictMoney
+    closing_drawn: StrictMoney
+    share_bps: StrictBps
+    """The share of the remaining pool that was applied, `0` on a refusal."""
+    foreign_minister_competence_bps: StrictBps
+    """What the OPENING foreign minister contributed, or `0` when the post was vacant, unmodelled,
+    or filled by somebody appointed this very turn. Stored so the row replays its own arithmetic
+    and so the vacant case is visible in the record rather than merely inferable."""
+    standing_bps: StrictRelationshipBps
+    refusal_code: str | None
+
+    @model_validator(mode="after")
+    def _granted_is_present_exactly_when_not_refused(self) -> ForeignAssistanceReport:
+        if self.refusal_code is None and self.granted <= 0:
+            raise ValueError("an accepted request must record a positive grant")
+        if self.refusal_code is not None and self.granted != 0:
+            raise ValueError(f"a refused request must record no grant, got {self.granted}")
+        if self.refusal_code is not None and self.share_bps != 0:
+            raise ValueError(f"a refused request applies no share, got {self.share_bps}")
+        return self
+
+    @model_validator(mode="after")
+    def _the_draw_is_exactly_the_grant(self) -> ForeignAssistanceReport:
+        """The row's own bookkeeping identity, and the one that makes an overdraw unconstructible
+        rather than merely wrong."""
+        if self.closing_drawn != self.opening_drawn + self.granted:
+            raise ValueError(
+                f"closing_drawn={self.closing_drawn} does not equal opening_drawn + granted "
+                f"({self.opening_drawn + self.granted})"
+            )
+        if self.closing_drawn > self.opening_capacity:
+            raise ValueError(
+                f"closing_drawn={self.closing_drawn} exceeds the counterpart's authored capacity "
+                f"({self.opening_capacity})"
+            )
+        return self
+
+
 class ForeignAffairsReport(BaseModel):
     """External Wars Gate W1's 13th domain report: this turn's outbreak draw plus every still-live
     (non-terminal-opening) conflict's progression or ceasefire-maintenance row. Built for every
@@ -4164,7 +4264,26 @@ class ForeignAffairsReport(BaseModel):
 
     outbreak: ForeignConflictOutbreakReport
     progressions: tuple[ForeignConflictProgressionRow, ...] = ()
+    assistance: tuple[ForeignAssistanceReport, ...] = ()
+    """Approaches made to foreign counterparts this turn (characters slice); empty on most turns.
+
+    Defaulted rather than required, and therefore NOT the field that breaks ruleset 0.20.0 -- an old
+    payload without it parses happily. `FinanceReport.external_assistance` is the breaking one.
+
+    Canonical ascending by `profile_id`, rejected rather than sorted, like every other ordered
+    collection covered by the entry hash. At most one row is constructible today
+    (`_at_most_one_foreign_assistance_decision`), but the order rule is stated now so a future
+    multi-request ruleset inherits an answer instead of inventing one."""
     excluded_stochastic_channels: tuple[str, ...] = EXCLUDED_STOCHASTIC_CHANNELS
+
+    @model_validator(mode="after")
+    def _assistance_is_canonically_ordered(self) -> ForeignAffairsReport:
+        ids = [row.profile_id for row in self.assistance]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"duplicate profile_id(s) in assistance: {ids!r}")
+        if ids != sorted(ids):
+            raise ValueError(f"assistance is not in canonical profile_id order: {ids!r}")
+        return self
 
     @model_validator(mode="after")
     def _progressions_are_canonically_ordered(self) -> ForeignAffairsReport:

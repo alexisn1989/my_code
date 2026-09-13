@@ -30,10 +30,16 @@ from app.core.politics import RELATIONSHIP_INVESTMENT_CAP
 from app.simulation.cabinet import (
     appointment_cost_capital,
     appointment_refusal,
+    holder_competence_bps,
     is_domestic_to,
 )
 from app.simulation.constitution import DecreeAuthority, ExecutiveSelection, ExecutiveSystem
 from app.simulation.decisions import BudgetDecision, ConstitutionalAmendmentDecision
+from app.simulation.foreign_assistance import (
+    ForeignAssistanceRefusal,
+    assess_foreign_assistance,
+    remaining_pool,
+)
 from app.simulation.geography import outgoing_and_incoming
 from app.simulation.legislative_bargaining import assess_legislative_bargain
 from app.simulation.legislative_voting import (
@@ -54,6 +60,7 @@ from app.simulation.state import (
     SovereignRef,
     SpendingCategory,
     StrategicMapState,
+    leader_of_foreign_profile,
 )
 
 Tone = Literal["positive", "negative", "caution", "neutral"]
@@ -135,6 +142,12 @@ REASON_LABELS: dict[str, str] = {
     # can state a figure for an approach that cost nothing.
     "legislative_bargain_accepted": "A party leader backed the proposal.",
     "legislative_bargain_refused_will_not_deal": "A party leader refused to deal.",
+    # (Characters slice) Foreign assistance. Generic labels, because every surface composes the
+    # real sentence from the entry's own snapshotted params -- and a refused request carries no
+    # monetary param at all, so no surface can state a figure for aid that never arrived.
+    "foreign_assistance_granted": "A foreign counterpart sent assistance.",
+    "foreign_assistance_counterpart_is_hostile": "A foreign counterpart refused to help.",
+    "foreign_assistance_pool_exhausted": "A foreign counterpart has nothing left to give.",
 }
 
 
@@ -464,6 +477,12 @@ class PreviewProjection(BaseModel):
     investment_capital: int = 0
     cabinet_capital: int = 0
     legislative_bargain_capital: int = 0
+    foreign_assistance_estimate: int = 0
+    """(Characters slice) What a foreign counterpart would send IN, in money.
+
+    Deliberately NOT part of `committed_capital`: that totals political capital the player spends,
+    and a grant costs none. Reported beside it so the panel can show both halves of a turn's
+    diplomacy without conflating a receipt with an expenditure."""
     """(Characters slice) The fifth capital term: what the drafted bargain would cost.
 
     The counterparty's asking price when they would deal, and `0` both when there is no bargain and
@@ -798,6 +817,12 @@ class DecisionOptionsProjection(BaseModel):
     government could consider for it. Read from state and the engine's own constants; nothing
     invented. Intrinsic eligibility only -- see `CabinetCandidateOption` for why the
     whole-decision failures live on `/preview` instead."""
+    foreign_assistance_counterparties: tuple[ForeignAssistanceCounterpartyOption, ...] = ()
+    """(Characters slice) Every foreign counterpart the player has dealings with and who has
+    something to give, canonical by `profile_id`.
+
+    A counterpart with no relationship entry, or no authored capacity, is ABSENT rather than listed
+    as refusing -- having no dealings with somebody is a different fact from being turned down."""
     legislative_bargain_counterparties: tuple[LegislativeBargainCounterpartyOption, ...] = ()
     """(Characters slice) Every party leader whose endorsement is for sale, canonical by
     `character_id`.
@@ -885,6 +910,130 @@ class CabinetPostOption(BaseModel):
     holder_competence_bps: int | None = None
     can_dismiss: bool
     candidates: tuple[CabinetCandidateOption, ...]
+
+
+class ForeignAssistanceCounterpartyOption(BaseModel):
+    """One foreign counterpart the player could ask for aid, and what they would send.
+
+    `estimated_grant` and `refusal_reason` are mutually exclusive, enforced below -- the same
+    discipline the bargain's option follows, and for the same reason: showing a figure beside a
+    counterpart who will refuse would promise money that is not coming.
+
+    `remaining_capacity` is shown regardless. It is the fact that makes a pool legible as a
+    depleting resource rather than a surprise, and on a refusal it is exactly what tells the
+    player WHICH refusal they are looking at -- an exhausted pool reads zero, a hostile one does
+    not.
+    """
+
+    model_config = _STRICT
+
+    profile_id: str
+    display_name: str
+    counterpart_character_id: str | None = None
+    counterpart_display_name: str | None = None
+    standing_bps: int
+    remaining_capacity: int
+    will_assist: bool
+    estimated_grant: int | None = None
+    refusal_reason: (
+        Literal[
+            "foreign_assistance_counterpart_is_hostile",
+            "foreign_assistance_pool_exhausted",
+        ]
+        | None
+    ) = None
+    """A two-member `Literal`, not a bare `str`: the legal values are part of the type, so this
+    field cannot carry a legislative refusal code by mistake. It inlines as a property-level enum
+    exactly as `Tone` does, so the stronger type costs no schema."""
+
+    @model_validator(mode="after")
+    def _grant_and_refusal_are_exclusive(self) -> ForeignAssistanceCounterpartyOption:
+        if self.will_assist and (self.estimated_grant is None or self.refusal_reason is not None):
+            raise ValueError(
+                "a willing counterpart carries an estimated grant and no refusal reason, got "
+                f"grant={self.estimated_grant!r} reason={self.refusal_reason!r}"
+            )
+        if not self.will_assist and (
+            self.estimated_grant is not None or self.refusal_reason is None
+        ):
+            raise ValueError(
+                "an unwilling counterpart carries a refusal reason and no estimated grant, got "
+                f"grant={self.estimated_grant!r} reason={self.refusal_reason!r}"
+            )
+        return self
+
+
+_ASSISTANCE_REFUSAL_LITERALS: dict[
+    ForeignAssistanceRefusal,
+    Literal["foreign_assistance_counterpart_is_hostile", "foreign_assistance_pool_exhausted"],
+] = {
+    ForeignAssistanceRefusal.HOSTILE: "foreign_assistance_counterpart_is_hostile",
+    ForeignAssistanceRefusal.POOL_EXHAUSTED: "foreign_assistance_pool_exhausted",
+}
+"""The enum-to-`Literal` bridge, exhaustive by construction.
+
+The projection field is a two-member `Literal` rather than the engine enum (which would pull the
+enum into the contract), so the two vocabularies have to be reconciled SOMEWHERE. Doing it in one
+typed mapping means a third refusal added to the enum fails type-checking here rather than reaching
+a client as an unexpected string."""
+
+
+def _foreign_assistance_counterparties(
+    state: GameState,
+) -> tuple[ForeignAssistanceCounterpartyOption, ...]:
+    """Every counterpart the player has a relationship with, canonical by `profile_id`.
+
+    A profile with no relationship entry is ABSENT rather than listed as refusing: having no
+    dealings with somebody is not the same as being turned down by them, and the resolver refuses
+    the request outright rather than treating it as a neutral approach.
+
+    A profile that authored no capacity is absent for the same reason -- there is nothing to ask
+    for, which is a fact about the actor rather than an opinion about the player.
+    """
+    world = state.world
+    player = world.countries.get(world.player_country_id)
+    competence = holder_competence_bps(
+        cabinet=None if player is None else player.cabinet,
+        characters=world.characters,
+        post=CabinetPost.FOREIGN_MINISTER,
+        resolving_turn=state.turn,
+    )
+
+    options: list[ForeignAssistanceCounterpartyOption] = []
+    for profile_id in sorted(world.foreign_relationships):
+        profile = world.foreign_profiles.get(profile_id)
+        relationship = world.foreign_relationships[profile_id]
+        if profile is None or profile.assistance_capacity <= 0:
+            continue
+        found = leader_of_foreign_profile(world.characters, profile_id)
+        leader_id, leader = (None, None) if found is None else found
+        assessment = assess_foreign_assistance(
+            personal_trust_bps=0 if leader is None else leader.personal_trust,
+            standing_bps=relationship.standing_bps,
+            foreign_minister_competence_bps=competence,
+            independence_bps=0 if leader is None else leader.independence,
+            capacity=profile.assistance_capacity,
+            drawn=relationship.assistance_drawn,
+        )
+        willing = assessment.refusal is None
+        options.append(
+            ForeignAssistanceCounterpartyOption(
+                profile_id=profile_id,
+                display_name=profile.display_name,
+                counterpart_character_id=leader_id,
+                counterpart_display_name=None if leader is None else leader.display_name,
+                standing_bps=relationship.standing_bps,
+                remaining_capacity=remaining_pool(
+                    capacity=profile.assistance_capacity, drawn=relationship.assistance_drawn
+                ),
+                will_assist=willing,
+                estimated_grant=assessment.granted if willing else None,
+                refusal_reason=_ASSISTANCE_REFUSAL_LITERALS[assessment.refusal]
+                if assessment.refusal is not None
+                else None,
+            )
+        )
+    return tuple(options)
 
 
 class LegislativeBargainCounterpartyOption(BaseModel):
@@ -1157,6 +1306,7 @@ def build_decision_options(
         blocs=tuple(blocs),
         constitutional_axes=constitutional_axes,
         cabinet_posts=_cabinet_post_options(state),
+        foreign_assistance_counterparties=_foreign_assistance_counterparties(state),
         legislative_bargain_counterparties=_legislative_bargain_counterparties(state),
     )
 

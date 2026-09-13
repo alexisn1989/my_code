@@ -396,12 +396,26 @@ class TestApprovedRosters:
 
     @pytest.mark.parametrize("scenario_file", _SCENARIO_FILES)
     def test_no_foreign_profile_gains_military_state(self, scenario_file: str) -> None:
-        """A foreign profile stays exactly what W1 made it: `display_name` and
-        `war_capability_bps`. Owning map area did not upgrade it into a country, and neither does
-        this slice."""
+        """A foreign profile is still not a country. Owning map area did not upgrade it into one,
+        the movement slice did not, and neither does the characters slice.
+
+        The field list is EXTENDED by exactly one name and kept as equality, rather than relaxed
+        to a subset or to "no military key": the characters slice (commit 6) adds
+        `assistance_capacity`, a finite aid pool, and that one addition is enumerated here so the
+        next unauthorized field still fails. What the list exists to refuse -- a `military`
+        roster, a `politics`, an `economy`, anything that would make a profile a second kind of
+        country -- is unchanged, and is re-asserted below in its own right so the claim does not
+        rest on the spelling of a list.
+        """
         state = load_scenario_file(SCENARIOS_DIR / scenario_file)
         for profile in state.world.foreign_profiles.values():
-            assert sorted(type(profile).model_fields) == ["display_name", "war_capability_bps"]
+            assert sorted(type(profile).model_fields) == [
+                "assistance_capacity",
+                "display_name",
+                "war_capability_bps",
+            ]
+            for country_shaped in ("military", "politics", "economy", "finance", "constitution"):
+                assert country_shaped not in type(profile).model_fields
 
     @pytest.mark.parametrize("scenario_file", _SCENARIO_FILES)
     def test_scenario_is_valid_under_every_invariant(self, scenario_file: str) -> None:
@@ -430,10 +444,12 @@ class TestApprovedRosters:
         with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
             document = yaml.safe_load(handle)
 
-        # Bumped by each later slice that changes authored SHAPE, most recently the characters
-        # slice ("0.16.0" -> "0.17.0"): the roster this class guards is unchanged, and the pin is
-        # here so a bump has to be a deliberate edit in every file that records one.
-        assert document["content_version"] == "0.17.0"
+        # Bumped by each later slice that changes authored SHAPE, most recently the
+        # foreign-assistance slice ("0.17.0" -> "0.18.0", for `assistance_capacity` on each
+        # foreign profile and the new top-level `foreign_relationships`): the roster this class
+        # guards is unchanged, and the pin is here so a bump has to be a deliberate edit in every
+        # file that records one.
+        assert document["content_version"] == "0.18.0"
         for country in document["countries"]:
             if country["id"] == country_id:
                 assert "military" in country

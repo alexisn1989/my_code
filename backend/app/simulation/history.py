@@ -393,6 +393,7 @@ def validate_history(save: GameSave) -> list[str]:
                     opening_state=previous_state_model,
                     closing_state=state_model,
                     report=report_model,
+                    decisions=decisions_model,
                 )
             )
         # Strategic Military Map Gate M0, commit 5 (group 53): a third, independent entrypoint,

@@ -647,6 +647,11 @@ export interface components {
             /** Decree Legislative Capital Cost */
             decree_legislative_capital_cost: number;
             /**
+             * Foreign Assistance Counterparties
+             * @default []
+             */
+            foreign_assistance_counterparties: components["schemas"]["ForeignAssistanceCounterpartyOption"][];
+            /**
              * Legislative Bargain Counterparties
              * @default []
              */
@@ -777,6 +782,39 @@ export interface components {
              */
             axis: "executive_system";
             value: components["schemas"]["ExecutiveSystem"];
+        };
+        /**
+         * ForeignAssistanceCounterpartyOption
+         * @description One foreign counterpart the player could ask for aid, and what they would send.
+         *
+         *     `estimated_grant` and `refusal_reason` are mutually exclusive, enforced below -- the same
+         *     discipline the bargain's option follows, and for the same reason: showing a figure beside a
+         *     counterpart who will refuse would promise money that is not coming.
+         *
+         *     `remaining_capacity` is shown regardless. It is the fact that makes a pool legible as a
+         *     depleting resource rather than a surprise, and on a refusal it is exactly what tells the
+         *     player WHICH refusal they are looking at -- an exhausted pool reads zero, a hostile one does
+         *     not.
+         */
+        ForeignAssistanceCounterpartyOption: {
+            /** Counterpart Character Id */
+            counterpart_character_id?: string | null;
+            /** Counterpart Display Name */
+            counterpart_display_name?: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Estimated Grant */
+            estimated_grant?: number | null;
+            /** Profile Id */
+            profile_id: string;
+            /** Refusal Reason */
+            refusal_reason?: ("foreign_assistance_counterpart_is_hostile" | "foreign_assistance_pool_exhausted") | null;
+            /** Remaining Capacity */
+            remaining_capacity: number;
+            /** Standing Bps */
+            standing_bps: number;
+            /** Will Assist */
+            will_assist: boolean;
         };
         /**
          * FormationProjection
@@ -1105,6 +1143,11 @@ export interface components {
              * @default []
              */
             excludes_stochastic_channels: string[];
+            /**
+             * Foreign Assistance Estimate
+             * @default 0
+             */
+            foreign_assistance_estimate: number;
             /**
              * Has Proposal
              * @default false

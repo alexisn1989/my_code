@@ -34,13 +34,14 @@ from __future__ import annotations
 
 from app.core.errors import DecisionSetError
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
-from app.simulation.cabinet import appointment_cost_capital
+from app.simulation.cabinet import appointment_cost_capital, holder_competence_bps
 from app.simulation.decisions import (
     BudgetDecision,
     CabinetDecision,
     ConstitutionalAmendmentDecision,
     DecisionSet,
 )
+from app.simulation.foreign_assistance import assess_foreign_assistance
 from app.simulation.legislative_bargaining import (
     LEGISLATIVE_ENDORSEMENT_BPS,
     assess_legislative_bargain,
@@ -62,7 +63,13 @@ from app.simulation.phases import (
     _compute_proposed_spending_plan,
     _compute_proposed_tax_policy,
 )
-from app.simulation.state import GameState, LegislatureState, PoliticalState
+from app.simulation.state import (
+    CabinetPost,
+    GameState,
+    LegislatureState,
+    PoliticalState,
+    leader_of_foreign_profile,
+)
 
 from .decision_preflight import first_decision_problem
 from .projections import ChamberPreview, PreviewProjection
@@ -157,6 +164,7 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
     investment = decision_set.relationship_investment_decision()
     cabinet = decision_set.cabinet_decision()
     bargain_price, endorsed_party_id = _legislative_bargain_preview(state, decision_set)
+    assistance_estimate = _foreign_assistance_preview(state, decision_set)
 
     proposal: BudgetDecision | ConstitutionalAmendmentDecision | None = budget or amendment
     _require_no_structural_problem(state, decision_set)
@@ -200,6 +208,7 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
         investment_capital=investment_total,
         cabinet_capital=cabinet_total,
         legislative_bargain_capital=bargain_price,
+        foreign_assistance_estimate=assistance_estimate,
         committed_capital=committed,
         opening_capital=opening_capital,
         affordable=committed <= opening_capital,
@@ -224,6 +233,44 @@ def _cabinet_cost(state: GameState, decision: CabinetDecision | None) -> int:
         if character is not None:
             total += appointment_cost_capital(independence_bps=character.independence)
     return total
+
+
+def _foreign_assistance_preview(state: GameState, decision_set: DecisionSet) -> int:
+    """What this draft's assistance request would bring IN, or `0`.
+
+    Money received, not capital spent -- it is deliberately NOT part of `committed_capital`, which
+    totals what the player pays. A grant costs no political capital at all; what it costs is the
+    counterpart's finite pool.
+
+    Assessed through `simulation.foreign_assistance` rather than re-derived here, so a preview
+    cannot promise a figure the resolver would not transfer. `0` covers no request, an unknown
+    counterpart (already refused by `first_decision_problem`), a hostile one and an empty pool --
+    in every case nothing arrives.
+    """
+    decision = decision_set.foreign_assistance_decision()
+    if decision is None:
+        return 0
+    world = state.world
+    profile = world.foreign_profiles.get(decision.profile_id)
+    relationship = world.foreign_relationships.get(decision.profile_id)
+    if profile is None or relationship is None:
+        return 0
+    player = world.countries.get(world.player_country_id)
+    found = leader_of_foreign_profile(world.characters, decision.profile_id)
+    leader = None if found is None else found[1]
+    return assess_foreign_assistance(
+        personal_trust_bps=0 if leader is None else leader.personal_trust,
+        standing_bps=relationship.standing_bps,
+        foreign_minister_competence_bps=holder_competence_bps(
+            cabinet=None if player is None else player.cabinet,
+            characters=world.characters,
+            post=CabinetPost.FOREIGN_MINISTER,
+            resolving_turn=state.turn,
+        ),
+        independence_bps=0 if leader is None else leader.independence,
+        capacity=profile.assistance_capacity,
+        drawn=relationship.assistance_drawn,
+    ).granted
 
 
 def _legislative_bargain_preview(

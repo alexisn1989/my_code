@@ -83,7 +83,21 @@ CHANGED_BY_THE_GOVERNMENT_STRUCTURE_FEATURE = frozenset({"coup_unrest"})
 #: quiet turns with no vote and therefore no bloc rows, so it contributes no difference to compare.
 CHANGED_BY_THE_LEGISLATIVE_BARGAIN = frozenset({"legislative"})
 
-TEN_BYTE_IDENTICAL_REPORTS = tuple(
+#: And the two the FOREIGN ASSISTANCE slice legitimately changes. `FinanceReport` gained a
+#: REQUIRED `external_assistance`, and `ForeignAffairsReport` gained an `assistance` tuple, so
+#: each serialises one key a pre-assistance engine never wrote -- even on a quiet turn, where the
+#: values are `0` and the empty list. Named separately for the same reason the three above are,
+#: rather than folded into a shared "changed" bucket: each exclusion has to say WHICH change made
+#: it and justify itself alone. Assertion 1d pins exactly how these two differ, so "changed" never
+#: becomes "unchecked".
+#:
+#: `finance` leaving this set matters more than the others and is worth stating plainly: it was
+#: the subtree carrying the map-resources calibration claim in assertion 1, so 1d re-establishes
+#: that claim directly -- every pre-existing finance figure, `pre_financing_balance` included, is
+#: still byte-identical, and the ONLY difference is the new key.
+CHANGED_BY_THE_FOREIGN_ASSISTANCE_SLICE = frozenset({"finance", "foreign_affairs"})
+
+EIGHT_BYTE_IDENTICAL_REPORTS = tuple(
     field
     for field in THIRTEEN_PRE_EXISTING_REPORTS
     if field
@@ -91,6 +105,7 @@ TEN_BYTE_IDENTICAL_REPORTS = tuple(
         CHANGED_BY_THE_MAP_RESOURCES_SLICE
         | CHANGED_BY_THE_GOVERNMENT_STRUCTURE_FEATURE
         | CHANGED_BY_THE_LEGISLATIVE_BARGAIN
+        | CHANGED_BY_THE_FOREIGN_ASSISTANCE_SLICE
     )
 )
 
@@ -146,6 +161,26 @@ What is NOT in this set is the point of it. No economic, fiscal, political, cons
 legislative or map path moved: on a quiet turn nobody invests, so the chief of staff's only
 consumer contributes nothing and the closing state is otherwise byte-identical to a run of the
 engine that had never heard of him."""
+
+EXPECTED_FOREIGN_ASSISTANCE_DIFFERENCES = {
+    "world.foreign_profiles.kessia.assistance_capacity",
+    "world.foreign_profiles.vetruska.assistance_capacity",
+    "world.foreign_relationships",
+}
+"""The three paths the foreign-assistance slice authors, again as their own named set.
+
+All three are authored CONTENT, not engine output: a finite pool on each of `tiny_valid`'s two
+foreign profiles, and the player's own bilateral standing with each of them. The two capacity
+paths are named per profile rather than as a single `world.foreign_profiles` entry, which is the
+sharper claim -- `display_name` and `war_capability_bps` are asserted unmoved on both profiles by
+their absence from this set, so a slice that had quietly retuned a war capability while adding a
+pool would fail here.
+
+What is NOT in this set is again the point. `assistance_drawn` starts at `0` and these are quiet
+turns on which nobody asks for anything, so no path under `world.foreign_relationships` moves
+ACROSS the turn -- it differs from the 0.14.0 baseline only by existing at all. And no economic,
+fiscal, political, constitutional, legislative, military or map path moved, which is the same
+statement the accounting assertion 1d makes about the report, made here about the state."""
 
 
 # --------------------------------------------------------------------------
@@ -307,16 +342,22 @@ class TestTheExclusionHelperRemovesOnlyTwoPaths:
 
 
 class TestQuietTurnRegressionAgainstFrozenBaseline:
-    def test_1_the_ten_untouched_pre_existing_report_subtrees_are_byte_identical(
+    def test_1_the_eight_untouched_pre_existing_report_subtrees_are_byte_identical(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
-        """`production`, `tax_base_derivation` and `finance` are in this list, which is the whole
+        """`production` and `tax_base_derivation` are in this list, which carries most of the
         calibration claim of the map-resources slice proven against a frozen record from an engine
         that had never heard of gold: the resource catalogue grew by a category that really is
-        extracted every turn, and the country's output, tax bases, revenue and treasury did not
-        move by one minor unit."""
+        extracted every turn, and the country's output and tax bases did not move by one minor
+        unit.
+
+        `finance` left this list when the foreign-assistance slice added a required key to it.
+        The calibration claim it carried is NOT dropped -- assertion 1d re-proves it directly, by
+        pinning the finance subtree's difference set to that one key and nothing else, so revenue
+        and the treasury are still asserted unmoved against the same pre-gold record.
+        """
         for live_row, base_row in zip(live[1:], baseline[1:], strict=True):
-            for field in TEN_BYTE_IDENTICAL_REPORTS:
+            for field in EIGHT_BYTE_IDENTICAL_REPORTS:
                 assert json.dumps(live_row["report"][field], sort_keys=True) == json.dumps(
                     base_row["report"][field], sort_keys=True
                 ), f"turn {live_row['turn']}: {field}"
@@ -412,6 +453,48 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
             assert live_row["report"]["legislative"]["bargains"] == []
             assert live_row["report"]["legislative"]["blocs"] == []
 
+    def test_1d_finance_and_foreign_affairs_differ_only_by_the_assistance_keys(
+        self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
+    ) -> None:
+        """The fourth and fifth excluded subtrees, pinned as EXACT difference sets.
+
+        ONE leaf each and no others: `finance.external_assistance`, `0` on a quiet turn, and
+        `foreign_affairs.assistance`, empty on a quiet turn. That is the whole claim of this slice
+        against a turn on which nobody asked anybody for anything -- adding a mechanic for
+        receiving foreign money moved no figure at all.
+
+        This assertion also carries what `finance` used to contribute to assertion 1, and it is
+        the sharper half of this slice's accounting claim: `pre_financing_balance` is NOT in the
+        difference set, so the country's own fiscal position is byte-identical to a record from an
+        engine that had never heard of external assistance. Neither are `revenue`, `new_borrowing`,
+        `closing_cash` or `closing_debt`. A grant folded into revenue, or a `pre_financing_balance`
+        widened to include the transfer, would fail here -- against a frozen record, which is a
+        stronger statement than any live comparison could make.
+        """
+        for live_row, base_row in zip(live[1:], baseline[1:], strict=True):
+            assert _differing_paths(
+                live_row["report"]["finance"], base_row["report"]["finance"]
+            ) == ["external_assistance"], f"turn {live_row['turn']}"
+            assert _differing_paths(
+                live_row["report"]["foreign_affairs"], base_row["report"]["foreign_affairs"]
+            ) == ["assistance"], f"turn {live_row['turn']}"
+
+            # The 0.14.0 rows carry no such keys at all -- asserted, so a future report that lost
+            # one would fail here instead of matching the old shape by omission.
+            assert "external_assistance" not in base_row["report"]["finance"]
+            assert "assistance" not in base_row["report"]["foreign_affairs"]
+            assert live_row["report"]["finance"]["external_assistance"] == 0
+            assert live_row["report"]["foreign_affairs"]["assistance"] == []
+
+            # Stated positively as well as by absence from the difference set above, because this
+            # is the identity the slice is built around.
+            live_finance = live_row["report"]["finance"]
+            base_finance = base_row["report"]["finance"]
+            assert live_finance["pre_financing_balance"] == base_finance["pre_financing_balance"]
+            assert live_finance["new_borrowing"] == base_finance["new_borrowing"]
+            assert live_finance["closing_cash"] == base_finance["closing_cash"]
+            assert live_finance["revenue"] == base_finance["revenue"]
+
     def test_1b_the_coup_unrest_report_differs_only_by_the_structural_term(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
@@ -471,11 +554,22 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """Called out separately from the thirteen because slot 8 is the phase movement now shares
-        with the W1 progression -- if anything reordered or perturbed it, it would show here."""
+        with the W1 progression -- if anything reordered or perturbed it, it would show here.
+
+        The foreign-assistance slice adds an `assistance` key to this subtree, so byte-identity is
+        no longer literally available. The CLAIM is unchanged and is not weakened: the one new key
+        is dropped BY NAME -- and asserted present first, so the drop can never quietly become a
+        no-op -- and everything W1 writes must still be byte-identical. The outbreak draw, the
+        candidate rows, the clamped probability, the progressions and the excluded-channel list
+        are all still compared exactly, which is what "slot 8 was not perturbed" means.
+        """
         for live_row, base_row in zip(live[1:], baseline[1:], strict=True):
-            assert json.dumps(live_row["report"]["foreign_affairs"], sort_keys=True) == json.dumps(
+            live_affairs = dict(live_row["report"]["foreign_affairs"])
+            assert "assistance" in live_affairs, "the key being dropped must really be there"
+            del live_affairs["assistance"]
+            assert json.dumps(live_affairs, sort_keys=True) == json.dumps(
                 base_row["report"]["foreign_affairs"], sort_keys=True
-            )
+            ), f"turn {live_row['turn']}"
 
     def test_3_closing_state_differs_only_by_military_the_envelope_and_this_slices_authoring(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
@@ -500,16 +594,42 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
                 EXPECTED_ENVELOPE_DIFFERENCES
                 | EXPECTED_MAP_RESOURCES_DIFFERENCES
                 | EXPECTED_CHARACTERS_DIFFERENCES
+                | EXPECTED_FOREIGN_ASSISTANCE_DIFFERENCES
             ), f"turn {live_row['turn']}: {sorted(differences)}"
 
     def test_3a_the_envelope_difference_is_exactly_the_ruleset_bump(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """So the pinned set above can never quietly absorb a different meaning."""
-        assert live[-1]["state"]["ruleset_version"] == "0.20.0"
-        assert live[-1]["state"]["content_version"] == "0.17.0"
+        assert live[-1]["state"]["ruleset_version"] == "0.21.0"
+        assert live[-1]["state"]["content_version"] == "0.18.0"
         assert baseline[-1]["state"]["ruleset_version"] == "0.14.0"
         assert baseline[-1]["state"]["content_version"] == "0.14.0"
+
+    def test_3c_the_foreign_assistance_difference_is_two_pools_and_a_standing(
+        self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
+    ) -> None:
+        """The same anti-absorption check for `EXPECTED_FOREIGN_ASSISTANCE_DIFFERENCES`: each of
+        its three paths is pinned to the shape it records, so none can start meaning something
+        else while the set above still passes."""
+        live_world = live[-1]["state"]["world"]
+        base_world = baseline[-1]["state"]["world"]
+
+        assert "foreign_relationships" not in base_world
+        for profile_id in ("kessia", "vetruska"):
+            assert "assistance_capacity" not in base_world["foreign_profiles"][profile_id]
+            assert live_world["foreign_profiles"][profile_id]["assistance_capacity"] > 0
+            # The pre-existing fields on the same profile, asserted unmoved rather than merely
+            # absent from the difference set.
+            assert (
+                live_world["foreign_profiles"][profile_id]["war_capability_bps"]
+                == base_world["foreign_profiles"][profile_id]["war_capability_bps"]
+            )
+
+        # Nobody asked for anything on these turns, so every pool is still untouched.
+        assert set(live_world["foreign_relationships"]) == {"kessia", "vetruska"}
+        for relationship in live_world["foreign_relationships"].values():
+            assert relationship["assistance_drawn"] == 0
 
     def test_3b_the_characters_difference_is_a_roster_a_cabinet_and_an_absence(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]

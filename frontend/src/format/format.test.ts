@@ -329,3 +329,111 @@ describe("driverSentence", () => {
     }
   });
 });
+
+// Characters slice: foreign assistance. One test per rendered sentence, each asserting the exact
+// string, the fallback when a param is missing, and that no raw identifier reaches the output --
+// the three guarantees that matter per sentence, kept together rather than split across a grid of
+// near-identical cases. Each fixture uses a counterpart that genuinely reaches its own branch:
+// Kessia is cordial and gives, Vetruska is authored below the hostility floor, and Tolvane is the
+// pool a repeated draw can run dry.
+describe("driverSentence, foreign assistance", () => {
+  const grantedParams = {
+    profile_id: "kessia",
+    profile_display_name: "Kessia",
+    counterpart_character_id: "leader_kessia",
+    counterpart_display_name: "Chancellor Dietrich Halm",
+    granted: 38150000,
+    remaining_capacity: 211850000,
+  };
+
+  // Both refusals are strict SUBSETS: no `granted`, no `remaining_capacity`. A turn that moved no
+  // money carries no field a figure could travel in, so no sentence can state one by mistake.
+  const hostileParams = {
+    profile_id: "vetruska",
+    profile_display_name: "Vetruska",
+    counterpart_character_id: "leader_vetruska",
+    counterpart_display_name: "Premier Sanna Ilves",
+  };
+
+  const exhaustedParams = {
+    profile_id: "tolvane",
+    profile_display_name: "Tolvane",
+    counterpart_character_id: "leader_tolvane",
+    counterpart_display_name: "First Minister Rhys Talen",
+  };
+
+  const rawIdentifiers = [
+    "kessia",
+    "vetruska",
+    "tolvane",
+    "leader_kessia",
+    "leader_vetruska",
+    "leader_tolvane",
+    "foreign_assistance",
+    "remaining_capacity",
+  ];
+
+  it("names the counterpart, the grant and what remains, grouped as the CLI groups them", () => {
+    const sentence = driverSentence(
+      "foreign_assistance_granted",
+      grantedParams,
+      "A foreign counterpart sent assistance.",
+    );
+    expect(sentence).toBe(
+      "Chancellor Dietrich Halm of Kessia sent 38,150,000 in assistance; " +
+        "211,850,000 of their capacity remains.",
+    );
+    // The same entry rendered by the CLI reads identically; an ungrouped figure here would be one
+    // turn described two different ways.
+    expect(sentence).toContain("38,150,000");
+    const { granted: _granted, ...withoutGranted } = grantedParams;
+    expect(driverSentence("foreign_assistance_granted", withoutGranted, "generic")).toBe("generic");
+    for (const raw of rawIdentifiers) {
+      expect(sentence).not.toContain(raw);
+    }
+  });
+
+  it("states no figure when a counterpart is too hostile, because the params carry none", () => {
+    const sentence = driverSentence(
+      "foreign_assistance_counterpart_is_hostile",
+      hostileParams,
+      "A foreign counterpart refused to help.",
+    );
+    expect(sentence).toBe("Vetruska is too hostile to send assistance.");
+    expect(Object.keys(hostileParams)).not.toContain("granted");
+    expect(Object.keys(hostileParams)).not.toContain("remaining_capacity");
+    expect(sentence).not.toMatch(/\d/);
+    const { profile_display_name: _name, ...withoutProfile } = hostileParams;
+    expect(
+      driverSentence("foreign_assistance_counterpart_is_hostile", withoutProfile, "generic"),
+    ).toBe("generic");
+    for (const raw of rawIdentifiers) {
+      expect(sentence).not.toContain(raw);
+    }
+  });
+
+  it("keeps an exhausted pool distinct from hostility, which is the actionable difference", () => {
+    const sentence = driverSentence(
+      "foreign_assistance_pool_exhausted",
+      exhaustedParams,
+      "A foreign counterpart has nothing left to give.",
+    );
+    expect(sentence).toBe("Tolvane has no assistance left to give.");
+    // One is a relationship the player can repair and the other is a well that has run dry.
+    expect(sentence).not.toBe(
+      driverSentence(
+        "foreign_assistance_counterpart_is_hostile",
+        { ...hostileParams, profile_display_name: "Tolvane" },
+        "generic",
+      ),
+    );
+    expect(sentence).not.toMatch(/\d/);
+    const { profile_display_name: _name, ...withoutProfile } = exhaustedParams;
+    expect(driverSentence("foreign_assistance_pool_exhausted", withoutProfile, "generic")).toBe(
+      "generic",
+    );
+    for (const raw of rawIdentifiers) {
+      expect(sentence).not.toContain(raw);
+    }
+  });
+});

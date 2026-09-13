@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.17.0"
+content_version: "0.18.0"
 seed: 42
 player_country_id: arken
 
@@ -29,9 +29,27 @@ foreign_profiles:
   kessia:
     display_name: "Kessia"
     war_capability_bps: 5000
+    # Characters slice: a finite assistance pool, never refilled. Sized against this country's
+    # own finances rather than at random -- large enough to matter across several turns, small
+    # enough that a player who leans on one counterpart runs them dry.
+    assistance_capacity: 250000000
   vetruska:
     display_name: "Vetruska"
     war_capability_bps: 5600
+    assistance_capacity: 150000000
+
+# The player's OWN standing with each counterpart -- distinct from `dyads`, which are between two
+# FOREIGN actors and concern wars this country only observes.
+foreign_relationships:
+  kessia:
+    standing_bps: 2000       # cordial: aid flows
+    assistance_drawn: 0
+  vetruska:
+    # Below MINIMUM_ASSISTANCE_STANDING_BPS (-4,000), so Vetruska refuses outright. Authored
+    # deliberately: the hostile branch has to be reachable from shipped content, not only from a
+    # constructed state.
+    standing_bps: -5000
+    assistance_drawn: 0
 
 dyads:
   - country_a: kessia

@@ -73,6 +73,7 @@ from app.simulation.decisions import (
     constitutional_amendment_decision_digest,
     legislative_bargain_decision_digest,
 )
+from app.simulation.foreign_assistance import assess_foreign_assistance
 from app.simulation.foreign_conflict import (
     CEASEFIRE_BREAKDOWN_BPS,
     CEASEFIRE_DURABILITY_TURNS,
@@ -200,6 +201,7 @@ from app.simulation.report import (
     ElectionReport,
     FinanceReport,
     ForeignAffairsReport,
+    ForeignAssistanceReport,
     ForeignConflictOutbreakCandidateRow,
     ForeignConflictOutbreakReport,
     ForeignConflictProgressionRow,
@@ -269,6 +271,7 @@ from app.simulation.state import (
     TaxPolicyState,
     TerminalOutcomeState,
     VictoryReason,
+    leader_of_foreign_profile,
 )
 from app.simulation.tax_base_derivation import (
     aggregate_tax_base_contributions,
@@ -508,6 +511,28 @@ class LegislativeBargainScratch:
 
 
 @dataclass
+class ForeignAssistanceScratch:
+    """Mutable, turn-local workspace for this turn's one approach to a foreign counterpart.
+
+    Populated ENTIRELY by slot 1 from the OPENING state and **never mutated afterwards**. That
+    immutability is what makes the slot ordering safe rather than lucky: slot 5 consumes the
+    transfer and slot 7 commits the capacity draw, and because both are handed the same frozen
+    value computed before either ran, slot 5 running first is a read of a settled number and not a
+    race against slot 7.
+
+    It is also what makes "the OPENING foreign minister supplies this turn's contribution" a
+    property of the data. `holder_competence_bps` applies the effectivity rule once, here, so a
+    minister appointed in the same decision set contributes exactly nothing.
+    """
+
+    profile_id: str | None
+    """`None` on a turn with no request, which is how every reader takes one code path."""
+    granted: int
+    row: ForeignAssistanceReport | None
+    entries: tuple[TurnReportEntry, ...]
+
+
+@dataclass
 class FinanceScratch:
     """Mutable, turn-local accounting workspace threaded through the Phase 2A/2B2 phases
     via `PhaseContext.finance`. Not itself part of `GameState` or the report — purely
@@ -563,6 +588,13 @@ class PhaseContext:
 
     The opening cabinet lives here precisely because slot 2 overwrites the one on `ctx.state`; see
     `CabinetScratch`."""
+    foreign_assistance_scratch: ForeignAssistanceScratch | None = None
+    """Set by `_validate_and_reserve_actions` (slot 1) from opening state and the OPENING foreign
+    minister; read by slot 5 (the treasury transfer), slot 7 (the capacity draw) and slot 15 (the
+    report). Never mutated after slot 1. Characters slice.
+
+    Never `None` once slot 1 has run: a turn with no request still gets a scratch carrying
+    `profile_id=None` and `granted=0`."""
     legislative_bargain_scratch: LegislativeBargainScratch | None = None
     """Set by `_validate_and_reserve_actions` (slot 1) BEFORE the vote it feeds, and read by the
     vote itself, by the affordability guard and by slot 15. Characters slice.
@@ -1245,6 +1277,113 @@ def _resolve_legislative_bargain(
     )
 
 
+def _resolve_foreign_assistance(ctx: PhaseContext) -> ForeignAssistanceScratch:
+    """Slot 1's assistance half: validate the request, assess it ONCE from opening state, and
+    freeze the answer. Writes nothing to `ctx.state`.
+
+    Four rejection codes in a fixed precedence, so the reported reason never depends on evaluation
+    accident. The order follows the same logic the bargain's does: an unknown profile has no
+    capacity to read, and a profile with no capacity authored at all is a different (and more
+    useful) statement than a pool that has merely been drained.
+
+    A HOSTILE counterpart and an EXHAUSTED pool are **outcomes, not rejections** -- each resolves
+    the turn normally and gets a report row saying which it was. Both `standing_bps` and the pool
+    move over a campaign, so neither is a permanent structural fact, and collapsing them would lose
+    the only distinction a player can act on.
+
+    The foreign minister's competence is read here, ONCE, from the OPENING cabinet through
+    `cabinet.holder_competence_bps` -- so the effectivity rule has exactly one definition and a
+    minister appointed in this very decision set contributes nothing.
+    """
+    decision = ctx.decisions.foreign_assistance_decision()
+    if decision is None:
+        return ForeignAssistanceScratch(profile_id=None, granted=0, row=None, entries=())
+
+    world = ctx.state.world
+    profile = world.foreign_profiles.get(decision.profile_id)
+    if profile is None:
+        raise DecisionSetError(
+            f"foreign_assistance_profile_unknown: {decision.profile_id!r} is not a foreign actor "
+            "in this world"
+        )
+    if profile.assistance_capacity <= 0:
+        raise DecisionSetError(
+            f"foreign_assistance_profile_offers_none: {decision.profile_id!r} has no assistance "
+            "capacity authored, so there is nothing to ask for"
+        )
+
+    relationship = world.foreign_relationships.get(decision.profile_id)
+    if relationship is None:
+        raise DecisionSetError(
+            f"foreign_assistance_no_relationship: this country has no bilateral relationship with "
+            f"{decision.profile_id!r} to ask through"
+        )
+
+    # The counterpart's leader, by affiliation -- so a request can never pair one actor's pool with
+    # another actor's leader. A profile with no authored leader is legal: aid is between STATES,
+    # and the trust term simply contributes nothing.
+    found = leader_of_foreign_profile(world.characters, decision.profile_id)
+    leader_id, leader = (None, None) if found is None else found
+
+    cabinet_scratch = ctx.cabinet_scratch
+    assert cabinet_scratch is not None, "slot 1 resolves the cabinet before the assistance request"
+    foreign_minister_competence = holder_competence_bps(
+        cabinet=cabinet_scratch.opening_cabinet,
+        characters=world.characters,
+        post=CabinetPost.FOREIGN_MINISTER,
+        resolving_turn=ctx.resolving_turn,
+    )
+
+    assessment = assess_foreign_assistance(
+        personal_trust_bps=0 if leader is None else leader.personal_trust,
+        standing_bps=relationship.standing_bps,
+        foreign_minister_competence_bps=foreign_minister_competence,
+        independence_bps=0 if leader is None else leader.independence,
+        capacity=profile.assistance_capacity,
+        drawn=relationship.assistance_drawn,
+    )
+
+    row = ForeignAssistanceReport(
+        profile_id=decision.profile_id,
+        profile_display_name=profile.display_name,
+        counterpart_character_id=leader_id,
+        counterpart_display_name=None if leader is None else leader.display_name,
+        opening_capacity=profile.assistance_capacity,
+        opening_drawn=relationship.assistance_drawn,
+        granted=assessment.granted,
+        closing_drawn=relationship.assistance_drawn + assessment.granted,
+        share_bps=assessment.share_bps,
+        foreign_minister_competence_bps=foreign_minister_competence,
+        standing_bps=relationship.standing_bps,
+        refusal_code=None if assessment.refusal is None else assessment.refusal.value,
+    )
+
+    # Snapshotted params, names included. A refused row carries no monetary key at all, the same
+    # strict-subset discipline the bargain's refusal follows -- there is no field a granted figure
+    # could travel in for a turn on which nothing was granted.
+    params: dict[str, str | int] = {
+        "profile_id": decision.profile_id,
+        "profile_display_name": profile.display_name,
+    }
+    if leader_id is not None and leader is not None:
+        params["counterpart_character_id"] = leader_id
+        params["counterpart_display_name"] = leader.display_name
+    if assessment.refusal is None:
+        params["granted"] = assessment.granted
+        params["remaining_capacity"] = profile.assistance_capacity - row.closing_drawn
+        reason_id = "foreign_assistance_granted"
+    else:
+        reason_id = assessment.refusal.value
+
+    entries = (TurnReportEntry(category="foreign_affairs", reason_id=reason_id, params=params),)
+    return ForeignAssistanceScratch(
+        profile_id=decision.profile_id,
+        granted=assessment.granted,
+        row=row,
+        entries=entries,
+    )
+
+
 def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
     """Phase 3B1, slot 1: resolve this turn's budget proposal against the legislature (or decree
     authority) BEFORE anything is mutated (§9 of the plan). Computes the vote (or decree, or
@@ -1306,6 +1445,12 @@ def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
     # nothing.
     ctx.legislative_bargain_scratch = _resolve_legislative_bargain(ctx, legislature=legislature)
     bargain_scratch = ctx.legislative_bargain_scratch
+
+    # --- the assistance request: assessed ONCE here, consumed by slot 5 and slot 7 -----------
+    # After the cabinet, because it reads the OPENING foreign minister's competence from that
+    # scratch. The result is frozen from this point: slot 5 transfers `granted` into the treasury
+    # and slot 7 commits the capacity draw, and neither recomputes anything.
+    ctx.foreign_assistance_scratch = _resolve_foreign_assistance(ctx)
 
     # The chief of staff's contribution to every relationship investment this turn, read ONCE from
     # the OPENING cabinet so slot 1's no-op guard and slot 11's application cannot disagree about
@@ -2053,12 +2198,19 @@ def _update_prices_inflation_employment_debt_reserves(ctx: PhaseContext) -> None
     assert scratch.total_program_spending is not None
     assert scratch.quarterly_interest_expense is not None
 
+    # (Characters slice) Slot 5 CONSUMES slot 1's already-settled figure and recomputes nothing.
+    # Passed explicitly even when it is zero: `resolve_cash_and_debt` requires the argument, so a
+    # turn with no grant states that fact rather than relying on a default.
+    assistance_scratch = ctx.foreign_assistance_scratch
+    assert assistance_scratch is not None, "slot 1 always sets the assistance scratch"
+
     resolution = resolve_cash_and_debt(
         opening_cash=scratch.opening.opening_cash,
         opening_debt=scratch.opening.opening_debt,
         total_revenue=scratch.revenue.total_revenue,
         total_program_spending=scratch.total_program_spending,
         quarterly_interest=scratch.quarterly_interest_expense,
+        external_assistance=assistance_scratch.granted,
     )
     scratch.pre_financing_balance = resolution.pre_financing_balance
     scratch.new_borrowing = resolution.new_borrowing
@@ -2572,7 +2724,35 @@ def _resolve_foreign_conflict_outbreak(ctx: PhaseContext) -> None:
         initial_intensity_constant_bps=INITIAL_INTENSITY_BPS,
         tension_intensity_weight_bps=TENSION_INTENSITY_WEIGHT_BPS,
     )
+    _commit_foreign_assistance(ctx)
     ctx.mark_implemented()
+
+
+def _commit_foreign_assistance(ctx: PhaseContext) -> None:
+    """Slot 7's assistance half: commit the capacity draw slot 1 already decided.
+
+    This is the ONLY writer of `assistance_drawn`, and it only ever writes upward. It runs in the
+    existing `resolve_diplomacy_and_sanctions` slot -- aid IS diplomacy -- so no phase is added and
+    `PHASE_ORDER`/`PHASE_IDS` are untouched.
+
+    Slot 5 has already moved the same `granted` figure into the treasury. That is not a race: the
+    figure was settled in slot 1 and the scratch is never mutated, so both slots read one frozen
+    number rather than one recomputing after the other. Committing the draw here rather than in
+    slot 5 keeps the treasury's business and the relationship's business in the phases that own
+    them.
+    """
+    scratch = ctx.foreign_assistance_scratch
+    assert scratch is not None, "slot 1 always sets the assistance scratch"
+    if scratch.profile_id is None or scratch.granted <= 0:
+        return
+
+    world = ctx.state.world
+    relationships = dict(world.foreign_relationships)
+    current = relationships[scratch.profile_id]
+    relationships[scratch.profile_id] = current.model_copy(
+        update={"assistance_drawn": current.assistance_drawn + scratch.granted}
+    )
+    ctx.state.world = world.model_copy(update={"foreign_relationships": relationships})
 
 
 def _progress_active_conflict(
@@ -3971,6 +4151,11 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
             total_program_spending=scratch.total_program_spending,
             quarterly_interest_expense=scratch.quarterly_interest_expense,
             pre_financing_balance=scratch.pre_financing_balance,
+            external_assistance=(
+                0
+                if ctx.foreign_assistance_scratch is None
+                else ctx.foreign_assistance_scratch.granted
+            ),
             new_borrowing=scratch.new_borrowing,
             closing_cash=scratch.closing_cash,
             closing_debt=scratch.closing_debt,
@@ -4116,9 +4301,13 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
     # already-validated rows.
     outbreak_report = ctx.foreign_outbreak_report
     assert outbreak_report is not None, "resolve_foreign_conflict_outbreak always runs first"
+    assistance_scratch = ctx.foreign_assistance_scratch
+    assert assistance_scratch is not None, "slot 1 always sets the assistance scratch"
     ctx.foreign_affairs_report = ForeignAffairsReport(
         outbreak=outbreak_report,
         progressions=ctx.foreign_progression_rows,
+        # (Characters slice) Slot 1's already-validated row, wrapped and never recomputed.
+        assistance=() if assistance_scratch.row is None else (assistance_scratch.row,),
     )
 
     # (Military Movement, commit 5) Wraps slot 8's already-snapshotted rows -- never recomputed
@@ -4148,6 +4337,12 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
     # must be told, not shown a turn in which nothing happened.
     assert bargain_scratch is not None, "slot 1 always sets this"
     ctx.report_entries.extend(bargain_scratch.entries)
+
+    # (Characters slice) The assistance entry. A REFUSED request moves no money and so leaves no
+    # trace in the finance report either -- without this entry a player who asked a hostile
+    # counterpart for help would see a turn in which nothing happened.
+    assert assistance_scratch is not None, "slot 1 always sets this"
+    ctx.report_entries.extend(assistance_scratch.entries)
 
     # (Phase 3B1) Appended LAST, after every other phase and after this slot's own legislative
     # entries, so `turn_resolved` stays the final line of every report exactly as it was before

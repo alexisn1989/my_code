@@ -108,6 +108,7 @@ def resolve_cash_and_debt(
     total_revenue: Money,
     total_program_spending: Money,
     quarterly_interest: Money,
+    external_assistance: Money,
 ) -> CashDebtResolution:
     """Apply one quarter's revenue/spending/interest to opening cash and debt.
 
@@ -115,9 +116,22 @@ def resolve_cash_and_debt(
     remaining shortfall exactly (`new_borrowing = max(0, -cash_before_financing)`),
     and `closing_cash = max(0, cash_before_financing)` never goes negative. A
     surplus is retained as cash — debt is never automatically repaid.
+
+    **`external_assistance` (characters slice) enters at the FINANCING step, and deliberately not
+    in `pre_financing_balance`.** That balance means one thing —
+    `total_revenue - total_program_spending - quarterly_interest`, the country's own fiscal
+    position — and folding a foreign grant into it would make a government look solvent because
+    somebody else paid. Nor does aid belong in `total_revenue`: it is not tax, and putting it there
+    would corrupt every tax-derivation identity and the reconciliation groups that replay them.
+    What a grant actually does is reduce borrowing or raise closing cash, and that is exactly where
+    it is applied.
+
+    Required rather than defaulted to `0`, matching the discipline `endorsement_bps` established:
+    there are two production call sites, and a default would let one silently drop a transfer the
+    player was promised. Callers with no grant pass `0` explicitly.
     """
     pre_financing_balance = total_revenue - total_program_spending - quarterly_interest
-    cash_before_financing = opening_cash + pre_financing_balance
+    cash_before_financing = opening_cash + pre_financing_balance + external_assistance
     new_borrowing = max(0, -cash_before_financing)
     closing_cash = max(0, cash_before_financing)
     closing_debt = opening_debt + new_borrowing

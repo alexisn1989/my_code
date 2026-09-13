@@ -923,6 +923,34 @@ def _check_foreign_conflicts(world: WorldState) -> list[InvariantViolation]:
                 )
             )
 
+    # (Characters slice) The player's bilateral relationships address the SAME namespace the
+    # profiles do, so an entry naming a profile that does not exist is a dangling relationship --
+    # and would make `remaining_pool` read a capacity that is not there. Checked here rather than
+    # on the model because only `WorldState` can see both mappings at once.
+    for profile_id, relationship in sorted(world.foreign_relationships.items()):
+        profile = world.foreign_profiles.get(profile_id)
+        if profile is None:
+            violations.append(
+                InvariantViolation(
+                    code="foreign_relationship_profile_unknown",
+                    message=(
+                        f"world.foreign_relationships names {profile_id!r}, which is not a "
+                        "foreign profile"
+                    ),
+                )
+            )
+            continue
+        if relationship.assistance_drawn > profile.assistance_capacity:
+            violations.append(
+                InvariantViolation(
+                    code="foreign_assistance_overdrawn",
+                    message=(
+                        f"{profile_id!r} has given {relationship.assistance_drawn} of an authored "
+                        f"capacity of {profile.assistance_capacity}"
+                    ),
+                )
+            )
+
     def _reference_violation(country_id: str) -> tuple[str, str] | None:
         """Classifies one dyad/conflict `country_a`/`country_b`/`aggressor`/`defender` reference.
         Returns `(code_suffix, detail)` for a bad reference, or `None` if `country_id` is a

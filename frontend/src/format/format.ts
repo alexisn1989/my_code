@@ -399,6 +399,12 @@ export function driverSentence(
   const party = params["party_display_name"];
   const proposal = params["proposal_display_name"];
   const price = params["asking_price"];
+  // Characters slice: foreign assistance. `profile` and `counterpart` are server-supplied display
+  // names; nothing here transforms an identifier into prose.
+  const profile = params["profile_display_name"];
+  const counterpart = params["counterpart_display_name"];
+  const granted = params["granted"];
+  const remaining = params["remaining_capacity"];
   switch (reasonId) {
     case "cabinet_appointed":
       return post === undefined || who === undefined
@@ -423,6 +429,19 @@ export function driverSentence(
       return who === undefined || party === undefined || proposal === undefined
         ? label
         : `${who} of the ${party} would not deal over ${proposal}.`;
+    case "foreign_assistance_granted":
+      // Money, so both figures go through `formatAmount` -- the CLI renderer prints these
+      // thousands-grouped, and the two surfaces render the same entry, so an ungrouped
+      // "38150000" here would be the same turn described two different ways.
+      return profile === undefined || granted === undefined || remaining === undefined
+        ? label
+        : `${counterpart === undefined ? profile : `${counterpart} of ${profile}`} sent ${typeof granted === "number" ? formatAmount(granted) : granted} in assistance; ${typeof remaining === "number" ? formatAmount(remaining) : remaining} of their capacity remains.`;
+    case "foreign_assistance_counterpart_is_hostile":
+      // No figure, and none available: a refusal's params carry neither `granted` nor
+      // `remaining_capacity`.
+      return profile === undefined ? label : `${profile} is too hostile to send assistance.`;
+    case "foreign_assistance_pool_exhausted":
+      return profile === undefined ? label : `${profile} has no assistance left to give.`;
     default:
       return label;
   }

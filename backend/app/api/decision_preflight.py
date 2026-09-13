@@ -340,6 +340,41 @@ def _legislative_bargain_problem(
     return None
 
 
+def _foreign_assistance_problem(
+    state: GameState, decision_set: DecisionSet
+) -> DecisionProblem | None:
+    """The preflight mirror of slot 1's three assistance rejections, in the same precedence.
+
+    **A refusal is not here.** A hostile counterpart and an exhausted pool are resolved OUTCOMES:
+    they resolve the turn normally, move no money, and produce a report row saying which it was.
+    Both `standing_bps` and the pool move over a campaign, so neither is a permanent structural
+    fact, and making either a preflight error would present a temporary state as a broken request.
+    """
+    decision = decision_set.foreign_assistance_decision()
+    if decision is None:
+        return None
+    world = state.world
+    profile = world.foreign_profiles.get(decision.profile_id)
+    if profile is None:
+        return DecisionProblem(
+            code="foreign_assistance_profile_unknown",
+            message="There is no such foreign counterpart to ask.",
+        )
+    if profile.assistance_capacity <= 0:
+        return DecisionProblem(
+            code="foreign_assistance_profile_offers_none",
+            message=f"{profile.display_name} has no assistance to offer at all.",
+        )
+    if decision.profile_id not in world.foreign_relationships:
+        return DecisionProblem(
+            code="foreign_assistance_no_relationship",
+            message=(
+                f"This country has no dealings with {profile.display_name} through which to ask."
+            ),
+        )
+    return None
+
+
 def first_decision_problem(state: GameState, decision_set: DecisionSet) -> DecisionProblem | None:
     """The first structural reason this decision set could not be resolved, if any.
 
@@ -367,6 +402,10 @@ def first_decision_problem(state: GameState, decision_set: DecisionSet) -> Decis
     bargain_problem = _legislative_bargain_problem(state, decision_set)
     if bargain_problem is not None:
         return bargain_problem
+
+    assistance_problem = _foreign_assistance_problem(state, decision_set)
+    if assistance_problem is not None:
+        return assistance_problem
 
     if amendment is not None:
         target_problem = _amendment_target_problem(politics, amendment)

@@ -41,6 +41,7 @@ from app.simulation.state import (
     CountryState,
     ForeignProfileState,
     GameState,
+    PlayerForeignRelationshipState,
     StrategicMapState,
     StrictCharacterId,
     WorldState,
@@ -67,6 +68,14 @@ class ScenarioDefinition(BaseModel):
     dyads: list[ConflictDyadState] = []
     """External Wars Gate W1: authored bilateral relationships (`ConflictDyadState`'s
     docstring)."""
+    foreign_relationships: dict[str, PlayerForeignRelationshipState] = {}
+    """The characters slice: the player's own standing with each foreign counterpart
+    (`WorldState.foreign_relationships`' docstring).
+
+    Defaults to empty so a scenario that authors no foreign dealings stays representable. A
+    counterpart with no entry cannot be asked for aid -- `phases._resolve_foreign_assistance`
+    rejects the request rather than inventing a neutral relationship, because "we have no dealings
+    with them" and "we have neutral dealings with them" are different states of the world."""
     strategic_map: StrategicMapState
     """Strategic Military Map Gate M0: the campaign's defining map (`StrategicMapState`'s
     docstring). Required, matching `WorldState.strategic_map` -- every scenario authors its own
@@ -128,6 +137,7 @@ def _to_game_state(source: str, scenario: ScenarioDefinition) -> GameState:
             # rejects a non-canonically-ordered tuple rather than silently normalizing it
             # (reject-not-normalize, matching `resource_deposits`'s policy).
             dyads=tuple(scenario.dyads),
+            foreign_relationships=scenario.foreign_relationships,
             strategic_map=scenario.strategic_map,
             characters=scenario.characters,
         ),

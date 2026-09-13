@@ -585,6 +585,33 @@ def _render_legislative_bargain_refused_will_not_deal(params: dict[str, str | in
     )
 
 
+def _render_foreign_assistance_granted(params: dict[str, str | int]) -> str:
+    """(Characters slice) One grant, from the entry's own snapshotted params.
+
+    Names the counterpart's leader when the profile authors one, and the state alone when it does
+    not -- aid is between STATES, and a foreign actor is not obliged to have a named leader.
+    """
+    who = params.get("counterpart_display_name")
+    source = f"{who} of {params['profile_display_name']}" if who else params["profile_display_name"]
+    return (
+        f"{source} sent {params['granted']:,} in assistance; "
+        f"{params['remaining_capacity']:,} of their capacity remains."
+    )
+
+
+def _render_foreign_assistance_counterpart_is_hostile(params: dict[str, str | int]) -> str:
+    """States no figure, and structurally cannot: a refusal moves no money, so its entry carries
+    neither `granted` nor `remaining_capacity`."""
+    return f"{params['profile_display_name']} is too hostile to send assistance."
+
+
+def _render_foreign_assistance_pool_exhausted(params: dict[str, str | int]) -> str:
+    """The other refusal, kept distinct from hostility: one is a relationship the player can
+    repair and the other is a well that has run dry, and collapsing them would hide the only
+    difference a player can act on."""
+    return f"{params['profile_display_name']} has no assistance left to give."
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -630,6 +657,11 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "legislative_bargain_refused_will_not_deal": (
         _render_legislative_bargain_refused_will_not_deal
     ),
+    "foreign_assistance_granted": _render_foreign_assistance_granted,
+    "foreign_assistance_counterpart_is_hostile": (
+        _render_foreign_assistance_counterpart_is_hostile
+    ),
+    "foreign_assistance_pool_exhausted": _render_foreign_assistance_pool_exhausted,
 }
 """Every `reason_id` this build can emit must be a key here — proven by
 `tests/test_reason_renderers.py`, which calls every phase-emittable reason_id

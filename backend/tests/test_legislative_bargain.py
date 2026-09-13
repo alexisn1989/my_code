@@ -1218,10 +1218,18 @@ class TestCompatibility:
     nothing about whether the payload would have failed."""
 
     def test_the_fixture_really_predates_this_ruleset(self) -> None:
+        """The 4b fixture is now TWO bumps old, not one.
+
+        `0.20.0` was this slice's own bump, for `BlocVoteReport.endorsement_bps`; `0.21.0` is the
+        foreign-assistance slice's, for `FinanceReport.external_assistance`. The fixture is
+        untouched either way -- it is a frozen artifact -- and the pin below is re-stated rather
+        than relaxed to an inequality, because an exact current version is what catches an
+        unintended bump.
+        """
         raw = json.loads(_BARGAIN_FIXTURE.read_text(encoding="utf-8"))
         assert raw["ruleset_version"] == "0.19.0"
         assert raw["ruleset_version"] != RULESET_VERSION
-        assert RULESET_VERSION == "0.20.0"
+        assert RULESET_VERSION == "0.21.0"
 
     def _one_stored_bloc_row(self) -> dict[str, object]:
         raw = json.loads(_BARGAIN_FIXTURE.read_text(encoding="utf-8"))

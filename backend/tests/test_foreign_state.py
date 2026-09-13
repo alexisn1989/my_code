@@ -565,6 +565,13 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
     -- and both are asserted PRESENT before they are removed, so a strip can never quietly become
     a no-op that would hide their later disappearance.
 
+    The foreign-assistance slice (commit 6) adds exactly two authored shapes, and they are
+    enumerated here rather than absorbed by widening the strip: a new top-level
+    `foreign_relationships` key, and an `assistance_capacity` field inside `foreign_profiles`
+    (which this test already removes wholesale, so it needs no new exclusion -- only the presence
+    assertion below, so its removal could not pass unnoticed). Neither touches a pre-existing key,
+    so the pre-W1 digests stay the ORIGINAL literals and nothing is re-pinned.
+
     The map-resources slice is the first gate to change authored ECONOMIC content, so a strip
     alone can no longer restore the pre-W1 bytes. Rather than re-pin the digests -- which would
     throw the whole proof away -- this test INVERTS that slice's authoring exactly
@@ -580,11 +587,23 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
     with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
         current = yaml.safe_load(handle)
     assert "characters" in current
+    # Characters slice, commit 6: both new authored shapes are asserted PRESENT before they are
+    # excluded, so a strip can never quietly become a no-op that hides their disappearance --
+    # the same discipline `characters` and `cabinet` already follow above.
+    assert "foreign_relationships" in current
+    assert all("assistance_capacity" in profile for profile in current["foreign_profiles"].values())
     stripped = {
         key: value
         for key, value in current.items()
         if key
-        not in ("content_version", "foreign_profiles", "dyads", "strategic_map", "characters")
+        not in (
+            "content_version",
+            "foreign_profiles",
+            "dyads",
+            "strategic_map",
+            "characters",
+            "foreign_relationships",
+        )
     }
     assert any("cabinet" in country for country in stripped["countries"])
     stripped["countries"] = [
@@ -605,10 +624,18 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
 def test_every_scenario_has_exactly_the_w1_paths_present(scenario_file: str) -> None:
     with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
         current = yaml.safe_load(handle)
-    assert current["content_version"] == "0.17.0"
+    assert current["content_version"] == "0.18.0"
     assert isinstance(current["foreign_profiles"], dict) and len(current["foreign_profiles"]) == 2
     assert isinstance(current["dyads"], list) and len(current["dyads"]) == 1
     assert isinstance(current["strategic_map"], dict)
+    # Commit 6: the player's OWN bilateral standing, one row per profile -- distinct from `dyads`,
+    # which are between two FOREIGN actors. Pinned by shape so a scenario cannot author a
+    # relationship for a counterpart that does not exist, or omit one that does.
+    assert isinstance(current["foreign_relationships"], dict)
+    assert set(current["foreign_relationships"]) == set(current["foreign_profiles"])
+    for profile in current["foreign_profiles"].values():
+        assert isinstance(profile["assistance_capacity"], int)
+        assert profile["assistance_capacity"] > 0
 
 
 # --- save compatibility: the authentic commit-2 fixture must be rejected ------
@@ -646,7 +673,7 @@ def test_phase4a_save_compatibility_is_checked_before_any_entry_payload_is_parse
 
 
 def test_ruleset_and_save_format_versions_are_current() -> None:
-    assert RULESET_VERSION == "0.20.0"
+    assert RULESET_VERSION == "0.21.0"
     assert SAVE_FORMAT_VERSION == 1
 
 
@@ -654,4 +681,4 @@ def test_no_migration_path_exists_for_the_pre_w1_ruleset() -> None:
     """`SUPPORTED_RULESET_VERSIONS` names exactly one version -- the current one. A migration
     path would need a second, older version present in this set; there is none, and no
     foreign-conflict state is ever synthesized for a save that predates it."""
-    assert frozenset({"0.20.0"}) == SUPPORTED_RULESET_VERSIONS
+    assert frozenset({"0.21.0"}) == SUPPORTED_RULESET_VERSIONS

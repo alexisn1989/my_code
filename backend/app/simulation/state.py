@@ -1281,6 +1281,77 @@ class ForeignProfileState(BaseModel):
 
     display_name: str
     war_capability_bps: StrictBps
+    assistance_capacity: StrictMoney = 0
+    """How much this counterpart can ever give the player, in total, across the whole campaign
+    (characters slice).
+
+    A fact about the COUNTERPART -- their means and their willingness to spend them -- which is why
+    it lives here and not beside the relationship. What the player has already taken lives on
+    `PlayerForeignRelationshipState.assistance_drawn` instead, because that is a fact about this
+    player's dealings; the pool remaining is `capacity - drawn`, derived by
+    `simulation.foreign_assistance.remaining_pool` and never stored, so no third field can disagree
+    with the pair.
+
+    **Finite, and it never refills.** Regeneration would need a second calibration axis and a
+    per-turn write, and neither is in this slice. A counterpart who has given everything is done.
+
+    Defaulted to `0` so a foreign actor with nothing to offer is representable without authoring a
+    field -- an abstract belligerent in someone else's war is not obliged to be a donor.
+    """
+
+
+class PlayerForeignRelationshipState(BaseModel):
+    """What stands between the player's country and ONE foreign counterpart (characters slice).
+
+    The first player↔foreign relationship the engine has ever had. `ConflictDyadState` looks
+    similar and is not: it is authored between two FOREIGN countries, for wars the player only
+    observes, and nothing in it addresses the player at all.
+
+    Kept deliberately minimal -- two fields, both consumed by `simulation.foreign_assistance` and
+    nothing else. There is no id field: identity is the `WorldState.foreign_relationships` key, the
+    same rule `ForeignProfileState`, `TheaterState` and `CharacterState` already follow, so key and
+    value can never disagree.
+
+    `standing_bps` is between STATES; a counterpart leader's `personal_trust` is between that person
+    and the player. Two separate inputs with separate weights, so a well-regarded country whose
+    leader distrusts the player is representable, and so is the reverse. Neither is ever copied into
+    the other.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    standing_bps: StrictRelationshipBps = 0
+    """Signed, `[-10,000, +10,000]`, reusing the legislative relationship scale rather than
+    inventing a parallel one: hostility and warmth are the same axis measured in opposite
+    directions, exactly as they are for a caucus."""
+    assistance_drawn: StrictMoney = 0
+    """What this counterpart has already given, cumulative and monotonic. Only
+    `_commit_foreign_assistance` (slot 7) ever writes it, and only upward."""
+
+
+def leader_of_foreign_profile(
+    characters: dict[StrictCharacterId, CharacterState], profile_id: str
+) -> tuple[StrictCharacterId, CharacterState] | None:
+    """The character affiliated with `profile_id`, or `None` when that actor names no leader.
+
+    ONE definition of "who speaks for this foreign actor", shared by the resolver, reconciliation,
+    the API projection and `/preview` -- four places that would otherwise each re-derive the same
+    affiliation scan and could drift. `simulation.cabinet` sets the precedent for a pure lookup
+    across state containers living beside the models it reads.
+
+    Deterministic by `sorted(characters)`, so a world that somehow authored two leaders for one
+    profile still resolves the same one every time rather than depending on dict construction
+    order. A profile with no leader is legal: aid is a transaction between STATES, and the
+    counterpart's personal terms simply contribute nothing.
+    """
+    for character_id in sorted(characters):
+        affiliation = characters[character_id].affiliation
+        if (
+            isinstance(affiliation, ForeignProfileRef)
+            and affiliation.foreign_profile_id == profile_id
+        ):
+            return character_id, characters[character_id]
+    return None
 
 
 class ConflictDyadState(BaseModel):
@@ -1723,6 +1794,15 @@ class WorldState(BaseModel):
     assembly, weighted selection, report row emission, canonical JSON — iterates
     `sorted(foreign_profiles)`; canonical JSON serialization already sorts mapping keys
     (`core.canonical_json`), so a different construction order produces byte-identical output."""
+    foreign_relationships: dict[str, PlayerForeignRelationshipState] = Field(default_factory=dict)
+    """The player's own bilateral standing with each foreign counterpart (characters slice), keyed
+    by the same foreign-profile id `foreign_profiles` uses.
+
+    A mapping rather than a tuple, for the same reason `foreign_profiles` is one: every read is by
+    id, and canonical JSON already sorts mapping keys, so construction order cannot affect the
+    digest. A counterpart with no entry is a counterpart the player has no relationship with yet;
+    `simulation.invariants` refuses an entry naming a profile that does not exist, so the two
+    mappings cannot drift apart."""
     dyads: tuple[ConflictDyadState, ...] = Field(default_factory=tuple)
     """Canonical by `(country_a, country_b)`, **reject-not-normalize** — matching
     `resource_deposits`' policy (ADR 0007 R3), not `sectors`' normalize-on-reorder one."""
@@ -1779,7 +1859,7 @@ class WorldState(BaseModel):
         return self
 
 
-RULESET_VERSION = "0.20.0"
+RULESET_VERSION = "0.21.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -1930,6 +2010,28 @@ adds 2,000 bps to every bloc of the endorsed party before discipline, so replayi
 under 0.20.0 rules does not reproduce the 0.19.0 turn. `content_version` stays `"0.17.0"` -- a
 bargain is a player DECISION and no scenario-authored field changes shape. `SAVE_FORMAT_VERSION`
 stays `1`.
+
+Bumped `"0.20.0" -> "0.21.0"` for foreign assistance, and `content_version` `"0.17.0" -> "0.18.0"`
+with it -- the first time since the character layer that BOTH axes move, because this slice changes
+authored scenario shape as well as turn resolution.
+
+The breaking ruleset field is `FinanceReport.external_assistance`: a new REQUIRED `StrictMoney` on a
+`_STRICT_CONFIG` model, so a stored 0.20.0 finance report no longer parses. Required rather than
+defaulted deliberately: defaulting it to `0` would make every old report load and would assert that
+a turn resolved before this mechanic existed had "no assistance" -- a claim about money nobody could
+have received. `ForeignAffairsReport.assistance` is NOT the breaking change; it defaults to an empty
+tuple and would have accepted an old payload happily.
+
+The content bump is `ForeignProfileState.assistance_capacity` and `WorldState.foreign_relationships`,
+both authored. A 0.17.0 scenario declares neither, and there is nothing to migrate from: inventing a
+capacity would assert a generosity the scenario never stated, and inventing an empty one would
+assert the counterpart deliberately offers nothing, which is a different claim again. This amends
+the original plan's "the content bump lands in commit 2, once" -- written when the series had one
+content-shaped change -- rather than contradicting it silently.
+
+Turn resolution changes too: an accepted grant reduces borrowing or raises closing cash, so
+replaying 0.20.0 decisions under 0.21.0 rules does not reproduce the 0.20.0 turn.
+`SAVE_FORMAT_VERSION` stays `1`.
 """
 
 

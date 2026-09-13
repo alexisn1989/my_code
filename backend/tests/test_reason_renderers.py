@@ -239,6 +239,32 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
         "proposal_kind": "budget",
         "proposal_display_name": "the budget",
     },
+    # Foreign assistance. Both refusals are STRICT SUBSETS of the granted sample -- no `granted`,
+    # no `remaining_capacity` -- for the same reason the bargain's refusal is: a turn that moved no
+    # money carries no field a figure could travel in, so no renderer can state one by mistake.
+    # Each sample uses a counterpart that genuinely reaches its own branch: Kessia is cordial and
+    # gives, Vetruska is authored below the hostility floor, and Tolvane is the pool a repeated
+    # draw can actually run dry.
+    "foreign_assistance_granted": {
+        "profile_id": "kessia",
+        "profile_display_name": "Kessia",
+        "counterpart_character_id": "leader_kessia",
+        "counterpart_display_name": "Chancellor Dietrich Halm",
+        "granted": 38150000,
+        "remaining_capacity": 211850000,
+    },
+    "foreign_assistance_counterpart_is_hostile": {
+        "profile_id": "vetruska",
+        "profile_display_name": "Vetruska",
+        "counterpart_character_id": "leader_vetruska",
+        "counterpart_display_name": "Premier Sanna Ilves",
+    },
+    "foreign_assistance_pool_exhausted": {
+        "profile_id": "tolvane",
+        "profile_display_name": "Tolvane",
+        "counterpart_character_id": "leader_tolvane",
+        "counterpart_display_name": "First Minister Rhys Talen",
+    },
     "formation_moved": {
         "formation_id": "arken_first_army",
         "formation_display_name": "First Army of Arken",

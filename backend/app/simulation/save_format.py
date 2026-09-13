@@ -91,7 +91,7 @@ with an actionable message, same as the save-format-version case above. See
 `docs/adr/0013-government-survival.md`.
 """
 
-SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.17.0"})
+SUPPORTED_CONTENT_VERSIONS: frozenset[str] = frozenset({"0.18.0"})
 """Tracks content-*schema* compatibility (what shape scenario-authored data must have), not a
 fingerprint of any scenario's actual parameter values — two scenarios sharing a content_version
 routinely carry different `resource_output_coefficients`/`resource_deposits`/`sectors` values

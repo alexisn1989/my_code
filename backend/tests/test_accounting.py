@@ -153,6 +153,7 @@ class TestResolveCashAndDebt:
             total_revenue=800_000,
             total_program_spending=500_000,
             quarterly_interest=50_000,
+            external_assistance=0,
         )
         assert result.pre_financing_balance == 250_000
         assert result.new_borrowing == 0
@@ -167,6 +168,7 @@ class TestResolveCashAndDebt:
             total_revenue=200_000,
             total_program_spending=250_000,
             quarterly_interest=50_000,
+            external_assistance=0,
         )
         assert result.pre_financing_balance == -100_000
         assert result.new_borrowing == 0
@@ -180,6 +182,7 @@ class TestResolveCashAndDebt:
             total_revenue=200_000,
             total_program_spending=500_000,
             quarterly_interest=50_000,
+            external_assistance=0,
         )
         # deficit = 350,000; cash covers 100,000; shortfall = 250,000.
         assert result.pre_financing_balance == -350_000
@@ -193,6 +196,7 @@ class TestResolveCashAndDebt:
             total_revenue=0,
             total_program_spending=999_999,
             quarterly_interest=0,
+            external_assistance=0,
         )
         assert result.new_borrowing == 999_998
         assert result.closing_cash == 0
@@ -204,6 +208,7 @@ class TestResolveCashAndDebt:
             total_revenue=0,
             total_program_spending=300_000,
             quarterly_interest=0,
+            external_assistance=0,
         )
         assert result.closing_debt == 1_000_000 + result.new_borrowing
 
@@ -214,6 +219,7 @@ class TestResolveCashAndDebt:
             total_revenue=10_000_000,
             total_program_spending=0,
             quarterly_interest=0,
+            external_assistance=0,
         )
         assert result.closing_debt == 1_000_000  # unchanged despite a huge surplus
         assert result.closing_cash == 10_000_000
@@ -225,6 +231,7 @@ class TestResolveCashAndDebt:
             total_revenue=0,
             total_program_spending=10**9,
             quarterly_interest=10**9,
+            external_assistance=0,
         )
         assert result.closing_cash == 0
         assert result.closing_cash >= 0
@@ -236,6 +243,7 @@ class TestResolveCashAndDebt:
             total_revenue=0,
             total_program_spending=100_000,
             quarterly_interest=0,
+            external_assistance=0,
         )
         assert result.new_borrowing == 0
         assert result.closing_cash == 0
@@ -261,9 +269,15 @@ class TestReconciliationHoldsExactly:
             total_revenue=total_revenue,
             total_program_spending=total_program_spending,
             quarterly_interest=quarterly_interest,
+            external_assistance=0,
         )
-        # opening_cash + total_revenue + new_borrowing
+        # opening_cash + total_revenue + new_borrowing + external_assistance
         #   == closing_cash + total_program_spending + quarterly_interest
+        #
+        # (Characters slice) Every call in this module passes `external_assistance=0` explicitly.
+        # The parameter is required on purpose -- a default would let a production call site drop
+        # a transfer the player was promised -- and zero is the true value for these fixtures, so
+        # every figure asserted here is unchanged from before the term existed.
         lhs = opening_cash + total_revenue + result.new_borrowing
         rhs = result.closing_cash + total_program_spending + quarterly_interest
         assert lhs == rhs

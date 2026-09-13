@@ -647,13 +647,35 @@ class LegislativeBargainDecision(BaseModel):
     proposal_kind: LegislativeProposalKind
 
 
+class ForeignAssistanceDecision(BaseModel):
+    """Ask one foreign counterpart for a bounded assistance grant (characters slice).
+
+    **Two fields, and neither is an amount.** What a counterpart gives is a fact about them -- their
+    remaining pool, their leader's trust in the player, the bilateral standing, and how good the
+    player's foreign minister is -- derived by `simulation.foreign_assistance` and by nothing else.
+    A requested figure would be a number the player could only get wrong, and the engine would
+    ignore it. This is the same conclusion the legislative bargain reached after two attempts at an
+    offer field, applied from the start rather than discovered again.
+
+    `profile_id` names the counterpart, not their leader. The leader's traits are read from
+    `world.characters` by affiliation, so a scenario cannot end up with a request that names a
+    person and a pool belonging to different actors.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    kind: Literal["foreign_assistance"] = "foreign_assistance"
+    profile_id: _StrictNonemptyId
+
+
 Decision: TypeAlias = Annotated[
     BudgetDecision
     | BlocRelationshipInvestmentDecision
     | ConstitutionalAmendmentDecision
     | MilitaryMovementDecision
     | CabinetDecision
-    | LegislativeBargainDecision,
+    | LegislativeBargainDecision
+    | ForeignAssistanceDecision,
     Field(discriminator="kind"),
 ]
 """The tagged decision union this module's header anticipated (Phase 3B2A).
@@ -825,6 +847,33 @@ class DecisionSet(BaseModel):
             raise ValueError(
                 "at most one legislative-bargain decision may appear in a DecisionSet, "
                 f"got {bargains}"
+            )
+        return self
+
+    def foreign_assistance_decision(self) -> ForeignAssistanceDecision | None:
+        """The submitted assistance request, or `None`. Unique by
+        `_at_most_one_foreign_assistance_decision`.
+
+        Identity-based like every accessor above, never `decisions[0]`: `"foreign_assistance"`
+        sorts FIFTH of the seven kinds, between `"constitutional_amendment"` and
+        `"legislative_bargain"`.
+        """
+        return next((d for d in self.decisions if isinstance(d, ForeignAssistanceDecision)), None)
+
+    @model_validator(mode="after")
+    def _at_most_one_foreign_assistance_decision(self) -> DecisionSet:
+        """One request per turn, so at most one pool is drawn against.
+
+        Substantive rather than the usual "one decision carries every target": two requests would
+        need a rule for how two draws against two independent pools compose with a single
+        `external_assistance` term and a single foreign minister's attention. Refusing the second
+        at construction is better than inventing one.
+        """
+        requests = sum(1 for d in self.decisions if isinstance(d, ForeignAssistanceDecision))
+        if requests > 1:
+            raise ValueError(
+                "at most one foreign-assistance decision may appear in a DecisionSet, "
+                f"got {requests}"
             )
         return self
 

@@ -476,7 +476,7 @@ def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
     from app.simulation.resolver import resolve_turn
 
     state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
-    assert state.ruleset_version == RULESET_VERSION == "0.20.0"
+    assert state.ruleset_version == RULESET_VERSION == "0.21.0"
     decisions = DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
     )
@@ -514,7 +514,7 @@ def test_scenario_content_version_is_current(scenario_name: str) -> None:
     since it changes field TYPES (float -> strict bps) as well as adding/removing whole rows --
     not a case a line-level text rebuild can express cleanly."""
     state = load_scenario_file(SCENARIOS_DIR / scenario_name)
-    assert state.content_version == "0.17.0"
+    assert state.content_version == "0.18.0"
 
 
 @pytest.mark.parametrize(
@@ -642,7 +642,7 @@ def test_frozen_military_movement_save_fixture_declares_the_old_ruleset_version(
     raw = json.loads(MILITARY_MOVEMENT_SAVE_PATH.read_text(encoding="utf-8"))
     assert raw["ruleset_version"] == "0.14.0"
     assert raw["ruleset_version"] != RULESET_VERSION
-    assert RULESET_VERSION == "0.20.0"
+    assert RULESET_VERSION == "0.21.0"
 
 
 def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
@@ -659,7 +659,7 @@ def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_e
 
     message = str(exc_info.value)
     assert "0.14.0" in message
-    assert "0.20.0" in message
+    assert "0.21.0" in message
     assert RULESET_VERSION in message
 
 
@@ -825,7 +825,7 @@ def test_the_previous_content_version_is_no_longer_accepted() -> None:
     demonstrate that `"0.16.0"` content is now refused too. This forces the second gate by handing
     the loader a save that is current on its ruleset and stale on its content: exactly the shape a
     campaign started from a scenario nobody re-authored would have."""
-    assert frozenset({"0.17.0"}) == SUPPORTED_CONTENT_VERSIONS
+    assert frozenset({"0.18.0"}) == SUPPORTED_CONTENT_VERSIONS
     raw = json.loads(read_save_file(CHARACTERS_SAVE_PATH))
     raw["ruleset_version"] = RULESET_VERSION
     assert raw["content_version"] == "0.16.0"
@@ -835,23 +835,29 @@ def test_the_previous_content_version_is_no_longer_accepted() -> None:
 
     message = str(exc_info.value)
     assert "0.16.0" in message
-    assert "0.17.0" in message
+    assert "0.18.0" in message
 
 
 def test_frozen_cabinet_save_fixture_declares_the_old_ruleset_version() -> None:
     """The sanity half: the fixture really is a `"0.18.0"` ruleset save, so the rejection tests
     below prove something rather than passing because someone regenerated it under this engine.
 
-    Its `content_version` is `"0.17.0"` -- the CURRENT one -- which is the distinguishing property
-    of this bump and the reason it is asserted here rather than assumed: appointments changed
-    engine rules only, so a 0.17.0 scenario is still exactly the shape this build reads. Without
-    this line a reader could mistake the rejection below for a content problem.
+    Its `content_version` is `"0.17.0"`, which WAS the current one when this fixture was frozen
+    and is no longer: the foreign-assistance slice moved content to `"0.18.0"` because scenarios
+    gained an authored assistance capacity and the player's bilateral relationships. Both axes have
+    therefore moved since, and this save is now doubly incompatible.
+
+    The assertion below was `content_version in SUPPORTED_CONTENT_VERSIONS` while only the ruleset
+    had moved. It is NOT relaxed to keep passing -- it is inverted to state the new fact, because
+    the property worth pinning is which axes moved, and silently dropping the line would lose
+    exactly that. The rejection test that follows still proves the RULESET gate is what fires,
+    which is the ordering claim this pair exists for.
     """
     raw = json.loads(CABINET_SAVE_PATH.read_text(encoding="utf-8"))
     assert raw["ruleset_version"] == "0.18.0"
     assert raw["ruleset_version"] != RULESET_VERSION
     assert raw["content_version"] == "0.17.0"
-    assert raw["content_version"] in SUPPORTED_CONTENT_VERSIONS
+    assert raw["content_version"] not in SUPPORTED_CONTENT_VERSIONS
 
 
 def test_cabinet_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
@@ -894,8 +900,8 @@ def test_the_previous_ruleset_is_the_only_thing_that_moved_for_appointments() ->
     axes exist precisely so a rules change that content did not cause cannot force every scenario
     to be re-authored, and this is the test that keeps that split honest.
     """
-    assert frozenset({"0.20.0"}) == SUPPORTED_RULESET_VERSIONS
-    assert frozenset({"0.17.0"}) == SUPPORTED_CONTENT_VERSIONS
+    assert frozenset({"0.21.0"}) == SUPPORTED_RULESET_VERSIONS
+    assert frozenset({"0.18.0"}) == SUPPORTED_CONTENT_VERSIONS
     characters_save = json.loads(CHARACTERS_SAVE_PATH.read_text(encoding="utf-8"))
     cabinet_save = json.loads(CABINET_SAVE_PATH.read_text(encoding="utf-8"))
     assert characters_save["content_version"] == "0.16.0"

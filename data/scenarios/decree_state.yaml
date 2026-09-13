@@ -39,7 +39,7 @@
 schema_version: 1
 scenario_id: decree_state
 name: "Decree State Fixture"
-content_version: "0.17.0"
+content_version: "0.18.0"
 seed: 77
 player_country_id: valdrun
 
@@ -50,9 +50,19 @@ foreign_profiles:
   marnil:
     display_name: "Marnil"
     war_capability_bps: 5800
+    assistance_capacity: 200000000
   sorrend:
     display_name: "Sorrend"
     war_capability_bps: 6400
+    assistance_capacity: 180000000
+
+foreign_relationships:
+  marnil:
+    standing_bps: -1000      # cool, but not hostile: a reduced share, not a refusal
+    assistance_drawn: 0
+  sorrend:
+    standing_bps: 1500
+    assistance_drawn: 0
 
 dyads:
   - country_a: marnil

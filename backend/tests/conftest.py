@@ -62,6 +62,21 @@ SCENARIO_DIR = REPO_ROOT / "data" / "scenarios"
 TINY_VALID_SCENARIO_PATH = SCENARIO_DIR / "tiny_valid.yaml"
 
 
+def _current_content_version() -> str:
+    """The one content version this build supports.
+
+    Read from the build rather than written down, so a content bump does not silently invalidate
+    every state this module constructs. The build has supported exactly one content version since
+    the format existed -- there is no migration path, by design (`save_format.py`) -- and this
+    asserts that rather than assuming it, because if a build ever supported two, "the current one"
+    would stop being well defined and a test helper is the wrong place to guess.
+    """
+    from app.simulation.save_format import SUPPORTED_CONTENT_VERSIONS
+
+    (current,) = SUPPORTED_CONTENT_VERSIONS
+    return current
+
+
 @pytest.fixture
 def tiny_valid_scenario_path() -> Path:
     assert TINY_VALID_SCENARIO_PATH.exists(), (
@@ -549,7 +564,14 @@ def make_game_state(
         countries = {player_country_id: make_country(player_country_id, politics=politics)}
     return GameState(
         ruleset_version=RULESET_VERSION,
-        content_version="0.17.0",
+        # Symbolic, like `ruleset_version` beside it, rather than a literal that has to be found
+        # and edited on every content bump. This helper builds states for tests all over the suite
+        # and a stale literal here makes fifteen unrelated modules fail with a content-version
+        # rejection that has nothing to do with what they are testing -- which is exactly what a
+        # hard-coded "0.17.0" did on the foreign-assistance bump. `SUPPORTED_CONTENT_VERSIONS` is
+        # the build's own answer to "what shape is current", so it is the right source; the
+        # assertion pins it to exactly one so a future multi-version build cannot silently pick.
+        content_version=_current_content_version(),
         seed=seed,
         turn=turn,
         state_version=state_version,

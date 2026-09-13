@@ -715,6 +715,14 @@
             "title": "Decree Legislative Capital Cost",
             "type": "integer"
           },
+          "foreign_assistance_counterparties": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ForeignAssistanceCounterpartyOption"
+            },
+            "title": "Foreign Assistance Counterparties",
+            "type": "array"
+          },
           "legislative_bargain_counterparties": {
             "default": [],
             "items": {
@@ -974,6 +982,89 @@
           "value"
         ],
         "title": "ExecutiveSystemTarget",
+        "type": "object"
+      },
+      "ForeignAssistanceCounterpartyOption": {
+        "additionalProperties": false,
+        "description": "One foreign counterpart the player could ask for aid, and what they would send.\n\n`estimated_grant` and `refusal_reason` are mutually exclusive, enforced below -- the same\ndiscipline the bargain's option follows, and for the same reason: showing a figure beside a\ncounterpart who will refuse would promise money that is not coming.\n\n`remaining_capacity` is shown regardless. It is the fact that makes a pool legible as a\ndepleting resource rather than a surprise, and on a refusal it is exactly what tells the\nplayer WHICH refusal they are looking at -- an exhausted pool reads zero, a hostile one does\nnot.",
+        "properties": {
+          "counterpart_character_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterpart Character Id"
+          },
+          "counterpart_display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterpart Display Name"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "estimated_grant": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Grant"
+          },
+          "profile_id": {
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "refusal_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "foreign_assistance_counterpart_is_hostile",
+                  "foreign_assistance_pool_exhausted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal Reason"
+          },
+          "remaining_capacity": {
+            "title": "Remaining Capacity",
+            "type": "integer"
+          },
+          "standing_bps": {
+            "title": "Standing Bps",
+            "type": "integer"
+          },
+          "will_assist": {
+            "title": "Will Assist",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "profile_id",
+          "display_name",
+          "standing_bps",
+          "remaining_capacity",
+          "will_assist"
+        ],
+        "title": "ForeignAssistanceCounterpartyOption",
         "type": "object"
       },
       "FormationProjection": {
@@ -1693,6 +1784,11 @@
             },
             "title": "Excludes Stochastic Channels",
             "type": "array"
+          },
+          "foreign_assistance_estimate": {
+            "default": 0,
+            "title": "Foreign Assistance Estimate",
+            "type": "integer"
           },
           "has_proposal": {
             "default": false,
@@ -2466,7 +2562,7 @@
   "info": {
     "summary": "Local, loopback-only interface to the MANDATE simulation engine.",
     "title": "MANDATE local game API",
-    "version": "0.20.0"
+    "version": "0.21.0"
   },
   "openapi": "3.1.0",
   "paths": {
