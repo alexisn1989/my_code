@@ -67,6 +67,13 @@ from app.simulation.geography import (
     shoelace_doubled_area,
 )
 from app.simulation.legislature import GovernmentRole, LegislativeChamber
+from app.simulation.promises import (
+    MINIMUM_PROMISE_TURNS,
+    TERMINAL_PROMISE_STATUSES,
+    PromiseStatus,
+    PromiseTermKind,
+    is_maintenance_term,
+)
 
 _STRICT_CONFIG = ConfigDict(extra="forbid", validate_assignment=True)
 
@@ -1329,6 +1336,178 @@ class PlayerForeignRelationshipState(BaseModel):
     `_commit_foreign_assistance` (slot 7) ever writes it, and only upward."""
 
 
+class PromiseState(BaseModel):
+    """One undertaking the player gave one counterparty, and everything needed to settle it.
+
+    There is no id field: identity is the `WorldState.promises` key, derived deterministically by
+    `simulation.promises.promise_id` from `(character_id, term_kind, made_turn)` -- the same
+    key-is-identity rule `ForeignProfileState`, `CharacterState` and `PlayerForeignRelationshipState`
+    already follow, so key and value can never disagree.
+
+    **The key is OPAQUE and is never parsed.** Anything needing the counterparty, the term or the
+    turn reads `character_id`, `term_kind` or `made_turn` from this model, which is authoritative.
+
+    **`made_turn` is the RESOLVING turn, never `state.turn`.** `resolver.py` advances
+    `working.turn = resolving_turn + 1` before `run_phases`, so by the time slot 1 builds a promise
+    the working state's turn is already one ahead; storing it would silently shorten every window by
+    one and corrupt the deadline arithmetic. Every other consumer in the engine reads
+    `ctx.resolving_turn` for exactly this reason.
+
+    **Three evidence fields, and each is immutable once written.** That immutability is the
+    anti-reversal property, not a convention: it is what stops dismiss-then-reappoint and
+    draw-then-wait from ever looking fulfilled.
+
+    * `qualifying_turn` -- the FIRST turn an achievement term's promised act was observed.
+      First-write-wins, so the field is a function of the campaign rather than of evaluation order.
+    * `violated_turn` -- the FIRST turn a maintenance term's promised state was broken.
+    * `baseline_assistance_drawn` -- the counterpart's drawn total AT CREATION, so restraint is
+      measured against the promise rather than against the previous turn. Because `assistance_drawn`
+      only ever increases, a draw above this baseline can never be undone by later quiet.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    character_id: StrictCharacterId
+    """The counterparty the undertaking is TO. Exactly one term kind is available per character --
+    tenure needs a sitting officeholder, support a party leader, restraint a foreign leader, and
+    those three roles are disjoint -- so at most one promise per character is ever live."""
+    term_kind: PromiseTermKind
+    subject_id: str
+    """The post value, proposal kind or foreign-profile id the term is about. A plain `str` because
+    it addresses three different namespaces; `simulation.invariants` validates it against the right
+    one at rest, and slot 1 rejects a mismatch at submission."""
+    made_turn: int = Field(strict=True, ge=0)
+    deadline_turn: int = Field(strict=True, ge=1)
+    status: PromiseStatus
+    settled_turn: int | None = Field(default=None, strict=True, ge=0)
+    """The turn a terminal status was reached. `None` for a live promise -- including `CANCELLED`,
+    which is NOT terminal: a released promise is still inside the horizon it abandoned and settles
+    as `EXPIRED` at its original deadline."""
+    qualifying_turn: int | None = Field(default=None, strict=True, ge=0)
+    violated_turn: int | None = Field(default=None, strict=True, ge=0)
+    released_turn: int | None = Field(default=None, strict=True, ge=0)
+    baseline_assistance_drawn: StrictMoney | None = None
+
+    @model_validator(mode="after")
+    def _window_is_at_least_the_minimum(self) -> PromiseState:
+        """A promise nobody could break is not a commitment.
+
+        Enforced on the model rather than only at submission so a tampered save carrying a one-turn
+        window is refused at load, not merely rejected at the API boundary.
+        """
+        if self.deadline_turn < self.made_turn + MINIMUM_PROMISE_TURNS:
+            raise ValueError(
+                f"promise deadline {self.deadline_turn} is less than {MINIMUM_PROMISE_TURNS} turns "
+                f"after made_turn {self.made_turn}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _settled_turn_agrees_with_status(self) -> PromiseState:
+        """`settled_turn` is set exactly for the three terminal statuses.
+
+        Both directions, so neither a terminal row without a settlement turn nor a live row claiming
+        one can be constructed. `CANCELLED` is deliberately on the live side.
+        """
+        terminal = self.status in TERMINAL_PROMISE_STATUSES
+        if terminal and self.settled_turn is None:
+            raise ValueError(f"a {self.status.value} promise must carry a settled_turn")
+        if not terminal and self.settled_turn is not None:
+            raise ValueError(
+                f"a {self.status.value} promise is still live and must not carry a settled_turn"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _terminal_settlement_lands_in_the_window(self) -> PromiseState:
+        """A promise settles between the turn it was made and the turn it was due, inclusive.
+
+        `FULFILLED` and `EXPIRED` are pinned to the deadline itself: positive trust is never granted
+        early, and a released promise expires when its ORIGINAL horizon runs out rather than when it
+        was abandoned. A breach may land on any turn in the window, including `made_turn` -- a
+        player who promises and breaks the promise in the same decision set has really done that.
+        """
+        if self.settled_turn is None:
+            return self
+        if not (self.made_turn <= self.settled_turn <= self.deadline_turn):
+            raise ValueError(
+                f"promise settled on turn {self.settled_turn}, outside its window "
+                f"[{self.made_turn}, {self.deadline_turn}]"
+            )
+        if (
+            self.status in (PromiseStatus.FULFILLED, PromiseStatus.EXPIRED)
+            and self.settled_turn != self.deadline_turn
+        ):
+            raise ValueError(
+                f"a {self.status.value} promise must settle on its deadline "
+                f"({self.deadline_turn}), not turn {self.settled_turn}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _released_turn_agrees_with_status(self) -> PromiseState:
+        """`released_turn` is set exactly for a promise that passed through `CANCELLED`, and a
+        release strictly precedes the expiry it leads to."""
+        released = self.status in (PromiseStatus.CANCELLED, PromiseStatus.EXPIRED)
+        if released and self.released_turn is None:
+            raise ValueError(f"a {self.status.value} promise must carry a released_turn")
+        if not released and self.released_turn is not None:
+            raise ValueError(
+                f"a {self.status.value} promise never passed through release and must not carry a "
+                "released_turn"
+            )
+        if self.released_turn is not None and not (
+            self.made_turn <= self.released_turn < self.deadline_turn
+        ):
+            raise ValueError(
+                f"promise released on turn {self.released_turn}, outside "
+                f"[{self.made_turn}, {self.deadline_turn})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _evidence_matches_the_term_shape(self) -> PromiseState:
+        """Each evidence field belongs to exactly one term shape, and a settled status agrees with
+        the evidence that produced it.
+
+        A maintenance term cannot carry a qualifying turn and an achievement term cannot carry a
+        violated turn, because neither transition exists for that shape. Enforcing it here means a
+        forged row claiming the wrong shape's evidence is unconstructible rather than merely wrong.
+        """
+        maintenance = is_maintenance_term(self.term_kind)
+        if maintenance and self.qualifying_turn is not None:
+            raise ValueError(
+                f"{self.term_kind!r} is a maintenance term and cannot carry a qualifying_turn"
+            )
+        if not maintenance and self.violated_turn is not None:
+            raise ValueError(
+                f"{self.term_kind!r} is an achievement term and cannot carry a violated_turn"
+            )
+        if (self.baseline_assistance_drawn is not None) != (
+            self.term_kind == "assistance_restraint"
+        ):
+            raise ValueError(
+                "baseline_assistance_drawn is set for exactly the assistance_restraint term, "
+                f"not {self.term_kind!r}"
+            )
+        for field_name in ("qualifying_turn", "violated_turn"):
+            observed = getattr(self, field_name)
+            if observed is not None and not (self.made_turn <= observed <= self.deadline_turn):
+                raise ValueError(
+                    f"promise {field_name}={observed} is outside its window "
+                    f"[{self.made_turn}, {self.deadline_turn}]"
+                )
+        if self.status is PromiseStatus.BREACHED and maintenance and self.violated_turn is None:
+            raise ValueError("a breached maintenance promise must record the turn it was violated")
+        if (
+            self.status is PromiseStatus.FULFILLED
+            and not maintenance
+            and self.qualifying_turn is None
+        ):
+            raise ValueError("a fulfilled achievement promise must record its qualifying turn")
+        return self
+
+
 def leader_of_foreign_profile(
     characters: dict[StrictCharacterId, CharacterState], profile_id: str
 ) -> tuple[StrictCharacterId, CharacterState] | None:
@@ -1803,6 +1982,21 @@ class WorldState(BaseModel):
     digest. A counterpart with no entry is a counterpart the player has no relationship with yet;
     `simulation.invariants` refuses an entry naming a profile that does not exist, so the two
     mappings cannot drift apart."""
+    promises: dict[str, PromiseState] = Field(default_factory=dict)
+    """Every undertaking the player has given, live and settled, keyed by its opaque promise id.
+
+    A mapping for the same reason `foreign_relationships` is one: every read is by id, and canonical
+    JSON sorts mapping keys, so construction order cannot affect the digest.
+
+    **Settled rows are never deleted.** The history IS the record: the re-promise bar reads it, the
+    id-collision check reads it, and a player's pattern of keeping and breaking promises is the
+    thing this mechanic exists to remember. A world that pruned terminal rows would forget what it
+    was built to know.
+
+    Defaulted empty, so a world that has made no promises stays representable and a state written
+    before this mechanic existed still parses. The BREAKING field of this ruleset bump is
+    `GovernanceReport.promises`, not this one -- see the ruleset note at the bottom of the module.
+    """
     dyads: tuple[ConflictDyadState, ...] = Field(default_factory=tuple)
     """Canonical by `(country_a, country_b)`, **reject-not-normalize** — matching
     `resource_deposits`' policy (ADR 0007 R3), not `sectors`' normalize-on-reorder one."""
@@ -1859,7 +2053,7 @@ class WorldState(BaseModel):
         return self
 
 
-RULESET_VERSION = "0.21.0"
+RULESET_VERSION = "0.22.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -2032,6 +2226,26 @@ content-shaped change -- rather than contradicting it silently.
 Turn resolution changes too: an accepted grant reduces borrowing or raises closing cash, so
 replaying 0.20.0 decisions under 0.21.0 rules does not reproduce the 0.20.0 turn.
 `SAVE_FORMAT_VERSION` stays `1`.
+
+Bumped `"0.21.0" -> "0.22.0"` for promises. The breaking field is `GovernanceReport.promises`: a new
+REQUIRED tuple on a `_STRICT_CONFIG` model, so a stored 0.21.0 `report_json` -- whose governance
+report carries `posts` alone -- no longer parses. Required rather than defaulted for the reason
+every predecessor was: defaulting it to an empty tuple would make old reports load and would assert
+that a turn resolved before this mechanic existed had "no promises outstanding", which is a claim
+about undertakings nobody could have given.
+
+`WorldState.promises` is NOT the breaking change -- it defaults to an empty mapping and would have
+accepted an old payload happily. It is nonetheless a real serialization difference: a defaulted dict
+still writes a `world.promises` path, so the frozen quiet-turn baselines gain exactly one new state
+path, named and pinned rather than absorbed into a widened exclusion.
+
+`content_version` stays `"0.18.0"`, and that is a substantive claim rather than an omission: a
+promise is created in PLAY, never authored, so no scenario file changes shape and none is retuned.
+
+Turn resolution changes too: `personal_trust` becomes mutable for the first time -- moved only by a
+kept or broken promise, written in exactly one place, and read by the bargain gate, the bargain price
+and the assistance share -- so replaying 0.21.0 decisions under 0.22.0 rules does not reproduce the
+0.21.0 turn. `SAVE_FORMAT_VERSION` stays `1`.
 """
 
 

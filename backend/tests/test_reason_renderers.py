@@ -194,6 +194,57 @@ _SAMPLE_PARAMS: dict[str, dict[str, str | int]] = {
     # snapshotted display names -- so these also pin that the sentences are composed from stored
     # params and never from current state, which is what lets a ten-turn-old turn render the names
     # it was resolved under.
+    # (Characters slice) The five promise events. `promise_made` is a CREATION and carries no trust
+    # figure; the four settlements each carry the delta their transition licensed.
+    "promise_made": {
+        "promise_id": "pr_" + "a" * 64,
+        "character_id": "hal_verrin",
+        "character_display_name": "Hal Verrin",
+        "term_kind": "cabinet_tenure",
+        "subject_id": "chief_of_staff",
+        "subject_display_name": "chief of staff",
+        "deadline_turn": 4,
+    },
+    "promise_fulfilled": {
+        "promise_id": "pr_" + "a" * 64,
+        "character_id": "hal_verrin",
+        "character_display_name": "Hal Verrin",
+        "term_kind": "cabinet_tenure",
+        "subject_id": "chief_of_staff",
+        "subject_display_name": "chief of staff",
+        "deadline_turn": 4,
+        "trust_delta_bps": 1000,
+    },
+    "promise_breached": {
+        "promise_id": "pr_" + "a" * 64,
+        "character_id": "hal_verrin",
+        "character_display_name": "Hal Verrin",
+        "term_kind": "cabinet_tenure",
+        "subject_id": "chief_of_staff",
+        "subject_display_name": "chief of staff",
+        "deadline_turn": 4,
+        "trust_delta_bps": -2000,
+    },
+    "promise_released": {
+        "promise_id": "pr_" + "a" * 64,
+        "character_id": "hal_verrin",
+        "character_display_name": "Hal Verrin",
+        "term_kind": "cabinet_tenure",
+        "subject_id": "chief_of_staff",
+        "subject_display_name": "chief of staff",
+        "deadline_turn": 4,
+        "trust_delta_bps": 0,
+    },
+    "promise_expired": {
+        "promise_id": "pr_" + "a" * 64,
+        "character_id": "hal_verrin",
+        "character_display_name": "Hal Verrin",
+        "term_kind": "cabinet_tenure",
+        "subject_id": "chief_of_staff",
+        "subject_display_name": "chief of staff",
+        "deadline_turn": 4,
+        "trust_delta_bps": 0,
+    },
     "cabinet_appointed": {
         "post": "foreign_minister",
         "post_display_name": "foreign minister",

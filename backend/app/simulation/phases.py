@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, Literal
 
 from app.core.errors import DecisionSetError
 from app.core.money import BPS_DENOMINATOR, Money
-from app.core.politics import trunc_div_toward_zero
+from app.core.politics import clamp_bps, trunc_div_toward_zero
 from app.core.rng import derive_rng
 from app.simulation.accounting import (
     compute_quarterly_interest,
@@ -67,11 +67,13 @@ from app.simulation.decisions import (
     ConstitutionalAmendmentDecision,
     DecisionSet,
     InfluenceAllocation,
+    PromiseDecision,
     bloc_relationship_investment_digest,
     budget_decision_digest,
     cabinet_decision_digest,
     constitutional_amendment_decision_digest,
     legislative_bargain_decision_digest,
+    promise_decision_digest,
 )
 from app.simulation.foreign_assistance import assess_foreign_assistance
 from app.simulation.foreign_conflict import (
@@ -180,6 +182,19 @@ from app.simulation.political_memory import (
     relationship_decay_bps,
 )
 from app.simulation.production_accounting import compute_sector_output
+from app.simulation.promises import (
+    LIVE_PROMISE_STATUSES,
+    PROMISE_RELEASE_COST_CAPITAL,
+    PROMISE_SETTLEMENT_REASON_IDS,
+    PromiseStatus,
+    PromiseTermKind,
+    earliest_legal_deadline,
+    is_maintenance_term,
+    promise_id,
+    release_block_reason,
+    trust_delta_bps,
+    validation_live_statuses,
+)
 from app.simulation.relationships import relationship_gain_bps
 from app.simulation.report import (
     TAX_RATE_CHANGE_FIELDS,
@@ -220,6 +235,7 @@ from app.simulation.report import (
     PoliticalReport,
     PopularUnrestChannelReport,
     ProductionReport,
+    PromiseReport,
     ResourceDepositReport,
     ResourceExtractionReport,
     RevenueBreakdown,
@@ -253,9 +269,11 @@ from app.simulation.state import (
     CabinetAppointment,
     CabinetPost,
     CabinetState,
+    CharacterState,
     ConflictDyadState,
     EconomicBaselineState,
     ForeignConflictState,
+    ForeignProfileRef,
     FormationState,
     GameState,
     LegislativeBlocState,
@@ -263,6 +281,7 @@ from app.simulation.state import (
     MilitaryState,
     OutcomeBucket,
     PendingLiberalizationState,
+    PromiseState,
     RemovalReason,
     SectorCategory,
     SpendingPlanState,
@@ -532,6 +551,76 @@ class ForeignAssistanceScratch:
     entries: tuple[TurnReportEntry, ...]
 
 
+@dataclass(frozen=True)
+class PromiseSettlement:
+    """One promise's movement this turn, computed by slot 1 and applied by slot 2.
+
+    Carries both endpoints of every value the report will need, so slot 15 can state what happened
+    without recomputing anything and reconciliation can compare a report against state rather than
+    against a second computation.
+    """
+
+    promise_id: str
+    character_id: str
+    opening_status: PromiseStatus
+    closing: PromiseState
+    trust_before_bps: int
+    trust_after_bps: int
+    trust_delta_bps: int
+
+
+@dataclass
+class PromiseScratch:
+    """Mutable, turn-local workspace for this turn's promise settlements.
+
+    Populated ENTIRELY by slot 1, LAST among slot 1's substeps, and never mutated afterwards. The
+    placement is a correctness property rather than a style choice: every observation in
+    `_settle_promises` reads a value another substep produced -- the cabinet the turn is about to
+    commit, the route and kind the vote actually took, the assistance this turn actually drew -- so
+    settling earlier would judge a promise against data that does not exist yet.
+
+    Slot 2 applies `closing_promises` and the trust deltas together. Nothing else in the repository
+    writes `personal_trust`.
+    """
+
+    closing_promises: dict[str, PromiseState]
+    """The whole mapping as it will stand after slot 2, settled rows included. Written wholesale so
+    slot 2 never has to merge, and so a partially-applied settlement is not representable."""
+    settlements: tuple[PromiseSettlement, ...]
+    """Only the rows that MOVED, canonical by `promise_id`. A promise that stayed `PENDING` is
+    absent here and is reported from `report_rows` instead."""
+    pass_keys: frozenset[str]
+    """The rows this pass considered: the OPENING live rows (`PENDING` or `CANCELLED`) union the row
+    this turn's `make` created. Recorded as the settler runs rather than re-derived afterwards, so
+    the set that is reported and the set that is iterated cannot drift apart.
+
+    This -- not `closing_promises` -- is what slot 15 reports. `closing_promises` accumulates every
+    promise the campaign has ever made, so reporting it would restate each settled promise on every
+    later turn forever, and `PromiseReport`'s present-and-empty rule is about the promises that are
+    LIVE, not about the archive. A row that was already terminal when the turn opened is neither
+    live nor created, so it is stated once on the turn it settles and never again -- while staying
+    in `world.promises`, where the re-promise bar and the id-collision check both read it."""
+    report_rows: tuple[PromiseReport, ...]
+    """One row per `pass_keys` member, canonical by `promise_id`, built here in slot 1 so slot 15
+    wraps already-validated rows and recomputes nothing -- the discipline every scratch in this
+    module follows, and what lets reconciliation compare a report against state rather than against
+    a second computation."""
+    entries: tuple[TurnReportEntry, ...]
+    """Narrower than `report_rows`: one `promise_made` per CREATION event, plus one settlement entry
+    per STATE TRANSITION. Two independent events, not one test -- so a promise made this turn and
+    left `PENDING` still announces itself, and a promise created and breached in one set emits
+    both."""
+    trust_deltas: dict[str, int]
+    """Per character, already summed across that character's settlements this turn and clamped only
+    when applied. Kept separate from `settlements` because two promises to one counterparty can
+    both settle on one turn, and the trust write must be one operation, not two."""
+    release_committed: int
+    """`PROMISE_RELEASE_COST_CAPITAL` when this turn paid to be let out of a promise, else 0 -- the
+    sixth term in slot 1's single affordability guard."""
+    released_promise_id: str | None
+    """Which promise the capital bought release from, for the ledger row's decision digest."""
+
+
 @dataclass
 class FinanceScratch:
     """Mutable, turn-local accounting workspace threaded through the Phase 2A/2B2 phases
@@ -598,9 +687,20 @@ class PhaseContext:
     legislative_bargain_scratch: LegislativeBargainScratch | None = None
     """Set by `_validate_and_reserve_actions` (slot 1) BEFORE the vote it feeds, and read by the
     vote itself, by the affordability guard and by slot 15. Characters slice.
-
     Never `None` once slot 1 has run: a turn with no bargain still gets a scratch, carrying no row,
     no entries and `endorsed_party_id=None`, so every reader takes one code path."""
+    promise_scratch: PromiseScratch | None = None
+    """Set by `_finish_validate_and_reserve_actions` (slot 1), LAST among slot 1's substeps, and
+    read by slot 2 (which applies both the statuses and the trust deltas) and slot 15 (the report).
+    Never mutated after slot 1. Characters slice.
+
+    Last on purpose: every observation it makes reads a value an earlier substep produced -- the
+    cabinet slot 2 is about to commit, the route and proposal kind the vote actually took, the
+    amount this turn's assistance request actually drew. Settling before those exist would judge a
+    promise against data the turn has not produced yet.
+
+    Never `None` once slot 1 has run: a turn with no promise decision and no settlement still gets
+    a scratch carrying the opening mapping unchanged and no settlements."""
     political_capital_report: PoliticalCapitalReport | None = None
     """Set by `generate_turn_report` (slot 15) from `capital_ledger`; `resolver.py` copies this
     onto the final `TurnReport`. Phase 3B2A."""
@@ -1384,6 +1484,523 @@ def _resolve_foreign_assistance(ctx: PhaseContext) -> ForeignAssistanceScratch:
     )
 
 
+def available_promise_term(
+    *, state: GameState, character_id: str, character: CharacterState
+) -> PromiseTermKind | None:
+    """The ONE term kind this character can be promised, or `None` for somebody who is nobody's
+    counterparty.
+
+    The three roles are DISJOINT by construction, which is why this returns a single value rather
+    than a set: a party leader cannot hold a cabinet post (Commit 3 refuses to appoint one) and no
+    foreign character is appointable at all. So "at most one live promise per (character, term)"
+    collapses to "at most one live promise per character", and returning one value is what makes
+    that structural claim visible at every call site instead of folklore in a docstring.
+
+    Occupancy is read from the OPENING cabinet by holder identity, regardless of
+    `effective_from_turn`: a promise is about who holds the chair, not about who is contributing a
+    bonus yet.
+    """
+    if isinstance(character.affiliation, ForeignProfileRef):
+        return "assistance_restraint"
+    if character.party_id is not None:
+        return "legislative_support"
+    cabinet = state.world.countries[state.world.player_country_id].cabinet
+    if cabinet is not None and any(
+        appointment.character_id == character_id for appointment in cabinet.offices.values()
+    ):
+        return "cabinet_tenure"
+    return None
+
+
+def promise_subject_is_valid(
+    *, state: GameState, character: CharacterState, term_kind: PromiseTermKind, subject_id: str
+) -> bool:
+    """Whether `subject_id` names something this term can actually be about, in the namespace that
+    term addresses -- and, where the counterparty is attached to a subject, whether it is THEIRS.
+
+    Three namespaces behind one field, checked here rather than typed into the model because they
+    are three different registries and a tagged union over them would be a third way to name things
+    the engine already names twice.
+    """
+    if term_kind == "cabinet_tenure":
+        return subject_id in {post.value for post in CabinetPost}
+    if term_kind == "legislative_support":
+        return subject_id in LEGISLATIVE_PROPOSAL_DISPLAY_NAMES
+    # `assistance_restraint`: the subject is the counterpart this leader actually speaks for, so a
+    # request cannot pair one actor's leader with another actor's pool.
+    if subject_id not in state.world.foreign_relationships:
+        return False
+    return (
+        isinstance(character.affiliation, ForeignProfileRef)
+        and character.affiliation.foreign_profile_id == subject_id
+    )
+
+
+def _validate_promise_decision(ctx: PhaseContext, decision: PromiseDecision) -> None:
+    """Codes 1-7 of `PROMISE_REJECTION_CODES`, in that exact precedence.
+
+    Raises `DecisionSetError` on the FIRST problem, so the reported reason never depends on
+    evaluation accident, and `resolve_turn` then discards the whole working copy -- a promise
+    decision that fails here leaves no partial effect anywhere.
+
+    Every check reads the OPENING state, and the liveness predicate is SHARED with nothing else
+    re-deriving it: `validation_live_statuses` is what makes a `CANCELLED` row whose deadline is
+    this very turn count as already-expired for validation, so the reissue the settler's first step
+    is about to permit is not rejected by a check that ran before it.
+    """
+    world = ctx.state.world
+    character = world.characters.get(decision.character_id)
+    if character is None:
+        raise DecisionSetError(
+            f"promise_character_unknown: {decision.character_id!r} is not a character in this world"
+        )
+
+    if decision.action == "release":
+        # Code 7, from the ONE shared predicate the projection also reads, so the interface can
+        # never offer a release this refuses (or hide one it would accept).
+        #
+        # This deliberately does NOT reuse `validation_live_statuses`, which is code 5's predicate
+        # and answers a different question ("does this pair already have something live?"). Using it
+        # here accepted two releases the lifecycle forbids: re-releasing an already-`CANCELLED`
+        # promise, which would charge the price twice and reset `released_turn` while buying
+        # nothing, and releasing a `PENDING` promise whose deadline is THIS turn, which is exactly
+        # the settlement-ducking the seven-step precedence's step 2 exists to prevent.
+        existing = world.promises.get(decision.promise_id or "")
+        blocked = release_block_reason(
+            status=None if existing is None else existing.status,
+            deadline_turn=None if existing is None else existing.deadline_turn,
+            resolving_turn=ctx.resolving_turn,
+        )
+        if blocked is not None:
+            raise DecisionSetError(
+                f"promise_release_names_no_live_promise: {decision.promise_id!r} is not a promise "
+                f"this country can still be released from ({blocked})"
+            )
+        return
+
+    assert decision.term_kind is not None, "the model validator guarantees this for a make"
+    assert decision.subject_id is not None
+    assert decision.deadline_turn is not None
+
+    available = available_promise_term(
+        state=ctx.state, character_id=decision.character_id, character=character
+    )
+    if available != decision.term_kind:
+        raise DecisionSetError(
+            f"promise_term_not_available_for_this_character: {decision.character_id!r} cannot be "
+            f"promised {decision.term_kind!r}"
+            + ("" if available is None else f"; the term available to them is {available!r}")
+        )
+    if not promise_subject_is_valid(
+        state=ctx.state,
+        character=character,
+        term_kind=decision.term_kind,
+        subject_id=decision.subject_id,
+    ):
+        raise DecisionSetError(
+            f"promise_subject_unknown: {decision.subject_id!r} is not a valid subject for a "
+            f"{decision.term_kind!r} promise to {decision.character_id!r}"
+        )
+    earliest = earliest_legal_deadline(made_turn=ctx.resolving_turn)
+    if decision.deadline_turn < earliest:
+        raise DecisionSetError(
+            f"promise_deadline_too_soon: a promise made on turn {ctx.resolving_turn} cannot fall "
+            f"due before turn {earliest}, got {decision.deadline_turn}"
+        )
+    for existing in world.promises.values():
+        if (
+            existing.character_id == decision.character_id
+            and existing.term_kind == decision.term_kind
+            and existing.status
+            in validation_live_statuses(
+                deadline_turn=existing.deadline_turn, resolving_turn=ctx.resolving_turn
+            )
+        ):
+            raise DecisionSetError(
+                "promise_term_already_live_for_this_character: "
+                f"{decision.character_id!r} already holds a live {decision.term_kind!r} promise "
+                f"through turn {existing.deadline_turn}"
+            )
+    derived = promise_id(
+        character_id=decision.character_id,
+        term_kind=decision.term_kind,
+        made_turn=ctx.resolving_turn,
+    )
+    if derived in world.promises:
+        raise DecisionSetError(
+            f"promise_id_collision: {derived!r} already identifies a promise in this world"
+        )
+
+
+def _promise_violation_observed(ctx: PhaseContext, promise: PromiseState) -> bool:
+    """Whether this MAINTENANCE promise's protected state was broken by the turn now resolving.
+
+    Each observation reads the substep that is authoritative for it, never the raw decision and
+    never `ctx.state`:
+
+    * `cabinet_tenure` reads the CLOSING cabinet slot 2 is about to commit, so a dismissal is
+      caught on the very turn it is ordered rather than a turn later.
+    * `assistance_restraint` compares the closing drawn total against the baseline captured when
+      the promise was MADE. `assistance_drawn` only ever rises, so once it is above that baseline
+      no amount of later quiet can bring it back -- which is what makes draw-then-wait unable to
+      recover.
+
+    Never called for an achievement term: those cannot be violated early at all, because the act
+    they promise can still be performed on any remaining turn.
+    """
+    if promise.term_kind == "cabinet_tenure":
+        cabinet_scratch = ctx.cabinet_scratch
+        assert cabinet_scratch is not None, "slot 1 resolves the cabinet before settling promises"
+        closing = cabinet_scratch.closing_cabinet
+        if closing is None:
+            return True
+        seated = closing.offices.get(CabinetPost(promise.subject_id))
+        return seated is None or seated.character_id != promise.character_id
+    assistance = ctx.foreign_assistance_scratch
+    assert assistance is not None, "slot 1 resolves the assistance request before settling promises"
+    baseline = promise.baseline_assistance_drawn
+    assert baseline is not None, "an assistance_restraint promise always carries its baseline"
+    opening = ctx.state.world.foreign_relationships.get(promise.subject_id)
+    drawn_now = 0 if opening is None else opening.assistance_drawn
+    if assistance.profile_id == promise.subject_id:
+        drawn_now += assistance.granted
+    return drawn_now > baseline
+
+
+def _promise_qualifies(ctx: PhaseContext, promise: PromiseState) -> bool:
+    """Whether this ACHIEVEMENT promise's promised act happened on the turn now resolving.
+
+    Bound to the proposal KIND and the legislative ROUTE, and to nothing else.
+
+    **Read from the RESOLVED scratch for that kind, never from the raw decision payload.** The two
+    proposal kinds resolve through two different slot-1 substeps and each records its own route:
+    a budget lands on `legislative_scratch`, an amendment on `constitutional_amendment_scratch`.
+    Selecting the right one by kind is what keeps this observation on the same authoritative-source
+    footing as the other two terms -- `cabinet_tenure` reads the cabinet slot 2 will commit, and
+    `assistance_restraint` reads what the assistance substep actually granted. Trusting the
+    submitted payload instead would make this the one settler that judges a promise by what was
+    ASKED for rather than by what the turn actually did.
+
+    Both scratches carry `route=None` when no proposal of their kind was submitted, so the single
+    `is LEGISLATIVE` test below covers "a proposal of this kind exists" and "it went to the
+    chamber" at once -- there is no separate presence check to keep in step with it.
+
+    **Passage is deliberately irrelevant.** The player controls what they submit and by which
+    route; they do not control how the chamber votes. Requiring passage would settle the promise on
+    other people's behaviour and would let a bloc punish the player's trust by voting a proposal
+    down. Neither scratch's `outcome` is read here.
+    """
+    if promise.subject_id == "budget":
+        scratch = ctx.legislative_scratch
+        assert scratch is not None, "slot 1 resolves the budget before settling promises"
+        return scratch.route is ProposalRoute.LEGISLATIVE
+    amendment = ctx.constitutional_amendment_scratch
+    assert amendment is not None, "slot 1 resolves the amendment before settling promises"
+    return amendment.route is ProposalRoute.LEGISLATIVE
+
+
+def _settle_promises(ctx: PhaseContext) -> PromiseScratch:
+    """Slot 1's LAST substep: apply this turn's seven-step promise precedence.
+
+    The order below is normative, not a variant -- reconciliation group 60 re-derives it in exactly
+    this sequence, and any other order is a defect:
+
+    1. Expire opening `CANCELLED` rows whose ORIGINAL deadline is this turn. First, because that is
+       what lifts the re-promise bar; step 5's reissue is then legal by construction rather than by
+       a separate check.
+    2. Process a `release`, only for a `PENDING` row whose deadline is still ahead. A promise due
+       THIS turn is past releasing -- it is about to settle on its merits in step 6 -- so allowing
+       it would let a player duck a settlement already due.
+    3. A paid release WINS over a same-turn violation. This is the whole point of paying: you buy
+       back the freedom to act. If the violation still breached, a release could never permit the
+       promised-against action and nobody would ever release, making `CANCELLED` and `EXPIRED`
+       unreachable again.
+    4. (Structural.) Make-and-release of one promise in one set is impossible: a `DecisionSet`
+       carries at most one `PromiseDecision` and its action is exclusively one or the other. No
+       code exists for it because no input can reach it.
+    5. Create the new promise, THEN observe same-set cabinet, legislative and assistance actions
+       against every live row -- the new one included. Creation must precede observation or a
+       promise could not be qualified or violated by its own decision set.
+    6. Settle deadline transitions last, so a deadline settles on the complete picture of the turn.
+    7. A `CANCELLED` row is reissuable at its original deadline and never earlier -- a consequence
+       of step 1 preceding step 5, asserted rather than separately enforced.
+    """
+    world = ctx.state.world
+    decision = ctx.decisions.promise_decision()
+    if decision is not None:
+        _validate_promise_decision(ctx, decision)
+
+    working: dict[str, PromiseState] = dict(world.promises)
+    settlements: list[PromiseSettlement] = []
+    trust_deltas: dict[str, int] = {}
+    turn = ctx.resolving_turn
+
+    # The pass set, recorded here rather than re-derived once the settling is over: the rows that
+    # were live when the turn opened, which is exactly R13's iteration set. Step 5 adds the row it
+    # creates. A row that was already terminal is absent and stays absent -- it is never settled
+    # again and never reported again.
+    pass_keys: set[str] = {
+        key for key, promise in world.promises.items() if promise.status in LIVE_PROMISE_STATUSES
+    }
+
+    def _settle(promise_key: str, opening: PromiseState, closing: PromiseState) -> None:
+        delta = trust_delta_bps(closing.status)
+        character = world.characters.get(opening.character_id)
+        before = 0 if character is None else character.personal_trust
+        after = clamp_bps(before + trust_deltas.get(opening.character_id, 0) + delta)
+        working[promise_key] = closing
+        if delta:
+            trust_deltas[opening.character_id] = trust_deltas.get(opening.character_id, 0) + delta
+        settlements.append(
+            PromiseSettlement(
+                promise_id=promise_key,
+                character_id=opening.character_id,
+                opening_status=opening.status,
+                closing=closing,
+                trust_before_bps=before,
+                trust_after_bps=after,
+                # The delta this TRANSITION licenses, not the movement that survived the clamp.
+                #
+                # Those differ exactly at the bounds, and reporting the survivor there would be a
+                # false statement about the rule: a breach of a counterparty on 1,500 trust costs
+                # -2,000, of which only 1,500 can land. `PromiseReport` states the licensed figure
+                # and checks the clamp separately (`_trust_arithmetic_closes`), so the row says both
+                # what the breach cost and where the floor absorbed it. Reporting `after - before`
+                # made every settlement at a bound unconstructible, which is how this was found.
+                trust_delta_bps=delta,
+            )
+        )
+
+    # --- step 1: expire released rows whose original horizon runs out this turn ----------------
+    for key, promise in sorted(world.promises.items()):
+        if promise.status is PromiseStatus.CANCELLED and promise.deadline_turn == turn:
+            _settle(
+                key,
+                promise,
+                promise.model_copy(update={"status": PromiseStatus.EXPIRED, "settled_turn": turn}),
+            )
+
+    # --- step 2: the paid release ---------------------------------------------------------------
+    released_id: str | None = None
+    release_committed = 0
+    if decision is not None and decision.action == "release":
+        released_id = decision.promise_id
+        assert released_id is not None
+        opening = world.promises[released_id]
+        release_committed = PROMISE_RELEASE_COST_CAPITAL
+        _settle(
+            released_id,
+            opening,
+            opening.model_copy(update={"status": PromiseStatus.CANCELLED, "released_turn": turn}),
+        )
+
+    # --- step 5: create, then observe -----------------------------------------------------------
+    if decision is not None and decision.action == "make":
+        assert decision.term_kind is not None
+        assert decision.subject_id is not None
+        assert decision.deadline_turn is not None
+        baseline: int | None = None
+        if decision.term_kind == "assistance_restraint":
+            relationship = world.foreign_relationships.get(decision.subject_id)
+            baseline = 0 if relationship is None else relationship.assistance_drawn
+        made_key = promise_id(
+            character_id=decision.character_id,
+            term_kind=decision.term_kind,
+            made_turn=turn,
+        )
+        pass_keys.add(made_key)
+        working[made_key] = PromiseState(
+            character_id=decision.character_id,
+            term_kind=decision.term_kind,
+            subject_id=decision.subject_id,
+            made_turn=turn,
+            deadline_turn=decision.deadline_turn,
+            status=PromiseStatus.PENDING,
+            baseline_assistance_drawn=baseline,
+        )
+
+    # Observation runs over rows live AT THE PASS -- the opening live rows plus anything step 5
+    # created -- which is what lets a promise be qualified or violated by its own decision set.
+    # Step 3: a row released this turn is already CANCELLED here, so it is skipped and its
+    # same-turn violation is never recorded. That is the release winning, expressed as an ordering
+    # rather than as a special case.
+    for key, promise in sorted(working.items()):
+        if promise.status is not PromiseStatus.PENDING:
+            continue
+        if is_maintenance_term(promise.term_kind):
+            if promise.violated_turn is None and _promise_violation_observed(ctx, promise):
+                _settle(
+                    key,
+                    promise,
+                    promise.model_copy(
+                        update={
+                            "status": PromiseStatus.BREACHED,
+                            "violated_turn": turn,
+                            "settled_turn": turn,
+                        }
+                    ),
+                )
+        elif promise.qualifying_turn is None and _promise_qualifies(ctx, promise):
+            # First-write-wins, and NOT a settlement: positive trust is deferred to the deadline,
+            # so an early qualifying act buys certainty and nothing else.
+            working[key] = promise.model_copy(update={"qualifying_turn": turn})
+
+    # --- step 6: deadline transitions, last -----------------------------------------------------
+    for key, promise in sorted(working.items()):
+        if promise.status is not PromiseStatus.PENDING or promise.deadline_turn != turn:
+            continue
+        kept = (
+            promise.violated_turn is None
+            if is_maintenance_term(promise.term_kind)
+            else promise.qualifying_turn is not None
+        )
+        opening = world.promises.get(key, promise)
+        _settle(
+            key,
+            opening,
+            promise.model_copy(
+                update={
+                    "status": PromiseStatus.FULFILLED if kept else PromiseStatus.BREACHED,
+                    "settled_turn": turn,
+                }
+            ),
+        )
+
+    rows, entries = _promise_report_rows_and_entries(
+        ctx,
+        pass_keys=pass_keys,
+        closing_promises=working,
+        settlements=settlements,
+    )
+    return PromiseScratch(
+        closing_promises=working,
+        settlements=tuple(settlements),
+        pass_keys=frozenset(pass_keys),
+        report_rows=rows,
+        entries=entries,
+        trust_deltas=trust_deltas,
+        release_committed=release_committed,
+        released_promise_id=released_id,
+    )
+
+
+def _promise_subject_display_name(ctx: PhaseContext, promise: PromiseState) -> str:
+    """The authored label for whatever this term is about, in that term's own namespace.
+
+    Looked up from the same authored maps the cabinet and bargain rows use, and SNAPSHOTTED onto the
+    row by the caller -- never transformed from the identifier, and never re-derived at render time.
+    `promise_subject_is_valid` has already proved the key exists in the right registry, which is
+    why each lookup here is direct rather than defensive.
+    """
+    if promise.term_kind == "cabinet_tenure":
+        return POST_DISPLAY_NAMES[CabinetPost(promise.subject_id)]
+    if promise.term_kind == "legislative_support":
+        return LEGISLATIVE_PROPOSAL_DISPLAY_NAMES[promise.subject_id]
+    return ctx.state.world.foreign_profiles[promise.subject_id].display_name
+
+
+def _promise_report_rows_and_entries(
+    ctx: PhaseContext,
+    *,
+    pass_keys: set[str],
+    closing_promises: dict[str, PromiseState],
+    settlements: list[PromiseSettlement],
+) -> tuple[tuple[PromiseReport, ...], tuple[TurnReportEntry, ...]]:
+    """Slot 1 builds the promise rows and entries; slot 15 only wraps them.
+
+    **The reported set is the PASS SET, never `closing_promises`.** `closing_promises` accumulates
+    every promise the campaign has ever made, because settled rows are deliberately never deleted --
+    the re-promise bar and the id-collision check both read them. Reporting that mapping would
+    therefore restate every historical promise on every later turn, growing without bound, and would
+    contradict the live-promise rule `PromiseReport`'s docstring states. The pass set is exactly
+    right instead: the rows live when the turn opened, plus the row this turn created. A promise
+    that settled three turns ago is neither, so it is stated once -- on the turn it settled -- and
+    never again, while staying in state.
+
+    Entries are narrower still, and on two INDEPENDENT events rather than one test: a `promise_made`
+    for each creation, and a settlement entry for each transition. So a promise made this turn and
+    left `PENDING` still announces itself even though nothing transitioned, and a promise created
+    and breached in one decision set emits both -- which is the honest record of a turn in which
+    both things happened.
+    """
+    world = ctx.state.world
+    turn = ctx.resolving_turn
+    settled_by_key = {settlement.promise_id: settlement for settlement in settlements}
+
+    rows: list[PromiseReport] = []
+    made_entries: list[TurnReportEntry] = []
+    settlement_entries: list[TurnReportEntry] = []
+
+    for key in sorted(pass_keys):
+        closing = closing_promises[key]
+        opening = world.promises.get(key)
+        character = world.characters.get(closing.character_id)
+        assert character is not None, "code 1 rejects a promise to a character who does not exist"
+        subject_display_name = _promise_subject_display_name(ctx, closing)
+        settlement = settled_by_key.get(key)
+        if settlement is None:
+            # Nothing moved, so the row states the character's trust unchanged on both sides. The
+            # delta is zero, and `PromiseReport` rejects any other shape for equal statuses.
+            trust_before = character.personal_trust
+            trust_after = character.personal_trust
+            trust_delta = 0
+        else:
+            trust_before = settlement.trust_before_bps
+            trust_after = settlement.trust_after_bps
+            trust_delta = settlement.trust_delta_bps
+        # A row created this turn has no opening state; it opened as `PENDING` in step 5, which is
+        # exactly what its settlement records if a same-turn violation then breached it.
+        opening_status = PromiseStatus.PENDING if opening is None else opening.status
+
+        # Snapshotted -- names included -- for the reason every row in this engine snapshots them: a
+        # turn from ten turns ago must read the way it read when it resolved.
+        params: dict[str, str | int] = {
+            "promise_id": key,
+            "character_id": closing.character_id,
+            "character_display_name": character.display_name,
+            "term_kind": closing.term_kind,
+            "subject_id": closing.subject_id,
+            "subject_display_name": subject_display_name,
+            "deadline_turn": closing.deadline_turn,
+        }
+        rows.append(
+            PromiseReport(
+                promise_id=key,
+                character_id=closing.character_id,
+                character_display_name=character.display_name,
+                term_kind=closing.term_kind,
+                subject_id=closing.subject_id,
+                subject_display_name=subject_display_name,
+                made_turn=closing.made_turn,
+                deadline_turn=closing.deadline_turn,
+                opening_status=opening_status,
+                closing_status=closing.status,
+                settled_turn=closing.settled_turn,
+                qualifying_turn=closing.qualifying_turn,
+                violated_turn=closing.violated_turn,
+                trust_before_bps=trust_before,
+                trust_after_bps=trust_after,
+                trust_delta_bps=trust_delta,
+            )
+        )
+        if closing.made_turn == turn:
+            made_entries.append(
+                TurnReportEntry(category="government", reason_id="promise_made", params=params)
+            )
+        if settlement is not None:
+            settlement_entries.append(
+                TurnReportEntry(
+                    category="government",
+                    reason_id=PROMISE_SETTLEMENT_REASON_IDS[settlement.closing.status],
+                    params={**params, "trust_delta_bps": trust_delta},
+                )
+            )
+
+    # Creations before settlements, matching the order the turn actually applied them (step 5 before
+    # step 6), so a promise made and breached in one set reads as the two events it was.
+    return tuple(rows), tuple(made_entries + settlement_entries)
+
+
 def _validate_and_reserve_actions(ctx: PhaseContext) -> None:  # noqa: C901
     """Phase 3B1, slot 1: resolve this turn's budget proposal against the legislature (or decree
     authority) BEFORE anything is mutated (§9 of the plan). Computes the vote (or decree, or
@@ -1809,16 +2426,48 @@ def _finish_validate_and_reserve_actions(
     # capital nor blocks the rest of the turn -- which is what makes approaching a leader who will
     # not deal a free political act rather than a self-inflicted budget cut.
     bargain_total = ctx.legislative_bargain_scratch.total_committed
+    # (Characters slice) The promise settler runs LAST among slot 1's substeps, because every
+    # observation it makes reads a value an earlier substep produced: the cabinet slot 2 is about
+    # to commit, the route and kind this turn's vote actually took, and what the assistance request
+    # actually drew. Settling before those exist would judge a promise against data the turn has
+    # not produced yet. It writes nothing to `ctx.state`; slot 2 applies the result.
+    ctx.promise_scratch = _settle_promises(ctx)
+    # The SIXTH sink. Only a release costs capital: making a promise is free, which is the whole
+    # point of a commitment device -- it spends future freedom rather than present capital.
+    promise_release_total = ctx.promise_scratch.release_committed
     total_committed = (
-        legislative_commitment + investment_total + amendment_total + cabinet_total + bargain_total
+        legislative_commitment
+        + investment_total
+        + amendment_total
+        + cabinet_total
+        + bargain_total
+        + promise_release_total
     )
     if total_committed > opening.political_capital:
         raise DecisionSetError(
             f"total political capital commitment {total_committed} (route commitment "
             f"{legislative_commitment} + relationship investment {investment_total} + "
             f"constitutional amendment {amendment_total} + cabinet appointment {cabinet_total} + "
-            f"legislative bargain {bargain_total}) "
+            f"legislative bargain {bargain_total} + promise release {promise_release_total}) "
             f"exceeds opening political capital {opening.political_capital}"
+        )
+
+    # (Characters slice) One untargeted row when this turn paid to be let out of a promise, none
+    # otherwise -- the same shape `DECREE`, `CABINET_APPOINTMENT` and `LEGISLATIVE_BARGAIN` take,
+    # and for the same reason: two rows of one untargeted category would tie on
+    # `(category, "", "")` and their canonical order would fall back to insertion order.
+    promise_expenditure_rows: tuple[CapitalExpenditureReport, ...] = ()
+    if promise_release_total > 0:
+        promise_decision = ctx.decisions.promise_decision()
+        assert promise_decision is not None, "a release cost implies a release decision"
+        promise_expenditure_rows = (
+            CapitalExpenditureReport(
+                category=CapitalExpenditureCategory.PROMISE_RELEASE,
+                party_id=None,
+                bloc_id=None,
+                political_capital=promise_release_total,
+                decision_digest=promise_decision_digest(promise_decision),
+            ),
         )
 
     # (Characters slice) ONE aggregated row for every appointment this turn, or none at all when
@@ -1847,6 +2496,7 @@ def _finish_validate_and_reserve_actions(
                 *amendment_expenditure_rows,
                 *cabinet_expenditure_rows,
                 *ctx.legislative_bargain_scratch.expenditures,
+                *promise_expenditure_rows,
             ),
             key=lambda row: (row.category.value, row.party_id or "", row.bloc_id or ""),
         )
@@ -1907,6 +2557,42 @@ def _commit_constitutional_amendment(ctx: PhaseContext) -> None:
     player.politics = type(politics).model_validate(candidate.model_dump(mode="python"))
 
 
+def _commit_promise_settlements(ctx: PhaseContext) -> None:
+    """Slot 2: write this turn's promise statuses and the trust they moved.
+
+    **This is the ONLY writer of `personal_trust` in the repository**, and that is enforced
+    structurally rather than by convention: `tests/test_promises.py` runs an AST sweep over `app/`
+    that fails any assignment to `personal_trust`, or any `model_copy(update=...)` naming it,
+    outside this function. The three negotiation modules keep READING trust -- the bargain gate,
+    the bargain price and the assistance share all consume it -- and gain no write path at all.
+
+    Both halves land together, from one already-validated scratch, so a partially applied
+    settlement (a status moved without its trust, or the reverse) is not representable.
+
+    The trust write happens HERE rather than in slot 1 for the reason every opening-state read in
+    this engine exists: slot 1's bargain and assistance assessments read `personal_trust` from the
+    opening state, so a promise settled this turn must not be able to pay for itself in the same
+    turn's negotiation. A kept promise improves NEXT turn's price.
+    """
+    scratch = ctx.promise_scratch
+    assert scratch is not None, "slot 1 always sets the promise scratch"
+    world = ctx.state.world
+    if scratch.closing_promises != world.promises:
+        ctx.state.world = world.model_copy(update={"promises": scratch.closing_promises})
+        world = ctx.state.world
+    if not scratch.trust_deltas:
+        return
+    characters = dict(world.characters)
+    for character_id, delta in sorted(scratch.trust_deltas.items()):
+        character = characters.get(character_id)
+        if character is None:  # pragma: no cover - validation refuses an unknown counterparty
+            continue
+        characters[character_id] = character.model_copy(
+            update={"personal_trust": clamp_bps(character.personal_trust + delta)}
+        )
+    ctx.state.world = world.model_copy(update={"characters": characters})
+
+
 def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
     """Phase 2A slot 2; Phase 3B1 (D6) gates it on slot 1's vote: the proposed policy is only
     ever committed to state when `outcome` is `PASSED_LEGISLATIVE` or `ENACTED_BY_DECREE`. For
@@ -1937,6 +2623,8 @@ def _apply_legal_and_administrative_changes(ctx: PhaseContext) -> None:
     if cabinet_scratch.closing_cabinet is not None:
         player = player.model_copy(update={"cabinet": cabinet_scratch.closing_cabinet})
         ctx.state.world.countries[player.id] = player
+
+    _commit_promise_settlements(ctx)
 
     # .model_copy() (not a bare reference) for every Pydantic-model-typed field:
     # TaxPolicyState/SpendingPlanState both have `validate_assignment=True`, which permits
@@ -4323,7 +5011,14 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
     # fixed by `CabinetPost` is complete or it is broken, never empty.
     cabinet_scratch = ctx.cabinet_scratch
     assert cabinet_scratch is not None, "slot 1 always sets this"
-    ctx.governance_report = GovernanceReport(posts=cabinet_scratch.post_rows)
+    promise_scratch = ctx.promise_scratch
+    assert promise_scratch is not None, "slot 1 always sets the promise scratch"
+    ctx.governance_report = GovernanceReport(
+        posts=cabinet_scratch.post_rows,
+        # (Characters slice) Slot 1's already-validated rows -- the PASS SET, so a promise that
+        # settled on an earlier turn is not restated here, though it remains in `world.promises`.
+        promises=promise_scratch.report_rows,
+    )
 
     # The cabinet's own entries, appended with the other domain entries and BEFORE `turn_resolved`
     # below. These are what put an appointment, a replacement or a dismissal onto the API's
@@ -4343,6 +5038,13 @@ def _generate_turn_report(ctx: PhaseContext) -> None:
     # counterpart for help would see a turn in which nothing happened.
     assert assistance_scratch is not None, "slot 1 always sets this"
     ctx.report_entries.extend(assistance_scratch.entries)
+
+    # (Characters slice) The promise entries, for the same visibility reason as the three above and
+    # one sharper still: a fulfilment, a breach and an expiry all move no capital whatsoever, so
+    # they leave no expenditure row at all. Without these, the single event this slice exists to
+    # produce -- trust moving because a promise was kept or broken -- would be invisible on every
+    # API surface and in both CLI paths.
+    ctx.report_entries.extend(promise_scratch.entries)
 
     # (Phase 3B1) Appended LAST, after every other phase and after this slot's own legislative
     # entries, so `turn_resolved` stays the final line of every report exactly as it was before

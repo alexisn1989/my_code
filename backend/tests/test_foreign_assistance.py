@@ -712,7 +712,7 @@ class TestTheDecisionUnion:
 
         return typing.get_args(typing.get_args(Decision)[0])
 
-    def test_the_seven_serialized_kinds_are_exactly_these_in_canonical_order(self) -> None:
+    def test_the_eight_serialized_kinds_are_exactly_these_in_canonical_order(self) -> None:
         kinds = sorted(member.model_fields["kind"].default for member in self._members())
         assert kinds == [
             "bloc_relationship_investment",
@@ -722,6 +722,7 @@ class TestTheDecisionUnion:
             "foreign_assistance",
             "legislative_bargain",
             "military_movement",
+            "promise",
         ]
 
     def test_foreign_assistance_sorts_fifth_so_no_existing_canonical_order_changes(self) -> None:
@@ -765,6 +766,7 @@ class TestTheDecisionUnion:
             "cabinet",
             "legislative_bargain",
             "foreign_assistance",
+            "promise",
         ]
         assert declared != sorted(declared), (
             "declaration order is append order, not canonical order"
@@ -1200,7 +1202,7 @@ class TestCompatibility:
         raw = json.loads(_FIXTURE.read_text(encoding="utf-8"))
         assert raw["ruleset_version"] == "0.20.0"
         assert raw["content_version"] == "0.17.0"
-        assert RULESET_VERSION == "0.21.0"
+        assert RULESET_VERSION == "0.22.0"
 
     def _one_stored_finance_report(self) -> dict[str, object]:
         raw = json.loads(_FIXTURE.read_text(encoding="utf-8"))

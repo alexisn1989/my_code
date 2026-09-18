@@ -405,6 +405,13 @@ export function driverSentence(
   const counterpart = params["counterpart_display_name"];
   const granted = params["granted"];
   const remaining = params["remaining_capacity"];
+  // Characters slice: promises. `subject` is the server-supplied label for whatever was promised --
+  // a post, a proposal or a counterpart -- so nothing here turns `chief_of_staff` into prose. The
+  // deadline is stated as an absolute turn, matching the CLI: "through turn 9" means the same thing
+  // whenever it is read, where "in four turns" would go stale the moment anyone read it later.
+  const subject = params["subject_display_name"];
+  const deadline = params["deadline_turn"];
+  const trustDelta = params["trust_delta_bps"];
   switch (reasonId) {
     case "cabinet_appointed":
       return post === undefined || who === undefined
@@ -436,6 +443,30 @@ export function driverSentence(
       return profile === undefined || granted === undefined || remaining === undefined
         ? label
         : `${counterpart === undefined ? profile : `${counterpart} of ${profile}`} sent ${typeof granted === "number" ? formatAmount(granted) : granted} in assistance; ${typeof remaining === "number" ? formatAmount(remaining) : remaining} of their capacity remains.`;
+    case "promise_made":
+      return who === undefined || subject === undefined || deadline === undefined
+        ? label
+        : `${who} was promised ${subject} through turn ${deadline}.`;
+    case "promise_fulfilled":
+      return who === undefined || subject === undefined || trustDelta === undefined
+        ? label
+        : `${who} saw the promise of ${subject} kept, gaining ${trustDelta} bps of trust.`;
+    case "promise_breached":
+      // `trust_delta_bps` is NEGATIVE here, so the magnitude is rendered and the word carries the
+      // sign -- "losing -2000" would read as a gain to anyone skimming.
+      return who === undefined || subject === undefined || trustDelta === undefined
+        ? label
+        : `${who} saw the promise of ${subject} broken, losing ${typeof trustDelta === "number" ? Math.abs(trustDelta) : trustDelta} bps of trust.`;
+    case "promise_released":
+      // No trust figure, and that is the point: a release moves none. Naming a zero would imply the
+      // counterparty shrugged it off, when the obligation was actually bought back for capital.
+      return who === undefined || subject === undefined
+        ? label
+        : `${who} released the government from the promise of ${subject}.`;
+    case "promise_expired":
+      return who === undefined || subject === undefined || deadline === undefined
+        ? label
+        : `The released promise of ${subject} to ${who} ran out at turn ${deadline}.`;
     case "foreign_assistance_counterpart_is_hostile":
       // No figure, and none available: a refusal's params carry neither `granted` nor
       // `remaining_capacity`.

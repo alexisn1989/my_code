@@ -53,6 +53,13 @@ from app.simulation.decisions import (
     DecisionSet,
 )
 from app.simulation.legislature import GovernmentRole, ProposalRoute
+from app.simulation.phases import available_promise_term, promise_subject_is_valid
+from app.simulation.promises import (
+    earliest_legal_deadline,
+    promise_id,
+    release_block_reason,
+    validation_live_statuses,
+)
 from app.simulation.state import CabinetPost, GameState, PoliticalState
 
 
@@ -375,6 +382,116 @@ def _foreign_assistance_problem(
     return None
 
 
+def _promise_problem(state: GameState, decision_set: DecisionSet) -> DecisionProblem | None:
+    """The preflight mirror of slot 1's seven promise rejections, in the same precedence.
+
+    Every check draws from the SAME production definition slot 1 uses -- `available_promise_term`
+    for the role rule, `promise_subject_is_valid` for the three subject namespaces,
+    `earliest_legal_deadline` for the horizon, `validation_live_statuses` for the re-promise bar and
+    `release_block_reason` for releasability -- rather than restating any of them here. That is the
+    point of the exercise: a preflight that re-derived these would be a second, quietly diverging
+    copy of the lifecycle, and a draft could preview green and then be refused.
+
+    `state` is the OPENING state, so `state.turn` IS the resolving turn the settler will see
+    (`resolver.py` advances the working turn only after validation), which is why the two agree by
+    construction rather than by coincidence.
+
+    **The release codes are one PUBLIC code.** `release_block_reason` distinguishes four internal
+    diagnostics, but `PROMISE_REJECTION_CODES` is a seven-code contract and a preflight answering
+    `promise_missing` would be inventing an eighth. So every blocked release reports
+    `promise_release_names_no_live_promise`, with the diagnostic carried in the message -- exactly
+    as slot 1 does.
+    """
+    decision = decision_set.promise_decision()
+    if decision is None:
+        return None
+
+    world = state.world
+    turn = state.turn
+    character = world.characters.get(decision.character_id)
+    if character is None:
+        return DecisionProblem(
+            code="promise_character_unknown",
+            message="There is no such person to make a promise to.",
+        )
+
+    if decision.action == "release":
+        existing = world.promises.get(decision.promise_id or "")
+        blocked = release_block_reason(
+            status=None if existing is None else existing.status,
+            deadline_turn=None if existing is None else existing.deadline_turn,
+            resolving_turn=turn,
+        )
+        if blocked is not None:
+            return DecisionProblem(
+                code="promise_release_names_no_live_promise",
+                message=(
+                    f"That is not a promise this government can still be released from ({blocked})."
+                ),
+            )
+        return None
+
+    if decision.term_kind is None or decision.subject_id is None or decision.deadline_turn is None:
+        # Unreachable through the model, whose exclusive-shape validator requires all three on a
+        # make. Stated rather than asserted because preflight must never raise.
+        return DecisionProblem(
+            code="promise_term_not_available_for_this_character",
+            message="That promise is missing the terms it would have to carry.",
+        )
+
+    available = available_promise_term(
+        state=state, character_id=decision.character_id, character=character
+    )
+    if available != decision.term_kind:
+        return DecisionProblem(
+            code="promise_term_not_available_for_this_character",
+            message=f"{character.display_name} cannot be promised that.",
+        )
+    if not promise_subject_is_valid(
+        state=state,
+        character=character,
+        term_kind=decision.term_kind,
+        subject_id=decision.subject_id,
+    ):
+        return DecisionProblem(
+            code="promise_subject_unknown",
+            message=f"That is not something {character.display_name} can be promised about.",
+        )
+    earliest = earliest_legal_deadline(made_turn=turn)
+    if decision.deadline_turn < earliest:
+        return DecisionProblem(
+            code="promise_deadline_too_soon",
+            message=f"A promise made now cannot fall due before turn {earliest}.",
+        )
+    for existing_promise in world.promises.values():
+        if (
+            existing_promise.character_id == decision.character_id
+            and existing_promise.term_kind == decision.term_kind
+            and existing_promise.status
+            in validation_live_statuses(
+                deadline_turn=existing_promise.deadline_turn, resolving_turn=turn
+            )
+        ):
+            return DecisionProblem(
+                code="promise_term_already_live_for_this_character",
+                message=(
+                    f"{character.display_name} already holds a live promise of that kind, "
+                    f"through turn {existing_promise.deadline_turn}."
+                ),
+            )
+    derived = promise_id(
+        character_id=decision.character_id,
+        term_kind=decision.term_kind,
+        made_turn=turn,
+    )
+    if derived in world.promises:
+        return DecisionProblem(
+            code="promise_id_collision",
+            message="That promise already exists in this world.",
+        )
+    return None
+
+
 def first_decision_problem(state: GameState, decision_set: DecisionSet) -> DecisionProblem | None:
     """The first structural reason this decision set could not be resolved, if any.
 
@@ -406,6 +523,10 @@ def first_decision_problem(state: GameState, decision_set: DecisionSet) -> Decis
     assistance_problem = _foreign_assistance_problem(state, decision_set)
     if assistance_problem is not None:
         return assistance_problem
+
+    promise_problem = _promise_problem(state, decision_set)
+    if promise_problem is not None:
+        return promise_problem
 
     if amendment is not None:
         target_problem = _amendment_target_problem(politics, amendment)

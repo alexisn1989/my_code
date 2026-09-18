@@ -612,6 +612,62 @@ def _render_foreign_assistance_pool_exhausted(params: dict[str, str | int]) -> s
     return f"{params['profile_display_name']} has no assistance left to give."
 
 
+def _render_promise_made(params: dict[str, str | int]) -> str:
+    """(Characters slice) A promise given, in the words it was given in.
+
+    Composed only from the entry's own stored params, the rule `_render_formation_moved` set: a turn
+    from ten turns ago must read the way it read when it resolved, even if the counterparty has
+    since been renamed or dropped from the roster.
+
+    States the DEADLINE rather than a remaining count, because a promise is an absolute commitment
+    to a turn -- "by turn 9" means the same thing whenever it is read, where "in four turns" would
+    silently become wrong the moment anyone read it later.
+    """
+    return (
+        f"{params['character_display_name']} was promised {params['subject_display_name']} "
+        f"through turn {params['deadline_turn']}."
+    )
+
+
+def _render_promise_fulfilled(params: dict[str, str | int]) -> str:
+    """A promise kept, and what it bought. The trust figure is the whole consequence, so it is in
+    the sentence rather than left to the governance subtree."""
+    return (
+        f"{params['character_display_name']} saw the promise of "
+        f"{params['subject_display_name']} kept, gaining {params['trust_delta_bps']} bps of trust."
+    )
+
+
+def _render_promise_breached(params: dict[str, str | int]) -> str:
+    """A promise broken. `trust_delta_bps` is negative here, so the sentence says "losing" and
+    renders its magnitude -- a bare signed number would read as "losing -2000"."""
+    lost = params["trust_delta_bps"]
+    magnitude = -lost if isinstance(lost, int) and lost < 0 else lost
+    return (
+        f"{params['character_display_name']} saw the promise of "
+        f"{params['subject_display_name']} broken, losing {magnitude} bps of trust."
+    )
+
+
+def _render_promise_released(params: dict[str, str | int]) -> str:
+    """A promise the player PAID to be let out of. Deliberately says no trust figure, because a
+    release moves none -- naming a zero would imply the counterparty shrugged it off, when what
+    actually happened is that the obligation was bought back for political capital."""
+    return (
+        f"{params['character_display_name']} released the government from the promise of "
+        f"{params['subject_display_name']}."
+    )
+
+
+def _render_promise_expired(params: dict[str, str | int]) -> str:
+    """The end of a released promise's original horizon. No trust moves, and nothing further is
+    owed -- this is the line that closes the record rather than an event with a consequence."""
+    return (
+        f"The released promise of {params['subject_display_name']} to "
+        f"{params['character_display_name']} ran out at turn {params['deadline_turn']}."
+    )
+
+
 REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "turn_resolved": _render_turn_resolved,
     "no_budget_changes_submitted": _render_no_budget_changes_submitted,
@@ -651,6 +707,11 @@ REASON_RENDERERS: dict[str, Callable[[dict[str, str | int]], str]] = {
     "foreign_security_anxiety_applied": _render_foreign_security_anxiety_applied,
     "formation_moved": _render_formation_moved,
     "cabinet_appointed": _render_cabinet_appointed,
+    "promise_made": _render_promise_made,
+    "promise_fulfilled": _render_promise_fulfilled,
+    "promise_breached": _render_promise_breached,
+    "promise_released": _render_promise_released,
+    "promise_expired": _render_promise_expired,
     "cabinet_replaced": _render_cabinet_replaced,
     "cabinet_dismissed": _render_cabinet_dismissed,
     "legislative_bargain_accepted": _render_legislative_bargain_accepted,

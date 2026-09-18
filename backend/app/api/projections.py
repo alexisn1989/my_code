@@ -48,8 +48,16 @@ from app.simulation.legislative_voting import (
 )
 from app.simulation.legislature import GovernmentRole, LegislativeOutcome, ProposalRoute
 from app.simulation.military import classify_destinations
+from app.simulation.phases import available_promise_term, promise_subject_is_valid
+from app.simulation.promises import (
+    LIVE_PROMISE_STATUSES,
+    earliest_legal_deadline,
+    release_block_reason,
+    validation_live_statuses,
+)
 from app.simulation.report import CabinetChange, TurnReport
 from app.simulation.state import (
+    LEGISLATIVE_PROPOSAL_DISPLAY_NAMES,
     POST_DISPLAY_NAMES,
     CabinetPost,
     GameState,
@@ -146,6 +154,11 @@ REASON_LABELS: dict[str, str] = {
     # real sentence from the entry's own snapshotted params -- and a refused request carries no
     # monetary param at all, so no surface can state a figure for aid that never arrived.
     "foreign_assistance_granted": "A foreign counterpart sent assistance.",
+    "promise_made": "The government gave a promise.",
+    "promise_fulfilled": "A promise was kept.",
+    "promise_breached": "A promise was broken.",
+    "promise_released": "The government paid to be released from a promise.",
+    "promise_expired": "A released promise ran out.",
     "foreign_assistance_counterpart_is_hostile": "A foreign counterpart refused to help.",
     "foreign_assistance_pool_exhausted": "A foreign counterpart has nothing left to give.",
 }
@@ -478,6 +491,13 @@ class PreviewProjection(BaseModel):
     cabinet_capital: int = 0
     legislative_bargain_capital: int = 0
     foreign_assistance_estimate: int = 0
+    promise_release_capital: int = 0
+    """(Characters slice) The SIXTH capital term: the flat release price, and only when the drafted
+    release would be ACCEPTED.
+
+    A blocked release never reaches pricing at all: `/preview` runs the shared preflight first and
+    rejects the whole set, so this field carries 250 or nothing, never a 0 standing in for a refused
+    release. Included in `committed_capital`, exactly once."""
     """(Characters slice) What a foreign counterpart would send IN, in money.
 
     Deliberately NOT part of `committed_capital`: that totals political capital the player spends,
@@ -818,6 +838,10 @@ class DecisionOptionsProjection(BaseModel):
     invented. Intrinsic eligibility only -- see `CabinetCandidateOption` for why the
     whole-decision failures live on `/preview` instead."""
     foreign_assistance_counterparties: tuple[ForeignAssistanceCounterpartyOption, ...] = ()
+    promise_options: tuple[PromiseOption, ...] = ()
+    """(Characters slice) Every promise that could be made now, as exact server-valid triples."""
+    active_promises: tuple[ActivePromiseView, ...] = ()
+    """(Characters slice) Every promise already outstanding, with its releasability projected."""
     """(Characters slice) Every foreign counterpart the player has dealings with and who has
     something to give, canonical by `profile_id`.
 
@@ -976,6 +1000,91 @@ The projection field is a two-member `Literal` rather than the engine enum (whic
 enum into the contract), so the two vocabularies have to be reconciled SOMEWHERE. Doing it in one
 typed mapping means a third refusal added to the enum fails type-checking here rather than reaching
 a client as an unexpected string."""
+
+
+class PromiseOption(BaseModel):
+    """One promise the player could actually make: an exact, server-valid TRIPLE.
+
+    **One row per `(character_id, term_kind, subject_id)`, never three lists to combine.** The three
+    terms are role-bound and the roles are disjoint -- `cabinet_tenure` needs a sitting
+    officeholder, `legislative_support` a party leader of this legislature, `assistance_restraint`
+    the leader of the counterpart whose pool it names -- so a client cross-producting characters
+    against terms would offer combinations the resolver refuses at codes 2 and 3. Emitting the
+    valid triples is what keeps that legality rule on the server, where `DecisionOptionsProjection`'s
+    own docstring says it belongs.
+
+    **Labels are CURRENT, not snapshotted**, and the difference is deliberate. A `PromiseReport` row
+    snapshots names so a ten-turn-old turn renders the words it was resolved under; this is the
+    opposite kind of object -- revision-keyed, describing what exists to choose from NOW -- so a
+    renamed character must appear renamed here while the old turn keeps the old name. What the two
+    share is only that the client never transforms an identifier into prose.
+    """
+
+    model_config = _STRICT
+
+    character_id: str
+    character_display_name: str
+    term_kind: str
+    subject_id: str
+    subject_display_name: str
+    earliest_legal_deadline: int
+    """`earliest_legal_deadline(made_turn=state.turn)`, so the four-turn minimum is stated once by
+    the engine instead of recomputed as `turn + 4` in a client.
+
+    `state.turn` is the right input and not an approximation: the settler stores
+    `made_turn = ctx.resolving_turn`, and `ctx.resolving_turn` IS the opening state's turn, which is
+    what a projection built against that state sees. The two agree by construction."""
+
+
+class ActivePromiseView(BaseModel):
+    """One promise already outstanding, and whether it can be released.
+
+    **Carries `PENDING` AND `CANCELLED` rows.** A released promise is not gone: it runs to its
+    original deadline, still bars a reissue for that `(character, term)` pair, and only then
+    expires. Dropping it at release would show the player a free slot the resolver will refuse.
+
+    `releasable` and `release_blocked_reason` are mutually exclusive, enforced below, the discipline
+    the bargain and assistance options already follow.
+    """
+
+    model_config = _STRICT
+
+    promise_id: str
+    """OPAQUE. Nothing parses it; every fact a client needs is a typed field beside it."""
+    character_id: str
+    character_display_name: str
+    term_kind: str
+    subject_id: str
+    subject_display_name: str
+    status: str
+    made_turn: int
+    deadline_turn: int
+    released_turn: int | None = None
+    releasable: bool
+    release_blocked_reason: Literal["promise_already_released", "promise_past_releasing"] | None = (
+        None
+    )
+    """TWO members, though `release_block_reason` distinguishes four.
+
+    The other two are unreachable HERE by construction rather than by omission: this view is built
+    from live rows only, so an absent promise has no row to carry a reason and a settled one is not
+    in the view at all. A test asserts that unreachability instead of assuming it -- if a case ever
+    made one reachable, this `Literal` would have to widen, which is the point of pinning it.
+
+    Note these are the projection's DISPLAY reasons, a different namespace from the seven submission
+    rejection codes: every blocked release is `promise_release_names_no_live_promise` on the resolver
+    and on preflight, and the detail surfaces only here."""
+
+    @model_validator(mode="after")
+    def _releasability_and_reason_are_exclusive(self) -> ActivePromiseView:
+        if self.releasable and self.release_blocked_reason is not None:
+            raise ValueError(
+                f"a releasable promise carries no blocked reason, got "
+                f"{self.release_blocked_reason!r}"
+            )
+        if not self.releasable and self.release_blocked_reason is None:
+            raise ValueError("an unreleasable promise must say why")
+        return self
 
 
 def _foreign_assistance_counterparties(
@@ -1307,6 +1416,8 @@ def build_decision_options(
         constitutional_axes=constitutional_axes,
         cabinet_posts=_cabinet_post_options(state),
         foreign_assistance_counterparties=_foreign_assistance_counterparties(state),
+        promise_options=_promise_options(state),
+        active_promises=_active_promises(state),
         legislative_bargain_counterparties=_legislative_bargain_counterparties(state),
     )
 
@@ -1959,3 +2070,126 @@ def _unchanged_statements(report: TurnReport) -> tuple[str, ...]:
     ):
         lines.append("No cabinet changes.")
     return tuple(lines)
+
+
+def _promise_options(state: GameState) -> tuple[PromiseOption, ...]:
+    """Every promise the player could make right now, canonical by `(character_id, term_kind)`.
+
+    Every rule here is the PRODUCTION one, imported rather than restated: `available_promise_term`
+    for the role, `promise_subject_is_valid` for the subject namespace,
+    `validation_live_statuses` for whether the pair is already occupied, and
+    `earliest_legal_deadline` for the horizon. A projection that re-derived any of them would be a
+    second copy of the lifecycle drifting quietly away from slot 1.
+
+    **The occupancy test is the R11 predicate, not "is there a live promise".** A `CANCELLED` row
+    whose original deadline is still AHEAD occupies the pair; one whose deadline is THIS turn does
+    not, because the settler expires it before it creates the replacement. Getting that boundary
+    wrong breaks in both directions -- at `d - 1` the client would offer a reissue the resolver
+    rejects as code 5, and at `d` it would hide one that is legal.
+    """
+    world = state.world
+    turn = state.turn
+    options: list[PromiseOption] = []
+
+    for character_id, character in sorted(world.characters.items()):
+        term_kind = available_promise_term(
+            state=state, character_id=character_id, character=character
+        )
+        if term_kind is None:
+            continue
+        occupied = any(
+            existing.character_id == character_id
+            and existing.term_kind == term_kind
+            and existing.status
+            in validation_live_statuses(deadline_turn=existing.deadline_turn, resolving_turn=turn)
+            for existing in world.promises.values()
+        )
+        if occupied:
+            continue
+        for subject_id in _promise_subjects(state, term_kind=term_kind):
+            if not promise_subject_is_valid(
+                state=state, character=character, term_kind=term_kind, subject_id=subject_id
+            ):
+                continue
+            options.append(
+                PromiseOption(
+                    character_id=character_id,
+                    character_display_name=character.display_name,
+                    term_kind=term_kind,
+                    subject_id=subject_id,
+                    subject_display_name=_promise_subject_label(state, term_kind, subject_id),
+                    earliest_legal_deadline=earliest_legal_deadline(made_turn=turn),
+                )
+            )
+    return tuple(options)
+
+
+def _promise_subjects(state: GameState, *, term_kind: str) -> tuple[str, ...]:
+    """Every candidate subject in the namespace this term addresses, canonical.
+
+    `promise_subject_is_valid` then filters them per character -- an assistance promise must name
+    the counterpart its leader actually speaks for -- so this enumerates the namespace and the
+    production predicate decides membership.
+    """
+    if term_kind == "cabinet_tenure":
+        return tuple(post.value for post in CabinetPost)
+    if term_kind == "legislative_support":
+        return tuple(sorted(LEGISLATIVE_PROPOSAL_DISPLAY_NAMES))
+    return tuple(sorted(state.world.foreign_relationships))
+
+
+def _promise_subject_label(state: GameState, term_kind: str, subject_id: str) -> str:
+    """The authored label for a subject, looked up rather than transformed from the identifier."""
+    if term_kind == "cabinet_tenure":
+        return POST_DISPLAY_NAMES[CabinetPost(subject_id)]
+    if term_kind == "legislative_support":
+        return LEGISLATIVE_PROPOSAL_DISPLAY_NAMES[subject_id]
+    return state.world.foreign_profiles[subject_id].display_name
+
+
+def _active_promises(state: GameState) -> tuple[ActivePromiseView, ...]:
+    """Every LIVE promise, canonical by `promise_id`, with its releasability projected.
+
+    Live means `PENDING` or `CANCELLED`: a settled promise is history and belongs to the turn report
+    that recorded it, not to a view of what the player can still act on.
+
+    `releasable` comes from `release_block_reason` -- the same predicate slot 1's code 7 raises on
+    -- so the interface can never offer a release the resolver refuses, nor hide one it would
+    accept. Building this is what found two live defects: an already-`CANCELLED` promise could be
+    released again for another 250, and a `PENDING` promise due to settle could be released to duck
+    its breach.
+    """
+    world = state.world
+    views: list[ActivePromiseView] = []
+    for promise_key, promise in sorted(world.promises.items()):
+        if promise.status not in LIVE_PROMISE_STATUSES:
+            continue
+        character = world.characters.get(promise.character_id)
+        blocked = release_block_reason(
+            status=promise.status,
+            deadline_turn=promise.deadline_turn,
+            resolving_turn=state.turn,
+        )
+        # Narrowed to the two reachable display reasons. The internal `promise_missing` and
+        # `promise_already_settled` cannot arise from a live row, and a test proves it rather than
+        # leaving it assumed.
+        assert blocked in (None, "promise_already_released", "promise_past_releasing"), blocked
+        views.append(
+            ActivePromiseView(
+                promise_id=promise_key,
+                character_id=promise.character_id,
+                character_display_name="" if character is None else character.display_name,
+                term_kind=promise.term_kind,
+                subject_id=promise.subject_id,
+                subject_display_name=_promise_subject_label(
+                    state, promise.term_kind, promise.subject_id
+                ),
+                status=promise.status.value,
+                made_turn=promise.made_turn,
+                deadline_turn=promise.deadline_turn,
+                released_turn=promise.released_turn,
+                releasable=blocked is None,
+                release_blocked_reason=blocked,
+            )
+        )
+    return tuple(views)

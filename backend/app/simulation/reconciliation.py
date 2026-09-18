@@ -70,11 +70,12 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from app.core.canonical_json import canonical_dumps
+from app.core.canonical_json import canonical_digest, canonical_dumps
 from app.core.money import BPS_DENOMINATOR
 from app.core.politics import (
     RELATIONSHIP_DECAY_DENOMINATOR,
     RELATIONSHIP_DECAY_NUMERATOR,
+    clamp_bps,
     trunc_div_toward_zero,
 )
 from app.core.rng import derive_rng
@@ -189,6 +190,17 @@ from app.simulation.legitimacy import (
     aggregate_security_contribution_bps,
     foreign_conflict_security_anxiety_bps,
 )
+from app.simulation.promises import (
+    MINIMUM_PROMISE_TURNS,
+    PROMISE_BREACHED_TRUST_LOSS_BPS,
+    PROMISE_EXPIRED_TRUST_BPS,
+    PROMISE_ID_LENGTH,
+    PROMISE_ID_PREFIX,
+    PROMISE_KEPT_TRUST_GAIN_BPS,
+    PROMISE_RELEASE_COST_CAPITAL,
+    PROMISE_RELEASED_TRUST_BPS,
+    PromiseStatus,
+)
 from app.simulation.report import (
     CabinetChange,
     ConstitutionalAmendmentReport,
@@ -198,6 +210,7 @@ from app.simulation.report import (
     LegislativeBargainOutcome,
     LegislativeBargainReport,
     MovementReport,
+    PromiseReport,
     TurnReport,
     TurnReportEntry,
 )
@@ -211,6 +224,7 @@ from app.simulation.state import (
     OutcomeBucket,
     PendingLiberalizationState,
     PoliticalState,
+    PromiseState,
     RemovalReason,
     SpendingCategory,
     VictoryReason,
@@ -1350,6 +1364,22 @@ def reconcile_political_legislative_and_survival_report(
     # the report could not fail when that function is wrong.
     problems.extend(
         _reconcile_legislative_bargain(
+            opening_state=opening_state,
+            closing_state=closing_state,
+            report=report,
+            decisions=decisions,
+        )
+    )
+
+    # Group 60 (characters slice): promises -- the submitted `DecisionSet`, both states, the
+    # `governance` subtree and the `government` entries all agree, with every rule TRANSCRIBED
+    # rather than taken from `simulation.promises`. It owns the promise half of the `government`
+    # entry partition that group 57 narrowed itself out of, so between the two no entry in that
+    # category goes unproved. It is also the only check on `personal_trust`, which this slice makes
+    # mutable for the first time: check 3 proves the settled characters moved by exactly the
+    # transcribed deltas and that every other character is byte-identical.
+    problems.extend(
+        _reconcile_promises(
             opening_state=opening_state,
             closing_state=closing_state,
             report=report,
@@ -2626,12 +2656,15 @@ def _reconcile_foreign_assistance(
     closing_world = closing_state.world
     decision = decisions.foreign_assistance_decision() if decisions is not None else None
 
-    # (5) Trust is read, never written by this slice.
-    if opening_world.characters != closing_world.characters:
-        problems.append(
-            "world.characters changed during a turn, but no mechanic in this ruleset writes to it "
-            "(group 59)"
+    # (5) Trust is read here, never written -- narrowed for the same reason group 58's copy was:
+    # the promise settler is the one authorized writer, so every other field of every character
+    # must still be byte-identical and trust may move only for a settled counterparty.
+    problems.extend(
+        f"{problem} (group 59)"
+        for problem in character_registry_moved_only_by_promise_trust(
+            opening_state=opening_state, closing_state=closing_state
         )
+    )
 
     granted_total = sum(row.granted for row in rows)
     finance = report.finance
@@ -4049,6 +4082,31 @@ def _reconcile_cabinet(
     return problems
 
 
+_CABINET_ENTRY_REASON_IDS: frozenset[str] = frozenset(
+    f"cabinet_{change.value}" for change in CabinetChange
+)
+"""Every reason id the cabinet half of the `government` category can emit, derived from the enum
+rather than listed, so a new `CabinetChange` member cannot be forgotten here."""
+
+_PROMISE_ENTRY_REASON_IDS: frozenset[str] = frozenset(
+    {
+        "promise_made",
+        "promise_breached",
+        "promise_expired",
+        "promise_fulfilled",
+        "promise_released",
+    }
+)
+"""Every reason id the promise half of the `government` category can emit: one creation event plus
+one per settlement status.
+
+TRANSCRIBED as a literal rather than derived from `promises.PROMISE_SETTLEMENT_REASON_IDS`, and that
+is deliberate -- see `_transcribed_settlement_reason_id` below for the full reasoning. In short: the
+mapping from a status to the event it announces is a behavioural classification, not a calibration
+number, so importing it would make this module repeat any misclassification production made and then
+certify it. `tests/test_promises.py` asserts the two agree."""
+
+
 def _expected_cabinet_change(opening_id: str | None, closing_id: str | None) -> CabinetChange:
     """The truth table, in one place, so slot 1 and reconciliation cannot each have their own."""
     if opening_id == closing_id:
@@ -4061,7 +4119,7 @@ def _expected_cabinet_change(opening_id: str | None, closing_id: str | None) -> 
 
 
 def _reconcile_cabinet_entries(governance: GovernanceReport, report: TurnReport) -> list[str]:
-    """Group 57, check 5: the `government` report entries ARE the changed rows, restated.
+    """Group 57, check 5: the CABINET `government` report entries ARE the changed rows, restated.
 
     Entries matter more here than they do for most reports, because they are the only surface some
     changes reach. `api.projections.build_turn_result` derives its `drivers` from `report.entries`
@@ -4070,16 +4128,40 @@ def _reconcile_cabinet_entries(governance: GovernanceReport, report: TurnReport)
     history views entirely. Pinning the params here is what keeps that entry honest, including its
     snapshotted display names, which is what lets a ten-turn-old turn render the names it was
     resolved under.
+
+    **The `government` category now has two occupants, so this check selects by REASON ID.** The
+    promise settlements of the characters slice are `government` entries too, and counting them as
+    cabinet entries made every promise turn fail here. Selecting cabinet entries by name is a
+    NARROWING, not a weakening -- the one-to-one correspondence it proves for cabinet rows is
+    exactly as strict as before -- but a narrowing would leave the rest of the category unchecked,
+    so the partition is closed explicitly below: every `government` entry must be a reason id one
+    group or the other is responsible for. Group 57 owns the cabinet ones and group 60 owns the
+    promise ones, and an entry belonging to neither is a problem HERE rather than a gap between
+    them.
     """
     problems: list[str] = []
-    entries = [entry for entry in report.entries if entry.category == "government"]
+    government = [entry for entry in report.entries if entry.category == "government"]
+    unaccounted = [
+        entry.reason_id
+        for entry in government
+        if entry.reason_id not in _CABINET_ENTRY_REASON_IDS
+        and entry.reason_id not in _PROMISE_ENTRY_REASON_IDS
+    ]
+    if unaccounted:
+        problems.append(
+            f"'government' report entries {sorted(set(unaccounted))!r} belong to no reconciled "
+            "reason id, so nothing proves them against state (group 57)"
+        )
+
+    entries = [entry for entry in government if entry.reason_id in _CABINET_ENTRY_REASON_IDS]
     changed = [row for row in governance.posts if row.change is not CabinetChange.UNCHANGED]
 
     if len(entries) != len(changed):
-        return [
+        problems.append(
             f"governance reports {len(changed)} changed post(s) but the turn carries "
-            f"{len(entries)} 'government' report entry/entries (group 57)"
-        ]
+            f"{len(entries)} cabinet 'government' report entry/entries (group 57)"
+        )
+        return problems
 
     for row, entry in zip(changed, entries, strict=True):
         expected_reason = f"cabinet_{row.change.value}"
@@ -4214,12 +4296,16 @@ def _reconcile_legislative_bargain(
     rows = legislative.bargains
     decision = decisions.legislative_bargain_decision() if decisions is not None else None
 
-    # (8) Trust is read, never written by this slice.
-    if opening_state.world.characters != closing_state.world.characters:
-        problems.append(
-            "the character registry changed during a turn, but no mechanic in this ruleset writes "
-            "to it (group 58)"
+    # (8) Trust is read here, never written -- and the ONLY authorized writer anywhere is the
+    # promise settler, so this check is narrowed rather than dropped: every other field of every
+    # character must still be byte-identical, and trust may move only for a counterparty whose
+    # promise actually settled this turn.
+    problems.extend(
+        f"{problem} (group 58)"
+        for problem in character_registry_moved_only_by_promise_trust(
+            opening_state=opening_state, closing_state=closing_state
         )
+    )
 
     ledger_rows = (
         [
@@ -4510,5 +4596,754 @@ def reconcile_deposit_locations(
                 f"the resource report names {category}'s theater {row.theater_display_name!r} "
                 f"but the map calls it {theater.display_name!r} (group 55)"
             )
+
+    return problems
+
+
+def character_registry_moved_only_by_promise_trust(
+    *, opening_state: GameState, closing_state: GameState
+) -> list[str]:
+    """Whether the only difference in `world.characters` across this turn is authorized trust.
+
+    **Narrowed, not removed.** Before promises existed, groups 58 and 59 each asserted the registry
+    was byte-identical, on the stated grounds that "no mechanic in this ruleset writes to it". That
+    is no longer true -- a settled promise moves exactly one counterparty's `personal_trust` -- but
+    the claim worth keeping is the sharper one underneath it, and this is it:
+
+    * every character present at the open is still present, and none has appeared;
+    * every field of every character is byte-identical EXCEPT `personal_trust`; and
+    * `personal_trust` may differ only for a character whose promise settled this turn.
+
+    So a slice that quietly retuned competence, flipped an affiliation or invented a person still
+    fails here, and so does a trust movement on somebody nobody promised anything. Only the one
+    authorized write passes -- which is a stronger statement than the equality it replaced, because
+    equality could not distinguish an authorized write from an unauthorized one at all; it simply
+    refused both, and would now have to be deleted rather than narrowed.
+    """
+    problems: list[str] = []
+    opening = opening_state.world.characters
+    closing = closing_state.world.characters
+    if set(opening) != set(closing):
+        appeared = sorted(set(closing) - set(opening))
+        vanished = sorted(set(opening) - set(closing))
+        problems.append(
+            f"the character registry gained {appeared} and lost {vanished} during a turn, but no "
+            "mechanic creates or removes a person"
+        )
+        return problems
+    settled = {
+        row.character_id
+        for row in _promise_rows(closing_state)
+        if row.settled_turn == opening_state.turn
+    }
+    for character_id in sorted(opening):
+        before, after = opening[character_id], closing[character_id]
+        if before.model_copy(update={"personal_trust": 0}) != after.model_copy(
+            update={"personal_trust": 0}
+        ):
+            problems.append(
+                f"character {character_id!r} changed in a field no mechanic writes; only "
+                "personal_trust is mutable, and only on a settled promise"
+            )
+        elif before.personal_trust != after.personal_trust and character_id not in settled:
+            problems.append(
+                f"character {character_id!r} moved personal_trust from {before.personal_trust} to "
+                f"{after.personal_trust} on a turn that settled no promise with them"
+            )
+    return problems
+
+
+def _promise_rows(state: GameState) -> tuple[PromiseState, ...]:
+    """Every promise in a state, canonical by id, so the caller iterates deterministically."""
+    return tuple(state.world.promises[key] for key in sorted(state.world.promises))
+
+
+# ----------------------------------------------------------------------------------------------
+# Group 60 (characters slice): promises -- an INDEPENDENT oracle.
+#
+# Everything below TRANSCRIBES the promise rules rather than calling `simulation.promises` or the
+# settler in `simulation.phases`. A check that called the code which produced the report could not
+# fail when that code is wrong: it would agree with the defect and certify it. That is the same
+# boundary PD-1's correction drew for group 58 and group 59, and `tests/test_promises.py` enforces
+# it with an AST allowlist scan written as an allowlist of names, so a newly added helper is refused
+# by default rather than reviewed for correctness later.
+#
+# The line between what may be SHARED and what must be TRANSCRIBED is not "constants versus
+# functions" -- it is "calibration versus behaviour". A number both sides read is safe, because a
+# transcription error still surfaces as a disagreement. A PARTITION both sides read is not: if
+# production classifies a term, a status or an event wrongly, an importing reconciliation repeats
+# the mistake and certifies it, and there is nothing left to disagree with. So the four trust
+# numbers, the horizon, the release price and the id's shape are imported, while the
+# maintenance/achievement split, the live/terminal split and the status-to-reason mapping are all
+# declared here independently.
+# ----------------------------------------------------------------------------------------------
+
+
+_TRANSCRIBED_MAINTENANCE_TERMS: frozenset[str] = frozenset(
+    {"assistance_restraint", "cabinet_tenure"}
+)
+"""Terms about a state that must HOLD, transcribed from the plan's shapes table.
+
+Deliberately NOT `promises.MAINTENANCE_TERMS`: which terms can break early is the single
+classification the breach dating in check 2a turns on, so sharing it would make this module
+incapable of catching a term filed on the wrong side."""
+
+_TRANSCRIBED_ACHIEVEMENT_TERMS: frozenset[str] = frozenset({"legislative_support"})
+"""Terms about an act that must HAPPEN by the deadline. The complement of the above, and asserted to
+be exactly that -- a term belonging to neither partition, or to both, is a problem in itself."""
+
+_TRANSCRIBED_LIVE_PROMISE_STATUSES: frozenset[PromiseStatus] = frozenset(
+    {PromiseStatus.CANCELLED, PromiseStatus.PENDING}
+)
+"""The statuses a promise can still move from. `CANCELLED` is live because it decays to `EXPIRED` at
+its ORIGINAL deadline, which is what makes the re-promise bar a property of the state machine."""
+
+_TRANSCRIBED_TERMINAL_PROMISE_STATUSES: frozenset[PromiseStatus] = frozenset(
+    {PromiseStatus.BREACHED, PromiseStatus.EXPIRED, PromiseStatus.FULFILLED}
+)
+"""The statuses nothing may ever move out of."""
+
+
+def _transcribed_settlement_reason_id(status: PromiseStatus) -> str | None:
+    """Which event a settlement into `status` announces; `None` when it is not a settlement.
+
+    Transcribed from the T1-T6 table rather than imported from
+    `promises.PROMISE_SETTLEMENT_REASON_IDS`, for the reason the module comment above gives: an
+    event mapping is a behavioural classification. A build that announced a breach as a fulfilment
+    would be reporting the opposite of what happened, and a reconciliation that read the same
+    mapping could not tell.
+    """
+    if status is PromiseStatus.BREACHED:
+        return "promise_breached"
+    if status is PromiseStatus.CANCELLED:
+        return "promise_released"
+    if status is PromiseStatus.EXPIRED:
+        return "promise_expired"
+    if status is PromiseStatus.FULFILLED:
+        return "promise_fulfilled"
+    return None
+
+
+def _transcribed_promise_trust_delta_bps(status: PromiseStatus) -> int:
+    """The trust column of the T1-T6 table, transcribed.
+
+    The four NUMBERS are imported -- they are calibration, and a typo in one still surfaces here as
+    a disagreement with the engine. The mapping from a status to which number applies is written
+    out, because that is behaviour.
+    """
+    if status is PromiseStatus.FULFILLED:
+        return PROMISE_KEPT_TRUST_GAIN_BPS
+    if status is PromiseStatus.BREACHED:
+        return -PROMISE_BREACHED_TRUST_LOSS_BPS
+    if status is PromiseStatus.EXPIRED:
+        return PROMISE_EXPIRED_TRUST_BPS
+    if status is PromiseStatus.CANCELLED:
+        return PROMISE_RELEASED_TRUST_BPS
+    return 0
+
+
+def _transcribed_promise_id(*, character_id: str, term_kind: str, made_turn: int) -> str:
+    """The id, recomputed from the typed triple rather than read off the row.
+
+    `canonical_digest` is a shared PRIMITIVE, like `trunc_div_toward_zero` -- using it is not the
+    same as calling `promises.promise_id`, which is the production formula this check exists to
+    second-guess. The dict literal is spelled out here so a change to the tuple's shape shows up as
+    a disagreement instead of following the engine silently.
+    """
+    return PROMISE_ID_PREFIX + canonical_digest(
+        {"character_id": character_id, "made_turn": made_turn, "term_kind": term_kind}
+    )
+
+
+def _transcribed_promise_pass_keys(
+    *, opening_state: GameState, decisions: DecisionSet | None
+) -> set[str]:
+    """The set of promises this turn was entitled to settle AND to report.
+
+    Re-derived here rather than trusted from the report, because it is the report's own cardinality:
+    the rows live when the turn opened, union the row a `make` created. A promise that settled on an
+    earlier turn is in neither half, which is why it must be stated once and never again -- while
+    staying in `world.promises`, where the re-promise bar and the id-collision check read it.
+
+    This catches the over-broad set in BOTH directions. A report that quietly restated an old
+    terminal promise carries a key that is not in here; a report that dropped a live promise is
+    missing one that is.
+    """
+    keys = {
+        key
+        for key, promise in opening_state.world.promises.items()
+        if promise.status in _TRANSCRIBED_LIVE_PROMISE_STATUSES
+    }
+    decision = None if decisions is None else decisions.promise_decision()
+    if decision is not None and decision.action == "make":
+        assert decision.term_kind is not None
+        keys.add(
+            _transcribed_promise_id(
+                character_id=decision.character_id,
+                term_kind=decision.term_kind,
+                made_turn=opening_state.turn,
+            )
+        )
+    return keys
+
+
+_LEGAL_PROMISE_TRANSITIONS: frozenset[tuple[PromiseStatus, PromiseStatus]] = frozenset(
+    {
+        (PromiseStatus.PENDING, PromiseStatus.PENDING),  # live, nothing decided yet
+        (PromiseStatus.CANCELLED, PromiseStatus.CANCELLED),  # released, horizon still running
+        (PromiseStatus.PENDING, PromiseStatus.BREACHED),  # T2 / T3
+        (PromiseStatus.PENDING, PromiseStatus.FULFILLED),  # T4
+        (PromiseStatus.PENDING, PromiseStatus.CANCELLED),  # T5
+        (PromiseStatus.CANCELLED, PromiseStatus.EXPIRED),  # T6
+    }
+)
+"""Every ordered pair a promise may move through in one turn, transcribed from the T1-T6 table.
+
+Written as an allowlist of pairs rather than as a set of rules, so anything unlisted fails by
+default. Two absences carry the design and are worth naming: there is no `PENDING -> EXPIRED`, which
+is the penalty-free lapse the lifecycle refuses -- a pending achievement promise that reaches its
+deadline without evidence is a BREACH -- and no pair leaves a terminal status at all.
+"""
+
+
+def _transcribed_promise_qualifies(*, report: TurnReport, subject_id: str) -> bool:
+    """Whether THIS turn put a proposal of `subject_id`'s kind to a chamber -- R16, transcribed.
+
+    Selected by proposal KIND, because the two kinds resolve through two different substeps and
+    each records its own route. Naming only the budget's would leave an amendment promise
+    permanently unqualifiable, which is the defect R16 caught in the draft plan.
+
+    Reconciliation reads the RESOLVED route off the report rather than the submitted payload, for
+    the same reason the settler reads the resolved scratch: what a promise is kept by is what the
+    turn actually did, not what was asked for. `route is None` is the "no proposal of this kind"
+    signal, so one `is LEGISLATIVE` test covers presence and route at once -- and a DECREE route
+    qualifies nothing, since governing by decree is precisely the act of not asking the chamber.
+
+    Deliberately NOT a call to `phases._promise_qualifies`: a reconciliation re-using the production
+    selector could not fail when the selector picks the wrong scratch.
+    """
+    if subject_id == "budget":
+        legislative = report.legislative
+        return legislative is not None and legislative.route is ProposalRoute.LEGISLATIVE
+    amendment = report.constitutional_amendment
+    return amendment is not None and amendment.route is ProposalRoute.LEGISLATIVE
+
+
+def _reconcile_promise_transitions(
+    *,
+    opening_state: GameState,
+    closing_state: GameState,
+    report: TurnReport,
+    rows: list[PromiseReport],
+) -> list[str]:
+    """Group 60, checks 2 and 2a: every transition is legal, dated correctly and irreversible.
+
+    Each row's endpoints are proved against STATE at both ends -- a row that told a coherent story
+    the world did not live is caught here, which is the half a self-validating model cannot do.
+    """
+    problems: list[str] = []
+    turn = opening_state.turn
+    opening_promises = opening_state.world.promises
+    closing_promises = closing_state.world.promises
+
+    for row in rows:
+        opening = opening_promises.get(row.promise_id)
+        closing = closing_promises.get(row.promise_id)
+        if closing is None:
+            problems.append(
+                f"promise {row.promise_id!r} is reported but absent from closing_state (group 60)"
+            )
+            continue
+
+        # (2) The endpoints are state's, not the report's.
+        expected_opening = PromiseStatus.PENDING if opening is None else opening.status
+        if row.opening_status is not expected_opening:
+            problems.append(
+                f"promise {row.promise_id!r} reports opening status "
+                f"{row.opening_status.value!r} but opening_state says "
+                f"{expected_opening.value!r} (group 60)"
+            )
+        if row.closing_status is not closing.status:
+            problems.append(
+                f"promise {row.promise_id!r} reports closing status "
+                f"{row.closing_status.value!r} but closing_state says "
+                f"{closing.status.value!r} (group 60)"
+            )
+
+        # (2) ... and the pair itself is one the lifecycle permits.
+        pair = (row.opening_status, row.closing_status)
+        if pair not in _LEGAL_PROMISE_TRANSITIONS:
+            problems.append(
+                f"promise {row.promise_id!r} moved {row.opening_status.value!r} -> "
+                f"{row.closing_status.value!r}, which is not one of the six legal transitions "
+                "(group 60)"
+            )
+        if row.opening_status in _TRANSCRIBED_TERMINAL_PROMISE_STATUSES and (
+            row.closing_status is not row.opening_status
+        ):
+            problems.append(
+                f"promise {row.promise_id!r} left the terminal status "
+                f"{row.opening_status.value!r} (group 60)"
+            )
+
+        # (2) No reward before its deadline, and no expiry before the ORIGINAL horizon runs out.
+        # Checked against the stored deadline rather than against the settler's say-so, so a row
+        # that paid early fails here even if its own arithmetic closed.
+        if row.closing_status is PromiseStatus.FULFILLED and closing.settled_turn != (
+            row.deadline_turn
+        ):
+            problems.append(
+                f"promise {row.promise_id!r} was fulfilled on turn {closing.settled_turn} rather "
+                f"than on its deadline ({row.deadline_turn}) (group 60)"
+            )
+        if row.closing_status is PromiseStatus.EXPIRED:
+            if row.opening_status is not PromiseStatus.CANCELLED:
+                problems.append(
+                    f"promise {row.promise_id!r} expired from "
+                    f"{row.opening_status.value!r}; only a released promise may expire (group 60)"
+                )
+            if closing.settled_turn != row.deadline_turn:
+                problems.append(
+                    f"promise {row.promise_id!r} expired on turn {closing.settled_turn} rather "
+                    f"than at its original deadline ({row.deadline_turn}) (group 60)"
+                )
+
+        # (3, on the row) The DECLARED delta must be the one this transition licenses.
+        #
+        # `PromiseReport._delta_agrees_with_the_transition` makes the same claim, but it makes it by
+        # calling `promises.trust_delta_bps` -- the production function -- so it cannot catch a
+        # build whose table is wrong. Restating it here from the transcribed table is also the only
+        # thing that catches a DOUBLE application at a clamp boundary: a breach applied twice to a
+        # character near zero leaves closing trust identical either way, so the state comparison in
+        # check 3 is blind to it and only the declared figure gives it away.
+        expected_delta = (
+            0
+            if row.opening_status is row.closing_status
+            else _transcribed_promise_trust_delta_bps(row.closing_status)
+        )
+        if row.trust_delta_bps != expected_delta:
+            problems.append(
+                f"promise {row.promise_id!r} declares a trust delta of {row.trust_delta_bps} for "
+                f"{row.opening_status.value!r} -> {row.closing_status.value!r}, which licenses "
+                f"{expected_delta} (group 60)"
+            )
+
+        # (2a) Anti-reversal: evidence is written once and never moves.
+        if opening is not None:
+            if opening.qualifying_turn is not None and (
+                closing.qualifying_turn != opening.qualifying_turn
+            ):
+                problems.append(
+                    f"promise {row.promise_id!r} moved its qualifying turn from "
+                    f"{opening.qualifying_turn} to {closing.qualifying_turn}; it is "
+                    "first-write-wins (group 60)"
+                )
+            if opening.violated_turn is not None and (
+                closing.violated_turn != opening.violated_turn
+            ):
+                problems.append(
+                    f"promise {row.promise_id!r} moved its violation date from "
+                    f"{opening.violated_turn} to {closing.violated_turn}; a breach is dated to the "
+                    "FIRST violating turn and never re-dated (group 60)"
+                )
+            # (2a, R14) The assistance baseline is verified at creation and pinned forever after.
+            # Proving it against the make-turn state is impossible from here -- group 60 is handed
+            # this turn's two states only -- so the composition "checked once, then never moved"
+            # stands in for it, and is checkable from what each turn actually has.
+            if closing.baseline_assistance_drawn != opening.baseline_assistance_drawn:
+                problems.append(
+                    f"promise {row.promise_id!r} re-baselined its assistance draw from "
+                    f"{opening.baseline_assistance_drawn} to "
+                    f"{closing.baseline_assistance_drawn} (group 60)"
+                )
+        else:
+            # Created this turn: the baseline is the one turn it CAN be proved against state.
+            if closing.made_turn != turn:
+                problems.append(
+                    f"promise {row.promise_id!r} is absent from opening_state but claims to have "
+                    f"been made on turn {closing.made_turn}, not {turn} (group 60)"
+                )
+            if closing.term_kind == "assistance_restraint":
+                relationship = opening_state.world.foreign_relationships.get(closing.subject_id)
+                expected = 0 if relationship is None else relationship.assistance_drawn
+                if closing.baseline_assistance_drawn != expected:
+                    problems.append(
+                        f"promise {row.promise_id!r} captured an assistance baseline of "
+                        f"{closing.baseline_assistance_drawn}, but opening_state drew "
+                        f"{expected} from {closing.subject_id!r} (group 60)"
+                    )
+
+        # (2a, R16) Qualification is re-derived, in BOTH directions.
+        #
+        # Without this, a forged `qualifying_turn` is invisible: it is internally consistent with
+        # every other record, so only an independent reading of what the turn actually did can
+        # catch it. The reverse direction matters just as much -- a turn that DID put the promised
+        # proposal to a chamber must record it, or a player could be denied a promise they kept.
+        if closing.term_kind in _TRANSCRIBED_ACHIEVEMENT_TERMS:
+            qualified_here = _transcribed_promise_qualifies(
+                report=report, subject_id=closing.subject_id
+            )
+            already = opening is not None and opening.qualifying_turn is not None
+            if not already:
+                if closing.qualifying_turn == turn and not qualified_here:
+                    problems.append(
+                        f"promise {row.promise_id!r} claims to have been qualified on turn {turn}, "
+                        f"but no legislative-route proposal of kind {closing.subject_id!r} reached "
+                        "a chamber this turn (group 60)"
+                    )
+                elif closing.qualifying_turn is None and qualified_here:
+                    problems.append(
+                        f"promise {row.promise_id!r} was qualified this turn -- a "
+                        f"legislative-route {closing.subject_id!r} reached a chamber -- but records "
+                        "no qualifying turn (group 60)"
+                    )
+                elif closing.qualifying_turn not in (None, turn):
+                    problems.append(
+                        f"promise {row.promise_id!r} records a qualifying turn of "
+                        f"{closing.qualifying_turn}, which is neither this turn nor an earlier "
+                        "one it already carried (group 60)"
+                    )
+
+        # (2a) A breach is dated to the turn it was observed, never backdated or postponed.
+        if row.closing_status is PromiseStatus.BREACHED and row.opening_status is not (
+            PromiseStatus.BREACHED
+        ):
+            if closing.term_kind in _TRANSCRIBED_MAINTENANCE_TERMS:
+                if closing.violated_turn != turn:
+                    problems.append(
+                        f"promise {row.promise_id!r} breached this turn but dates its violation to "
+                        f"{closing.violated_turn} rather than {turn} (group 60)"
+                    )
+            elif closing.violated_turn is not None:
+                problems.append(
+                    f"achievement promise {row.promise_id!r} carries a violation date "
+                    f"({closing.violated_turn}); an achievement term is never violated early, it "
+                    "simply fails at its deadline (group 60)"
+                )
+            elif closing.settled_turn != row.deadline_turn:
+                problems.append(
+                    f"achievement promise {row.promise_id!r} breached on turn "
+                    f"{closing.settled_turn} rather than at its deadline "
+                    f"({row.deadline_turn}) (group 60)"
+                )
+
+    return problems
+
+
+def _reconcile_promise_trust(
+    *, opening_state: GameState, closing_state: GameState, rows: list[PromiseReport]
+) -> list[str]:
+    """Group 60, check 3: trust moved exactly once, for exactly the promises that settled.
+
+    Compared against the SUMMED transcribed deltas rather than against a plausible total, so a
+    double application fails here even at the bounds, where the clamp would otherwise absorb the
+    second one and leave a total that looks right.
+
+    The second half is the one that makes `personal_trust` auditable at all: every OTHER character
+    is byte-identical. A build that quietly nudged an unrelated leader's trust -- the exact thing
+    the single-writer rule exists to forbid -- fails here even though no promise row mentions them.
+    """
+    problems: list[str] = []
+    expected_deltas: dict[str, int] = {}
+    for row in rows:
+        if row.opening_status is row.closing_status:
+            continue
+        delta = _transcribed_promise_trust_delta_bps(row.closing_status)
+        expected_deltas[row.character_id] = expected_deltas.get(row.character_id, 0) + delta
+
+    opening_characters = opening_state.world.characters
+    closing_characters = closing_state.world.characters
+    if set(opening_characters) != set(closing_characters):
+        return [
+            "the character registry gained or lost members during a turn; promises move trust, "
+            "never the roster (group 60)"
+        ]
+
+    for character_id, opening_character in sorted(opening_characters.items()):
+        closing_character = closing_characters[character_id]
+        expected_trust = clamp_bps(
+            opening_character.personal_trust + expected_deltas.get(character_id, 0)
+        )
+        if closing_character.personal_trust != expected_trust:
+            problems.append(
+                f"character {character_id!r} closes on personal trust "
+                f"{closing_character.personal_trust}, but opening trust "
+                f"{opening_character.personal_trust} plus this turn's settled deltas "
+                f"({expected_deltas.get(character_id, 0)}) is {expected_trust} (group 60)"
+            )
+        if (
+            closing_character.model_copy(
+                update={"personal_trust": opening_character.personal_trust}
+            )
+            != opening_character
+        ):
+            problems.append(
+                f"character {character_id!r} changed in some field other than personal_trust; "
+                "promises are the only mechanic that writes the roster at all (group 60)"
+            )
+
+    return problems
+
+
+def _reconcile_promise_entries(
+    *, rows: list[PromiseReport], report: TurnReport, turn: int
+) -> list[str]:
+    """Group 60, check 5: the promise `government` entries ARE the rows, restated.
+
+    Group 57 narrowed itself to cabinet reason ids and closed the category's partition by name; this
+    is the other half of that partition, so between them no `government` entry goes unproved.
+
+    TWO independent events, not one test -- a `promise_made` per creation and a settlement entry per
+    transition. A promise made this turn and left pending still announces itself, and a promise
+    created and breached in one set announces both. Counting "rows that moved" would have silently
+    dropped the first of those.
+    """
+    problems: list[str] = []
+    entries = [entry for entry in report.entries if entry.reason_id in _PROMISE_ENTRY_REASON_IDS]
+
+    expected: list[tuple[str, dict[str, str | int]]] = []
+    for row in sorted(rows, key=lambda candidate: candidate.promise_id):
+        params: dict[str, str | int] = {
+            "promise_id": row.promise_id,
+            "character_id": row.character_id,
+            "character_display_name": row.character_display_name,
+            "term_kind": row.term_kind,
+            "subject_id": row.subject_id,
+            "subject_display_name": row.subject_display_name,
+            "deadline_turn": row.deadline_turn,
+        }
+        if row.made_turn == turn:
+            expected.append(("promise_made", params))
+    for row in sorted(rows, key=lambda candidate: candidate.promise_id):
+        if row.opening_status is row.closing_status:
+            continue
+        reason_id = _transcribed_settlement_reason_id(row.closing_status)
+        if reason_id is None:
+            problems.append(
+                f"promise {row.promise_id!r} settled into {row.closing_status.value!r}, which "
+                "announces no event (group 60)"
+            )
+            continue
+        expected.append(
+            (
+                reason_id,
+                {
+                    "promise_id": row.promise_id,
+                    "character_id": row.character_id,
+                    "character_display_name": row.character_display_name,
+                    "term_kind": row.term_kind,
+                    "subject_id": row.subject_id,
+                    "subject_display_name": row.subject_display_name,
+                    "deadline_turn": row.deadline_turn,
+                    "trust_delta_bps": row.trust_delta_bps,
+                },
+            )
+        )
+
+    if len(entries) != len(expected):
+        return [
+            *problems,
+            f"the governance subtree implies {len(expected)} promise entry/entries but the turn "
+            f"carries {len(entries)} (group 60)",
+        ]
+
+    for entry, (reason_id, params) in zip(entries, expected, strict=True):
+        if entry.reason_id != reason_id:
+            problems.append(
+                f"promise entry reason_id={entry.reason_id!r} does not match the expected "
+                f"{reason_id!r} (group 60)"
+            )
+        elif dict(entry.params) != params:
+            problems.append(
+                f"promise entry {entry.reason_id!r} params {dict(entry.params)!r} do not match "
+                f"its row ({params!r}) (group 60)"
+            )
+        if entry.category != "government":
+            problems.append(
+                f"promise entry {entry.reason_id!r} is filed under {entry.category!r} rather than "
+                "'government' (group 60)"
+            )
+
+    return problems
+
+
+def _reconcile_promises(
+    *,
+    opening_state: GameState,
+    closing_state: GameState,
+    report: TurnReport,
+    decisions: DecisionSet | None,
+) -> list[str]:
+    """Group 60: the promise slice's four records of one turn agree.
+
+    The submitted `DecisionSet`, the opening and closing states, the `governance` subtree and the
+    `government` entries. Every claim is re-derived by TRANSCRIPTION -- see the module comment above
+    `_TRANSCRIBED_MAINTENANCE_TERMS` for where the shared/transcribed line falls and why it is drawn
+    at behaviour rather than at "constant versus function".
+    """
+    governance = report.governance
+    if governance is None:
+        # The fifteen-report completeness rule already fails a resolved turn with no governance
+        # subtree; nothing further to say here.
+        return []
+
+    problems: list[str] = []
+    turn = opening_state.turn
+    rows = list(governance.promises)
+    decision = None if decisions is None else decisions.promise_decision()
+
+    # (5) The reported set is exactly the pass set -- proved in both directions, so neither a
+    # restated archive row nor a dropped live one can pass.
+    reported = {row.promise_id for row in rows}
+    if decisions is not None:
+        expected_keys = _transcribed_promise_pass_keys(
+            opening_state=opening_state, decisions=decisions
+        )
+        if reported != expected_keys:
+            problems.append(
+                f"the governance subtree reports promises {sorted(reported)!r} but this turn's "
+                f"live set is {sorted(expected_keys)!r}; a promise that settled on an earlier turn "
+                "is reported once and never again, and a live one is reported every turn "
+                "(group 60)"
+            )
+
+    # (1) The decision produced exactly the row it claims, under the id the triple derives.
+    if decision is not None and decision.action == "make":
+        assert decision.term_kind is not None
+        expected_id = _transcribed_promise_id(
+            character_id=decision.character_id,
+            term_kind=decision.term_kind,
+            made_turn=turn,
+        )
+        if len(expected_id) != PROMISE_ID_LENGTH:
+            problems.append(
+                f"the derived promise id is {len(expected_id)} characters, not "
+                f"{PROMISE_ID_LENGTH} (group 60)"
+            )
+        created = closing_state.world.promises.get(expected_id)
+        if created is None:
+            problems.append(
+                f"a promise was made but closing_state carries no row under {expected_id!r} "
+                "(group 60)"
+            )
+        else:
+            if created.character_id != decision.character_id or (
+                created.term_kind != decision.term_kind
+            ):
+                problems.append(
+                    f"promise {expected_id!r} names {created.character_id!r}/"
+                    f"{created.term_kind!r} but was submitted for {decision.character_id!r}/"
+                    f"{decision.term_kind!r} (group 60)"
+                )
+            if created.subject_id != decision.subject_id:
+                problems.append(
+                    f"promise {expected_id!r} names subject {created.subject_id!r} but was "
+                    f"submitted for {decision.subject_id!r} (group 60)"
+                )
+            if created.deadline_turn != decision.deadline_turn:
+                problems.append(
+                    f"promise {expected_id!r} carries deadline {created.deadline_turn} but was "
+                    f"submitted with {decision.deadline_turn} (group 60)"
+                )
+            if created.deadline_turn < turn + MINIMUM_PROMISE_TURNS:
+                problems.append(
+                    f"promise {expected_id!r} closes a horizon of "
+                    f"{created.deadline_turn - turn} turns, under the minimum of "
+                    f"{MINIMUM_PROMISE_TURNS} (group 60)"
+                )
+            # A make closes PENDING, or BREACHED when its own set violated it the same turn. Any
+            # other closing status means the settler did something a make cannot do.
+            if created.status is PromiseStatus.BREACHED:
+                if created.violated_turn != turn:
+                    problems.append(
+                        f"promise {expected_id!r} was made and breached this turn but dates the "
+                        f"violation to {created.violated_turn} (group 60)"
+                    )
+            elif created.status is not PromiseStatus.PENDING:
+                problems.append(
+                    f"promise {expected_id!r} was created into {created.status.value!r}; a make "
+                    "closes PENDING, or BREACHED when the same set violated it (group 60)"
+                )
+
+    # (1) A release moved exactly the named row, and only it.
+    if decision is not None and decision.action == "release":
+        released_id = decision.promise_id
+        assert released_id is not None
+        released = closing_state.world.promises.get(released_id)
+        if released is None:
+            problems.append(
+                f"a release named {released_id!r}, which closing_state does not carry (group 60)"
+            )
+        elif released.status is not PromiseStatus.CANCELLED:
+            problems.append(
+                f"promise {released_id!r} was released but closes {released.status.value!r} "
+                "rather than 'cancelled' (group 60)"
+            )
+        elif released.released_turn != turn:
+            problems.append(
+                f"promise {released_id!r} was released this turn but dates the release to "
+                f"{released.released_turn} (group 60)"
+            )
+
+    problems.extend(
+        _reconcile_promise_transitions(
+            opening_state=opening_state,
+            closing_state=closing_state,
+            report=report,
+            rows=rows,
+        )
+    )
+    problems.extend(
+        _reconcile_promise_trust(
+            opening_state=opening_state, closing_state=closing_state, rows=rows
+        )
+    )
+    problems.extend(_reconcile_promise_entries(rows=rows, report=report, turn=turn))
+
+    # (4) The ledger row: present iff a release was paid for, unique, untargeted, exact.
+    ledger_rows = (
+        [
+            row
+            for row in report.political_capital.expenditures
+            if row.category is CapitalExpenditureCategory.PROMISE_RELEASE
+        ]
+        if report.political_capital is not None
+        else []
+    )
+    released_this_turn = decision is not None and decision.action == "release"
+    if released_this_turn and len(ledger_rows) != 1:
+        problems.append(
+            f"a promise was released but the ledger carries {len(ledger_rows)} PROMISE_RELEASE "
+            "row(s) (group 60)"
+        )
+    if not released_this_turn and ledger_rows:
+        problems.append(
+            f"no promise was released but the ledger carries {len(ledger_rows)} PROMISE_RELEASE "
+            "row(s) (group 60)"
+        )
+    for row in ledger_rows:
+        if row.political_capital != PROMISE_RELEASE_COST_CAPITAL:
+            problems.append(
+                f"the PROMISE_RELEASE ledger row charges {row.political_capital}, not the "
+                f"flat {PROMISE_RELEASE_COST_CAPITAL} (group 60)"
+            )
+        if row.party_id is not None or row.bloc_id is not None:
+            problems.append(
+                "the PROMISE_RELEASE ledger row is targeted; a release is paid to nobody the "
+                "ledger can address, and its identity lives on the promise row (group 60)"
+            )
+
+    # (6) A quiet turn: nothing submitted and nothing settled means nothing reported anywhere. The
+    # entry and trust checks above already cover their halves, so this states the remaining one.
+    quiet = (
+        decisions is not None
+        and decision is None
+        and all(row.opening_status is row.closing_status for row in rows)
+    )
+    if quiet and ledger_rows:
+        problems.append(
+            "a turn with no promise decision and no settlement still carries a "
+            "PROMISE_RELEASE ledger row (group 60)"
+        )
 
     return problems

@@ -437,3 +437,90 @@ describe("driverSentence, foreign assistance", () => {
     }
   });
 });
+
+describe("driverSentence — promises (characters slice)", () => {
+  // The exact params slot 1 stores on each entry, so these tests exercise the real shapes rather
+  // than convenient ones. `subject_display_name` is the server-supplied label: nothing on this side
+  // turns `chief_of_staff` into prose.
+  const base = {
+    promise_id: `pr_${"a".repeat(64)}`,
+    character_id: "hal_verrin",
+    character_display_name: "Hal Verrin",
+    term_kind: "cabinet_tenure",
+    subject_id: "chief_of_staff",
+    subject_display_name: "chief of staff",
+    deadline_turn: 4,
+  };
+  const rawIdentifiers = ["chief_of_staff", "cabinet_tenure", "hal_verrin", "promise_"];
+
+  const expectNoRawIds = (sentence: string): void => {
+    for (const raw of rawIdentifiers) {
+      expect(sentence).not.toContain(raw);
+    }
+  };
+
+  it("states the promise and its absolute deadline when one is given", () => {
+    const sentence = driverSentence("promise_made", base, "The government gave a promise.");
+    expect(sentence).toBe("Hal Verrin was promised chief of staff through turn 4.");
+    expectNoRawIds(sentence);
+  });
+
+  it("names the trust gained when a promise is kept", () => {
+    const sentence = driverSentence(
+      "promise_fulfilled",
+      { ...base, trust_delta_bps: 1000 },
+      "A promise was kept.",
+    );
+    expect(sentence).toBe(
+      "Hal Verrin saw the promise of chief of staff kept, gaining 1000 bps of trust.",
+    );
+    expectNoRawIds(sentence);
+  });
+
+  it("renders a breach as a LOSS of the magnitude, never as a negative gain", () => {
+    // The stored delta is -2000. "losing -2000" would read as a gain to anyone skimming, so the
+    // word carries the sign and the figure carries the magnitude.
+    const sentence = driverSentence(
+      "promise_breached",
+      { ...base, trust_delta_bps: -2000 },
+      "A promise was broken.",
+    );
+    expect(sentence).toBe(
+      "Hal Verrin saw the promise of chief of staff broken, losing 2000 bps of trust.",
+    );
+    expect(sentence).not.toContain("-2000");
+    expectNoRawIds(sentence);
+  });
+
+  it("states no trust figure for a release, because a release moves none", () => {
+    // Naming a zero would imply the counterparty shrugged it off; what happened is that the
+    // obligation was bought back for political capital.
+    const sentence = driverSentence(
+      "promise_released",
+      { ...base, trust_delta_bps: 0 },
+      "The government paid to be released from a promise.",
+    );
+    expect(sentence).toBe("Hal Verrin released the government from the promise of chief of staff.");
+    expect(sentence).not.toContain("0 bps");
+    expectNoRawIds(sentence);
+  });
+
+  it("closes the record when a released promise runs out", () => {
+    const sentence = driverSentence(
+      "promise_expired",
+      { ...base, trust_delta_bps: 0 },
+      "A released promise ran out.",
+    );
+    expect(sentence).toBe("The released promise of chief of staff to Hal Verrin ran out at turn 4.");
+    expectNoRawIds(sentence);
+  });
+
+  it("falls back to the label when a required param is missing", () => {
+    // Every case guards its own params, so a truncated entry degrades to the generic label rather
+    // than rendering "undefined" at a player.
+    const { subject_display_name: _subject, ...withoutSubject } = base;
+    expect(driverSentence("promise_made", withoutSubject, "generic")).toBe("generic");
+    const { deadline_turn: _deadline, ...withoutDeadline } = base;
+    expect(driverSentence("promise_expired", withoutDeadline, "generic")).toBe("generic");
+  });
+});

@@ -162,6 +162,20 @@ legislative or map path moved: on a quiet turn nobody invests, so the chief of s
 consumer contributes nothing and the closing state is otherwise byte-identical to a run of the
 engine that had never heard of him."""
 
+EXPECTED_PROMISES_DIFFERENCE = {"world.promises"}
+"""The one path the promise slice adds to a quiet closing state, as its own named set.
+
+`WorldState.promises` is a DEFAULTED empty dict, and it was tempting to predict it would not show
+up here at all -- but a defaulted dict still serialises, so the key exists in every 0.22.0 state and
+is absent from every 0.14.0 one. Named rather than absorbed into a widened exclusion, for the reason
+every set above is named: a second promise path appearing later must fail this test instead of
+disappearing into it.
+
+What is NOT in this set carries the claim. No `countries[*]` path moves, so no character's
+`personal_trust` moved on a quiet turn -- which is exactly right, because trust moves on promise
+settlements only and a quiet turn settles nothing. The slice makes trust mutable; it does not make
+it drift."""
+
 EXPECTED_FOREIGN_ASSISTANCE_DIFFERENCES = {
     "world.foreign_profiles.kessia.assistance_capacity",
     "world.foreign_profiles.vetruska.assistance_capacity",
@@ -595,13 +609,17 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
                 | EXPECTED_MAP_RESOURCES_DIFFERENCES
                 | EXPECTED_CHARACTERS_DIFFERENCES
                 | EXPECTED_FOREIGN_ASSISTANCE_DIFFERENCES
+                | EXPECTED_PROMISES_DIFFERENCE
             ), f"turn {live_row['turn']}: {sorted(differences)}"
 
     def test_3a_the_envelope_difference_is_exactly_the_ruleset_bump(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """So the pinned set above can never quietly absorb a different meaning."""
-        assert live[-1]["state"]["ruleset_version"] == "0.21.0"
+        assert live[-1]["state"]["ruleset_version"] == "0.22.0"
+        # Deliberately UNMOVED at 0.18.0: promises are created in play, never authored, so this
+        # commit changes no scenario content. A content bump here would mean the slice had quietly
+        # started authoring something.
         assert live[-1]["state"]["content_version"] == "0.18.0"
         assert baseline[-1]["state"]["ruleset_version"] == "0.14.0"
         assert baseline[-1]["state"]["content_version"] == "0.14.0"
@@ -630,6 +648,31 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
         assert set(live_world["foreign_relationships"]) == {"kessia", "vetruska"}
         for relationship in live_world["foreign_relationships"].values():
             assert relationship["assistance_drawn"] == 0
+
+    def test_3d_the_promises_difference_is_an_empty_ledger_and_unmoved_trust(
+        self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
+    ) -> None:
+        """The same anti-absorption check for `EXPECTED_PROMISES_DIFFERENCE`: the one path it
+        names is pinned to the shape it records, so it cannot start meaning something else while
+        the set above still passes.
+
+        The second half is the sharper claim, and it is the one this slice needs. Promises make
+        `personal_trust` mutable for the first time in the engine, so a quiet turn is exactly where
+        an accidental drift would hide -- nothing is submitted, nothing settles, and a small
+        per-turn nudge would look like ordinary movement. Every character's trust is therefore
+        asserted byte-identical to the turn before, across every turn of the run.
+        """
+        live_world = live[-1]["state"]["world"]
+        assert "promises" not in baseline[-1]["state"]["world"]
+        assert live_world["promises"] == {}, "a quiet turn promises nothing"
+
+        # Trust does not drift: it moves on settlements only, and these turns settle nothing.
+        for previous, current in zip(live, live[1:], strict=False):
+            for character_id, character in current["state"]["world"]["characters"].items():
+                assert (
+                    character["personal_trust"]
+                    == previous["state"]["world"]["characters"][character_id]["personal_trust"]
+                ), f"turn {current['turn']}: {character_id} drifted"
 
     def test_3b_the_characters_difference_is_a_roster_a_cabinet_and_an_absence(
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]

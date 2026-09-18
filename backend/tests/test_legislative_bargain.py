@@ -664,6 +664,11 @@ class TestMoney:
             "constitutional amendment",
             "cabinet appointment",
             "legislative bargain",
+            # (Characters slice, promises) The SIXTH term, added by name rather than left to the
+            # membership loop's tolerance: this check passes vacuously for any term it does not
+            # list, so a new capital sink that never appeared in the rejection message would go
+            # unnoticed. A player refused for affordability must be told every component.
+            "promise release",
         ):
             assert term in message
 
@@ -1229,7 +1234,7 @@ class TestCompatibility:
         raw = json.loads(_BARGAIN_FIXTURE.read_text(encoding="utf-8"))
         assert raw["ruleset_version"] == "0.19.0"
         assert raw["ruleset_version"] != RULESET_VERSION
-        assert RULESET_VERSION == "0.21.0"
+        assert RULESET_VERSION == "0.22.0"
 
     def _one_stored_bloc_row(self) -> dict[str, object]:
         raw = json.loads(_BARGAIN_FIXTURE.read_text(encoding="utf-8"))

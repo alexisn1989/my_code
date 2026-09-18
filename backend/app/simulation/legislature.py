@@ -171,3 +171,4 @@ class CapitalExpenditureCategory(StrEnum):
     DECREE = "decree"
     LEGISLATIVE_BARGAIN = "legislative_bargain"
     LEGISLATIVE_INFLUENCE = "legislative_influence"
+    PROMISE_RELEASE = "promise_release"

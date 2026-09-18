@@ -44,6 +44,7 @@ from app.simulation.constitution import (
 )
 from app.simulation.geography import StrictMapId
 from app.simulation.legislature import ProposalRoute
+from app.simulation.promises import PromiseTermKind
 from app.simulation.state import (
     CabinetPost,
     SpendingCategory,
@@ -668,6 +669,71 @@ class ForeignAssistanceDecision(BaseModel):
     profile_id: _StrictNonemptyId
 
 
+class PromiseDecision(BaseModel):
+    """Give one counterparty an undertaking, or pay to be let out of one (characters slice).
+
+    **One decision, two actions, and an exclusive shape.** A `make` names the term, its subject and
+    its deadline; a `release` names an existing promise id. Neither carries the other's fields, and
+    the validator below refuses any mixture — so a `make` carrying a `promise_id`, or a `release`
+    carrying a deadline, is unconstructible rather than merely invalid. That is the discipline
+    `LegislativeBargainCounterpartyOption._price_and_refusal_are_exclusive` established: a shape
+    that cannot express nonsense beats a shape that merely rejects it later.
+
+    **No amount and no trust figure.** What a promise is worth is a fact about the rules, not about
+    the request: keeping pays `PROMISE_KEPT_TRUST_GAIN_BPS`, breaking costs
+    `PROMISE_BREACHED_TRUST_LOSS_BPS`, and releasing costs `PROMISE_RELEASE_COST_CAPITAL`. A field
+    for any of them would be a number the player could only get wrong and the engine would ignore --
+    the same conclusion the bargain reached after two attempts at an offer field.
+
+    **`deadline_turn` is ABSOLUTE, never a duration.** A stored promise then means the same thing
+    whenever it is read, and the minimum-window check is one comparison rather than an arithmetic
+    that depends on when it happens to be evaluated.
+
+    `promise_id` is OPAQUE. The engine matches it as a key and never parses it; everything a reader
+    needs -- the counterparty, the term, the turn -- lives in typed fields on `PromiseState`.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    kind: Literal["promise"] = "promise"
+    action: Literal["make", "release"]
+    character_id: StrictCharacterId
+    term_kind: PromiseTermKind | None = None
+    subject_id: _StrictNonemptyId | None = None
+    deadline_turn: int | None = Field(default=None, strict=True, ge=1)
+    promise_id: _StrictNonemptyId | None = None
+
+    @model_validator(mode="after")
+    def _action_carries_exactly_its_own_fields(self) -> PromiseDecision:
+        """A `make` carries term/subject/deadline and no id; a `release` carries an id and none of
+        the three. Both directions, so neither half-shape can be built.
+
+        Stated as two explicit branches rather than one clever expression because the error a client
+        gets should name which action it sent and which field does not belong to it.
+        """
+        make_fields = {
+            "term_kind": self.term_kind,
+            "subject_id": self.subject_id,
+            "deadline_turn": self.deadline_turn,
+        }
+        if self.action == "make":
+            missing = sorted(name for name, value in make_fields.items() if value is None)
+            if missing:
+                raise ValueError(f"a promise 'make' requires {', '.join(missing)}")
+            if self.promise_id is not None:
+                raise ValueError(
+                    "a promise 'make' must not carry a promise_id -- the id is derived from the "
+                    "counterparty, the term and the turn"
+                )
+            return self
+        present = sorted(name for name, value in make_fields.items() if value is not None)
+        if present:
+            raise ValueError(f"a promise 'release' must not carry {', '.join(present)}")
+        if self.promise_id is None:
+            raise ValueError("a promise 'release' requires the promise_id it releases")
+        return self
+
+
 Decision: TypeAlias = Annotated[
     BudgetDecision
     | BlocRelationshipInvestmentDecision
@@ -675,7 +741,8 @@ Decision: TypeAlias = Annotated[
     | MilitaryMovementDecision
     | CabinetDecision
     | LegislativeBargainDecision
-    | ForeignAssistanceDecision,
+    | ForeignAssistanceDecision
+    | PromiseDecision,
     Field(discriminator="kind"),
 ]
 """The tagged decision union this module's header anticipated (Phase 3B2A).
@@ -877,6 +944,33 @@ class DecisionSet(BaseModel):
             )
         return self
 
+    def promise_decision(self) -> PromiseDecision | None:
+        """The submitted promise decision, or `None`. Unique by `_at_most_one_promise_decision`.
+
+        Identity-based like every accessor above, never `decisions[0]`: `"promise"` sorts LAST of
+        the eight kinds, after `"military_movement"`, so adding it changed no existing canonical
+        order and no already-serialised `decisions_json` digests differently.
+        """
+        return next((d for d in self.decisions if isinstance(d, PromiseDecision)), None)
+
+    @model_validator(mode="after")
+    def _at_most_one_promise_decision(self) -> DecisionSet:
+        """One promise decision per turn — a `make` or a `release`, never both and never two.
+
+        Substantive rather than cosmetic, and it carries two rules at once. Two `make`s would need a
+        rule for how their capital and their settlements order within one turn, and there is no
+        defensible answer yet. And because a single decision's `action` is exclusively `"make"` or
+        `"release"`, capping the count at one is also what makes "create and release the same
+        promise in one set" structurally impossible — which is why no rejection code exists for that
+        case. A code would have been a branch no input could reach.
+        """
+        promises = sum(1 for d in self.decisions if isinstance(d, PromiseDecision))
+        if promises > 1:
+            raise ValueError(
+                f"at most one promise decision may appear in a DecisionSet, got {promises}"
+            )
+        return self
+
     @model_validator(mode="after")
     def _at_most_one_policy_proposal(self) -> DecisionSet:
         proposals = sum(
@@ -973,4 +1067,18 @@ def bloc_relationship_investment_digest(decision: BlocRelationshipInvestmentDeci
 
 def constitutional_amendment_decision_digest(decision: ConstitutionalAmendmentDecision) -> str:
     """A deterministic fingerprint over every field of a constitutional amendment decision."""
+    return canonical_digest(decision.model_dump(mode="json"))
+
+
+def promise_decision_digest(decision: PromiseDecision) -> str:
+    """A deterministic content fingerprint of a submitted promise decision.
+
+    The exact shape of the digest functions beside it, and it exists for the same reason they do:
+    `CapitalExpenditureReport.decision_digest` is required on every ledger row, so the
+    `PROMISE_RELEASE` row needs one tying that spend to one exact decision.
+
+    Covers the decision's own fields and nothing else. It is deliberately NOT the promise id: the
+    id identifies the promise, and this identifies the ACT of releasing it -- two different things,
+    and on a release turn the ledger row is about the second.
+    """
     return canonical_digest(decision.model_dump(mode="json"))

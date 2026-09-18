@@ -339,6 +339,43 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivePromiseView
+         * @description One promise already outstanding, and whether it can be released.
+         *
+         *     **Carries `PENDING` AND `CANCELLED` rows.** A released promise is not gone: it runs to its
+         *     original deadline, still bars a reissue for that `(character, term)` pair, and only then
+         *     expires. Dropping it at release would show the player a free slot the resolver will refuse.
+         *
+         *     `releasable` and `release_blocked_reason` are mutually exclusive, enforced below, the discipline
+         *     the bargain and assistance options already follow.
+         */
+        ActivePromiseView: {
+            /** Character Display Name */
+            character_display_name: string;
+            /** Character Id */
+            character_id: string;
+            /** Deadline Turn */
+            deadline_turn: number;
+            /** Made Turn */
+            made_turn: number;
+            /** Promise Id */
+            promise_id: string;
+            /** Releasable */
+            releasable: boolean;
+            /** Release Blocked Reason */
+            release_blocked_reason?: ("promise_already_released" | "promise_past_releasing") | null;
+            /** Released Turn */
+            released_turn?: number | null;
+            /** Status */
+            status: string;
+            /** Subject Display Name */
+            subject_display_name: string;
+            /** Subject Id */
+            subject_id: string;
+            /** Term Kind */
+            term_kind: string;
+        };
         /** Alert */
         Alert: {
             /** Detail */
@@ -627,6 +664,11 @@ export interface components {
          *     from are always the same age.
          */
         DecisionOptionsProjection: {
+            /**
+             * Active Promises
+             * @default []
+             */
+            active_promises: components["schemas"]["ActivePromiseView"][];
             /** Blocs */
             blocs: components["schemas"]["BlocOption"][];
             /**
@@ -663,6 +705,11 @@ export interface components {
              * @default []
              */
             policy_cards: components["schemas"]["PolicyCard"][];
+            /**
+             * Promise Options
+             * @default []
+             */
+            promise_options: components["schemas"]["PromiseOption"][];
             /** Relationship Investment Maximum */
             relationship_investment_maximum: number;
             /** Relationship Investment Minimum */
@@ -1173,6 +1220,11 @@ export interface components {
              * @default 0
              */
             opening_capital: number;
+            /**
+             * Promise Release Capital
+             * @default 0
+             */
+            promise_release_capital: number;
             /** Route */
             route?: string | null;
             /**
@@ -1199,6 +1251,38 @@ export interface components {
             }[];
             /** Revision */
             revision: string;
+        };
+        /**
+         * PromiseOption
+         * @description One promise the player could actually make: an exact, server-valid TRIPLE.
+         *
+         *     **One row per `(character_id, term_kind, subject_id)`, never three lists to combine.** The three
+         *     terms are role-bound and the roles are disjoint -- `cabinet_tenure` needs a sitting
+         *     officeholder, `legislative_support` a party leader of this legislature, `assistance_restraint`
+         *     the leader of the counterpart whose pool it names -- so a client cross-producting characters
+         *     against terms would offer combinations the resolver refuses at codes 2 and 3. Emitting the
+         *     valid triples is what keeps that legality rule on the server, where `DecisionOptionsProjection`'s
+         *     own docstring says it belongs.
+         *
+         *     **Labels are CURRENT, not snapshotted**, and the difference is deliberate. A `PromiseReport` row
+         *     snapshots names so a ten-turn-old turn renders the words it was resolved under; this is the
+         *     opposite kind of object -- revision-keyed, describing what exists to choose from NOW -- so a
+         *     renamed character must appear renamed here while the old turn keeps the old name. What the two
+         *     share is only that the client never transforms an identifier into prose.
+         */
+        PromiseOption: {
+            /** Character Display Name */
+            character_display_name: string;
+            /** Character Id */
+            character_id: string;
+            /** Earliest Legal Deadline */
+            earliest_legal_deadline: number;
+            /** Subject Display Name */
+            subject_display_name: string;
+            /** Subject Id */
+            subject_id: string;
+            /** Term Kind */
+            term_kind: string;
         };
         /**
          * ProposalRoute

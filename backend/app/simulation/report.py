@@ -165,6 +165,7 @@ from app.simulation.legitimacy import (
     UNEMPLOYMENT_SENSITIVITY_BPS,
 )
 from app.simulation.political_memory import SPENDING_REACTION_WEIGHT_BPS, TAX_REACTION_WEIGHT_BPS
+from app.simulation.promises import PromiseStatus, PromiseTermKind, trust_delta_bps
 from app.simulation.relationships import (
     CHIEF_OF_STAFF_MAX_BONUS_BPS,
     RELATIONSHIP_CEILING_BPS,
@@ -2611,6 +2612,7 @@ class CapitalExpenditureReport(BaseModel):
             CapitalExpenditureCategory.DECREE,
             CapitalExpenditureCategory.CABINET_APPOINTMENT,
             CapitalExpenditureCategory.LEGISLATIVE_BARGAIN,
+            CapitalExpenditureCategory.PROMISE_RELEASE,
         }
         is_untargeted = self.category in untargeted
         is_amendment = self.category is CapitalExpenditureCategory.CONSTITUTIONAL_AMENDMENT
@@ -3005,6 +3007,7 @@ class PoliticalCapitalReport(BaseModel):
             CapitalExpenditureCategory.DECREE,
             CapitalExpenditureCategory.CABINET_APPOINTMENT,
             CapitalExpenditureCategory.LEGISLATIVE_BARGAIN,
+            CapitalExpenditureCategory.PROMISE_RELEASE,
         ):
             rows = sum(1 for row in self.expenditures if row.category is category)
             if rows > 1:
@@ -4527,6 +4530,109 @@ class CabinetPostReport(BaseModel):
         return self
 
 
+class PromiseReport(BaseModel):
+    """One promise's whole turn: where it stood, where it stands, and what that moved.
+
+    Re-derives every claim from its OWN stored fields, the discipline `CabinetPostReport` beside it
+    follows: the trust arithmetic must close, the delta must agree with the transition, and a
+    positive delta must land on a deadline. Reconciliation (group 60) then proves those same fields
+    against `opening_state`, `closing_state` and the submitted decision -- so a row that is
+    internally perfect can still be caught lying about the world.
+
+    **Every live promise is reported every turn**, not only the ones that moved -- `MovementReport`'s
+    present-and-empty rule applied to a collection whose cardinality is whatever the campaign has
+    accumulated. A row whose statuses are equal is a complete statement that nothing happened to it,
+    which is different from the report having forgotten it.
+
+    **Display names are stored, not looked up**, for the reason every row in this module stores
+    them: a turn from ten turns ago must render the names it was resolved under, and a character
+    later renamed must not be able to rewrite what a past turn said.
+    """
+
+    model_config = _STRICT_CONFIG
+
+    promise_id: str
+    """OPAQUE. Nothing parses it -- every fact a reader needs is a typed field beside it."""
+    character_id: StrictCharacterId
+    character_display_name: StrictDisplayName
+    term_kind: PromiseTermKind
+    subject_id: str
+    subject_display_name: StrictDisplayName
+    """The post, proposal or counterpart the term is about, snapshotted from the same authored maps
+    the cabinet and bargain rows use, so no renderer transforms an identifier into prose."""
+    made_turn: int = Field(strict=True, ge=0)
+    deadline_turn: int = Field(strict=True, ge=1)
+    opening_status: PromiseStatus
+    closing_status: PromiseStatus
+    settled_turn: int | None = Field(default=None, strict=True, ge=0)
+    qualifying_turn: int | None = Field(default=None, strict=True, ge=0)
+    violated_turn: int | None = Field(default=None, strict=True, ge=0)
+    trust_before_bps: StrictCharacterTraitBps
+    trust_after_bps: StrictCharacterTraitBps
+    trust_delta_bps: int = Field(strict=True)
+    """SIGNED, and the arithmetic is closed by a validator: a breach is negative, a fulfilment
+    positive, and everything else exactly zero."""
+
+    @model_validator(mode="after")
+    def _trust_arithmetic_closes(self) -> PromiseReport:
+        """`before + delta == after`, with the clamp applied.
+
+        Replayed from the row's own stored fields rather than by calling the engine -- the same
+        reason `BlocRelationshipMemoryReport` replays the gain formula instead of calling
+        `relationship_gain_bps`. A row that stated a delta its own endpoints do not support is
+        unconstructible.
+        """
+        if clamp_bps(self.trust_before_bps + self.trust_delta_bps) != self.trust_after_bps:
+            raise ValueError(
+                f"promise trust does not close: {self.trust_before_bps} + {self.trust_delta_bps} "
+                f"clamped is not {self.trust_after_bps}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _delta_agrees_with_the_transition(self) -> PromiseReport:
+        """The trust column of the T1-T6 table, enforced on the row.
+
+        A row that did not move carries no delta; a fulfilment carries exactly the gain; a breach
+        exactly the loss; a release and an expiry nothing at all. Because the clamp can absorb part
+        of a delta at the bounds, the comparison is against the DECLARED delta, and the clamp is
+        checked separately above -- so a breach at 500 trust still records -2,000 here even though
+        only 500 of it lands.
+        """
+        if self.opening_status is self.closing_status:
+            if self.trust_delta_bps != 0:
+                raise ValueError(
+                    f"promise {self.promise_id!r} did not move but carries a trust delta of "
+                    f"{self.trust_delta_bps}"
+                )
+            return self
+        expected = trust_delta_bps(self.closing_status)
+        if self.trust_delta_bps != expected:
+            raise ValueError(
+                f"a promise reaching {self.closing_status.value!r} moves {expected} trust, not "
+                f"{self.trust_delta_bps}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _a_reward_lands_only_on_its_deadline(self) -> PromiseReport:
+        """No promise pays before it is due -- the rule that makes `MINIMUM_PROMISE_TURNS` control
+        the REWARD rather than merely constrain a field in a decision.
+
+        Enforced by the report's own shape as well as by the settler, so a forged row claiming an
+        early fulfilment is unconstructible rather than merely wrong.
+        """
+        if (
+            self.closing_status is PromiseStatus.FULFILLED
+            and self.settled_turn != self.deadline_turn
+        ):
+            raise ValueError(
+                f"a fulfilled promise settles on its deadline ({self.deadline_turn}), not turn "
+                f"{self.settled_turn}"
+            )
+        return self
+
+
 class GovernanceReport(BaseModel):
     """The 15th domain report: this turn's cabinet, post by post.
 
@@ -4544,6 +4650,20 @@ class GovernanceReport(BaseModel):
     model_config = _STRICT_CONFIG
 
     posts: tuple[CabinetPostReport, ...]
+    promises: tuple[PromiseReport, ...]
+    """Every promise the campaign has accumulated, live and settled, canonical by `promise_id`.
+
+    **REQUIRED, with no default, and that is the breaking field of the `0.21.0 -> 0.22.0` bump.**
+    A stored 0.21.0 governance report carries `posts` alone, so re-parsing one under this model
+    fails on a missing required field -- which is exactly what the compatibility proofs assert.
+    Defaulting it to an empty tuple would make every old report load and would quietly claim that a
+    turn resolved before this mechanic existed had "no promises outstanding": a statement about
+    undertakings nobody could have given.
+
+    Present-and-empty on a campaign that has promised nothing, and present-and-complete forever
+    after -- settled rows are never dropped, because the record of what a player did with their word
+    is the thing this mechanic exists to keep.
+    """
 
     @model_validator(mode="after")
     def _every_post_appears_exactly_once_in_canonical_order(self) -> GovernanceReport:
@@ -4561,6 +4681,22 @@ class GovernanceReport(BaseModel):
                 f"governance report must carry every cabinet post exactly once; got {values!r}, "
                 f"expected {expected!r}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _promises_are_in_canonical_id_order(self) -> GovernanceReport:
+        """Canonical by `promise_id`, rejected rather than sorted -- this report is hash-covered, so
+        a re-ordering is a different document and silently normalising one would hide that.
+
+        Ordering by the opaque id rather than by anything meaningful is deliberate: the id is a
+        digest, so the order carries no information a reader could mistake for significance, and it
+        stays stable as promises settle.
+        """
+        ids = [row.promise_id for row in self.promises]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"duplicate promise id(s) in governance report: {sorted(ids)!r}")
+        if ids != sorted(ids):
+            raise ValueError("governance promises are not in canonical promise-id order")
         return self
 
 

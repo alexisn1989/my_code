@@ -478,13 +478,13 @@ class TestMovementIsAcceptedAndAppliedTogether:
 
         Renamed from `..._has_grown_by_exactly_one_kind`: the Military Movement slice added
         `military_movement`, the characters slice added `cabinet`, then `legislative_bargain`, then
-        `foreign_assistance`, so "one" stopped being true while the structural claim -- these kinds
-        and no others -- did not. A membership assertion keeps catching an accidentally-added kind
-        either way.
+        `foreign_assistance`, then `promise`, so "one" stopped being true while the structural claim
+        -- these kinds and no others -- did not. A membership assertion keeps catching an
+        accidentally-added kind either way.
 
         Deliberately kept as SET EQUALITY rather than relaxed to a subset check when the union grew:
         a subset assertion would stop catching the very thing this test exists for, an accidentally
-        added seventh or eighth kind.
+        added eighth or ninth kind.
         """
         import typing
 
@@ -500,6 +500,7 @@ class TestMovementIsAcceptedAndAppliedTogether:
             "foreign_assistance",
             "legislative_bargain",
             "military_movement",
+            "promise",
         }
 
     def test_military_movement_sorts_last_so_no_existing_canonical_order_changes(self) -> None:

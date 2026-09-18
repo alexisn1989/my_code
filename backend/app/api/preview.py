@@ -63,6 +63,7 @@ from app.simulation.phases import (
     _compute_proposed_spending_plan,
     _compute_proposed_tax_policy,
 )
+from app.simulation.promises import PROMISE_RELEASE_COST_CAPITAL, release_block_reason
 from app.simulation.state import (
     CabinetPost,
     GameState,
@@ -193,7 +194,19 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
         sum(row.political_capital for row in investment.investments) if investment else 0
     )
     cabinet_total = _cabinet_cost(state, cabinet)
-    committed = route_cost + influence_total + investment_total + cabinet_total + bargain_price
+    # (Characters slice) The SIXTH term: the flat release price. By the time this runs the set has
+    # already passed `_require_no_structural_problem`, so a blocked release was rejected above and
+    # cannot reach here -- the helper's zero branch is a totality guarantee, not a case a player
+    # can observe.
+    promise_release = _promise_release_cost(state, decision_set)
+    committed = (
+        route_cost
+        + influence_total
+        + investment_total
+        + cabinet_total
+        + bargain_price
+        + promise_release
+    )
     opening_capital = politics.political_capital
 
     return PreviewProjection(
@@ -209,10 +222,42 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
         cabinet_capital=cabinet_total,
         legislative_bargain_capital=bargain_price,
         foreign_assistance_estimate=assistance_estimate,
+        promise_release_capital=promise_release,
         committed_capital=committed,
         opening_capital=opening_capital,
         affordable=committed <= opening_capital,
     )
+
+
+def _promise_release_cost(state: GameState, decision_set: DecisionSet) -> int:
+    """`PROMISE_RELEASE_COST_CAPITAL` when this set releases a promise the engine would ACCEPT,
+    else 0.
+
+    Priced through `release_block_reason` -- the same predicate slot 1's code 7 raises on -- so a
+    preview can never quote a charge the resolver would not make.
+
+    **The zero return is a private defensive property, not public behaviour.** `preview_decisions`
+    calls `_require_no_structural_problem` BEFORE any scoring, and that delegates to
+    `first_decision_problem` and raises `DecisionSetError` on any promise problem -- so a blocked
+    release never reaches this function at all, and a player never sees a projection quoting 0 for
+    one. The same is true of every earlier promise code: an unknown character is refused before
+    anything is priced.
+
+    The branch still earns its place. Keeping this helper TOTAL means a future caller that priced
+    before validating could not silently charge for a release the turn will refuse; it is a
+    guarantee about the helper, and the tests label it as the unreachable-by-construction property
+    it is rather than as something a client can observe.
+    """
+    decision = decision_set.promise_decision()
+    if decision is None or decision.action != "release":
+        return 0
+    existing = state.world.promises.get(decision.promise_id or "")
+    blocked = release_block_reason(
+        status=None if existing is None else existing.status,
+        deadline_turn=None if existing is None else existing.deadline_turn,
+        resolving_turn=state.turn,
+    )
+    return 0 if blocked is not None else PROMISE_RELEASE_COST_CAPITAL
 
 
 def _cabinet_cost(state: GameState, decision: CabinetDecision | None) -> int:

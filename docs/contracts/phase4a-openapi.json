@@ -1,6 +1,92 @@
 {
   "components": {
     "schemas": {
+      "ActivePromiseView": {
+        "additionalProperties": false,
+        "description": "One promise already outstanding, and whether it can be released.\n\n**Carries `PENDING` AND `CANCELLED` rows.** A released promise is not gone: it runs to its\noriginal deadline, still bars a reissue for that `(character, term)` pair, and only then\nexpires. Dropping it at release would show the player a free slot the resolver will refuse.\n\n`releasable` and `release_blocked_reason` are mutually exclusive, enforced below, the discipline\nthe bargain and assistance options already follow.",
+        "properties": {
+          "character_display_name": {
+            "title": "Character Display Name",
+            "type": "string"
+          },
+          "character_id": {
+            "title": "Character Id",
+            "type": "string"
+          },
+          "deadline_turn": {
+            "title": "Deadline Turn",
+            "type": "integer"
+          },
+          "made_turn": {
+            "title": "Made Turn",
+            "type": "integer"
+          },
+          "promise_id": {
+            "title": "Promise Id",
+            "type": "string"
+          },
+          "releasable": {
+            "title": "Releasable",
+            "type": "boolean"
+          },
+          "release_blocked_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "promise_already_released",
+                  "promise_past_releasing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Blocked Reason"
+          },
+          "released_turn": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released Turn"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_display_name": {
+            "title": "Subject Display Name",
+            "type": "string"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "term_kind": {
+            "title": "Term Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "promise_id",
+          "character_id",
+          "character_display_name",
+          "term_kind",
+          "subject_id",
+          "subject_display_name",
+          "status",
+          "made_turn",
+          "deadline_turn",
+          "releasable"
+        ],
+        "title": "ActivePromiseView",
+        "type": "object"
+      },
       "Alert": {
         "additionalProperties": false,
         "properties": {
@@ -663,6 +749,14 @@
         "additionalProperties": false,
         "description": "Every REAL fact and constant needed to construct a legal decision.\n\nNothing here is invented: the bps and capital bounds are the engine's own\nstrict types and constants (`StrictBps`, `RELATIONSHIP_INVESTMENT_CAP`,\n`DECREE_POLITICAL_CAPITAL_COST`, `CONSTITUTIONAL_AMENDMENT_DECREE_COST`),\nand the spending, bloc and constitutional-axis listings are read straight\nfrom state. This endpoint answers \"what exists to choose from\" -- it never\nscores a draft (`/preview` does that) and never decides legality on\nsubmission (`/resolve`'s own validators still do, authoritatively).\n\n`policy_cards` is the Gate 4A3A game-loop projection: named, understood\nchoices generated from this SAME state. It shares this envelope's\n`revision`, so a card catalog and the legal-move facts it was generated\nfrom are always the same age.",
         "properties": {
+          "active_promises": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ActivePromiseView"
+            },
+            "title": "Active Promises",
+            "type": "array"
+          },
           "blocs": {
             "items": {
               "$ref": "#/components/schemas/BlocOption"
@@ -741,6 +835,14 @@
               "$ref": "#/components/schemas/PolicyCard"
             },
             "title": "Policy Cards",
+            "type": "array"
+          },
+          "promise_options": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PromiseOption"
+            },
+            "title": "Promise Options",
             "type": "array"
           },
           "relationship_investment_maximum": {
@@ -1815,6 +1917,11 @@
             "title": "Opening Capital",
             "type": "integer"
           },
+          "promise_release_capital": {
+            "default": 0,
+            "title": "Promise Release Capital",
+            "type": "integer"
+          },
           "route": {
             "anyOf": [
               {
@@ -1866,6 +1973,46 @@
           "campaign_id"
         ],
         "title": "PreviewRequest",
+        "type": "object"
+      },
+      "PromiseOption": {
+        "additionalProperties": false,
+        "description": "One promise the player could actually make: an exact, server-valid TRIPLE.\n\n**One row per `(character_id, term_kind, subject_id)`, never three lists to combine.** The three\nterms are role-bound and the roles are disjoint -- `cabinet_tenure` needs a sitting\nofficeholder, `legislative_support` a party leader of this legislature, `assistance_restraint`\nthe leader of the counterpart whose pool it names -- so a client cross-producting characters\nagainst terms would offer combinations the resolver refuses at codes 2 and 3. Emitting the\nvalid triples is what keeps that legality rule on the server, where `DecisionOptionsProjection`'s\nown docstring says it belongs.\n\n**Labels are CURRENT, not snapshotted**, and the difference is deliberate. A `PromiseReport` row\nsnapshots names so a ten-turn-old turn renders the words it was resolved under; this is the\nopposite kind of object -- revision-keyed, describing what exists to choose from NOW -- so a\nrenamed character must appear renamed here while the old turn keeps the old name. What the two\nshare is only that the client never transforms an identifier into prose.",
+        "properties": {
+          "character_display_name": {
+            "title": "Character Display Name",
+            "type": "string"
+          },
+          "character_id": {
+            "title": "Character Id",
+            "type": "string"
+          },
+          "earliest_legal_deadline": {
+            "title": "Earliest Legal Deadline",
+            "type": "integer"
+          },
+          "subject_display_name": {
+            "title": "Subject Display Name",
+            "type": "string"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "term_kind": {
+            "title": "Term Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "character_id",
+          "character_display_name",
+          "term_kind",
+          "subject_id",
+          "subject_display_name",
+          "earliest_legal_deadline"
+        ],
+        "title": "PromiseOption",
         "type": "object"
       },
       "ProposalRoute": {
@@ -2562,7 +2709,7 @@
   "info": {
     "summary": "Local, loopback-only interface to the MANDATE simulation engine.",
     "title": "MANDATE local game API",
-    "version": "0.21.0"
+    "version": "0.22.0"
   },
   "openapi": "3.1.0",
   "paths": {

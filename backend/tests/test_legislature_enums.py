@@ -81,6 +81,12 @@ def test_capital_expenditure_category_values_and_declaration_order_are_stable() 
         # test below states and silently changed the ledger's canonical sort.
         "legislative_bargain",
         "legislative_influence",
+        # Characters slice: the untargeted promise-release sink. Appended rather than inserted, and
+        # that is not an inconsistency with the two above -- "promise_release" sorts AFTER
+        # "legislative_influence", so its alphabetical place IS last. The rule is the same one in
+        # every case: declaration order equals sorted-by-value, so the ledger's canonical sort is
+        # never a second convention anyone has to remember.
+        "promise_release",
     ]
 
 
