@@ -145,6 +145,7 @@ from app.simulation.labor_allocation import (
 from app.simulation.legislative_bargaining import (
     LEGISLATIVE_ENDORSEMENT_BPS,
     assess_legislative_bargain,
+    bargain_route_is_legislative,
 )
 from app.simulation.legislative_voting import (
     CONSTITUTIONAL_AMENDMENT_DECREE_COST,
@@ -1303,6 +1304,23 @@ def _resolve_legislative_bargain(
         raise DecisionSetError(
             f"legislative_bargain_proposal_absent: this decision set carries no "
             f"{decision.proposal_kind!r} proposal for the bargain to support"
+        )
+
+    # Code 7, AFTER code 6, because a route is only meaningful once the proposal has been found:
+    # "your set has no budget" is the more useful answer than "your absent budget took the wrong
+    # route". The route is on the decision, so this is knowable here and needs no vote to discover.
+    proposal = next(
+        d
+        for d in ctx.decisions.decisions
+        if isinstance(d, BudgetDecision | ConstitutionalAmendmentDecision)
+        and d.kind == decision.proposal_kind
+    )
+    route_value = proposal.route.value
+    if not bargain_route_is_legislative(route_value=route_value):
+        raise DecisionSetError(
+            "legislative_bargain_requires_legislative_route: a bargain buys support in a chamber "
+            f"vote, and the {decision.proposal_kind!r} proposal takes the {route_value!r} route, "
+            "which holds none"
         )
 
     assessment = assess_legislative_bargain(

@@ -187,3 +187,30 @@ def assess_legislative_bargain(
             personal_trust_bps=personal_trust_bps,
         ),
     )
+
+
+def bargain_route_is_legislative(*, route_value: str) -> bool:
+    """Whether a proposal on this route can carry an endorsement at all.
+
+    ONE predicate, read by slot 1's code 7 and by `api.decision_preflight`, so the two surfaces
+    cannot disagree about which routes a bargain is legal on.
+
+    **Why a decree-route bargain is refused rather than charged.** A bargain buys support in a
+    CHAMBER VOTE: the endorsement is an addend inside `resolve_bloc_support`, applied to every bloc
+    of the endorsed party. A decree bypasses the chamber entirely, so the turn produces no
+    `BlocVoteReport` rows at all and the endorsement reaches nothing.
+
+    This was measured before it was fixed. A decree budget with an accepted bargain resolved
+    cleanly, recorded `endorsement_bps=2000`, charged 147 political capital to the ledger, and
+    applied the endorsement to ZERO blocs. Reconciliation did not catch it: group 58's per-bloc
+    check iterates the vote rows, and on a decree turn there are none, so the loop body never ran
+    and the check passed vacuously.
+
+    That is not "a bargain buys a vote, not an outcome" -- the rule that makes charging for a LOST
+    vote correct. No vote was ever held, so the player bought nothing. It is refused at submission,
+    where the route is already known from the decision itself.
+
+    Takes the route's VALUE rather than the enum so the API layer need not import
+    `simulation.legislature` to ask the question; the resolver passes `route.value`.
+    """
+    return route_value == "legislative"

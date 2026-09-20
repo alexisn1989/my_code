@@ -13,6 +13,10 @@
             "title": "Character Id",
             "type": "string"
           },
+          "character_portrait_ref": {
+            "title": "Character Portrait Ref",
+            "type": "string"
+          },
           "deadline_turn": {
             "title": "Deadline Turn",
             "type": "integer"
@@ -56,6 +60,13 @@
             "title": "Released Turn"
           },
           "status": {
+            "enum": [
+              "breached",
+              "cancelled",
+              "expired",
+              "fulfilled",
+              "pending"
+            ],
             "title": "Status",
             "type": "string"
           },
@@ -68,6 +79,11 @@
             "type": "string"
           },
           "term_kind": {
+            "enum": [
+              "assistance_restraint",
+              "cabinet_tenure",
+              "legislative_support"
+            ],
             "title": "Term Kind",
             "type": "string"
           }
@@ -76,6 +92,7 @@
           "promise_id",
           "character_id",
           "character_display_name",
+          "character_portrait_ref",
           "term_kind",
           "subject_id",
           "subject_display_name",
@@ -1112,6 +1129,17 @@
             ],
             "title": "Counterpart Display Name"
           },
+          "counterpart_portrait_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Counterpart Portrait Ref"
+          },
           "display_name": {
             "title": "Display Name",
             "type": "string"
@@ -1414,6 +1442,10 @@
             "title": "Personal Trust Bps",
             "type": "integer"
           },
+          "portrait_ref": {
+            "title": "Portrait Ref",
+            "type": "string"
+          },
           "refusal_reason": {
             "anyOf": [
               {
@@ -1434,6 +1466,7 @@
         "required": [
           "character_id",
           "display_name",
+          "portrait_ref",
           "party_id",
           "party_display_name",
           "loyalty_bps",
@@ -1987,6 +2020,10 @@
             "title": "Character Id",
             "type": "string"
           },
+          "character_portrait_ref": {
+            "title": "Character Portrait Ref",
+            "type": "string"
+          },
           "earliest_legal_deadline": {
             "title": "Earliest Legal Deadline",
             "type": "integer"
@@ -2000,6 +2037,11 @@
             "type": "string"
           },
           "term_kind": {
+            "enum": [
+              "assistance_restraint",
+              "cabinet_tenure",
+              "legislative_support"
+            ],
             "title": "Term Kind",
             "type": "string"
           }
@@ -2007,6 +2049,7 @@
         "required": [
           "character_id",
           "character_display_name",
+          "character_portrait_ref",
           "term_kind",
           "subject_id",
           "subject_display_name",
@@ -2709,7 +2752,7 @@
   "info": {
     "summary": "Local, loopback-only interface to the MANDATE simulation engine.",
     "title": "MANDATE local game API",
-    "version": "0.22.0"
+    "version": "0.23.0"
   },
   "openapi": "3.1.0",
   "paths": {

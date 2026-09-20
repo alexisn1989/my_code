@@ -476,7 +476,7 @@ def test_ruleset_0_12_0_covers_the_full_twelve_report_shape() -> None:
     from app.simulation.resolver import resolve_turn
 
     state = load_scenario_file(SCENARIOS_DIR / "tiny_valid.yaml")
-    assert state.ruleset_version == RULESET_VERSION == "0.22.0"
+    assert state.ruleset_version == RULESET_VERSION == "0.23.0"
     decisions = DecisionSet(
         expected_turn=state.turn, expected_state_version=state.state_version, decisions=()
     )
@@ -514,7 +514,17 @@ def test_scenario_content_version_is_current(scenario_name: str) -> None:
     since it changes field TYPES (float -> strict bps) as well as adding/removing whole rows --
     not a case a line-level text rebuild can express cleanly."""
     state = load_scenario_file(SCENARIOS_DIR / scenario_name)
-    assert state.content_version == "0.18.0"
+    # DERIVED from the constant, not a second copy of the literal.
+    #
+    # This test's claim is a RELATIONSHIP -- "the shipped scenario is current for this build" --
+    # so restating the version here would be a second place to update and a second place to forget,
+    # which is the drift PD-2 was logged for (a hard-coded content version in `conftest.py`
+    # invalidated fifteen tests on the last bump). The LITERAL is still pinned, separately and
+    # deliberately, by the `frozenset({...}) == SUPPORTED_CONTENT_VERSIONS` assertions below: an
+    # unintended change to the constant fails there, while an un-re-stamped scenario fails here.
+    # Two different claims, two different tests, neither weakened.
+    (supported,) = SUPPORTED_CONTENT_VERSIONS
+    assert state.content_version == supported
 
 
 @pytest.mark.parametrize(
@@ -642,7 +652,7 @@ def test_frozen_military_movement_save_fixture_declares_the_old_ruleset_version(
     raw = json.loads(MILITARY_MOVEMENT_SAVE_PATH.read_text(encoding="utf-8"))
     assert raw["ruleset_version"] == "0.14.0"
     assert raw["ruleset_version"] != RULESET_VERSION
-    assert RULESET_VERSION == "0.22.0"
+    assert RULESET_VERSION == "0.23.0"
 
 
 def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_error() -> None:
@@ -659,7 +669,7 @@ def test_military_movement_save_is_rejected_with_an_actionable_ruleset_version_e
 
     message = str(exc_info.value)
     assert "0.14.0" in message
-    assert "0.22.0" in message
+    assert "0.23.0" in message
     assert RULESET_VERSION in message
 
 
@@ -825,7 +835,7 @@ def test_the_previous_content_version_is_no_longer_accepted() -> None:
     demonstrate that `"0.16.0"` content is now refused too. This forces the second gate by handing
     the loader a save that is current on its ruleset and stale on its content: exactly the shape a
     campaign started from a scenario nobody re-authored would have."""
-    assert frozenset({"0.18.0"}) == SUPPORTED_CONTENT_VERSIONS
+    assert frozenset({"0.19.0"}) == SUPPORTED_CONTENT_VERSIONS
     raw = json.loads(read_save_file(CHARACTERS_SAVE_PATH))
     raw["ruleset_version"] = RULESET_VERSION
     assert raw["content_version"] == "0.16.0"
@@ -834,8 +844,12 @@ def test_the_previous_content_version_is_no_longer_accepted() -> None:
         load_save_json(json.dumps(raw), source="ruleset-current-content-stale")
 
     message = str(exc_info.value)
-    assert "0.16.0" in message
-    assert "0.18.0" in message
+    assert "0.16.0" in message, "the message must name the version that was rejected"
+    # ... and the one this build DOES support, so a player is told what to do, not merely that
+    # something is wrong. Derived for the reason above: the literal lives in the pin at the top of
+    # this test.
+    (supported,) = SUPPORTED_CONTENT_VERSIONS
+    assert supported in message
 
 
 def test_frozen_cabinet_save_fixture_declares_the_old_ruleset_version() -> None:
@@ -900,8 +914,8 @@ def test_the_previous_ruleset_is_the_only_thing_that_moved_for_appointments() ->
     axes exist precisely so a rules change that content did not cause cannot force every scenario
     to be re-authored, and this is the test that keeps that split honest.
     """
-    assert frozenset({"0.22.0"}) == SUPPORTED_RULESET_VERSIONS
-    assert frozenset({"0.18.0"}) == SUPPORTED_CONTENT_VERSIONS
+    assert frozenset({"0.23.0"}) == SUPPORTED_RULESET_VERSIONS
+    assert frozenset({"0.19.0"}) == SUPPORTED_CONTENT_VERSIONS
     characters_save = json.loads(CHARACTERS_SAVE_PATH.read_text(encoding="utf-8"))
     cabinet_save = json.loads(CABINET_SAVE_PATH.read_text(encoding="utf-8"))
     assert characters_save["content_version"] == "0.16.0"

@@ -1077,6 +1077,22 @@ formation and not a map object, and a future rename or widening of one must not 
 others.
 """
 
+StrictPortraitRef: TypeAlias = Annotated[
+    str, Field(strict=True, min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
+]
+"""An authored key naming how a character is DEPICTED, distinct from who they are.
+
+Separate from `character_id` on purpose, and the separation is the whole point: identity is a
+registry key the engine reasons about, while depiction is authored presentation the engine never
+reads. Keeping them apart is what lets two characters share a depiction, or a character be
+re-depicted, without either touching identity -- and it is what stops a client inferring a portrait
+from an id, which would make the interface guess at something only content can say.
+
+Patterned, unlike `StrictCharacterId`, because this one IS consumed as a lookup key by a renderer:
+a lowercase `[a-z][a-z0-9_]*` key cannot carry a path separator, an extension, a URL or a space, so
+it can never be mistaken for a file path or interpolated into one.
+"""
+
 
 class CabinetPost(StrEnum):
     """The cabinet posts that actually do something.
@@ -1190,6 +1206,20 @@ class CharacterState(BaseModel):
     independence: StrictCharacterTraitBps
     ambition: StrictCharacterTraitBps
     personal_trust: StrictCharacterTraitBps
+    portrait_ref: StrictPortraitRef
+    """How this person is DEPICTED, authored per character and read by nothing in the engine.
+
+    REQUIRED with no default, and that is the point of the field rather than an inconvenience: a
+    default would let an unauthored character ship silently and be rendered as somebody generic,
+    which is exactly the failure authoring a portrait exists to prevent. Every character in every
+    scenario names one, and the REQUIRED field is itself the proof -- a scenario omitting it fails
+    to parse. No `invariants` check is added, because one would restate what the model already
+    guarantees and would rot the moment the field gained a default.
+
+    The engine never reads it. It is carried on state so the projections can hand it to a client
+    that must not guess a likeness from an identifier -- the same rule `post_display_name` follows
+    for labels, applied to depiction.
+    """
 
 
 class CabinetAppointment(BaseModel):
@@ -2053,7 +2083,7 @@ class WorldState(BaseModel):
         return self
 
 
-RULESET_VERSION = "0.22.0"
+RULESET_VERSION = "0.23.0"
 """The current simulation ruleset version, stamped onto every newly created `GameState`
 (see `simulation.scenario._to_game_state`) — never authored in scenario content. A scenario
 declaring its own ruleset version would let content decide which engine rules it runs under;
@@ -2226,6 +2256,21 @@ content-shaped change -- rather than contradicting it silently.
 Turn resolution changes too: an accepted grant reduces borrowing or raises closing cash, so
 replaying 0.20.0 decisions under 0.21.0 rules does not reproduce the 0.20.0 turn.
 `SAVE_FORMAT_VERSION` stays `1`.
+
+Bumped `"0.22.0" -> "0.23.0"` for the decree-route bargain refusal. A legislative bargain buys
+support in a CHAMBER VOTE, and a decree holds none -- so the seventh rejection code
+(`legislative_bargain_requires_legislative_route`) now refuses at submission what the engine
+previously accepted and CHARGED for.
+
+Measured before it was fixed: a decree budget with an accepted bargain resolved cleanly, recorded
+`endorsement_bps=2000`, charged 147 political capital, and applied the endorsement to ZERO blocs.
+Group 58 did not catch it, because its per-bloc check iterates vote rows and a decree turn has
+none -- the loop body never ran and the check passed vacuously.
+
+This is a RULES change, not a content one: a decision set the 0.22.0 engine accepted is now
+refused, so replaying 0.22.0 decisions under 0.23.0 rules does not reproduce the 0.22.0 turn. No
+report schema changes and no bargain outcome is added -- the refusal happens at submission, before
+anything is reported. `content_version` moves separately and for its own reason (portraits).
 
 Bumped `"0.21.0" -> "0.22.0"` for promises. The breaking field is `GovernanceReport.promises`: a new
 REQUIRED tuple on a `_STRICT_CONFIG` model, so a stored 0.21.0 `report_json` -- whose governance

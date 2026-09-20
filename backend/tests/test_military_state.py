@@ -444,12 +444,13 @@ class TestApprovedRosters:
         with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
             document = yaml.safe_load(handle)
 
-        # Bumped by each later slice that changes authored SHAPE, most recently the
-        # foreign-assistance slice ("0.17.0" -> "0.18.0", for `assistance_capacity` on each
-        # foreign profile and the new top-level `foreign_relationships`): the roster this class
-        # guards is unchanged, and the pin is here so a bump has to be a deliberate edit in every
-        # file that records one.
-        assert document["content_version"] == "0.18.0"
+        # Bumped by each later slice that changes authored SHAPE, most recently the PORTRAIT
+        # slice ("0.18.0" -> "0.19.0", for `portrait_ref` on every authored character; the previous
+        # bump was foreign assistance, "0.17.0" -> "0.18.0"). The roster this class guards is
+        # unchanged in both cases, and the pin stays a LITERAL on purpose -- deriving it from
+        # `SUPPORTED_CONTENT_VERSIONS` would make a bump invisible here, and the whole point of
+        # this assertion is that a bump has to be a deliberate edit in every file that records one.
+        assert document["content_version"] == "0.19.0"
         for country in document["countries"]:
             if country["id"] == country_id:
                 assert "military" in country

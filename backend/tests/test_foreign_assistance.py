@@ -1202,7 +1202,7 @@ class TestCompatibility:
         raw = json.loads(_FIXTURE.read_text(encoding="utf-8"))
         assert raw["ruleset_version"] == "0.20.0"
         assert raw["content_version"] == "0.17.0"
-        assert RULESET_VERSION == "0.22.0"
+        assert RULESET_VERSION == "0.23.0"
 
     def _one_stored_finance_report(self) -> dict[str, object]:
         raw = json.loads(_FIXTURE.read_text(encoding="utf-8"))

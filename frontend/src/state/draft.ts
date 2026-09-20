@@ -12,6 +12,8 @@
 
 import { create } from "zustand";
 
+import type { components } from "../api/schema";
+
 import { reconcileCompanions, type CabinetOrders } from "./cabinetCompanions";
 
 export type PolicySlotKind = "budget" | "amendment";
@@ -61,6 +63,72 @@ export interface AppliedCard {
   amendment?: AppliedAmendmentFields;
 }
 
+/** A bargain staged for a proposal kind the draft no longer carries.
+ *
+ * The engine binds a bargain to the proposal KIND (never to a digest -- a deliberate Commit 5
+ * decision, so the client never has to reproduce canonical-JSON encoding), and slot 1 refuses the
+ * whole set with `legislative_bargain_proposal_absent` when no proposal of that kind is present.
+ * So a player who stages a budget bargain and then clears the proposal, or switches to an
+ * amendment, would be holding a draft that CANNOT preview.
+ *
+ * ONE function, called by both mutators that can change the slot, because two copies of this rule
+ * would be two chances to forget it. Retention on a same-kind replacement is the interesting half:
+ * swapping one budget for another keeps the bargain, precisely because the binding is by kind.
+ */
+export function bargainAfterPolicySlotChange(
+  bargain: DraftState["bargain"],
+  nextSlot: PolicySlotKind | null,
+): DraftState["bargain"] {
+  if (bargain === null) {
+    return null;
+  }
+  return bargain.proposalKind === nextSlot ? bargain : null;
+}
+
+/** A bargain staged for a proposal that is now being DECREED rather than put to the chamber.
+ *
+ * The same class of defect as the slot change above, one level down. A bargain buys support in a
+ * chamber vote, and the engine refuses the whole set with
+ * `legislative_bargain_requires_legislative_route` when the proposal it names takes the decree
+ * route -- so a player who stages a bargain and then switches the route would again be holding a
+ * draft that CANNOT preview.
+ *
+ * Clearing is the right answer rather than silently dropping the bargain at submission: dropping it
+ * would resolve a turn WITHOUT the bargain the player asked for and report no error at all, which
+ * is worse than losing a staging they can redo in one click. The meeting panel's own copy explains
+ * why a decreed proposal has no support to buy.
+ *
+ * `slot` is the proposal whose route just moved. A bargain staged for the other kind is untouched,
+ * which cannot arise today (the slot rule keeps the bargain's kind equal to the current slot) and
+ * is guarded anyway so the two rules compose rather than depend on each other.
+ */
+export function bargainAfterRouteChange(
+  bargain: DraftState["bargain"],
+  slot: PolicySlotKind,
+  nextRoute: ProposalRoute,
+): DraftState["bargain"] {
+  if (bargain === null || bargain.proposalKind !== slot) {
+    return bargain;
+  }
+  return nextRoute === "decree" ? null : bargain;
+}
+
+/** The one promise staged this turn. Mirrors `PromiseDecision`'s exclusive shape. */
+/** The GENERATED property type, never a hand-written union: a bare `string` would permit
+ * drafts the server can never accept, and re-spelling the three members here would duplicate
+ * server vocabulary client-side. */
+type PromiseTermKind = components["schemas"]["PromiseOption"]["term_kind"];
+
+export type PromiseDraft =
+  | {
+      readonly action: "make";
+      readonly characterId: string;
+      readonly termKind: PromiseTermKind;
+      readonly subjectId: string;
+      readonly deadlineTurn: number;
+    }
+  | { readonly action: "release"; readonly characterId: string; readonly promiseId: string };
+
 export interface DraftState {
   /** The one mutually-exclusive policy-proposal slot. `null` means no
    * proposal this turn -- a legal, first-class choice, not an unset value. */
@@ -87,6 +155,26 @@ export interface DraftState {
    * Only ever changed by a CONFIRMED action. Browsing candidates, selecting one, and cancelling
    * before confirming are component state on the screen and never reach here. */
   cabinetOrders: CabinetOrders;
+  /** The one legislative bargain staged this turn, or `null`.
+   *
+   * A SINGLETON, not a record like `cabinetOrders`: the engine caps this at one per `DecisionSet`
+   * (`_at_most_one_legislative_bargain_decision`), so a second staging REPLACES the first -- the
+   * wholesale-replacement rule `setMovementOrder` documents. No companion reconciliation, because
+   * a bargain is never irreducibly two orders.
+   *
+   * It DOES need CROSS-SLOT reconciliation, which is a different thing: a bargain names a
+   * `proposalKind`, and slot 1 refuses the set with `legislative_bargain_proposal_absent` when the
+   * set carries no proposal of that kind. See `setPolicySlot`/`applyCard`. */
+  bargain: { characterId: string; proposalKind: PolicySlotKind } | null;
+  /** The one assistance request staged this turn, or `null`. Capped at one per set by the engine,
+   * and coupled to nothing else in the draft. */
+  assistance: { profileId: string } | null;
+  /** The one promise staged this turn, or `null`.
+   *
+   * A discriminated union rather than a bag of optionals, mirroring `PromiseDecision`'s own
+   * exclusive shape: a `make` carrying a `promiseId`, or a `release` carrying a deadline, is
+   * unconstructible on this side too. */
+  promise: PromiseDraft | null;
 
   dismissedHelp: boolean;
   glossaryOpen: boolean;
@@ -120,6 +208,15 @@ export interface DraftState {
    * first rather than accumulating one the server would reject. */
   setMovementOrder: (formationId: string, destinationTheaterId: string) => void;
   clearMovementOrder: () => void;
+  /** Stage a bargain, REPLACING any bargain already staged. */
+  setBargain: (characterId: string, proposalKind: PolicySlotKind) => void;
+  clearBargain: () => void;
+  /** Stage an assistance request, REPLACING any already staged. */
+  setAssistanceRequest: (profileId: string) => void;
+  clearAssistanceRequest: () => void;
+  /** Stage a promise, REPLACING any already staged. */
+  setPromise: (promise: PromiseDraft) => void;
+  clearPromise: () => void;
   /** Appoint (or replace) somebody, explicitly.
    *
    * `requiresVacatingPost` is passed by the caller from the candidate's own projected row and is
@@ -174,19 +271,29 @@ export const useDraftStore = create<DraftState>((set) => ({
   investments: {},
   movement: null,
   cabinetOrders: {},
+  bargain: null,
+  assistance: null,
+  promise: null,
   dismissedHelp: false,
   glossaryOpen: false,
 
-  setPolicySlot: (slot) => set({ policySlot: slot }),
+  setPolicySlot: (slot) =>
+    set((state) => ({
+      policySlot: slot,
+      // ATOMIC: the bargain clears in the same update that changes the slot, so no render ever
+      // observes a draft whose bargain names a proposal the draft does not carry.
+      bargain: bargainAfterPolicySlotChange(state.bargain, slot),
+    })),
 
   applyCard: (applied) =>
-    set({
+    set((state) => ({
+      bargain: bargainAfterPolicySlotChange(state.bargain, applied.policySlot),
       policySlot: applied.policySlot,
       budget: applied.budget ? { ...EMPTY_BUDGET, ...applied.budget } : EMPTY_BUDGET,
       amendment: applied.amendment
         ? { ...EMPTY_AMENDMENT, ...applied.amendment }
         : EMPTY_AMENDMENT,
-    }),
+    })),
 
   setBudgetRateTarget: (field, valueBps) =>
     set((state) => ({
@@ -204,7 +311,13 @@ export const useDraftStore = create<DraftState>((set) => ({
       return { budget: { ...state.budget, spendingUpdates } };
     }),
 
-  setBudgetRoute: (route) => set((state) => ({ budget: { ...state.budget, route } })),
+  setBudgetRoute: (route) =>
+    set((state) => ({
+      budget: { ...state.budget, route },
+      // ATOMIC, exactly as the slot change is: no render observes a draft whose bargain names a
+      // proposal that is about to be decreed.
+      bargain: bargainAfterRouteChange(state.bargain, "budget", route),
+    })),
 
   setBudgetInfluence: (partyId, blocId, politicalCapital) =>
     set((state) => ({
@@ -225,7 +338,11 @@ export const useDraftStore = create<DraftState>((set) => ({
       return { amendment: { ...state.amendment, targets } };
     }),
 
-  setAmendmentRoute: (route) => set((state) => ({ amendment: { ...state.amendment, route } })),
+  setAmendmentRoute: (route) =>
+    set((state) => ({
+      amendment: { ...state.amendment, route },
+      bargain: bargainAfterRouteChange(state.bargain, "amendment", route),
+    })),
 
   setAmendmentInfluence: (partyId, blocId, politicalCapital) =>
     set((state) => ({
@@ -248,6 +365,13 @@ export const useDraftStore = create<DraftState>((set) => ({
     set({ movement: { formationId, destinationTheaterId } }),
 
   clearMovementOrder: () => set({ movement: null }),
+
+  setBargain: (characterId, proposalKind) => set({ bargain: { characterId, proposalKind } }),
+  clearBargain: () => set({ bargain: null }),
+  setAssistanceRequest: (profileId) => set({ assistance: { profileId } }),
+  clearAssistanceRequest: () => set({ assistance: null }),
+  setPromise: (promise) => set({ promise }),
+  clearPromise: () => set({ promise: null }),
 
   confirmAppointment: (post, characterId, requiresVacatingPost) =>
     set((state) => ({
@@ -287,6 +411,9 @@ export const useDraftStore = create<DraftState>((set) => ({
       // Cleared for exactly that reason too: a `characterId` from a previous campaign names
       // somebody the new one may not have.
       cabinetOrders: {},
+      bargain: null,
+      assistance: null,
+      promise: null,
     }),
 
   dismissHelp: () => set({ dismissedHelp: true }),

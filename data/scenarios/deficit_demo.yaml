@@ -25,7 +25,7 @@
 schema_version: 1
 scenario_id: deficit_demo
 name: "Deficit Demo Fixture"
-content_version: "0.18.0"
+content_version: "0.19.0"
 seed: 99
 player_country_id: strapped
 
@@ -244,6 +244,7 @@ characters:
     independence: 1500
     ambition: 2000
     personal_trust: 6500
+    portrait_ref: portrait_bela_ronsard
   clara_venn:
     display_name: Clara Venn
     affiliation: {kind: player_country, country_id: strapped}
@@ -252,6 +253,7 @@ characters:
     independence: 8700
     ambition: 5200
     personal_trust: 4200
+    portrait_ref: portrait_clara_venn
   dorin_akel:
     display_name: Dorin Akel
     affiliation: {kind: player_country, country_id: strapped}
@@ -260,6 +262,7 @@ characters:
     independence: 6200
     ambition: 9100
     personal_trust: 3800
+    portrait_ref: portrait_dorin_akel
   freya_lund:
     display_name: Freya Lund
     affiliation: {kind: player_country, country_id: strapped}
@@ -268,6 +271,7 @@ characters:
     independence: 4300
     ambition: 3600
     personal_trust: 6800
+    portrait_ref: portrait_freya_lund
   leader_citizens_bloc:
     display_name: Petra Almas
     affiliation: {kind: player_country, country_id: strapped}
@@ -277,6 +281,7 @@ characters:
     independence: 7900
     ambition: 8000
     personal_trust: 2600
+    portrait_ref: portrait_leader_citizens_bloc
   leader_governing_party:
     display_name: Henrik Dahl
     affiliation: {kind: player_country, country_id: strapped}
@@ -286,6 +291,7 @@ characters:
     independence: 3900
     ambition: 4200
     personal_trust: 6900
+    portrait_ref: portrait_leader_governing_party
   leader_independents:
     display_name: Sofia Renn
     affiliation: {kind: player_country, country_id: strapped}
@@ -295,6 +301,7 @@ characters:
     independence: 7400
     ambition: 3900
     personal_trust: 5400
+    portrait_ref: portrait_leader_independents
   leader_marnil:
     display_name: Chancellor Otto Falk
     affiliation: {kind: foreign_profile, foreign_profile_id: marnil}
@@ -303,6 +310,7 @@ characters:
     independence: 9100
     ambition: 6800
     personal_trust: 3600
+    portrait_ref: portrait_leader_marnil
   leader_tolvane:
     display_name: First Minister Rhys Talen
     affiliation: {kind: foreign_profile, foreign_profile_id: tolvane}
@@ -311,6 +319,7 @@ characters:
     independence: 8600
     ambition: 5500
     personal_trust: 4800
+    portrait_ref: portrait_leader_tolvane
 
 countries:
   - id: strapped

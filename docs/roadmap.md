@@ -768,6 +768,73 @@ than assumed in advance.
   defects (raw enum values, a literal `"null"` render, indistinguishable "Details" buttons,
   `ToneValue`'s missing glyph) found and fixed alongside it.
 
+## Characters, cabinet appointments and leader negotiations — **complete**
+
+Architecture: [`docs/adr/0020-characters-cabinet-and-leader-negotiations.md`](adr/0020-characters-cabinet-and-leader-negotiations.md).
+A separately-mandated track on top of the Phase 4A slice, delivered in **eight numbered commits**
+(`41fabcd` … `HEAD`), five interleaved **fixture freezes** (`2a`, `4b`, `5a`, `6a`, `8a` — Commit 1
+is itself the first) and two follow-ups (`c43dc20`, `84b50e9`). Each freeze captures an authentic
+pre-change save from the unmodified engine, because such a save becomes impossible to produce once
+the bump it precedes has landed.
+
+This is the **named-actor layer** the roadmap had deferred from Phase 3A onwards, and it closes that
+deferral. `CharacterState` gives every scenario a roster of people with five bounded traits, each
+with a named consumer: the player hires two cabinet officials whose competence measurably changes
+outcomes, bargains with a party leader for support on one exact proposal, negotiates a bounded
+assistance grant from a foreign counterpart, and gives promises that are remembered, settled only by
+the resolver, and that change how those same people respond later.
+
+Delivered, in order: the roster and cabinet state at ruleset `0.18.0` and content `0.17.0`;
+appointments with the fifteenth domain report and reconciliation group 56; the cabinet screen, which
+made Government live; the legislative bargain and group 58 at `0.20.0`; foreign assistance and group
+59 at `0.21.0` / content `0.18.0`; promises, trust and group 60 at `0.22.0`; and finally portraits,
+the Relationships meeting panel and the decree-route refusal at `0.23.0` / content `0.19.0`.
+
+**Trust is what makes this a campaign rather than three lookups.** Three mechanics read
+`personal_trust` and exactly one function writes it, enforced by an AST sweep. A kept promise is
+`+1,000` bps and a broken one `-2,000`; in every shipped scenario two kept promises flip no leader
+from refusal to agreement and three flip all three, which is a discriminating demonstration rather
+than an approximate one.
+
+**What it deliberately does not include** is recorded in ADR 0020 rather than left to be discovered:
+no counteroffers or price bands (removed, not deferred), no resignation, no character mortality or
+succession, no AI-country politics, and no real illustrated art — the shipped portraits are greybox
+SVGs drawn from a server-authored reference, and artwork is future art production rather than
+deferred engineering.
+
+### Closeout record
+
+Two process deviations were logged during the series, and both produced permanent corrections rather
+than a note:
+
+- **PD-1 (commit 5)** — a required parameter was added without a mechanical call-site sweep, and a
+  stale failure list from a partial run was reported as the complete inventory. It cost two full
+  suite cycles. The correction is a permanent AST sweep asserting every call names the parameter,
+  and the rule: **grep for the symbol, not for the call shape**, before the first full suite.
+- **PD-2 (commit 6)** — PD-1's rule was then followed for one symbol when the commit moved four; a
+  hard-coded content version in `tests/conftest.py` cascaded into three unrelated modules. In the
+  same run, a suite launched through a pipe reported `tail`'s exit status instead of pytest's, so a
+  red suite was announced as green. The corrections: `conftest.py` reads the content version from
+  `SUPPORTED_CONTENT_VERSIONS`; every baseline exclusion is extended **by name** with a companion
+  exact-difference assertion, never broadened; and long suites are launched so the real exit status
+  survives.
+
+Three divergences between plan and implementation are carried forward as **named, accepted gaps**
+rather than silently closed. All three are currently correct and tested; what they lack is structural
+protection against future drift, and closing any of them would mean editing shipped, passing code
+outside the commit that noticed it:
+
+1. **The shared `*_REJECTION_CODES` tuple was specified for three mechanics and built for one.**
+   Promises have it; the bargain and assistance codes are still duplicated string literals between
+   `phases.py` and `decision_preflight.py`. They are identical today and tested on both surfaces, but
+   nothing structurally prevents them drifting.
+2. **`/preview` raises `DecisionSetError(problem.message)`**, so for all four preflight-sourced
+   mechanics the stable CODE does not reach the client — only the movement path guarantees the code
+   leads the message. Fixing it for one mechanic would leave it inconsistent with its three siblings.
+3. **There is no general "every reason id the engine can emit is registered" check.** Promises pin
+   their five across all four presentation surfaces, but the property is not enforced
+   repository-wide, because the set an engine *can* emit is not statically enumerable.
+
 ## External Wars — foreign actors and persistent conflicts (W1–W5)
 
 A separately-mandated track, sequenced independently of the numbered phases below. It supplies the

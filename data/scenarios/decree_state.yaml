@@ -39,7 +39,7 @@
 schema_version: 1
 scenario_id: decree_state
 name: "Decree State Fixture"
-content_version: "0.18.0"
+content_version: "0.19.0"
 seed: 77
 player_country_id: valdrun
 
@@ -270,6 +270,7 @@ characters:
     independence: 1500
     ambition: 2000
     personal_trust: 6500
+    portrait_ref: portrait_edda_thorne
   raul_kesten:
     display_name: Raul Kesten
     affiliation: {kind: player_country, country_id: valdrun}
@@ -278,6 +279,7 @@ characters:
     independence: 8700
     ambition: 5200
     personal_trust: 4200
+    portrait_ref: portrait_raul_kesten
   sabine_ord:
     display_name: Sabine Ord
     affiliation: {kind: player_country, country_id: valdrun}
@@ -286,6 +288,7 @@ characters:
     independence: 6200
     ambition: 9100
     personal_trust: 3800
+    portrait_ref: portrait_sabine_ord
   yannic_pell:
     display_name: Yannic Pell
     affiliation: {kind: player_country, country_id: valdrun}
@@ -294,6 +297,7 @@ characters:
     independence: 4300
     ambition: 3600
     personal_trust: 6800
+    portrait_ref: portrait_yannic_pell
   leader_governing_party:
     display_name: Lord Aldric Vane
     affiliation: {kind: player_country, country_id: valdrun}
@@ -303,6 +307,7 @@ characters:
     independence: 3200
     ambition: 4700
     personal_trust: 7000
+    portrait_ref: portrait_leader_governing_party
   leader_opposition_party:
     display_name: Nadia Brekke
     affiliation: {kind: player_country, country_id: valdrun}
@@ -312,6 +317,7 @@ characters:
     independence: 8300
     ambition: 8600
     personal_trust: 2100
+    portrait_ref: portrait_leader_opposition_party
   leader_marnil:
     display_name: Chancellor Otto Falk
     affiliation: {kind: foreign_profile, foreign_profile_id: marnil}
@@ -320,6 +326,7 @@ characters:
     independence: 9100
     ambition: 6800
     personal_trust: 3600
+    portrait_ref: portrait_leader_marnil
   leader_sorrend:
     display_name: President Iva Sorel
     affiliation: {kind: foreign_profile, foreign_profile_id: sorrend}
@@ -328,6 +335,7 @@ characters:
     independence: 8800
     ambition: 5900
     personal_trust: 4400
+    portrait_ref: portrait_leader_sorrend
 
 countries:
   - id: valdrun

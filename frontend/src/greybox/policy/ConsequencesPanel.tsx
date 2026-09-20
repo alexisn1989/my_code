@@ -84,10 +84,33 @@ export function ConsequencesPanel({ preview }: { preview: PreviewProjection }) {
             <dd className="text-parchment-100">{formatAmount(preview.investment_capital)}</dd>
           </div>
           <div>
+            <dt>Leader bargain</dt>
+            <dd data-testid="bargain-capital" className="text-parchment-100">
+              {formatAmount(preview.legislative_bargain_capital)}
+            </dd>
+          </div>
+          <div>
+            <dt>Promise release</dt>
+            <dd data-testid="promise-release-capital" className="text-parchment-100">
+              {formatAmount(preview.promise_release_capital)}
+            </dd>
+          </div>
+          <div>
             <dt>Total committed</dt>
             <dd className="text-parchment-100">{formatAmount(preview.committed_capital)}</dd>
           </div>
         </dl>
+        {/* Deliberately OUTSIDE the committed-capital list and labelled as such. An assistance
+            grant is money RECEIVED, in the fiscal account, not political capital spent — putting it
+            in the grid above would invite a player to read it as part of the total, and the field's
+            own docstring draws exactly that distinction. */}
+        <p className="mt-2 text-xs text-parchment-200/70">
+          Foreign assistance expected:{" "}
+          <span data-testid="assistance-estimate" className="text-parchment-100">
+            {formatAmount(preview.foreign_assistance_estimate)}
+          </span>{" "}
+          — money received, not political capital committed.
+        </p>
         <p className="mt-2 text-sm">
           {formatCommitted(preview.committed_capital, preview.opening_capital)}
           {" — "}

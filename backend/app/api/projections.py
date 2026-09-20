@@ -955,6 +955,14 @@ class ForeignAssistanceCounterpartyOption(BaseModel):
     display_name: str
     counterpart_character_id: str | None = None
     counterpart_display_name: str | None = None
+    counterpart_portrait_ref: str | None = None
+    """Copied verbatim from `CharacterState.portrait_ref`, and nullable ONLY because the
+    counterpart itself is: `leader_of_foreign_profile` returns nothing for a profile whose leader
+    no scenario authored.
+
+    The three counterpart fields are present or absent TOGETHER, enforced below. A half-populated
+    counterpart -- a name with no portrait, or a portrait with no name -- would make the interface
+    render a person the projection cannot fully describe."""
     standing_bps: int
     remaining_capacity: int
     will_assist: bool
@@ -969,6 +977,31 @@ class ForeignAssistanceCounterpartyOption(BaseModel):
     """A two-member `Literal`, not a bare `str`: the legal values are part of the type, so this
     field cannot carry a legislative refusal code by mistake. It inlines as a property-level enum
     exactly as `Tone` does, so the stronger type costs no schema."""
+
+    @model_validator(mode="after")
+    def _the_counterpart_is_described_wholly_or_not_at_all(
+        self,
+    ) -> ForeignAssistanceCounterpartyOption:
+        """Identity, name and depiction arrive together or not at all.
+
+        A profile whose leader no scenario authored has no counterpart to show, which is a coherent
+        state. What is NOT coherent is a partial one: a name with no portrait would make the client
+        choose a fallback likeness, and a portrait with no id would show a face nothing identifies.
+        Both are unconstructible rather than merely discouraged.
+        """
+        present = {
+            self.counterpart_character_id is not None,
+            self.counterpart_display_name is not None,
+            self.counterpart_portrait_ref is not None,
+        }
+        if len(present) != 1:
+            raise ValueError(
+                "counterpart id, display name and portrait ref must be present or absent together, "
+                f"got id={self.counterpart_character_id!r} "
+                f"name={self.counterpart_display_name!r} "
+                f"portrait={self.counterpart_portrait_ref!r}"
+            )
+        return self
 
     @model_validator(mode="after")
     def _grant_and_refusal_are_exclusive(self) -> ForeignAssistanceCounterpartyOption:
@@ -1002,6 +1035,24 @@ typed mapping means a third refusal added to the enum fails type-checking here r
 a client as an unexpected string."""
 
 
+ProjectedPromiseTermKind = Literal["assistance_restraint", "cabinet_tenure", "legislative_support"]
+"""The three term kinds, as a projected `Literal` rather than a bare `str`.
+
+A `str` would let the contract promise a client any term at all, including one the resolver refuses
+at code 2, and would generate as `string` in `schema.d.ts` — so a draft could be typed as valid
+while being unacceptable. Inlines as a property-level enum exactly as `Tone` and both refusal
+reasons do, so the stronger type costs no schema.
+
+DUPLICATES `promises.PromiseTermKind` by necessity: this module must not import the engine's alias
+into the contract surface, because a `TypeAlias` re-exported here would still generate the same
+inline enum while coupling the wire format to an engine symbol. A set-equality test proves the two
+agree over every member, so the duplication cannot rot silently."""
+
+ProjectedPromiseStatus = Literal["breached", "cancelled", "expired", "fulfilled", "pending"]
+"""The five statuses, for the same reason and with the same set-equality proof against
+`PromiseStatus`."""
+
+
 class PromiseOption(BaseModel):
     """One promise the player could actually make: an exact, server-valid TRIPLE.
 
@@ -1024,7 +1075,12 @@ class PromiseOption(BaseModel):
 
     character_id: str
     character_display_name: str
-    term_kind: str
+    character_portrait_ref: str
+    """Copied verbatim from `CharacterState.portrait_ref` -- never derived, never defaulted.
+
+    The client must not infer a likeness from `character_id`, so the depiction travels with the row
+    that names the person."""
+    term_kind: ProjectedPromiseTermKind
     subject_id: str
     subject_display_name: str
     earliest_legal_deadline: int
@@ -1053,10 +1109,17 @@ class ActivePromiseView(BaseModel):
     """OPAQUE. Nothing parses it; every fact a client needs is a typed field beside it."""
     character_id: str
     character_display_name: str
-    term_kind: str
+    character_portrait_ref: str
+    """Carried HERE as well as on `PromiseOption`, and that is structural rather than redundant.
+
+    `_promise_options` skips any character whose `(character, term)` pair is already live, so a
+    character WITH an active promise is exactly one that is absent from `promise_options`. The two
+    collections are near-disjoint by construction, and resolving this portrait through a sibling row
+    would resolve to nothing precisely when it is needed."""
+    term_kind: ProjectedPromiseTermKind
     subject_id: str
     subject_display_name: str
-    status: str
+    status: ProjectedPromiseStatus
     made_turn: int
     deadline_turn: int
     released_turn: int | None = None
@@ -1131,6 +1194,7 @@ def _foreign_assistance_counterparties(
                 display_name=profile.display_name,
                 counterpart_character_id=leader_id,
                 counterpart_display_name=None if leader is None else leader.display_name,
+                counterpart_portrait_ref=None if leader is None else leader.portrait_ref,
                 standing_bps=relationship.standing_bps,
                 remaining_capacity=remaining_pool(
                     capacity=profile.assistance_capacity, drawn=relationship.assistance_drawn
@@ -1162,6 +1226,9 @@ class LegislativeBargainCounterpartyOption(BaseModel):
 
     character_id: str
     display_name: str
+    portrait_ref: str
+    """Copied verbatim from `CharacterState.portrait_ref`. Non-nullable, unlike the foreign
+    counterpart's: this row IS a party leader, so the character always exists."""
     party_id: str
     party_display_name: str
     loyalty_bps: int
@@ -1241,6 +1308,7 @@ def _legislative_bargain_counterparties(
             LegislativeBargainCounterpartyOption(
                 character_id=character_id,
                 display_name=character.display_name,
+                portrait_ref=character.portrait_ref,
                 party_id=party.id,
                 party_display_name=party.name,
                 loyalty_bps=character.loyalty,
@@ -2115,6 +2183,7 @@ def _promise_options(state: GameState) -> tuple[PromiseOption, ...]:
                 PromiseOption(
                     character_id=character_id,
                     character_display_name=character.display_name,
+                    character_portrait_ref=character.portrait_ref,
                     term_kind=term_kind,
                     subject_id=subject_id,
                     subject_display_name=_promise_subject_label(state, term_kind, subject_id),
@@ -2165,20 +2234,39 @@ def _active_promises(state: GameState) -> tuple[ActivePromiseView, ...]:
         if promise.status not in LIVE_PROMISE_STATUSES:
             continue
         character = world.characters.get(promise.character_id)
+        if character is None:
+            # RAISED, not asserted: `python -O` strips assertions, and an invariant that evaporates
+            # under optimized execution is exactly the one a corrupted save would slip past. An
+            # `or ""` fallback would be worse still -- it would render a nameless person rather
+            # than surface the corruption that produced them.
+            #
+            # `ValueError` is this module's own established shape for "the state handed to a
+            # builder is not renderable" (see `build_decision_options`, which raises it for a
+            # player country with no political state).
+            raise ValueError(
+                f"promise {promise_key!r} names character {promise.character_id!r}, "
+                "who is not in the character registry; the state is not renderable"
+            )
         blocked = release_block_reason(
             status=promise.status,
             deadline_turn=promise.deadline_turn,
             resolving_turn=state.turn,
         )
-        # Narrowed to the two reachable display reasons. The internal `promise_missing` and
-        # `promise_already_settled` cannot arise from a live row, and a test proves it rather than
-        # leaving it assumed.
-        assert blocked in (None, "promise_already_released", "promise_past_releasing"), blocked
+        if blocked not in (None, "promise_already_released", "promise_past_releasing"):
+            # Narrowed to the two reachable display reasons: the internal `promise_missing` and
+            # `promise_already_settled` cannot arise from a LIVE row. Raised rather than asserted
+            # for the same reason as the guard above -- `python -O` strips assertions, and this one
+            # is what stops an unreachable reason from reaching a client as an unexpected string.
+            raise ValueError(
+                f"promise {promise_key!r} yielded release reason {blocked!r}, which a live row "
+                "cannot produce; the state is not renderable"
+            )
         views.append(
             ActivePromiseView(
                 promise_id=promise_key,
                 character_id=promise.character_id,
-                character_display_name="" if character is None else character.display_name,
+                character_display_name=character.display_name,
+                character_portrait_ref=character.portrait_ref,
                 term_kind=promise.term_kind,
                 subject_id=promise.subject_id,
                 subject_display_name=_promise_subject_label(

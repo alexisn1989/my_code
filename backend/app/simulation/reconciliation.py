@@ -4231,6 +4231,18 @@ def _transcribed_bargain_price(
     )
 
 
+def _transcribed_bargain_route_is_legislative(*, route_value: str) -> bool:
+    """Group 58's own copy of the route rule. See `_transcribed_bargain_will_deal`.
+
+    Deliberately NOT a call to `legislative_bargaining.bargain_route_is_legislative`: a decree turn
+    holds no chamber vote and therefore carries zero `BlocVoteReport` rows, so check (4)'s per-bloc
+    loop passes VACUOUSLY on exactly the turn where an endorsement bought nothing. This predicate is
+    what makes that turn fail here instead, and an oracle that called the production rule could not
+    disagree with it.
+    """
+    return route_value == "legislative"
+
+
 def _endorsed_party_id_from_opening(
     opening_state: GameState, decisions: DecisionSet | None
 ) -> str | None:
@@ -4437,6 +4449,30 @@ def _reconcile_legislative_bargain(
         problems.append(
             f"bargain row endorsement_bps={row.endorsement_bps} does not match the re-derived "
             f"outcome ({expected_endorsement}) (group 58)"
+        )
+
+    # (4a) The endorsed proposal must take the LEGISLATIVE route, checked BEFORE the bloc rows are
+    # iterated. A decree turn holds no chamber vote, so `legislative.blocs` is EMPTY and check (4)
+    # below would pass without executing its body even once -- a vacuous proof on precisely the turn
+    # an endorsement is worthless. Measured before this check existed: a decree budget plus a bargain
+    # resolved ACCEPTED, charged the asking price, reported endorsement_bps=2,000, produced zero bloc
+    # vote rows, and reconciled clean.
+    submitted_proposal = next(
+        (
+            d
+            for d in (decisions.decisions if decisions is not None else ())
+            if isinstance(d, BudgetDecision | ConstitutionalAmendmentDecision)
+            and d.kind == decision.proposal_kind
+        ),
+        None,
+    )
+    if submitted_proposal is not None and not _transcribed_bargain_route_is_legislative(
+        route_value=submitted_proposal.route.value
+    ):
+        problems.append(
+            f"the bargain names a {decision.proposal_kind!r} proposal taking the "
+            f"{submitted_proposal.route.value!r} route, which holds no chamber vote for an "
+            "endorsement to move (group 58)"
         )
 
     # (4) Every bloc, every chamber, exactly once.

@@ -18,7 +18,7 @@
 schema_version: 1
 scenario_id: tiny_valid
 name: "Tiny Valid Fixture"
-content_version: "0.18.0"
+content_version: "0.19.0"
 seed: 42
 player_country_id: arken
 
@@ -268,6 +268,7 @@ characters:
     independence: 1500
     ambition: 2000
     personal_trust: 6500
+    portrait_ref: portrait_hal_verrin
   ilse_marovec:
     display_name: Ilse Marovec
     affiliation: {kind: player_country, country_id: arken}
@@ -276,6 +277,7 @@ characters:
     independence: 8700
     ambition: 5200
     personal_trust: 4200
+    portrait_ref: portrait_ilse_marovec
   tomas_bekker:
     display_name: Tomas Bekker
     affiliation: {kind: player_country, country_id: arken}
@@ -284,6 +286,7 @@ characters:
     independence: 6200
     ambition: 9100
     personal_trust: 3800
+    portrait_ref: portrait_tomas_bekker
   wren_hollis:
     display_name: Wren Hollis
     affiliation: {kind: player_country, country_id: arken}
@@ -292,6 +295,7 @@ characters:
     independence: 4300
     ambition: 3600
     personal_trust: 6800
+    portrait_ref: portrait_wren_hollis
   # Party leaders. Only parties that actually exist get one, and `party_id` is validated against
   # the country's own legislature (`character_party_unknown`).
   leader_civic_union:
@@ -303,6 +307,7 @@ characters:
     independence: 4800
     ambition: 5500
     personal_trust: 6600
+    portrait_ref: portrait_leader_civic_union
   leader_national_front:
     display_name: Gustav Reiner
     affiliation: {kind: player_country, country_id: arken}
@@ -312,6 +317,7 @@ characters:
     independence: 7600
     ambition: 8200
     personal_trust: 2400
+    portrait_ref: portrait_leader_national_front
   leader_rural_alliance:
     display_name: Maret Kuusk
     affiliation: {kind: player_country, country_id: arken}
@@ -321,6 +327,7 @@ characters:
     independence: 6100
     ambition: 4400
     personal_trust: 5200
+    portrait_ref: portrait_leader_rural_alliance
   # Foreign counterparts. A foreign profile's leader REPRESENTS an abstract actor -- affiliation
   # grants that profile no population, treasury, economy or politics, exactly as owning map area
   # does not.
@@ -332,6 +339,7 @@ characters:
     independence: 9000
     ambition: 7000
     personal_trust: 4000
+    portrait_ref: portrait_leader_kessia
   leader_vetruska:
     display_name: Premier Sanna Ilves
     affiliation: {kind: foreign_profile, foreign_profile_id: vetruska}
@@ -340,6 +348,7 @@ characters:
     independence: 9400
     ambition: 6200
     personal_trust: 3200
+    portrait_ref: portrait_leader_vetruska
 
 countries:
   - id: arken

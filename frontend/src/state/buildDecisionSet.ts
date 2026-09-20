@@ -170,6 +170,29 @@ export function buildDecisions(draft: DraftState): Decision[] {
     }
   }
 
+  // "foreign_assistance" sorts FIFTH, between "constitutional_amendment" and
+  // "legislative_bargain". Canonical kind order is REJECTED by the server, never sorted, and
+  // `decisions_json` is hash-covered -- so this builder emits in order rather than sorting at the
+  // end, and a test asserts the emitted array is already sorted.
+  if (draft.assistance !== null) {
+    decisions.push({
+      kind: "foreign_assistance",
+      profile_id: draft.assistance.profileId,
+    } as Decision);
+  }
+
+  if (draft.bargain !== null) {
+    decisions.push({
+      kind: "legislative_bargain",
+      character_id: draft.bargain.characterId,
+      // The draft's slot kind IS the proposal kind the server binds to. `bargainAfterPolicySlot
+      // Change` guarantees this agrees with the proposal actually in the set, so a stale bargain
+      // can never reach the wire.
+      proposal_kind:
+        draft.bargain.proposalKind === "amendment" ? "constitutional_amendment" : "budget",
+    } as Decision); // "legislative_bargain" sorts sixth
+  }
+
   if (draft.movement !== null) {
     decisions.push({
       kind: "military_movement",
@@ -180,6 +203,29 @@ export function buildDecisions(draft: DraftState): Decision[] {
         },
       ],
     }); // "military_movement" sorts last of the five kinds
+  }
+
+  if (draft.promise !== null) {
+    // "promise" sorts EIGHTH and last. Emits only the fields its action carries -- the exclusive
+    // shape `PromiseDecision`'s validator enforces -- so a `make` carrying a `promise_id` is
+    // unconstructible on this side too.
+    decisions.push(
+      draft.promise.action === "make"
+        ? ({
+            kind: "promise",
+            action: "make",
+            character_id: draft.promise.characterId,
+            term_kind: draft.promise.termKind,
+            subject_id: draft.promise.subjectId,
+            deadline_turn: draft.promise.deadlineTurn,
+          } as Decision)
+        : ({
+            kind: "promise",
+            action: "release",
+            character_id: draft.promise.characterId,
+            promise_id: draft.promise.promiseId,
+          } as Decision),
+    );
   }
 
   return decisions;

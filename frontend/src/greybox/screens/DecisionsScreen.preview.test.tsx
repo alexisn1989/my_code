@@ -77,6 +77,12 @@ function baseProjection(overrides: Partial<Record<string, unknown>>) {
     influence_capital: 0,
     investment_capital: 0,
     cabinet_capital: 0,
+    // The three negotiation terms. Zero rather than absent: each is a defaulted `int` on
+    // `PreviewProjection`, so the server sends all three on every preview, and a fixture that
+    // omitted them would be a shape no response can have.
+    legislative_bargain_capital: 0,
+    promise_release_capital: 0,
+    foreign_assistance_estimate: 0,
     opening_capital: 500,
     route: "legislative",
     route_capital_cost: 0,
@@ -395,6 +401,31 @@ describe("DecisionsScreen: a preview stops describing an edited draft", () => {
 
     await waitFor(() => expect(screen.getByTestId("preview-outdated")).toBeInTheDocument());
     expect(screen.queryByText("Would pass")).not.toBeInTheDocument();
+  });
+
+  it("names every capital term the negotiations can charge, and keeps assistance out of the total", async () => {
+    // The panel already showed Route cost / Bargaining / Cabinet / Investment; the three
+    // negotiations this slice added were charged by the server and shown nowhere, so a player
+    // could not see what a bargain or a release was costing them.
+    renderScreenAndPreview(
+      baseProjection({
+        legislative_bargain_capital: 113,
+        promise_release_capital: 250,
+        foreign_assistance_estimate: 38_150_000,
+        committed_capital: 363,
+      }),
+    );
+    await clickPreview();
+
+    await waitFor(() =>
+      expect(screen.getByTestId("bargain-capital").textContent).toBe("113"),
+    );
+    expect(screen.getByTestId("promise-release-capital").textContent).toBe("250");
+
+    // Assistance is money RECEIVED, so it is shown apart from the committed-capital grid and
+    // labelled as such. Reading it as part of the total would be exactly backwards.
+    expect(screen.getByTestId("assistance-estimate").textContent).toBe("38,150,000");
+    expect(screen.getByText(/money received, not political capital committed/)).toBeInTheDocument();
   });
 
   it("a staged movement order counts as a decision change", async () => {

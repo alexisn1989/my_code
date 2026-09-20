@@ -355,6 +355,8 @@ export interface components {
             character_display_name: string;
             /** Character Id */
             character_id: string;
+            /** Character Portrait Ref */
+            character_portrait_ref: string;
             /** Deadline Turn */
             deadline_turn: number;
             /** Made Turn */
@@ -367,14 +369,20 @@ export interface components {
             release_blocked_reason?: ("promise_already_released" | "promise_past_releasing") | null;
             /** Released Turn */
             released_turn?: number | null;
-            /** Status */
-            status: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "breached" | "cancelled" | "expired" | "fulfilled" | "pending";
             /** Subject Display Name */
             subject_display_name: string;
             /** Subject Id */
             subject_id: string;
-            /** Term Kind */
-            term_kind: string;
+            /**
+             * Term Kind
+             * @enum {string}
+             */
+            term_kind: "assistance_restraint" | "cabinet_tenure" | "legislative_support";
         };
         /** Alert */
         Alert: {
@@ -848,6 +856,8 @@ export interface components {
             counterpart_character_id?: string | null;
             /** Counterpart Display Name */
             counterpart_display_name?: string | null;
+            /** Counterpart Portrait Ref */
+            counterpart_portrait_ref?: string | null;
             /** Display Name */
             display_name: string;
             /** Estimated Grant */
@@ -978,6 +988,8 @@ export interface components {
             party_id: string;
             /** Personal Trust Bps */
             personal_trust_bps: number;
+            /** Portrait Ref */
+            portrait_ref: string;
             /** Refusal Reason */
             refusal_reason?: "refused_will_not_deal" | null;
             /** Will Deal */
@@ -1275,14 +1287,19 @@ export interface components {
             character_display_name: string;
             /** Character Id */
             character_id: string;
+            /** Character Portrait Ref */
+            character_portrait_ref: string;
             /** Earliest Legal Deadline */
             earliest_legal_deadline: number;
             /** Subject Display Name */
             subject_display_name: string;
             /** Subject Id */
             subject_id: string;
-            /** Term Kind */
-            term_kind: string;
+            /**
+             * Term Kind
+             * @enum {string}
+             */
+            term_kind: "assistance_restraint" | "cabinet_tenure" | "legislative_support";
         };
         /**
          * ProposalRoute

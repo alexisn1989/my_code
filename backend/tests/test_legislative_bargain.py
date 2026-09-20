@@ -38,10 +38,14 @@ from app.content.scenarios import load_scenario_file
 from app.core.errors import TurnResolutionError
 from app.core.money import BPS_DENOMINATOR
 from app.core.politics import clamp_bps, trunc_div_toward_zero
+from app.simulation.constitution import ExecutiveSelection
 from app.simulation.decisions import (
     BudgetDecision,
+    ConstitutionalAmendmentDecision,
     DecisionSet,
+    ExecutiveSelectionTarget,
     LegislativeBargainDecision,
+    ProposalRoute,
     SpendingUpdate,
 )
 from app.simulation.history import advance_game, new_game, validate_history
@@ -689,7 +693,7 @@ class TestMoney:
 
 
 # --------------------------------------------------------------------------------------------
-# Submission rejection: six codes, fixed precedence, and preflight parity.
+# Submission rejection: seven codes, fixed precedence, and preflight parity.
 # --------------------------------------------------------------------------------------------
 
 
@@ -834,6 +838,110 @@ class TestSubmissionRejection:
         assert problem is not None
         assert problem.code == "legislative_bargain_party_is_in_government"
 
+    def test_a_decree_route_budget_refuses_the_bargain_on_both_surfaces(self) -> None:
+        """Code 7. A decree is the act of NOT asking the chamber, so there is no vote for an
+        endorsement to move -- and the defect this code closes was measured, not imagined: before it
+        existed, `decree_state` resolved a decree budget plus a bargain as ACCEPTED, charged the
+        asking price, reported `endorsement_bps=2,000`, and produced zero bloc vote rows."""
+        state = _state("decree_state.yaml")
+        decision_set = _decisions(
+            state,
+            BudgetDecision(
+                route="decree",
+                spending_updates=(SpendingUpdate(category="health", amount=210_000_000),),
+            ),
+            LegislativeBargainDecision(character_id=_REFUSES_DECREE, proposal_kind="budget"),
+        )
+        with pytest.raises(
+            TurnResolutionError, match="legislative_bargain_requires_legislative_route"
+        ):
+            resolve_turn(state, decision_set)
+        problem = first_decision_problem(state, decision_set)
+        assert problem is not None
+        assert problem.code == "legislative_bargain_requires_legislative_route"
+
+    def test_the_same_budget_on_the_legislative_route_is_accepted(self) -> None:
+        """Anti-vacuity for the test above: the route is the whole of the difference, so the
+        identical proposal and the identical counterparty must previously pass every code."""
+        state = _state("decree_state.yaml")
+        decision_set = _decisions(
+            state,
+            _budget(amount=210_000_000),
+            LegislativeBargainDecision(character_id=_REFUSES_DECREE, proposal_kind="budget"),
+        )
+        assert first_decision_problem(state, decision_set) is None
+        report = resolve_turn(state, decision_set).report
+        assert report.legislative.bargains[0].outcome is (
+            LegislativeBargainOutcome.REFUSED_WILL_NOT_DEAL
+        )
+
+    def test_an_absent_proposal_is_reported_before_its_route(self) -> None:
+        """Code 6 before code 7: a route is only meaningful once the proposal has been found, so
+        "your set carries no amendment" is the more useful answer than a complaint about the route
+        of an amendment that is not there. The set really violates both -- it carries a decree
+        budget and bargains over an absent amendment."""
+        state = _state("decree_state.yaml")
+        decision_set = _decisions(
+            state,
+            BudgetDecision(
+                route="decree",
+                spending_updates=(SpendingUpdate(category="health", amount=210_000_000),),
+            ),
+            LegislativeBargainDecision(
+                character_id=_REFUSES_DECREE, proposal_kind="constitutional_amendment"
+            ),
+        )
+        with pytest.raises(TurnResolutionError, match="legislative_bargain_proposal_absent"):
+            resolve_turn(state, decision_set)
+        problem = first_decision_problem(state, decision_set)
+        assert problem is not None and problem.code == "legislative_bargain_proposal_absent"
+        assert "legislative_bargain_requires_legislative_route" not in problem.message
+
+    def test_a_decree_route_amendment_refuses_the_bargain_on_both_surfaces(self) -> None:
+        """Code 7 again, on the OTHER proposal kind.
+
+        Both kinds are checked because they reach the chamber through different substeps and a
+        route rule written for one of them would leave the other silently purchasable. The bargain
+        substep runs before the amendment's own resolution, so code 7 is what this set reports even
+        though the amendment route rule (`requires legislature='none'`) would also have refused it
+        -- and that ordering is the right one: the bargain is the part of the set that is asking
+        for something impossible.
+        """
+        state = _state("decree_state.yaml")
+        decision_set = _decisions(
+            state,
+            ConstitutionalAmendmentDecision(
+                targets=(ExecutiveSelectionTarget(value=ExecutiveSelection.APPOINTED),),
+                route=ProposalRoute.DECREE,
+            ),
+            LegislativeBargainDecision(
+                character_id=_REFUSES_DECREE, proposal_kind="constitutional_amendment"
+            ),
+        )
+        with pytest.raises(TurnResolutionError, match="'constitutional_amendment' proposal") as exc:
+            resolve_turn(state, decision_set)
+        assert "legislative_bargain_requires_legislative_route" in str(exc.value)
+        problem = first_decision_problem(state, decision_set)
+        assert problem is not None
+        assert problem.code == "legislative_bargain_requires_legislative_route"
+
+    def test_the_same_amendment_on_the_legislative_route_is_accepted(self) -> None:
+        """Anti-vacuity for the amendment case: the identical targets and the identical
+        counterparty pass every code once the route is the chamber's."""
+        state = _state("decree_state.yaml")
+        decision_set = _decisions(
+            state,
+            ConstitutionalAmendmentDecision(
+                targets=(ExecutiveSelectionTarget(value=ExecutiveSelection.APPOINTED),),
+            ),
+            LegislativeBargainDecision(
+                character_id=_REFUSES_DECREE, proposal_kind="constitutional_amendment"
+            ),
+        )
+        assert first_decision_problem(state, decision_set) is None
+        report = resolve_turn(state, decision_set).report
+        assert report.legislative.bargains[0].proposal_kind == "constitutional_amendment"
+
     def test_a_gate_refusal_is_not_a_submission_rejection(self) -> None:
         """The ruling, asserted on every shipped leader who fails the gate: the approach is legal,
         previews clean, resolves normally and produces a row."""
@@ -881,6 +989,8 @@ class TestTheProjection:
         base = {
             "character_id": "x",
             "display_name": "X",
+            # Required since the portrait slice: a counterparty row always depicts somebody.
+            "portrait_ref": "portrait_x",
             "party_id": "p",
             "party_display_name": "P",
             "loyalty_bps": 0,
@@ -1060,7 +1170,12 @@ class TestGroup58IsIndependent:
         assert imported <= _ALLOWED_BARGAIN_IMPORTS, sorted(imported - _ALLOWED_BARGAIN_IMPORTS)
 
     def test_reconciliation_never_calls_the_production_assessment(self) -> None:
-        forbidden = {"assess_legislative_bargain", "asking_price_capital", "will_deal"}
+        forbidden = {
+            "assess_legislative_bargain",
+            "asking_price_capital",
+            "bargain_route_is_legislative",
+            "will_deal",
+        }
         tree = ast.parse(_RECONCILIATION_MODULE.read_text(encoding="utf-8"))
         called = {
             node.func.id
@@ -1169,6 +1284,50 @@ class TestGroup58Tampers:
         )
         assert any("group 58" in problem for problem in problems), problems
 
+    def test_a_bargain_over_a_decree_route_proposal_is_caught(self) -> None:
+        """Check (4a), and the reason it exists.
+
+        Check (4) walks `legislative.blocs` and compares each row's `endorsement_bps` against the
+        constant. On a decree turn that collection is EMPTY -- a decree holds no chamber vote -- so
+        the loop body never executes and the check passes without proving anything. The route is
+        therefore checked BEFORE the rows are iterated, against the submitted set, so an endorsement
+        bought for a proposal nobody voted on fails here rather than reconciling clean.
+
+        The tamper is a save whose stored `decisions_json` says the budget went by decree while its
+        `report_json` claims a chamber endorsement: exactly the shape the resolver now refuses at
+        submission, and therefore the shape a forged save is the only remaining way to produce.
+        """
+        state, resolution, decision_set = _reconciled(
+            "deficit_demo.yaml",
+            _DEMO_BUDGET,
+            LegislativeBargainDecision(character_id=_ACCEPTS_DEFICIT, proposal_kind="budget"),
+        )
+        forged_decisions = DecisionSet(
+            expected_turn=decision_set.expected_turn,
+            expected_state_version=decision_set.expected_state_version,
+            decisions=tuple(
+                sorted(
+                    (
+                        _DEMO_BUDGET.model_copy(update={"route": ProposalRoute.DECREE}),
+                        LegislativeBargainDecision(
+                            character_id=_ACCEPTS_DEFICIT, proposal_kind="budget"
+                        ),
+                    ),
+                    key=lambda decision: decision.kind,
+                )
+            ),
+        )
+        problems = reconcile_political_legislative_and_survival_report(
+            opening_state=state,
+            closing_state=resolution.state,
+            report=resolution.report,
+            decisions=forged_decisions,
+        )
+        assert any(
+            "route, which holds no chamber vote" in problem and "(group 58)" in problem
+            for problem in problems
+        ), problems
+
     def test_a_turn_that_reports_a_bargain_it_never_submitted_is_caught(self) -> None:
         state, resolution, _ = _reconciled(
             "deficit_demo.yaml",
@@ -1234,7 +1393,7 @@ class TestCompatibility:
         raw = json.loads(_BARGAIN_FIXTURE.read_text(encoding="utf-8"))
         assert raw["ruleset_version"] == "0.19.0"
         assert raw["ruleset_version"] != RULESET_VERSION
-        assert RULESET_VERSION == "0.22.0"
+        assert RULESET_VERSION == "0.23.0"
 
     def _one_stored_bloc_row(self) -> dict[str, object]:
         raw = json.loads(_BARGAIN_FIXTURE.read_text(encoding="utf-8"))

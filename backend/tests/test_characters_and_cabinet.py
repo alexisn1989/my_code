@@ -99,6 +99,9 @@ def _character(**overrides: object) -> CharacterState:
     fields: dict[str, object] = {
         "display_name": "Somebody",
         "affiliation": PlayerCountryRef(kind="player_country", country_id="testland"),
+        # REQUIRED with no default on the model, so the factory must supply one: a character
+        # without a depiction is unconstructible, which is the point of authoring the field.
+        "portrait_ref": "portrait_somebody",
         **_trait_kwargs(),
     }
     fields.update(overrides)

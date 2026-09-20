@@ -52,6 +52,7 @@ from app.simulation.decisions import (
     ConstitutionalAmendmentDecision,
     DecisionSet,
 )
+from app.simulation.legislative_bargaining import bargain_route_is_legislative
 from app.simulation.legislature import GovernmentRole, ProposalRoute
 from app.simulation.phases import available_promise_term, promise_subject_is_valid
 from app.simulation.promises import (
@@ -343,6 +344,23 @@ def _legislative_bargain_problem(
         return DecisionProblem(
             code="legislative_bargain_proposal_absent",
             message="There is no such proposal in this turn for that support to apply to.",
+        )
+    # Code 7, after code 6 for the reason slot 1 states: a route is only meaningful once the
+    # proposal has been found. Drawn from the SAME predicate the resolver raises on, so preflight
+    # cannot green-light a bargain the turn will refuse.
+    proposal = next(
+        d
+        for d in decision_set.decisions
+        if isinstance(d, BudgetDecision | ConstitutionalAmendmentDecision)
+        and d.kind == decision.proposal_kind
+    )
+    if not bargain_route_is_legislative(route_value=proposal.route.value):
+        return DecisionProblem(
+            code="legislative_bargain_requires_legislative_route",
+            message=(
+                "A bargain buys support in a chamber vote, and this proposal is being decreed "
+                "rather than put to the chamber."
+            ),
         )
     return None
 

@@ -477,3 +477,138 @@ export function driverSentence(
       return label;
   }
 }
+
+/**
+ * What a counterpart SAYS when you sit down with them — one first-person line per state.
+ *
+ * REQUIRED, not decorative: every applicable counterpart state has a line, so a row never shows a
+ * person with nothing to say. The variants are exhaustive over the projected verdicts rather than a
+ * default plus a few specials, which is why each function below takes the verdict rather than an
+ * optional string.
+ *
+ * NO DIGITS, EVER. R8 removed counteroffers, price bands and the offer field from this design. A
+ * line like "would a hundred and fifty change your mind?" would smuggle that mechanic back through
+ * prose, so these sentences carry no figure at all — the price, the grant and the deadline are
+ * rendered SEPARATELY, in their own labelled elements, exactly as the server sends them. A test
+ * asserts no question contains a digit, and a companion test asserts the price is still on screen,
+ * so the rule cannot be satisfied by hiding the number instead of the sentence.
+ */
+export function bargainQuestion(willDeal: boolean): string {
+  return willDeal
+    ? "I can bring my people with me. What is it worth to you?"
+    : "Why would I carry your vote? You have given me no reason to trust you.";
+}
+
+export function assistanceQuestion(willAssist: boolean, refusalReason?: string | null): string {
+  if (willAssist) {
+    return "We are willing to help. How much of our capacity do you need?";
+  }
+  if (refusalReason === "foreign_assistance_pool_exhausted") {
+    return "We have already given what we had. What else did you imagine was left?";
+  }
+  return "After everything between us, you come asking for help?";
+}
+
+export function promiseOfferQuestion(termKind: string): string {
+  switch (termKind) {
+    case "cabinet_tenure":
+      return "Will you keep me where I am, or am I one bad turn from the door?";
+    case "legislative_support":
+      return "Put it to the chamber and I will stand with you. Do we have an understanding?";
+    case "assistance_restraint":
+      return "Leave our reserves alone and we will remember it. Can you hold to that?";
+    default:
+      return "What exactly are you offering me?";
+  }
+}
+
+export function activePromiseQuestion(releasable: boolean, status: string): string {
+  if (status === "cancelled") {
+    return "You bought your way out of this one. I have not forgotten.";
+  }
+  return releasable
+    ? "You gave me your word. Are you here to keep it, or to buy it back?"
+    : "This settles now. We both know where we stand.";
+}
+
+/**
+ * The meeting panel's own lines: prices, pools, deadlines and announcements.
+ *
+ * They live here for the reason every sentence above does — string composition is arithmetic under
+ * `format-boundary.test.ts`, which parses every non-test file with the real TypeScript compiler and
+ * fails a `BinaryExpression` outside `src/format/**`. A screen that built these inline would fail
+ * that gate, and the gate is what keeps display logic testable without a DOM.
+ *
+ * Each takes an ALREADY-PROJECTED figure. Nothing here decides willingness, prices an approach,
+ * computes a deadline or judges affordability: those are the server's answers, rendered verbatim.
+ */
+export function bargainPriceLine(askingPrice: number): string {
+  return `Asking price: ${formatAmount(askingPrice)} political capital.`;
+}
+
+export function assistanceGrantLine(estimatedGrant: number): string {
+  return `Would send ${formatAmount(estimatedGrant)}.`;
+}
+
+export function remainingCapacityLine(remainingCapacity: number): string {
+  return `Remaining capacity: ${formatAmount(remainingCapacity)}.`;
+}
+
+export function earliestDeadlineLine(deadlineTurn: number): string {
+  return `The earliest turn you could promise through is ${formatAmount(deadlineTurn)}.`;
+}
+
+export function promiseWindowLine(madeTurn: number, deadlineTurn: number): string {
+  return `Given on turn ${formatAmount(madeTurn)}, runs through turn ${formatAmount(deadlineTurn)}.`;
+}
+
+/** Deliberately carries NO figure.
+ *
+ * The release price is a server constant, and restating it here would put a second copy of a game
+ * number in the client — the duplication the no-duplication contract exists to stop. The exact
+ * charge is `/preview`'s `promise_release_capital`, shown on the Decisions screen beside every
+ * other capital term, which is also the only place it can be weighed against them. */
+export function releaseCostLine(): string {
+  return "Releasing it costs political capital and moves no trust — the Decisions screen shows the charge against this turn.";
+}
+
+/** Why a release is refused, from the projection's own two display reasons.
+ *
+ * A DIFFERENT namespace from the seven submission rejection codes: every blocked release is
+ * `promise_release_names_no_live_promise` on the resolver and on preflight, and the detail is
+ * projected only here. An unrecognised reason still reads as a refusal rather than leaking a code.
+ */
+export function releaseBlockedText(reason: string | null | undefined): string {
+  switch (reason) {
+    case "promise_already_released":
+      return "Already released — it runs to its original deadline either way.";
+    case "promise_past_releasing":
+      return "Too late to release — this one settles on its merits this turn.";
+    default:
+      return "Cannot be released.";
+  }
+}
+
+export function counterpartySelectedAnnouncement(displayName: string): string {
+  return `${displayName} selected. Nothing is staged until you confirm.`;
+}
+
+export function bargainStagedAnnouncement(displayName: string, proposalName: string): string {
+  return `Added to this turn's draft: ${displayName} backs ${proposalName}. Nothing has been agreed yet — resolve the turn to put it to them.`;
+}
+
+export function assistanceStagedAnnouncement(displayName: string): string {
+  return `Added to this turn's draft: a request to ${displayName}. Nothing has been sent yet — resolve the turn to ask.`;
+}
+
+export function promiseStagedAnnouncement(displayName: string, subjectName: string): string {
+  return `Added to this turn's draft: a promise to ${displayName} about ${subjectName}. Nothing has been given yet — resolve the turn to make it.`;
+}
+
+export function releaseStagedAnnouncement(displayName: string): string {
+  return `Added to this turn's draft: releasing your promise to ${displayName}. Nothing has changed yet — resolve the turn to pay for it.`;
+}
+
+export function meetingDraftClearedAnnouncement(): string {
+  return "Removed from this turn's draft. Nothing has changed.";
+}

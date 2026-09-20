@@ -14,11 +14,16 @@
  * navigation tab. `GlossaryScreen` stays outside this list and is rendered by
  * `GreyboxApp`'s persistent header.
  *
- * FOUR of the eleven (Economy, Legislature, Constitution, Relationships) render
+ * THREE of the twelve (Economy, Legislature, Constitution) render
  * `UnavailableScreen`. Government no longer does: the characters slice projects
  * `cabinet_posts`, which is real per-office detail from the server, so the cabinet is live and
- * that screen says plainly that the REST of the government breakdown still is not. The reason
- * below is why the other four remain unavailable: the real API's `DashboardProjection`
+ * that screen says plainly that the REST of the government breakdown still is not. Relationships
+ * no longer does either, for the same reason and on the same terms: the slice projects party
+ * leaders, foreign counterparts and promises, so the people a player can actually deal with are
+ * live and the screen says plainly that the wider relationship picture is not. (This sentence
+ * previously read "FOUR of the eleven", which undercounted the list below by one as well as
+ * predating the cabinet; both halves are corrected here rather than left to drift further.) The
+ * reason below is why the other three remain unavailable: the real API's `DashboardProjection`
  * gives only five SUMMARY concern cards, never the per-institution,
  * per-chamber, per-bloc, or per-budget-line breakdown these screens were
  * mocked up against in Gate 4A0. Building that breakdown client-side would be
@@ -34,6 +39,7 @@ import { CabinetScreen } from "./screens/CabinetScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { DecisionsScreen } from "./screens/DecisionsScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
+import { MeetingScreen } from "./screens/MeetingScreen";
 import { ResultScreen } from "./screens/ResultScreen";
 import { StrategicMapScreen } from "./screens/StrategicMapScreen";
 import { TerminalScreen } from "./screens/TerminalScreen";
@@ -118,8 +124,11 @@ export const SCREENS: readonly ScreenDefinition[] = [
     id: "relationships",
     label: "Relationships",
     heading: "Relationships",
-    component: unavailable("Relationships"),
+    component: MeetingScreen,
     showsGameplayChrome: true,
+    // Same reason as Government and Strategic map: it reads the shared decision-options
+    // projection, which needs a campaign.
+    requiresActiveGame: true,
   },
   {
     id: "decisions",

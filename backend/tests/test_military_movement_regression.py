@@ -166,8 +166,8 @@ EXPECTED_PROMISES_DIFFERENCE = {"world.promises"}
 """The one path the promise slice adds to a quiet closing state, as its own named set.
 
 `WorldState.promises` is a DEFAULTED empty dict, and it was tempting to predict it would not show
-up here at all -- but a defaulted dict still serialises, so the key exists in every 0.22.0 state and
-is absent from every 0.14.0 one. Named rather than absorbed into a widened exclusion, for the reason
+up here at all -- but a defaulted dict still serialises, so the key has existed in every state since
+0.22.0 and is absent from every 0.14.0 one. Named rather than absorbed into a widened exclusion, for the reason
 every set above is named: a second promise path appearing later must fail this test instead of
 disappearing into it.
 
@@ -616,11 +616,19 @@ class TestQuietTurnRegressionAgainstFrozenBaseline:
         self, live: list[dict[str, Any]], baseline: list[dict[str, Any]]
     ) -> None:
         """So the pinned set above can never quietly absorb a different meaning."""
-        assert live[-1]["state"]["ruleset_version"] == "0.22.0"
-        # Deliberately UNMOVED at 0.18.0: promises are created in play, never authored, so this
-        # commit changes no scenario content. A content bump here would mean the slice had quietly
-        # started authoring something.
-        assert live[-1]["state"]["content_version"] == "0.18.0"
+        assert live[-1]["state"]["ruleset_version"] == "0.23.0"
+        # BOTH versions moved in this slice, for two unrelated reasons, and the pair is pinned so
+        # neither can be read as the other's consequence.
+        #
+        # Content 0.18.0 -> 0.19.0 is PORTRAITS: a portrait reference is authored per character, so
+        # content is exactly what a scenario gained. On its own it would have moved no rules at all
+        # -- a portrait changes no resolution.
+        #
+        # Ruleset 0.22.0 -> 0.23.0 is the DECREE-ROUTE BARGAIN REFUSAL, which is a rules change and
+        # nothing to do with portraits: a decision set the 0.22.0 engine accepted (a decree proposal
+        # plus a bargain over it) is now refused at submission, so replaying 0.22.0 decisions under
+        # 0.23.0 rules does not reproduce the 0.22.0 turn.
+        assert live[-1]["state"]["content_version"] == "0.19.0"
         assert baseline[-1]["state"]["ruleset_version"] == "0.14.0"
         assert baseline[-1]["state"]["content_version"] == "0.14.0"
 

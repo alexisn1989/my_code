@@ -11,11 +11,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   FORMATION_FAN_SLOTS,
+  activePromiseQuestion,
+  assistanceQuestion,
+  bargainPriceLine,
+  bargainQuestion,
+  earliestDeadlineLine,
   formationMarkerPlacements,
   formationOverflowLabel,
   driverSentence,
   labelOffsetPosition,
+  promiseOfferQuestion,
   refusalReasonText,
+  releaseBlockedText,
+  releaseCostLine,
   type LabelAnchorValue,
 } from "./format";
 
@@ -522,5 +530,74 @@ describe("driverSentence — promises (characters slice)", () => {
     expect(driverSentence("promise_made", withoutSubject, "generic")).toBe("generic");
     const { deadline_turn: _deadline, ...withoutDeadline } = base;
     expect(driverSentence("promise_expired", withoutDeadline, "generic")).toBe("generic");
+  });
+});
+
+describe("what a counterpart says, and what it must never say", () => {
+  /** Every question the meeting panel can render, across every projected verdict. Enumerated as a
+   * table rather than spot-checked, because the claims below are about the WHOLE set. */
+  const EVERY_QUESTION = [
+    bargainQuestion(true),
+    bargainQuestion(false),
+    assistanceQuestion(true, null),
+    assistanceQuestion(false, "foreign_assistance_counterpart_is_hostile"),
+    assistanceQuestion(false, "foreign_assistance_pool_exhausted"),
+    promiseOfferQuestion("cabinet_tenure"),
+    promiseOfferQuestion("legislative_support"),
+    promiseOfferQuestion("assistance_restraint"),
+    promiseOfferQuestion("something_a_later_slice_adds"),
+    activePromiseQuestion(true, "pending"),
+    activePromiseQuestion(false, "pending"),
+    activePromiseQuestion(false, "cancelled"),
+  ];
+
+  it("carries no figure in any question, on any verdict", () => {
+    // R8 removed counteroffers, price bands and the offer field. A line naming a number would put
+    // that mechanic back through prose, so the rule is asserted over the whole table rather than
+    // on the two or three lines somebody remembered to check.
+    for (const question of EVERY_QUESTION) {
+      expect(question).not.toMatch(/[0-9]/);
+    }
+  });
+
+  it("never leaks a raw identifier, and always says something", () => {
+    for (const question of EVERY_QUESTION) {
+      expect(question).not.toMatch(/[a-z]+_[a-z]+/);
+      expect(question.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("distinguishes the two assistance refusals, because they mean different things", () => {
+    // An exhausted pool is a fact about what is left; hostility is a fact about the relationship.
+    // Collapsing them would tell a player to mend a relationship that is fine, or the reverse.
+    expect(assistanceQuestion(false, "foreign_assistance_pool_exhausted")).not.toBe(
+      assistanceQuestion(false, "foreign_assistance_counterpart_is_hostile"),
+    );
+  });
+
+  it("distinguishes a live promise from one already bought out", () => {
+    expect(activePromiseQuestion(false, "cancelled")).not.toBe(
+      activePromiseQuestion(false, "pending"),
+    );
+  });
+});
+
+describe("the meeting panel's figures and refusals", () => {
+  it("states a price, a deadline and a release cost the way the server sent them", () => {
+    expect(bargainPriceLine(113)).toBe("Asking price: 113 political capital.");
+    expect(earliestDeadlineLine(7)).toBe("The earliest turn you could promise through is 7.");
+    // No figure: the release price is a server constant and `/preview` is where it is charged.
+    expect(releaseCostLine()).not.toMatch(/[0-9]/);
+  });
+
+  it("puts every blocked-release reason into words, including one it does not know", () => {
+    expect(releaseBlockedText("promise_already_released")).toContain("Already released");
+    expect(releaseBlockedText("promise_past_releasing")).toContain("Too late");
+    // A reason that arrives before its wording should read as a refusal, never as a leaked code.
+    expect(releaseBlockedText("promise_some_future_reason")).toBe("Cannot be released.");
+    expect(releaseBlockedText(null)).toBe("Cannot be released.");
+    for (const reason of ["promise_already_released", "promise_past_releasing", null]) {
+      expect(releaseBlockedText(reason)).not.toMatch(/promise_/);
+    }
   });
 });

@@ -624,7 +624,10 @@ def test_scenario_content_is_isolated_to_the_w1_paths(scenario_file: str) -> Non
 def test_every_scenario_has_exactly_the_w1_paths_present(scenario_file: str) -> None:
     with (SCENARIOS_DIR / scenario_file).open(encoding="utf-8") as handle:
         current = yaml.safe_load(handle)
-    assert current["content_version"] == "0.18.0"
+    # Literal, and bumped deliberately: "0.18.0" -> "0.19.0" for the portrait slice. This test
+    # pins the authored SHAPE of a scenario file, so the version it was shaped under belongs here
+    # as a fact about the file rather than as a lookup.
+    assert current["content_version"] == "0.19.0"
     assert isinstance(current["foreign_profiles"], dict) and len(current["foreign_profiles"]) == 2
     assert isinstance(current["dyads"], list) and len(current["dyads"]) == 1
     assert isinstance(current["strategic_map"], dict)
@@ -673,7 +676,7 @@ def test_phase4a_save_compatibility_is_checked_before_any_entry_payload_is_parse
 
 
 def test_ruleset_and_save_format_versions_are_current() -> None:
-    assert RULESET_VERSION == "0.22.0"
+    assert RULESET_VERSION == "0.23.0"
     assert SAVE_FORMAT_VERSION == 1
 
 
@@ -681,4 +684,4 @@ def test_no_migration_path_exists_for_the_pre_w1_ruleset() -> None:
     """`SUPPORTED_RULESET_VERSIONS` names exactly one version -- the current one. A migration
     path would need a second, older version present in this set; there is none, and no
     foreign-conflict state is ever synthesized for a save that predates it."""
-    assert frozenset({"0.22.0"}) == SUPPORTED_RULESET_VERSIONS
+    assert frozenset({"0.23.0"}) == SUPPORTED_RULESET_VERSIONS

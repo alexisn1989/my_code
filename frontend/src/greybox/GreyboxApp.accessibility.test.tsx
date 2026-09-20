@@ -80,6 +80,13 @@ const DECISION_OPTIONS = {
   chambers: [],
   constitutional_axes: [],
   cabinet_posts: [],
+  // The four counterparty collections Relationships reads. Empty rather than absent: the screen
+  // renders its own "nobody to deal with" copy from an empty list, and an absent key would be a
+  // shape the server cannot send.
+  legislative_bargain_counterparties: [],
+  foreign_assistance_counterparties: [],
+  promise_options: [],
+  active_promises: [],
   decree_amendment_capital_cost: 10,
   decree_available: true,
   policy_cards: [],
