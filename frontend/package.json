@@ -16,7 +16,10 @@
     "postinstall": "cd tools/openapi-gen && npm ci",
     "generate:api:schema": "cd ../backend && uv run python scripts/dump_openapi.py > ../docs/contracts/phase4a-openapi.json",
     "generate:api:types": "cd tools/openapi-gen && npx openapi-typescript ../../../docs/contracts/phase4a-openapi.json -o ../../src/api/schema.d.ts",
-    "generate:api": "npm run generate:api:schema && npm run generate:api:types"
+    "generate:api": "npm run generate:api:schema && npm run generate:api:types",
+    "test:e2e": "playwright test",
+    "audit:baseline": "playwright test --project=baseline --project=stress && node tools/write-baseline-report.mjs",
+    "test:preflight": "playwright test e2e/preflight.spec.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
@@ -25,6 +28,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.0",

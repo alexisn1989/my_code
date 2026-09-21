@@ -1,0 +1,367 @@
+{
+  "findings": [
+    {
+      "id": "V1",
+      "screen": "Dashboard",
+      "viewport": "reflow-wcag-320x512",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: label.flex flex-col gap-1 text-sm"
+    },
+    {
+      "id": "V2",
+      "screen": "Decisions",
+      "viewport": "reflow-wcag-320x512",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex flex-col gap-6"
+    },
+    {
+      "id": "V3",
+      "screen": "Decisions",
+      "viewport": "reflow-wcag-320x512",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "id": "V4",
+      "screen": "Dashboard",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V5",
+      "screen": "Dashboard",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex flex-col gap-6"
+    },
+    {
+      "id": "V6",
+      "screen": "Dashboard",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.grid gap-4 md:grid-cols-3 xl:grid-cols-5"
+    },
+    {
+      "id": "V7",
+      "screen": "Dashboard",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex gap-3"
+    },
+    {
+      "id": "V8",
+      "screen": "Dashboard",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "id": "V9",
+      "screen": "Dashboard",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: label.flex flex-col gap-1 text-sm"
+    },
+    {
+      "id": "V10",
+      "screen": "Government",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V11",
+      "screen": "Economy",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V12",
+      "screen": "Legislature",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V13",
+      "screen": "Constitution",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V14",
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V15",
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex flex-col gap-6"
+    },
+    {
+      "id": "V16",
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex flex-col gap-6"
+    },
+    {
+      "id": "V17",
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "id": "V18",
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: ul.flex flex-col gap-2"
+    },
+    {
+      "id": "V19",
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: li."
+    },
+    {
+      "id": "V20",
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: button.flex w-full gap-3 rounded border border-"
+    },
+    {
+      "id": "V21",
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "id": "V22",
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: ul.flex flex-col gap-2"
+    },
+    {
+      "id": "V23",
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V24",
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex flex-col gap-6"
+    },
+    {
+      "id": "V25",
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "id": "V26",
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex flex-col gap-4"
+    },
+    {
+      "id": "V27",
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex flex-wrap gap-2"
+    },
+    {
+      "id": "V28",
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div."
+    },
+    {
+      "id": "V29",
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: ul.grid grid-cols-1 gap-3 sm:grid-cols-2 lg"
+    },
+    {
+      "id": "V30",
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: li.list-none"
+    },
+    {
+      "id": "V31",
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex h-full flex-col gap-2 rounded borde"
+    },
+    {
+      "id": "V32",
+      "screen": "Turn result",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V33",
+      "screen": "History",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V34",
+      "screen": "Strategic map",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V35",
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "horizontal-scroll",
+      "detail": "the page scrolls horizontally"
+    },
+    {
+      "id": "V36",
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex flex-col gap-6"
+    },
+    {
+      "id": "V37",
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "id": "V38",
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-mobile-195x422",
+      "source": "live",
+      "kind": "overflow",
+      "detail": "content wider than its box: div.flex gap-3"
+    }
+  ],
+  "coverage": [
+    "Government: 30 tab stops traversed, every one showed a focus ring",
+    "Government: Escape pressed after traversal; page stayed live",
+    "Relationships: 30 tab stops traversed, every one showed a focus ring",
+    "Relationships: Escape pressed after traversal; page stayed live",
+    "Decisions: 30 tab stops traversed, every one showed a focus ring",
+    "Decisions: Escape pressed after traversal; page stayed live",
+    "Government: exactly one polite live region",
+    "Relationships: exactly one polite live region",
+    "Glossary reached and captured at laptop-1440x900",
+    "Escape pressed on the open Glossary; no crash and the page stayed live",
+    "2x device-scale rendering captured for Dashboard",
+    "2x device-scale rendering captured for Government",
+    "2x device-scale rendering captured for Relationships",
+    "console: no errors or warnings on any screen at any viewport"
+  ],
+  "consoleLog": [],
+  "viewports": [
+    {
+      "name": "desktop-1920x1080",
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "name": "laptop-1440x900",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "name": "narrow-820x900",
+      "width": 820,
+      "height": 900
+    },
+    {
+      "name": "mobile-390x844",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "name": "reflow-wcag-320x512",
+      "width": 320,
+      "height": 512
+    },
+    {
+      "name": "reflow200-desktop-960x540",
+      "width": 960,
+      "height": 540
+    },
+    {
+      "name": "reflow200-laptop-720x450",
+      "width": 720,
+      "height": 450
+    },
+    {
+      "name": "reflow200-mobile-195x422",
+      "width": 195,
+      "height": 422
+    }
+  ]
+}

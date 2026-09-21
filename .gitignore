@@ -30,3 +30,9 @@ frontend/dist/
 # MANDATE local artifacts
 *.mandate-save.json
 /tmp/
+
+# Playwright run state (Gate 4A3 harness). Transient: regenerated on every run and meaningless
+# outside the machine that produced it, so it is never committed. The BASELINE ARTIFACTS are
+# committed deliberately and live in docs/reviews/ instead.
+frontend/test-results/
+frontend/playwright-report/

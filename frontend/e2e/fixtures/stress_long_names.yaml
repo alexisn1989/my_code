@@ -1,0 +1,717 @@
+# GATE 4A3 BASELINE STRESS FIXTURE - not shipped content, not a playable scenario.
+#
+# A copy of `data/scenarios/deficit_demo.yaml` with every `display_name` stretched to EXACTLY 64
+# characters and nothing else changed. 64 is not an arbitrary choice: it is `StrictDisplayName`'s
+# documented maximum, so this is the worst case the interface can ever be asked to render. An
+# earlier draft used a longer string and the ENGINE refused it -- which is itself the proof that 64
+# is the real bound.
+#
+# It exists so the baseline can measure OVERFLOW and TRUNCATION against the real server and the real
+# projections (plan Sec 9.3) rather than against mocked data, which would prove nothing about layout
+# under real content.
+#
+# It lives here rather than in `data/scenarios/` precisely because it is NOT content: shipping it
+# would put nonsense in a player's scenario list. The baseline starts a SECOND `mandate-gui` on its
+# own port with an assembled scenario root to reach it, and every finding it produces is tagged
+# `stress-fixture` so no reader mistakes it for a finding about shipped content.
+# A minimal, valid MANDATE scenario fixture whose default budget runs a
+# deficit large enough to exhaust opening cash and require new borrowing —
+# the counterpart to tiny_valid.yaml's deliberately sustainable budget.
+#
+# Hand-checked expected outcome for turn 0 with no budget decision submitted
+# (see docs/economy_methodology.md for the full worked derivation). As of Phase 2B2, tax
+# bases are no longer authored (see `finance.tax_base_coefficients` below) — they are
+# derived every turn from this country's economy. The economy below is deliberately
+# calibrated so the derived bases reproduce personal=1,000,000,000 / corporate=500,000,000 /
+# taxable_consumption=800,000,000 EXACTLY, so every figure below is unchanged from the
+# original Phase 2A/2B1 fixture:
+#
+#   revenue:  personal=120,000,000  corporate=80,000,000  consumption=51,200,000
+#             total_revenue=251,200,000
+#   spending: total_program_spending=670,000,000
+#   interest: quarterly_interest_expense=40,000,000  (8% annual on 2,000,000,000)
+#   pre_financing_balance = 251,200,000 - 670,000,000 - 40,000,000 = -458,800,000
+#   cash_before_financing = 50,000,000 + (-458,800,000) = -408,800,000
+#   new_borrowing = 408,800,000   (exactly covers the shortfall after cash)
+#   closing_cash  = 0             (opening cash fully consumed first)
+#   closing_debt  = 2,000,000,000 + 408,800,000 = 2,408,800,000
+#
+# Note: ruleset_version is NOT declared here — see tiny_valid.yaml's header.
+
+schema_version: 1
+scenario_id: stress_long_names
+name: "Stress fixture - maximum-length authored display names"
+content_version: "0.19.0"
+seed: 99
+player_country_id: strapped
+
+# External Wars Gate W1: Marnil and Tolvane are foreign actors, never player-style
+# CountryState entries. `deficit_demo` has no `neighbor` country and never has.
+# Exactly one eligible dyad, per the frozen plan's §9.6 authored content table.
+foreign_profiles:
+  marnil:
+    display_name: "Marnil von Featherstonehaugh-Oduya of the Northern Marchesxxxxxx"
+    war_capability_bps: 5800
+    assistance_capacity: 300000000
+  tolvane:
+    display_name: "Tolvane von Featherstonehaugh-Oduya of the Northern Marchesxxxxx"
+    war_capability_bps: 6400
+    assistance_capacity: 240000000
+
+# This scenario's foreign minister post is VACANT, which is the point: the same counterparts give
+# measurably less here than they would to a government with a diplomat in post, and the difference
+# is visible in the report rather than merely asserted.
+foreign_relationships:
+  marnil:
+    standing_bps: 1000
+    assistance_drawn: 0
+  tolvane:
+    standing_bps: 3000
+    assistance_drawn: 0
+
+dyads:
+  - country_a: marnil
+    country_b: tolvane
+    tension_bps: 9000
+    grievance_bps: 7000
+    eligible: true
+    aggressor: tolvane
+    defender: marnil
+    aim_a: deterrence
+    aim_b: resource_access
+    player_security_exposure_bps: 2000
+
+# Strategic Military Map Gate M0: the campaign's defining map. Presentation-only
+# fields (centroid_x/centroid_y/label_anchor, polygon vertices) are read by the map
+# projection and renderer only -- no formula, phase or RNG stream may reference them.
+strategic_map:
+  map_id: tolvane_strait
+  capital_theater_id: home_capital
+  theaters:
+    home_capital:
+      display_name: "Capital Region von Featherstonehaugh-Oduya of the Northern March"
+      kind: land
+      owner: {kind: player_country, country_id: strapped}
+      presentation: {centroid_x: 2650, centroid_y: 4700, label_anchor: w}
+    home_lowlands:
+      display_name: "Lowlands von Featherstonehaugh-Oduya of the Northern Marchesxxxx"
+      kind: land
+      owner: {kind: player_country, country_id: strapped}
+      presentation: {centroid_x: 3750, centroid_y: 3150, label_anchor: n}
+    home_port:
+      display_name: "Port District von Featherstonehaugh-Oduya of the Northern Marche"
+      kind: coastal
+      owner: {kind: player_country, country_id: strapped}
+      presentation: {centroid_x: 2100, centroid_y: 4150, label_anchor: w}
+    marnil_march:
+      display_name: "Marnil March von Featherstonehaugh-Oduya of the Northern Marches"
+      kind: land
+      owner: {kind: foreign_profile, foreign_profile_id: marnil}
+      presentation: {centroid_x: 5400, centroid_y: 4300, label_anchor: e}
+    tolvane_isle:
+      display_name: "Tolvane Isle von Featherstonehaugh-Oduya of the Northern Marches"
+      kind: coastal
+      owner: {kind: foreign_profile, foreign_profile_id: tolvane}
+      presentation: {centroid_x: 8450, centroid_y: 7150, label_anchor: s}
+  routes:
+  - {from_theater: home_capital, to_theater: home_lowlands, kind: land}
+  - {from_theater: home_capital, to_theater: home_port, kind: land}
+  - {from_theater: home_lowlands, to_theater: home_capital, kind: land}
+  - {from_theater: home_lowlands, to_theater: marnil_march, kind: land}
+  - {from_theater: home_port, to_theater: home_capital, kind: land}
+  - {from_theater: marnil_march, to_theater: home_lowlands, kind: land}
+  shapes:
+  - shape_id: shape_marnil
+    owner: {kind: foreign_profile, foreign_profile_id: marnil}
+    polygon:
+    - [4350, 1700]
+    - [4700, 1400]
+    - [5050, 1600]
+    - [5300, 1250]
+    - [5450, 1750]
+    - [5750, 1900]
+    - [6000, 1500]
+    - [6300, 1350]
+    - [6600, 1600]
+    - [6850, 2000]
+    - [7000, 2600]
+    - [6820, 3200]
+    - [7050, 3800]
+    - [6880, 4400]
+    - [7100, 5000]
+    - [6900, 5550]
+    - [6600, 5950]
+    - [6250, 6150]
+    - [5950, 6500]
+    - [5850, 7050]
+    - [6050, 7500]
+    - [5750, 7800]
+    - [5450, 7500]
+    - [5550, 7000]
+    - [5350, 6600]
+    - [5000, 6750]
+    - [4800, 6500]
+    - [4520, 6400]
+    - [4700, 5900]
+    - [4480, 5300]
+    - [4650, 4700]
+    - [4420, 4100]
+    - [4600, 3500]
+    - [4380, 2900]
+    - [4520, 2300]
+  - shape_id: shape_strapped
+    owner: {kind: player_country, country_id: strapped}
+    polygon:
+    - [4350, 1700]
+    - [4050, 1400]
+    - [3600, 1250]
+    - [3150, 1500]
+    - [2750, 1300]
+    - [2350, 1550]
+    - [1950, 1400]
+    - [1600, 1750]
+    - [1750, 2250]
+    - [1350, 2600]
+    - [1500, 3050]
+    - [1950, 3250]
+    - [2250, 3600]
+    - [1850, 3850]
+    - [1400, 3700]
+    - [1150, 4100]
+    - [1300, 4600]
+    - [1050, 5050]
+    - [1250, 5550]
+    - [1050, 6000]
+    - [1400, 6400]
+    - [1800, 6750]
+    - [2250, 6900]
+    - [2650, 6700]
+    - [3050, 6950]
+    - [3450, 6800]
+    - [3850, 7000]
+    - [4250, 6750]
+    - [4520, 6400]
+    - [4700, 5900]
+    - [4480, 5300]
+    - [4650, 4700]
+    - [4420, 4100]
+    - [4600, 3500]
+    - [4380, 2900]
+    - [4520, 2300]
+  - shape_id: shape_tolvane
+    owner: {kind: foreign_profile, foreign_profile_id: tolvane}
+    polygon:
+    - [7900, 6350]
+    - [8350, 6200]
+    - [8750, 6400]
+    - [9100, 6250]
+    - [9300, 6600]
+    - [9350, 7050]
+    - [9150, 7450]
+    - [9300, 7850]
+    - [8950, 8100]
+    - [8500, 7950]
+    - [8100, 8150]
+    - [7800, 7850]
+    - [7650, 7400]
+    - [7800, 6900]
+    - [7600, 6600]
+
+  # Authored NATURAL features (map-resources slice). Presentation only, exactly like `shapes`
+  # above: a river is drawn and named, and no formula, validator or legality rule reads it.
+  # A river between two theaters neither opens passage nor blocks it -- only `routes` decides
+  # adjacency. Courses are open polylines in authored order (no implicit closing vertex, no
+  # direction normalization), sorted by `river_id`, with noncanonical order rejected rather than
+  # sorted for you.
+  rivers:
+  - river_id: river_hald
+    display_name: "River Hald von Featherstonehaugh-Oduya of the Northern Marchesxx"
+    polyline:
+    - [2500, 1500]
+    - [2600, 2300]
+    - [2700, 3100]
+    - [2650, 3900]
+    - [2500, 4700]
+    - [2300, 5500]
+    - [2100, 6300]
+  - river_id: river_sorn
+    display_name: "River Sorn von Featherstonehaugh-Oduya of the Northern Marchesxx"
+    polyline:
+    - [5000, 2000]
+    - [5200, 2800]
+    - [5300, 3600]
+    - [5150, 4400]
+    - [4950, 5200]
+
+# Named people (characters slice). Identity is the mapping KEY; allegiance is `affiliation`, a
+# tagged reference into the two namespaces that already exist -- so a person can never disagree
+# with `countries`/`foreign_profiles` about who they belong to.
+#
+# The four candidates below exist to make hiring a real choice rather than a ranking. Note in
+# particular that `loyalty` is NOT `10,000 - competence` for any of them, and that the professional
+# is deliberately both capable and loyal: a correlation the player could rely on would collapse the
+# whole tradeoff into one number.
+characters:
+  bela_ronsard:
+    display_name: "Bela Ronsard von Featherstonehaugh-Oduya of the Northern Marches"
+    affiliation: {kind: player_country, country_id: strapped}
+    competence: 3200      # the loyal weak administrator
+    loyalty: 8800
+    independence: 1500
+    ambition: 2000
+    personal_trust: 6500
+    portrait_ref: portrait_bela_ronsard
+  clara_venn:
+    display_name: "Clara Venn von Featherstonehaugh-Oduya of the Northern Marchesxx"
+    affiliation: {kind: player_country, country_id: strapped}
+    competence: 8600      # the independent expert
+    loyalty: 3400
+    independence: 8700
+    ambition: 5200
+    personal_trust: 4200
+    portrait_ref: portrait_clara_venn
+  dorin_akel:
+    display_name: "Dorin Akel von Featherstonehaugh-Oduya of the Northern Marchesxx"
+    affiliation: {kind: player_country, country_id: strapped}
+    competence: 8100      # the ambitious expert
+    loyalty: 4100
+    independence: 6200
+    ambition: 9100
+    personal_trust: 3800
+    portrait_ref: portrait_dorin_akel
+  freya_lund:
+    display_name: "Freya Lund von Featherstonehaugh-Oduya of the Northern Marchesxx"
+    affiliation: {kind: player_country, country_id: strapped}
+    competence: 7400      # the competent loyal professional
+    loyalty: 7900
+    independence: 4300
+    ambition: 3600
+    personal_trust: 6800
+    portrait_ref: portrait_freya_lund
+  leader_citizens_bloc:
+    display_name: "Petra Almas von Featherstonehaugh-Oduya of the Northern Marchesx"
+    affiliation: {kind: player_country, country_id: strapped}
+    party_id: citizens_bloc
+    competence: 7200
+    loyalty: 1500
+    independence: 7900
+    ambition: 8000
+    personal_trust: 2600
+    portrait_ref: portrait_leader_citizens_bloc
+  leader_governing_party:
+    display_name: "Henrik Dahl von Featherstonehaugh-Oduya of the Northern Marchesx"
+    affiliation: {kind: player_country, country_id: strapped}
+    party_id: governing_party
+    competence: 6000
+    loyalty: 7800
+    independence: 3900
+    ambition: 4200
+    personal_trust: 6900
+    portrait_ref: portrait_leader_governing_party
+  leader_independents:
+    display_name: "Sofia Renn von Featherstonehaugh-Oduya of the Northern Marchesxx"
+    affiliation: {kind: player_country, country_id: strapped}
+    party_id: independents
+    competence: 5800
+    loyalty: 4600
+    independence: 7400
+    ambition: 3900
+    personal_trust: 5400
+    portrait_ref: portrait_leader_independents
+  leader_marnil:
+    display_name: "Chancellor Otto Falk von Featherstonehaugh-Oduya of the Northern"
+    affiliation: {kind: foreign_profile, foreign_profile_id: marnil}
+    competence: 6600
+    loyalty: 0
+    independence: 9100
+    ambition: 6800
+    personal_trust: 3600
+    portrait_ref: portrait_leader_marnil
+  leader_tolvane:
+    display_name: "First Minister Rhys Talen von Featherstonehaugh-Oduya of the Nor"
+    affiliation: {kind: foreign_profile, foreign_profile_id: tolvane}
+    competence: 6900
+    loyalty: 0
+    independence: 8600
+    ambition: 5500
+    personal_trust: 4800
+    portrait_ref: portrait_leader_tolvane
+
+countries:
+  - id: strapped
+    name: "Republic of Strapped"
+    population: 400000
+    treasury:
+      cash_on_hand: 50000000     #     500,000.00 denars — thin reserves on purpose
+      debt: 2000000000           #  20,000,000.00 denars
+    population_groups:
+      - id: citizens
+        name: "Citizens"
+        population_share: 1.0
+        political_influence: 5000
+        approval: 4500
+        trust: 4000
+        organization: 2500
+        radicalization: 800
+    institutions:
+      - id: executive
+        name: "Executive Government"
+        loyalty: 6000
+        power: 5500
+        competence: 4500
+        corruption: 2500
+      # (Phase 3C) Newly authored: deficit_demo previously had no military institution row.
+      # A middling, unremarkable military — loyal enough that coup risk stays low absent a real
+      # shock, but not maximally so, matching this scenario's authored "strapped, not stable"
+      # flavor (see the political-capital calibration notes below).
+      - id: military
+        name: "Military"
+        loyalty: 7000
+        power: 6000
+        competence: 5500
+        corruption: 2000
+    finance:
+      # As of Phase 2B2, tax bases are derived from the economy below, not authored here.
+      tax_base_coefficients:
+        personal_taxable_share_bps: 10000              # 100% of sector labor income is personal tax base
+        corporate_taxable_share_bps: 5000               # 50% of sector operating surplus is corporate tax base
+        effective_consumption_base_share_bps: 4000       # 40% of sector modeled value added is consumption tax base
+      tax_policy:
+        personal_income_rate_bps: 1500   # 15%
+        corporate_rate_bps: 2000         # 20%
+        consumption_rate_bps: 800        #  8%
+        compliance_rate_bps: 8000        # 80%
+      spending_plan:
+        health: 150000000            #   1,500,000.00 denars
+        education: 100000000         #   1,000,000.00 denars
+        welfare: 150000000           #   1,500,000.00 denars
+        infrastructure: 80000000     #     800,000.00 denars
+        defense: 100000000           #   1,000,000.00 denars
+        security: 50000000           #     500,000.00 denars
+        administration: 40000000     #     400,000.00 denars
+      annual_debt_interest_rate_bps: 800   # 8% annual
+    economy:
+      # Phase 2B3 calibration: capacities are unchanged from Phase 2B2 — employment is no
+      # longer authored (SectorState no longer has an employed_workers field); it is fully
+      # derived every turn from effective_labor_force_share_bps (below) plus each sector's
+      # quarterly_capacity_output/output_per_worker. output_per_worker is retuned (never
+      # capacity, population, or the labor-force share) so labor demand rises from the 11,000
+      # the old authored employment totaled to a plausible ~10% unemployment level, while every
+      # sector's actual_output — and therefore every derived tax base/revenue/interest/
+      # borrowing/reconciliation figure below — stays byte-for-byte identical to Phase 2B2:
+      #   5 sectors:  required=10,000  10,000 *  50,000 =  500,000,000 = capacity  500,000,000 -> exactly_balanced, actual=500,000,000
+      #   5 sectors:  required=25,000  25,000 *  10,000 =  250,000,000 = capacity  250,000,000 -> exactly_balanced, actual=250,000,000
+      #   public_services: required=5,000  5,000 * 50,000 =  250,000,000 = capacity  250,000,000 -> exactly_balanced, actual=250,000,000
+      # total_labor_demand = 5*10,000 + 5*25,000 + 5,000 = 180,000
+      # effective_labor_force = floor(400,000 * 5000 / 10,000) = 200,000
+      # total_employment = 180,000; unemployed = 20,000; unemployment_rate = exactly 10.00% (1000 bps)
+      # total_gross_output = 5*500,000,000 + 5*250,000,000 + 250,000,000 = 4,000,000,000
+      #   (byte-identical to Phase 2B2's figure, since every actual_output above is unchanged)
+      # Every sector uses value_added_share_bps=5000 (50%) / labor_income_share_bps=5000 (50%).
+      # Derivation check (unchanged from Phase 2B2 — coefficients personal=10000, corporate=5000,
+      # consumption=4000):
+      #   modeled_value_added = 4,000,000,000 * 0.5 = 2,000,000,000
+      #   labor_income        = 2,000,000,000 * 0.5 = 1,000,000,000
+      #   operating_surplus   = 2,000,000,000 - 1,000,000,000 = 1,000,000,000
+      #   personal_income base    = 1,000,000,000 * 1.0 = 1,000,000,000  (matches original exactly)
+      #   corporate_profit base   = 1,000,000,000 * 0.5 =   500,000,000  (matches original exactly)
+      #   taxable_consumption base= 2,000,000,000 * 0.4 =   800,000,000  (matches original exactly)
+      effective_labor_force_share_bps: 5000   # 50% of population is economically active (reduced form)
+      sectors:
+        - category: agriculture
+          quarterly_capacity_output: 500000000
+          output_per_worker: 50000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: extraction
+          quarterly_capacity_output: 500000000
+          output_per_worker: 50000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: manufacturing
+          quarterly_capacity_output: 500000000
+          output_per_worker: 50000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: construction
+          quarterly_capacity_output: 500000000
+          output_per_worker: 50000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: energy
+          quarterly_capacity_output: 500000000
+          output_per_worker: 50000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: transportation
+          quarterly_capacity_output: 250000000
+          output_per_worker: 10000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: consumer_services
+          quarterly_capacity_output: 250000000
+          output_per_worker: 10000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: finance_and_professional_services
+          quarterly_capacity_output: 250000000
+          output_per_worker: 10000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: technology
+          quarterly_capacity_output: 250000000
+          output_per_worker: 10000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: defense_industry
+          quarterly_capacity_output: 250000000
+          output_per_worker: 10000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+        - category: public_services
+          quarterly_capacity_output: 250000000
+          output_per_worker: 50000
+          value_added_share_bps: 5000
+          labor_income_share_bps: 5000
+
+      # Phase 2C1: resource-poor / import-dependent. The extraction sector's allocated_workers
+      # this turn is 10,000 (see the required=10,000 row above; abundant labor means allocated ==
+      # required). Only timber and iron_ore have any endowment; the other seven categories are
+      # legitimate zero-stock/zero-capacity entries (a resource-poor country still declares every
+      # category, just at zero — output_per_worker=1 is the minimum valid StrictResourceQuantity
+      # PerWorker value, never exercised since capacity is 0). total_required = 400 (timber) + 400
+      # (iron_ore) = 800 <= 10,000, so both get exactly their requirement and
+      # unassigned_resource_workers = 10,000 - 800 = 9,200. Imports are NOT implemented in Phase
+      # 2C1 — this scenario's resource poverty has no in-game consequence yet.
+      #
+      # Timber (the only renewable) turn-0 check: regenerated = min(5,000, 250,000 - 200,000) =
+      # 5,000; available = 205,000; extracted = min(205,000, 10,000, 400*25=10,000) = 10,000;
+      # closing = 195,000. Conservation: 200,000 + 5,000 = 10,000 + 195,000 = 205,000.
+      #
+      # Multi-turn trajectory (counted by completed resolutions; see docs/economy_methodology.md
+      # and ADR 0007 for the full derivation) — THREE distinct regimes, not two:
+      #   resolutions 1-39:  CAPACITY_CONSTRAINED, declining 5,000/resolution net of regeneration,
+      #                      closing stock reaching exactly 5,000 at resolution 39.
+      #   resolution 40:     the boundary turn — opening 5,000 + regen 5,000 = available 10,000,
+      #                      which TIES capacity (10,000); extracted=10,000, closing=0. Because the
+      #                      status precedence checks extracted==available before
+      #                      extracted==capacity, this resolves to STOCK_CONSTRAINED, not
+      #                      CAPACITY_CONSTRAINED, even though extraction is still the full 10,000.
+      #   resolutions 41+:   the true steady state — extracts exactly the regenerated 5,000/turn
+      #                      forever, closing=0, status STOCK_CONSTRAINED (never DEPLETED, since
+      #                      available is never exactly zero while regeneration is active).
+      # iron_ore (nonrenewable) declines by its full 20,000/resolution extracted amount forever,
+      # with no regeneration to offset it — conservation holds exactly every resolution.
+      resource_deposits:
+        - category: timber
+          theater_id: home_lowlands
+          remaining_stock: 200000
+          extraction_capacity_per_turn: 10000
+          output_per_worker: 25
+          regeneration_per_turn: 5000
+          stock_ceiling: 250000
+        - category: iron_ore
+          theater_id: home_lowlands
+          remaining_stock: 500000
+          extraction_capacity_per_turn: 20000
+          output_per_worker: 50
+        - category: coal
+          theater_id: home_capital
+          remaining_stock: 0
+          extraction_capacity_per_turn: 0
+          output_per_worker: 1
+        - category: crude_oil
+          theater_id: home_port
+          remaining_stock: 0
+          extraction_capacity_per_turn: 0
+          output_per_worker: 1
+        - category: natural_gas
+          theater_id: home_port
+          remaining_stock: 0
+          extraction_capacity_per_turn: 0
+          output_per_worker: 1
+        - category: uranium
+          theater_id: home_capital
+          remaining_stock: 0
+          extraction_capacity_per_turn: 0
+          output_per_worker: 1
+        - category: copper
+          theater_id: home_capital
+          remaining_stock: 0
+          extraction_capacity_per_turn: 0
+          output_per_worker: 1
+        - category: critical_minerals
+          theater_id: home_capital
+          remaining_stock: 0
+          extraction_capacity_per_turn: 0
+          output_per_worker: 1
+        # Ruleset 0.16.0's ninth category, and a seventh zero entry: this country has no gold
+        # either. Authored at zero rather than omitted, for exactly the reason the six above are —
+        # a resource-poor country still declares every category. Nothing about this scenario's
+        # extraction, output, tax bases or treasury changes as a result, which is why no
+        # coefficient here is re-offset the way tiny_valid's and decree_state's crude_oil is.
+        - category: gold
+          theater_id: home_lowlands
+          remaining_stock: 0
+          extraction_capacity_per_turn: 0
+          output_per_worker: 1
+
+      # Phase 2C2: physical-to-output bridge coefficients. REPLACES the extraction sector's old
+      # capacity/productivity output formula (500,000,000, see the sector block above) with the sum
+      # of each deposit's extracted quantity * its coefficient — chosen so turn 1's total is exactly
+      # 500,000,000 (see docs/economy_methodology.md, "Calibration"), preserving every Phase
+      # 2B/2C1 figure numerically at turn 1 only:
+      #   timber:    10,000 x 10,000 =  100,000,000
+      #   iron_ore:  20,000 x 20,000 =  400,000,000
+      #   seven others:    0 x (any) =            0  (positive coefficients required, D5, but
+      #                                                always multiplied by zero here)
+      #   total                     =  500,000,000  (matches the old formula exactly, turn 1 only)
+      # From turn 26 (iron_ore depleted) the total drops to 100,000,000, and from turn 41 (timber's
+      # renewable steady state) it drops again to 50,000,000 — an intentional divergence from the
+      # pre-Phase-2C2 trajectory, not a calibration error; see the ADR/economy_methodology for the
+      # exact hand-worked figures at every turn.
+      resource_output_coefficients:
+        - category: timber
+          real_output_per_unit: 10000
+        - category: iron_ore
+          real_output_per_unit: 20000
+        - category: coal
+          real_output_per_unit: 1000
+        - category: crude_oil
+          real_output_per_unit: 1200
+        - category: natural_gas
+          real_output_per_unit: 1000
+        - category: uranium
+          real_output_per_unit: 100000
+        - category: copper
+          real_output_per_unit: 1000
+        - category: critical_minerals
+          real_output_per_unit: 5000
+        - category: gold
+          real_output_per_unit: 100000
+
+    # Phase 3A: a less-accepted presidential order under resource decline (see docs/adr/0009
+    # and docs/economy_methodology.md, "Political calibration"). Two real, already-calibrated
+    # production shocks (iron-ore depletion at turn 26, timber steady-state at turn 41 — see
+    # ADR 0007/0008) cost this government legitimacy on top of drift: 6,000 -> ... -> 6,459
+    # (turn 25) -> 6,213 (turn 26, -246) -> ... -> 6,431 (turn 40) -> 6,403 (turn 41, -28).
+    politics:
+      constitution:
+        executive_system: presidential
+        executive_selection: direct_election
+        legislature: unicameral
+        territorial_organization: unitary
+        judicial_review: weak
+        amendment_difficulty: simple_majority
+        decree_authority: emergency_only
+        national_election_interval_turns: 20
+      constitutional_order_support_bps: 6500    # 65.00% authored acceptance of this order
+      legitimacy_bps: 6000                      # 60.00% current legitimacy
+      political_capital: 300
+      political_capital_capacity: 800
+      # Phase 3C: term 1 already underway at genesis; first scheduled election at turn 20
+      # (genesis + the authored interval, above); no constitutional amendment has occurred yet.
+      consecutive_terms_held: 1
+      next_election_turn: 20
+      regime_transition_pressure_bps: 0
+      # Phase 3B1: a unicameral chamber in which the government is four seats short (see
+      # docs/adr/0010 and docs/economy_methodology.md, "Legislative calibration"). This is the
+      # scenario that makes the phase mean something: against the walkthrough proposal (+5 pp
+      # personal income tax, spending unchanged) the government tallies 47/100 against a required
+      # 51 and the budget FAILS unaided. It can be carried, but only by spending capital on blocs
+      # that are not its own.
+      #
+      # `decree_authority: emergency_only` above means this government cannot decree either --
+      # Phase 3B1 has no emergency system to read, so a bargain is its only route. Every figure
+      # here is derived from this file by tests/test_scenario_legislature_calibration.py.
+      legislature:
+        chambers:
+          - chamber: lower
+            total_seats: 100
+        parties:
+          - id: citizens_bloc
+            name: "Citizens' Bloc"
+            government_role: opposition
+            blocs:
+              - id: hardliners
+                name: "Citizens' Bloc Hardliners"
+                seats:
+                  - chamber: lower
+                    seats: 30
+                discipline_bps: 8000
+                government_relationship_bps: -8000
+                baseline_government_relationship_bps: -8000
+                tax_preference_bps: -6000
+                spending_preference_bps: -5000
+              - id: moderates
+                name: "Citizens' Bloc Moderates"
+                seats:
+                  - chamber: lower
+                    seats: 20
+                discipline_bps: 2000
+                government_relationship_bps: -2000
+                baseline_government_relationship_bps: -2000
+                tax_preference_bps: -2000
+                spending_preference_bps: 0
+          - id: governing_party
+            name: "Governing Party"
+            government_role: coalition
+            blocs:
+              - id: core
+                name: "Governing Party Core"
+                seats:
+                  - chamber: lower
+                    seats: 34
+                discipline_bps: 6000
+                government_relationship_bps: 5000
+                baseline_government_relationship_bps: 5000
+                tax_preference_bps: 3000
+                spending_preference_bps: 3000
+              - id: left
+                name: "Governing Party Left"
+                seats:
+                  - chamber: lower
+                    seats: 6
+                discipline_bps: 2000
+                government_relationship_bps: 1000
+                baseline_government_relationship_bps: 1000
+                tax_preference_bps: 5000
+                spending_preference_bps: 5000
+          - id: independents
+            name: "Independent Regionalists"
+            government_role: confidence_and_supply
+            blocs:
+              - id: regional
+                name: "Independent Regionalists"
+                seats:
+                  - chamber: lower
+                    seats: 10
+                discipline_bps: 1000
+                government_relationship_bps: 1000
+                baseline_government_relationship_bps: 1000
+                tax_preference_bps: -2000
+                spending_preference_bps: 2000
+    # Military Movement vertical slice, commit 3: the approved roster. Exactly one
+    # abstract Army formation, starting in this country's own capital theater. No
+    # manpower, strength or equipment is stated or implied.
+    cabinet:
+      # Both posts deliberately VACANT. An empty `offices` mapping is a real, playable government,
+      # and it is what proves a country with no office bonuses computes exactly the figures it
+      # computed before this layer existed.
+      #
+      # This scenario specifically, because it is the repository's relationship-calibration
+      # fixture: `simulation/relationships.py`'s own docstring derives RELATIONSHIP_HALF_GAP_CAPITAL
+      # from its cheapest bargaining target (a 162-capital bargain against citizens_bloc/moderates),
+      # and several calibration tests pin the resulting trajectory. Seating a chief of staff here
+      # would move every one of those figures and leave the constant justified by numbers the
+      # scenario no longer produces. `decree_state` is vacant in that post for the same class of
+      # reason (its documented 85/118/300 campaign), so `tiny_valid` is the scenario that seats
+      # one -- and between the three, all three occupancy states are exercised by real content:
+      # both posts filled, one filled, neither.
+      offices: {}
+    military:
+      formations:
+        strapped_first_army:
+          display_name: "First Army of the Republic von Featherstonehaugh-Oduya of the No"
+          branch: army
+          location_theater_id: home_capital

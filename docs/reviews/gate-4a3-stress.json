@@ -1,0 +1,6 @@
+{
+  "stressFindings": [],
+  "stressCoverage": [
+    "longest rendered text node was 90 characters, so the 64-character names really rendered"
+  ]
+}
