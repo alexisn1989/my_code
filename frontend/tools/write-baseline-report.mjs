@@ -17,6 +17,8 @@ const findings = base.findings ?? [];
 const coverage = base.coverage ?? [];
 const stressFindings = stress.stressFindings ?? [];
 const stressCoverage = stress.stressCoverage ?? [];
+const applicability = stress.applicability ?? [];
+const authoredNameCount = stress.authoredNameCount ?? 0;
 
 const WCAG = "reflow-wcag-320x512";
 const conformance = findings.filter((f) => f.viewport === WCAG);
@@ -88,9 +90,29 @@ cases:
 
 ${rows(other)}
 
-## Stress pass — maximum-length names
+## Stress pass — maximum-length names, per screen
+
+**Commit 1's broad "0 stress findings" claim was UNSUPPORTED, and this section replaces it.** That
+commit reported a clean stress result for four screens on the strength of a single assertion — that
+some text node of at least 60 characters had rendered. A read-only probe showed the node it matched
+was Dashboard *prose*, not a stressed name. Measured per screen, the authored 64-character names
+reached Relationships and reached none of Dashboard, Government or Decisions, so three quarters of
+that clean result was an absent check wearing the look of a clean one.
+
+A screen is now either **stress-applicable**, in which case the exact authored name must be proven
+present before any result is recorded for it, or **not-stress-applicable**, in which case the reason
+is stated and no result is claimed. ${authoredNameCount} authored names in the fixture, each exactly
+64 characters.
+
+| screen | stress-applicable | why |
+|---|---|---|
+${applicability.map((a) => `| ${a.screen} | ${a.applicable ? "**yes**" : "no"} | ${a.reason} |`).join("\n")}
+
+What was proven, and what was declined:
 
 ${stressCoverage.map((c) => `- ${c}`).join("\n")}
+
+Findings on the stress-applicable screen(s) only:
 
 ${rows(stressFindings)}
 

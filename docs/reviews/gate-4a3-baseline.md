@@ -97,9 +97,36 @@ cases:
 _None._
 
 
-## Stress pass — maximum-length names
+## Stress pass — maximum-length names, per screen
 
-- longest rendered text node was 90 characters, so the 64-character names really rendered
+**Commit 1's broad "0 stress findings" claim was UNSUPPORTED, and this section replaces it.** That
+commit reported a clean stress result for four screens on the strength of a single assertion — that
+some text node of at least 60 characters had rendered. A read-only probe showed the node it matched
+was Dashboard *prose*, not a stressed name. Measured per screen, the authored 64-character names
+reached Relationships and reached none of Dashboard, Government or Decisions, so three quarters of
+that clean result was an absent check wearing the look of a clean one.
+
+A screen is now either **stress-applicable**, in which case the exact authored name must be proven
+present before any result is recorded for it, or **not-stress-applicable**, in which case the reason
+is stated and no result is claimed. 19 authored names in the fixture, each exactly
+64 characters.
+
+| screen | stress-applicable | why |
+|---|---|---|
+| Relationships | **yes** | projects party leaders and foreign counterparts by display name, so the stretched names render here |
+| Dashboard | no | displays no character names at all; its longest text is UI prose |
+| Decisions | no | composes proposals and capital terms; it renders no character display name |
+| Government | no | would render cabinet holders, but this fixture derives from deficit_demo, which opens with BOTH posts vacant -- so there is no holder name to stretch. A seated-cabinet stress case belongs with that screen's own audit |
+
+What was proven, and what was declined:
+
+- Relationships at stress-laptop-1440x900: 7 exact authored 64-character name(s) rendered, including Petra Almas's and Sofia Renn's
+- Relationships at stress-mobile-390x844: 7 exact authored 64-character name(s) rendered, including Petra Almas's and Sofia Renn's
+- Dashboard: not-stress-applicable -- displays no character names at all; its longest text is UI prose
+- Decisions: not-stress-applicable -- composes proposals and capital terms; it renders no character display name
+- Government: not-stress-applicable -- would render cabinet holders, but this fixture derives from deficit_demo, which opens with BOTH posts vacant -- so there is no holder name to stretch. A seated-cabinet stress case belongs with that screen's own audit
+
+Findings on the stress-applicable screen(s) only:
 
 _None._
 

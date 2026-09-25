@@ -1,6 +1,33 @@
 {
   "stressFindings": [],
   "stressCoverage": [
-    "longest rendered text node was 90 characters, so the 64-character names really rendered"
-  ]
+    "Relationships at stress-laptop-1440x900: 7 exact authored 64-character name(s) rendered, including Petra Almas's and Sofia Renn's",
+    "Relationships at stress-mobile-390x844: 7 exact authored 64-character name(s) rendered, including Petra Almas's and Sofia Renn's",
+    "Dashboard: not-stress-applicable -- displays no character names at all; its longest text is UI prose",
+    "Decisions: not-stress-applicable -- composes proposals and capital terms; it renders no character display name",
+    "Government: not-stress-applicable -- would render cabinet holders, but this fixture derives from deficit_demo, which opens with BOTH posts vacant -- so there is no holder name to stretch. A seated-cabinet stress case belongs with that screen's own audit"
+  ],
+  "applicability": [
+    {
+      "screen": "Relationships",
+      "applicable": true,
+      "reason": "projects party leaders and foreign counterparts by display name, so the stretched names render here"
+    },
+    {
+      "screen": "Dashboard",
+      "applicable": false,
+      "reason": "displays no character names at all; its longest text is UI prose"
+    },
+    {
+      "screen": "Decisions",
+      "applicable": false,
+      "reason": "composes proposals and capital terms; it renders no character display name"
+    },
+    {
+      "screen": "Government",
+      "applicable": false,
+      "reason": "would render cabinet holders, but this fixture derives from deficit_demo, which opens with BOTH posts vacant -- so there is no holder name to stretch. A seated-cabinet stress case belongs with that screen's own audit"
+    }
+  ],
+  "authoredNameCount": 19
 }
