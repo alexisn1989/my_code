@@ -101,6 +101,11 @@ export default defineConfig({
     // The stress pass runs its own server (see the spec) and is kept in the same project so
     // `npm run audit:baseline` produces the whole baseline in one command.
     { name: "stress", testMatch: /stress\.spec\.ts/, dependencies: ["preflight"] },
+    // Commit 2's axe sweep. A project of its own rather than part of `baseline`, for two reasons:
+    // it must be runnable without re-taking Commit 1's baseline (which would rewrite that commit's
+    // committed evidence), and it depends on the same browser-provenance preflight, since an
+    // accessibility finding is only attributable if the renderer that produced it is known.
+    { name: "accessibility", testMatch: /accessibility\.spec\.ts/, dependencies: ["preflight"] },
   ],
   webServer: {
     // The production entry point, with explicit paths so the run cannot accidentally read a

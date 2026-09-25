@@ -19,6 +19,7 @@
     "generate:api": "npm run generate:api:schema && npm run generate:api:types",
     "test:e2e": "playwright test",
     "audit:baseline": "playwright test --project=baseline --project=stress && node tools/write-baseline-report.mjs",
+    "audit:accessibility": "playwright test --project=accessibility && node tools/write-accessibility-report.mjs",
     "test:preflight": "playwright test e2e/preflight.spec.ts"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.56.0",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/dom": "^10.4.1",
@@ -36,6 +38,7 @@
     "@types/react": "^19.2.8",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
+    "axe-core": "4.13.0",
     "jsdom": "^27.0.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",

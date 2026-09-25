@@ -1,0 +1,1409 @@
+{
+  "axeCoreVersion": "4.13.0",
+  "findings": [
+    {
+      "id": "A1",
+      "screen": "Dashboard",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        ".h-48"
+      ],
+      "failureSummary": "Fix any of the following: Element has insufficient color contrast of 3.09 (foreground color: #63615c, background color: #0a0f1a, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A2",
+      "screen": "Dashboard",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A3",
+      "screen": "Government",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A4",
+      "screen": "Economy",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A5",
+      "screen": "Legislature",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A6",
+      "screen": "Constitution",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A7",
+      "screen": "Relationships",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A8",
+      "screen": "Decisions",
+      "ruleId": "aria-valid-attr-value",
+      "impact": "critical",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2a",
+        "wcag412"
+      ],
+      "help": "ARIA attributes must conform to valid values",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/aria-valid-attr-value?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "#policy-tab-Budget\\ policy-taxation"
+      ],
+      "failureSummary": "Fix all of the following: Invalid ARIA attribute value: aria-controls=\"policy-panel-Budget policy-taxation\"",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A9",
+      "screen": "Decisions",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 11,
+      "selectors": [
+        "div[aria-label=\"Policy choice\"] > .aria-selected\\:border-gold-500.aria-selected\\:text-gold-500[role=\"tab\"]:nth-child(1) > .text-parchment-200\\/50",
+        "div[aria-label=\"Policy choice\"] > .aria-selected\\:border-gold-500.aria-selected\\:text-gold-500[role=\"tab\"]:nth-child(2) > .text-parchment-200\\/50",
+        ".aria-selected\\:border-gold-500.aria-selected\\:text-gold-500[role=\"tab\"]:nth-child(3) > .text-parchment-200\\/50",
+        "#policy-tab-Budget\\ policy-taxation > .text-parchment-200\\/50",
+        "#policy-tab-Budget\\ policy-spending > .text-parchment-200\\/50",
+        "div[aria-label=\"Raise the personal income tax\"] > .text-\\[10px\\].uppercase.tracking-wide"
+      ],
+      "failureSummary": "Fix any of the following: Element has insufficient color contrast of 4.16 (foreground color: #7c7973, background color: #0f1626, font size: 10.5pt (14px), font weight: normal). Expected contrast ratio of 4.5:1",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A10",
+      "screen": "Decisions",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A11",
+      "screen": "Turn result",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A12",
+      "screen": "History",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A13",
+      "screen": "Strategic map",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A14",
+      "screen": "Victory / defeat",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "A15",
+      "screen": "Glossary",
+      "ruleId": "region",
+      "impact": "moderate",
+      "conformance": "best-practice",
+      "wcagTags": [],
+      "help": "All page content should be contained by landmarks",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/region?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        ".items-start > div",
+        "aside"
+      ],
+      "failureSummary": "Fix any of the following: Some page content is not contained by landmarks",
+      "viewports": [
+        "laptop-1440x900"
+      ]
+    }
+  ],
+  "needsReview": [
+    {
+      "id": "N1",
+      "screen": "Dashboard",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 5,
+      "selectors": [
+        "section:nth-child(1) > .text-xl.tabular-nums > .text-parchment-200 > span[aria-hidden=\"true\"]",
+        "section:nth-child(2) > .text-xl.tabular-nums > .text-parchment-200 > span[aria-hidden=\"true\"]",
+        "section:nth-child(3) > .text-xl.tabular-nums > .text-parchment-200 > span[aria-hidden=\"true\"]",
+        "section:nth-child(4) > .text-xl.tabular-nums > .text-parchment-200 > span[aria-hidden=\"true\"]",
+        "section:nth-child(5) > .text-xl.tabular-nums > .text-parchment-200 > span[aria-hidden=\"true\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element content contains only non-text characters",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450",
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N2",
+      "screen": "Decisions",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "div[aria-label=\"Raise the personal income tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center > span[aria-hidden=\"true\"]",
+        "div[aria-label=\"Lower the personal income tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center > span[aria-hidden=\"true\"]",
+        "div[aria-label=\"Raise the corporate tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center > span[aria-hidden=\"true\"]",
+        "div[aria-label=\"Lower the corporate tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center > span[aria-hidden=\"true\"]",
+        "div[aria-label=\"Raise the consumption tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center > span[aria-hidden=\"true\"]",
+        "div[aria-label=\"Lower the consumption tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center > span[aria-hidden=\"true\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element content contains only non-text characters",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "narrow-820x900",
+        "mobile-390x844",
+        "reflow-wcag-320x512",
+        "reflow200-desktop-960x540",
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N3",
+      "screen": "Strategic map",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "text[data-theater-label=\"marnil_border\"]",
+        "text[data-theater-label=\"sorrend_plain\"]",
+        "text[data-theater-label=\"valdrun_capital\"]",
+        "text[data-theater-label=\"valdrun_east\"]",
+        "text[data-theater-label=\"valdrun_highlands\"]",
+        "text[y=\"-330\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it is overlapped by another element",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N4",
+      "screen": "Relationships",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 36,
+      "selectors": [
+        "button[data-leader-option=\"leader_opposition_party\"] > .gap-0\\.5.flex-col.flex > .text-parchment-100",
+        "span[data-leader-question=\"leader_opposition_party\"]",
+        "span[data-leader-refusal=\"leader_opposition_party\"]",
+        "button[data-leader-option=\"leader_opposition_party\"] > .gap-0\\.5.flex-col.flex > .text-parchment-200\\/60.text-xs",
+        "button[data-counterpart-option=\"marnil\"] > .gap-0\\.5.flex-col.flex > .text-parchment-100",
+        "span[data-counterpart-question=\"marnil\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it partially overlaps other elements",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N5",
+      "screen": "Decisions",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 15,
+      "selectors": [
+        "div[aria-label=\"Raise the personal income tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center",
+        "div[aria-label=\"Raise the personal income tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center > span[aria-hidden=\"true\"]",
+        "div[aria-label=\"Lower the personal income tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center",
+        "div[aria-label=\"Lower the personal income tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center > span[aria-hidden=\"true\"]",
+        "div[aria-label=\"Raise the corporate tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center",
+        "div[aria-label=\"Raise the corporate tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center > span[aria-hidden=\"true\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it partially overlaps other elements",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N6",
+      "screen": "Victory / defeat",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        ".gap-3.flex > .py-1:nth-child(2)"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "screen": "Dashboard",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 92,
+      "violations": 2,
+      "passes": 36,
+      "incomplete": 1,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 93,
+      "violations": 3,
+      "passes": 44,
+      "incomplete": 1,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "History",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 91,
+      "violations": 1,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 92,
+      "violations": 2,
+      "passes": 36,
+      "incomplete": 1,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 93,
+      "violations": 3,
+      "passes": 44,
+      "incomplete": 1,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "History",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 91,
+      "violations": 1,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 92,
+      "violations": 2,
+      "passes": 36,
+      "incomplete": 1,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 93,
+      "violations": 3,
+      "passes": 44,
+      "incomplete": 1,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "History",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 92,
+      "violations": 2,
+      "passes": 36,
+      "incomplete": 1,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 93,
+      "violations": 3,
+      "passes": 44,
+      "incomplete": 1,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "History",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 92,
+      "violations": 2,
+      "passes": 36,
+      "incomplete": 1,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 93,
+      "violations": 3,
+      "passes": 44,
+      "incomplete": 1,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 92,
+      "violations": 2,
+      "passes": 36,
+      "incomplete": 1,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 93,
+      "violations": 3,
+      "passes": 44,
+      "incomplete": 1,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 91,
+      "violations": 1,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 92,
+      "violations": 2,
+      "passes": 36,
+      "incomplete": 1,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 93,
+      "violations": 3,
+      "passes": 44,
+      "incomplete": 1,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 92,
+      "violations": 2,
+      "passes": 36,
+      "incomplete": 1,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 91,
+      "violations": 1,
+      "passes": 31,
+      "incomplete": 1,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 93,
+      "violations": 3,
+      "passes": 44,
+      "incomplete": 1,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 91,
+      "violations": 1,
+      "passes": 30,
+      "incomplete": 1,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Glossary",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 1,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    }
+  ],
+  "unreachable": [],
+  "axeFailures": [],
+  "coverage": [
+    "89 surface(s) audited, each evaluating between 90 and 93 axe rules — so every recorded result rests on rules that demonstrably ran",
+    "no surface was violation-free: every audited surface carries at least one finding below, which is a statement about the application and not a gap in the sweep"
+  ],
+  "viewports": [
+    {
+      "name": "desktop-1920x1080",
+      "conformanceWidth": true
+    },
+    {
+      "name": "laptop-1440x900",
+      "conformanceWidth": true
+    },
+    {
+      "name": "narrow-820x900",
+      "conformanceWidth": true
+    },
+    {
+      "name": "mobile-390x844",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow-wcag-320x512",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow200-desktop-960x540",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow200-laptop-720x450",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow200-mobile-195x422",
+      "conformanceWidth": false
+    }
+  ]
+}

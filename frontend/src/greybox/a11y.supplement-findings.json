@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "Findings the jsdom COMPONENT supplement found that the browser screen sweep could not.",
+    "Single source of truth, deliberately: `a11y.components.test.tsx` imports this file and asserts",
+    "each entry against what axe actually reports, so a declaration here cannot drift from reality;",
+    "and `tools/write-accessibility-report.mjs` reads it so the review artifact renders these",
+    "findings without anyone hand-typing a finding into a generated report.",
+    "Numbered S1..Sn to keep them distinct from the browser sweep's A1..An and axe's N1..Nn.",
+    "Commit 2 records. Commit 3 fixes and deletes the entry."
+  ],
+  "findings": [
+    {
+      "id": "S1",
+      "component": "RatioBar",
+      "file": "src/greybox/components.tsx",
+      "ruleId": "aria-required-attr",
+      "impact": "critical",
+      "conformance": "wcag-aa",
+      "help": "Required ARIA attributes must be provided",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/aria-required-attr",
+      "detail": "role=\"meter\" is declared with aria-label and aria-valuetext but WITHOUT the required aria-valuenow, so assistive technology is given a meter with no current value.",
+      "whyTheBrowserSweepMissedIt": "Nothing in src/ renders RatioBar. It is exported from components.tsx and has no call site, so no screen can exhibit the defect and no screen-level audit could ever have found it. A test asserts that call-site absence, so if a screen starts using it this finding becomes user-facing and must appear in the browser baseline too.",
+      "commit3Options": "Add aria-valuenow (the projected ratio is already available), or delete the unused component. Either way the characterisation test in a11y.components.test.tsx must be updated, which is the intended pressure."
+    }
+  ]
+}
