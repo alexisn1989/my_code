@@ -1303,7 +1303,7 @@ export function StrategicMapScreen(_props: ScreenProps) {
                           ) : (
                             <p
                               data-destination-ineligible={option.theater_id}
-                              className="px-3 py-1 text-sm text-parchment-200/50"
+                              className="px-3 py-1 text-sm text-parchment-200/60"
                             >
                               {option.display_name} — {ineligibilityReason(
                                 option.ineligible_reason_code,

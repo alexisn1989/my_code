@@ -50,6 +50,18 @@ import type { AxeResults, Result } from "axe-core";
 
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
 
+/**
+ * Which artifact this run writes, and why it is a knob rather than a constant.
+ *
+ * A BASELINE is a historical record: Commit 2's `gate-4a3-accessibility.*` states what the application
+ * looked like before anything was fixed, and re-running the sweep after fixing must not overwrite it --
+ * that would delete the evidence the fixes are measured against. (It nearly did: the first verification
+ * run of Commit 3 clobbered the file and it had to be restored from git.) So the artifact name is
+ * settable, the default stays the baseline for anyone taking a fresh one, and the verification run sets
+ * `MANDATE_A11Y_OUT` to write beside it instead.
+ */
+const OUT_NAME = process.env.MANDATE_A11Y_OUT ?? "gate-4a3-accessibility";
+
 /** The axe-core version that produced this artifact, read off the installed package rather than
  * retyped — so the report records what actually ran instead of what someone believed was installed.
  * `package.json` pins it exactly (4.13.0), the same way `@playwright/test` is pinned. */
@@ -343,7 +355,7 @@ test.describe("Gate 4A3 accessibility baseline", () => {
     const needsReview = [...incompletes.values()];
 
     writeFileSync(
-      path.join(REVIEW_DIR, "gate-4a3-accessibility.json"),
+      path.join(REVIEW_DIR, `${OUT_NAME}.json`),
       JSON.stringify(
         {
           axeCoreVersion: AXE_VERSION,

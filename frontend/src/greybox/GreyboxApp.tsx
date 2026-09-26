@@ -27,14 +27,15 @@ function NationalHeader() {
 
   if (!dashboard.data) {
     return (
-      <header
+      <section
+        aria-label="National status"
         data-testid="national-header"
         className="border-b border-navy-800 bg-navy-900 px-6 py-3"
       >
         <p role="status" aria-live="polite" className="text-sm text-parchment-200/60">
           Loading…
         </p>
-      </header>
+      </section>
     );
   }
 
@@ -48,7 +49,11 @@ function NationalHeader() {
   ];
 
   return (
-    <header
+    // A NAMED `<section>` is a `region` landmark, so this strip's content is inside a landmark while
+    // the site banner above stays unique. The accessible name matters: an unnamed `<section>` is not a
+    // landmark at all, which would reintroduce the very finding this change closes.
+    <section
+      aria-label="National status"
       data-testid="national-header"
       className="border-b border-navy-800 bg-navy-900 px-6 py-3"
     >
@@ -72,7 +77,7 @@ function NationalHeader() {
           </li>
         ))}
       </ul>
-    </header>
+    </section>
   );
 }
 
@@ -89,7 +94,13 @@ function GreyboxShell() {
 
   return (
     <div className="min-h-screen">
-      <div className="flex items-start justify-between gap-4 border-b border-navy-800 bg-navy-950 px-6 py-2">
+      {/* Gate 4A3 Commit 3, findings A2-A15: THE SITE BANNER.
+          This bar was a plain `<div>`, so the product title and the connection line sat outside every
+          landmark — one of the two nodes axe reported on all twelve surfaces. A top-level `<header>`
+          is the `banner` landmark, which is what this bar actually is. `NationalHeader` below was
+          converted from `<header>` to a named `<section>` in the same change, because two top-level
+          `<header>` elements would be two banners and would trade one violation for another. */}
+      <header className="flex items-start justify-between gap-4 border-b border-navy-800 bg-navy-950 px-6 py-2">
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-2xl tracking-wide text-parchment-100">
             MANDATE
@@ -106,7 +117,7 @@ function GreyboxShell() {
         >
           {glossaryOpen ? "Close glossary" : "Glossary"}
         </button>
-      </div>
+      </header>
 
       {glossaryOpen ? (
         <div role="region" aria-label="Glossary" className="border-b border-navy-800 px-6 py-4">
@@ -117,8 +128,13 @@ function GreyboxShell() {
       {screen.showsGameplayChrome ? <NationalHeader /> : null}
 
       {dismissedHelp ? null : (
+        // The SECOND node axe reported outside a landmark on every surface, and the cause is subtle:
+        // `<aside>` maps to the `complementary` landmark on its own, but `role="note"` OVERRODE that
+        // mapping, and `note` is not a landmark — so an explicit role intended to describe the content
+        // silently removed it from the landmark structure. Dropping the role restores
+        // `complementary`; the `aria-label` stays, because a named landmark is what makes it
+        // navigable rather than merely present.
         <aside
-          role="note"
           aria-label="How to govern"
           className="mx-6 mt-4 rounded border border-navy-800 bg-navy-900 p-4 text-sm"
         >

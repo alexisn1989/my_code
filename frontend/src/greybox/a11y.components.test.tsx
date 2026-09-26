@@ -56,8 +56,13 @@ import supplement from "./a11y.supplement-findings.json";
 import { DataTable, DeltaText, EmptyNote, Panel, RatioBar, ToneValue } from "./components";
 
 /** The declared supplement findings, verified below against what axe actually reports. The review
- * artifact renders this same file, so the report and the test cannot disagree about what is open. */
-const S1 = supplement.findings.find((f) => f.id === "S1");
+ * artifact renders this same file, so the report and the test cannot disagree about what is open.
+ *
+ * Both lists are checked, in opposite directions: an `open` finding must still reproduce, and a
+ * `fixed` one must no longer reproduce. A record that only tracked open findings would let a "fixed"
+ * claim rot silently the moment someone reverted the fix. */
+const OPEN = supplement.open;
+const FIXED = supplement.fixed;
 
 /**
  * Rules the REAL-BROWSER baseline already records as open, disabled here by name so this suite is
@@ -65,15 +70,12 @@ const S1 = supplement.findings.find((f) => f.id === "S1");
  * a judgement that the defect is acceptable.
  */
 const KNOWN_OPEN_RULES: Record<string, string> = {
-  region:
-    "A2-A15: one shell-level landmark defect observed on every screen. Not reachable from an " +
-    "isolated component anyway, since landmarks live in the app shell.",
-  "aria-valid-attr-value":
-    "A8: the Decisions policy tabs build `aria-controls` from a label containing a space, so it " +
-    "references an id that does not exist.",
   "color-contrast":
-    "A1 and A9. Disabled for a second, independent reason: jsdom cannot evaluate contrast at all, " +
-    "so a pass here would be meaningless rather than merely incomplete.",
+    "NOT a deferred defect: A1 and A9 were FIXED in Commit 3, and `tools/check-palette.mjs` now " +
+    "enforces the measured floor that keeps them fixed. This rule stays disabled here for a " +
+    "different and permanent reason -- jsdom has no layout engine and cannot evaluate contrast at " +
+    "all, so a pass would be meaningless rather than merely incomplete. The real contrast evidence " +
+    "is the browser sweep.",
 };
 
 const DISABLED_RULES = Object.fromEntries(
@@ -113,19 +115,39 @@ function describeViolations(results: axe.AxeResults): string {
 }
 
 describe("jsdom axe supplement (NOT the primary evidence)", () => {
-  it("the known-open list names only rules the browser baseline actually recorded", () => {
-    // Guards against the allowlist quietly growing into a way to keep this file green. Every entry
-    // must cite a finding id from the committed artifact, so adding a rule here without a recorded
-    // browser finding fails.
+  it("the disabled-rule list is down to the one jsdom structurally cannot judge", () => {
+    // Commit 2 disabled THREE rules here, each deferring to an open browser finding. Commit 3 fixed
+    // all three defects, so two exclusions are gone and the list going shorter is the visible
+    // evidence of that. What remains is not a deferral at all: jsdom has no layout engine, so
+    // `color-contrast` is unevaluable there whatever the code does.
+    expect(Object.keys(KNOWN_OPEN_RULES).sort()).toEqual(["color-contrast"]);
     for (const [rule, reason] of Object.entries(KNOWN_OPEN_RULES)) {
-      expect(reason, `the exclusion of "${rule}" must cite its finding id`).toMatch(/A\d+/);
+      expect(reason, `the exclusion of "${rule}" must explain itself`).toMatch(/jsdom/);
     }
-    // Pinned by count so a silent addition is a failure rather than a diff nobody reads.
-    expect(Object.keys(KNOWN_OPEN_RULES).sort()).toEqual([
-      "aria-valid-attr-value",
-      "color-contrast",
-      "region",
-    ]);
+  });
+
+  it("every supplement finding recorded as FIXED no longer reproduces", async () => {
+    // The other half of the record. A `fixed` claim that nobody re-checks is just a claim; this walks
+    // the list and proves each one is actually gone, so reverting a fix fails here.
+    expect(FIXED.length, "the fixed list should hold S1").toBeGreaterThan(0);
+    const { container } = render(
+      <RatioBar label="Debt to GDP" valueText="62.4%" ratioBps={6240} />,
+    );
+    const results = await analyze(container);
+    assertRulesActuallyRan(results, "RatioBar");
+    const stillFailing = results.violations.map((v) => v.id);
+    for (const finding of FIXED) {
+      expect(
+        stillFailing,
+        `${finding.id} is recorded as fixed in ${finding.fixedIn} but ${finding.ruleId} still fires`,
+      ).not.toContain(finding.ruleId);
+    }
+  });
+
+  it("no supplement finding is left OPEN", () => {
+    // Commit 3 closed S1, so this is empty. If a later commit records a new open finding it must also
+    // add its reproducing test, and this assertion is the reminder.
+    expect(OPEN).toEqual([]);
   });
 
   it("Panel is structurally clean", async () => {
@@ -190,32 +212,29 @@ describe("jsdom axe supplement (NOT the primary evidence)", () => {
    * screen can exhibit the defect and no screen-level audit could ever have found it. That is
    * precisely the case the frozen plan wanted a per-component supplement for.
    *
-   * Recorded, NOT fixed — Commit 2 records and Commit 3 fixes (§9.1). This test therefore
-   * CHARACTERISES the current defect rather than asserting cleanliness: it stays green while the
-   * defect stands, and it fails the moment the defect changes, which forces Commit 3 to come back
-   * here. Commit 3's choice is to add `aria-valuenow` or to delete the unused component; either way
-   * this test must be updated, and that is the intended pressure.
+   * FIXED in Commit 3. This test was a CHARACTERISATION of the defect while Commit 2 recorded without
+   * fixing; it is now the regression test for the fix, asserting the component is clean and that all
+   * three value attributes a `meter` needs are present. The value of S1 does not evaporate with the
+   * fix -- it is the standing evidence that a component-level audit reaches what a screen-level one
+   * cannot -- so it stays on the record in `a11y.supplement-findings.json` under `fixed`.
    */
-  it("RatioBar has a recorded, unfixed ARIA defect (S1) — characterised, not fixed", async () => {
+  it("RatioBar's meter carries the ARIA a meter role requires (S1, fixed)", async () => {
     const { container } = render(
       <RatioBar label="Debt to GDP" valueText="62.4%" ratioBps={6240} />,
     );
     const results = await analyze(container);
     assertRulesActuallyRan(results, "RatioBar");
+    expect(describeViolations(results)).toBe("");
 
-    // Exactly one violation, and exactly the one on record — read FROM the declaration the report
-    // also renders, so the artifact cannot claim a defect axe does not actually produce, nor miss one
-    // it does. Asserting the precise set is what makes this a characterisation rather than a blanket
-    // exemption: a NEW defect in this component still fails here.
-    expect(S1, "S1 must be declared in a11y.supplement-findings.json").toBeDefined();
-    expect(results.violations.map((v) => v.id)).toEqual([S1?.ruleId]);
-    expect(results.violations[0]?.impact).toBe(S1?.impact);
-
-    // The missing attribute, named, so the finding is actionable without re-running axe.
     const meter = container.querySelector('[role="meter"]');
-    expect(meter, "RatioBar should still render a meter").not.toBeNull();
-    expect(meter?.getAttribute("aria-valuenow"), "S1: the required aria-valuenow is absent").toBeNull();
+    expect(meter, "RatioBar should render a meter").not.toBeNull();
+    // `aria-valuenow` is the numeric value and `aria-valuetext` the human form -- the division of
+    // labour ARIA intends, and the reason the raw basis-point figure is the right `valuenow`.
+    expect(meter?.getAttribute("aria-valuenow")).toBe("6240");
+    expect(meter?.getAttribute("aria-valuemin")).toBe("0");
+    expect(meter?.getAttribute("aria-valuemax")).toBe("10000");
     expect(meter?.getAttribute("aria-valuetext")).toBe("62.4%");
+    expect(meter?.getAttribute("aria-label")).toBe("Debt to GDP");
   });
 
   it("RatioBar is unused, which is why only a component-level audit could find S1", () => {

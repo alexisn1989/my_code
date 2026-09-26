@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:bundle": "node tools/check-bundle.mjs",
+    "check:palette": "node tools/check-palette.mjs",
     "_comment:postinstall": "tools/openapi-gen holds an isolated typescript@5 (see its package.json for why). node_modules/ is gitignored, so a clean checkout has no TS5 unless this runs -- and BOTH `generate:api:types` AND src/format/format-boundary.test.ts import from it. Without this, `npm ci && npm test` fails from a fresh clone and in CI.",
     "postinstall": "cd tools/openapi-gen && npm ci",
     "generate:api:schema": "cd ../backend && uv run python scripts/dump_openapi.py > ../docs/contracts/phase4a-openapi.json",
@@ -20,6 +21,9 @@
     "test:e2e": "playwright test",
     "audit:baseline": "playwright test --project=baseline --project=stress && node tools/write-baseline-report.mjs",
     "audit:accessibility": "playwright test --project=accessibility && node tools/write-accessibility-report.mjs",
+    "audit:accessibility:verify": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit3 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit3 node tools/write-accessibility-report.mjs",
+    "audit:stress:seated": "playwright test --project=stress-seated",
+    "verify:fixes": "playwright test --project=verify",
     "test:preflight": "playwright test e2e/preflight.spec.ts"
   },
   "dependencies": {

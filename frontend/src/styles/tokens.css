@@ -26,6 +26,43 @@
 
   --color-accent-red-600: #8c2f2f;
 
+  /*
+   * STATUS HUES -- Gate 4A3 Commit 3, finding F3.
+   *
+   * The art bible (frozen plan §13) requires one green, one amber and one neutral-blue; this file
+   * had none, so nine component sites reached for Tailwind's DEFAULT palette instead
+   * (`text-emerald-300`, `text-red-300`, `text-amber-300`, `border-red-900`, `bg-red-950`) -- colours
+   * from outside MANDATE's palette entirely.
+   *
+   * EVERY VALUE BELOW IS MEASURED, not chosen by eye. Each was checked against all three navy
+   * backgrounds text actually sits on -- navy-950 #0a0f1a, navy-900 #0f1626, navy-800 #182338 -- and
+   * the worst case is quoted. 4.5:1 is the WCAG 2.2 AA bar for normal-size text.
+   *
+   * A FOURTH token was needed beyond §13's three, and the reason is recorded rather than glossed:
+   * the negative tone needs a readable red, and the existing `accent-red-600` measures 1.92:1 as text
+   * on navy-900 -- unusable for text. It is not unused, though: it and `charcoal-700` are consumed as
+   * `var(--color-...)` SVG fills by the strategic map, which is why they are left exactly as they are.
+   * (An earlier draft of this comment claimed both were referenced nowhere; `check-palette.mjs` caught
+   * that the claim was false, which is the check earning its place before it ever guarded a
+   * regression.)
+   */
+  --color-success-400: #86d3a0; /* 10.18:1 on navy-900, worst 8.86:1 on navy-800 */
+  --color-warning-400: #e8b962; /*  9.93:1 on navy-900, worst 8.64:1 on navy-800 */
+  --color-danger-400: #e58a8a; /*  7.17:1 on navy-900, worst 6.24:1 on navy-800 */
+
+  /* The neutral-blue slot §13 asks for. Defined so the palette is complete and the boundary test can
+   * hold it; NOT yet consumed by any component, because giving it a job would be a visual design
+   * decision rather than a fix to a recorded finding. Stated plainly instead of quietly wired in. */
+  --color-info-400: #8fb8dc; /*  8.65:1 on navy-900, worst 7.53:1 on navy-800 */
+
+  /* Dark danger fills, replacing `bg-red-950` / `border-red-900` on the error panel. The panel's
+   * meaning is carried by `role="alert"` and its title text, never by hue, so these are surface
+   * colours rather than information: parchment-100 on the fill measures 14.99:1. The border sits at
+   * 1.84:1 against the page, essentially matching the 1.91:1 of the `red-900` it replaces -- a
+   * pre-existing property of a decorative border, neither improved nor worsened here. */
+  --color-danger-950: #2a1113;
+  --color-danger-800: #6d2a2a;
+
   --font-display: "Georgia", "Times New Roman", serif;
   --font-body:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -39,4 +76,39 @@ body {
   background-color: var(--color-navy-950);
   color: var(--color-parchment-100);
   font-family: var(--font-body);
+}
+
+/*
+ * REDUCED MOTION -- Gate 4A3 Commit 3, finding F4, with its premise CORRECTED.
+ *
+ * F4 was recorded as "no `prefers-reduced-motion` anywhere; only 3 transition/animate usages exist,
+ * so compliance is nearly free". The first half was true. The second half was WRONG, and the three
+ * sites were substring false positives in a text search, not animations:
+ *
+ *   - `ease-capital`  is inside `data-testid="promise-release-capital"`  (rel-EASE-CAPITAL)
+ *   - `ease-blocked`  is inside `data-release-blocked`                  (rel-EASE-BLOCKED)
+ *   - `transition`    is the English word in a Glossary definition ("transition a noncompetitive
+ *     constitution to a competitive one")
+ *
+ * Measured at this commit: the application has NO CSS transition or animation declaration, NO
+ * `@keyframes`, NO SVG `<animate>`, and NO Tailwind motion utility in any class string. So there is
+ * currently nothing for a guard to switch off, and a guard written as "disable these three
+ * animations" would have been a rule matching nothing -- the inert-mechanic defect this project has
+ * caught before.
+ *
+ * What is here instead is the standard GLOBAL safety net, which is honest about its job: it is
+ * PREVENTIVE, not corrective. It costs three rules, applies to any future motion automatically, and
+ * `e2e/accessibility.spec.ts` verifies in a real browser under `reducedMotion: "reduce"` both that the
+ * media query is active and that no element reports a non-zero transition or animation duration --
+ * so the claim "nothing animates" is measured on the rendered page rather than inferred from a grep.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -42,10 +42,15 @@ export function Portrait({ portraitRef, displayName }: PortraitProps) {
   const garment = PORTRAIT_GARMENT[features.garment];
   const hairShape = PORTRAIT_HAIR_SHAPES[features.hairStyle];
 
+  // `bg-parchment-900/40` used to be on the `<svg>` below and did NOTHING: `parchment-900` is not a
+  // defined token (the parchment family is 100 and 200 only), so Tailwind emitted no rule and this
+  // frame has always been transparent. Removing the dead reference is an exact visual no-op. The
+  // intended backdrop is recorded as finding D1 in the Commit 3 review rather than invented here:
+  // choosing a real colour is a visual design decision, and this commit fixes recorded findings.
   return (
     <svg
       viewBox="0 0 64 68"
-      className="h-16 w-16 shrink-0 rounded-md bg-parchment-900/40"
+      className="h-16 w-16 shrink-0 rounded-md"
       role="img"
       aria-label={displayName}
       data-portrait-ref={portraitRef}

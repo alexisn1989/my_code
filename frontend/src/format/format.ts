@@ -22,6 +22,15 @@ export function formatBpsPercent(valueBps: number): string {
   return `${whole}.${fraction}%`;
 }
 
+/**
+ * The basis-point scale's endpoints, exported so a component can declare an ARIA value range without
+ * doing arithmetic of its own (finding S1 needed exactly this: `role="meter"` requires
+ * `aria-valuenow`, and `format-boundary.test.ts` forbids arithmetic outside `src/format/**`). They are
+ * named constants rather than inline `10000` literals so the scale has one spelling.
+ */
+export const RATIO_BPS_MIN = 0;
+export const RATIO_BPS_MAX = 10_000;
+
 /** A ratio already expressed in basis points (0..10_000) -> a CSS width
  * percentage. Used for bar width ONLY, exactly like the greybox's existing
  * `RatioBar` -- the authoritative text next to the bar always comes from its

@@ -390,7 +390,15 @@ describe("Passed/failed state is never communicated by color alone", () => {
       // word, never a bare colored swatch/icon standing alone for meaning.
       expect(headline.tagName).toBe("SPAN");
       expect(headline.textContent?.trim().length).toBeGreaterThan(0);
-      expect(headline.className).toMatch(/text-(red|emerald)-\d+/);
+      // Gate 4A3 Commit 3 (finding F3): this pinned the Tailwind DEFAULT palette
+      // (`text-red-*`/`text-emerald-*`), which the tone classes no longer use --
+      // they are MANDATE tokens now, with measured contrast recorded in
+      // tokens.css. The assertion's INTENT is unchanged and is deliberately not
+      // weakened: the headline must still carry a tone colour on top of real
+      // text. `tools/check-palette.mjs` is what now guarantees no default-palette
+      // name can come back, so this expectation names the tokens rather than
+      // matching anything colour-shaped.
+      expect(headline.className).toMatch(/text-(danger|success|warning)-\d+/);
     }).then(() => {
       vi.unstubAllGlobals();
     });

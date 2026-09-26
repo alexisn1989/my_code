@@ -13,13 +13,13 @@
 
 import type { ReactNode } from "react";
 
-import { ratioBpsToWidthPercent } from "../format/format";
+import { RATIO_BPS_MAX, RATIO_BPS_MIN, ratioBpsToWidthPercent } from "../format/format";
 import type { Direction, Tone } from "./types";
 
 const TONE_CLASS: Record<Tone, string> = {
-  positive: "text-emerald-300",
-  negative: "text-red-300",
-  caution: "text-amber-300",
+  positive: "text-success-400",
+  negative: "text-danger-400",
+  caution: "text-warning-400",
   neutral: "text-parchment-200",
 };
 
@@ -114,7 +114,30 @@ export function DataTable({
   columns: string[];
   rows: { key: string; cells: ReactNode[] }[];
 }) {
+  /*
+   * Gate 4A3 Commit 3, findings V2 and V3: the 320px CONFORMANCE width.
+   *
+   * At 320 CSS px -- the width WCAG 2.2 SC 1.4.10 actually names -- a multi-column data table cannot
+   * reflow below its minimum content width, so it pushed the Decisions column and its panel wider than
+   * the viewport and THE PAGE scrolled horizontally. That is the reflow failure.
+   *
+   * The fix is to contain the scrolling to the table rather than to shrink the data: SC 1.4.10 exempts
+   * "content which requires two-dimensional layout for usage or meaning", and a data table is the
+   * canonical example. So the page no longer scrolls, every cell stays reachable, and nothing is
+   * hidden or truncated -- which is the distinction between fixing a reflow failure and merely
+   * clipping the evidence of one.
+   *
+   * `tabIndex={0}` and the group role make the scroll container keyboard-operable: a scrollable region
+   * that only a pointer can reach would trade a reflow failure for a keyboard one. It is labelled by
+   * the same caption the table carries, so the two do not disagree.
+   */
   return (
+    <div
+      role="group"
+      aria-label={caption}
+      tabIndex={0}
+      className="overflow-x-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+    >
     <table className="w-full text-left text-sm tabular-nums">
       <caption className="sr-only">{caption}</caption>
       <thead>
@@ -139,6 +162,7 @@ export function DataTable({
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -164,9 +188,24 @@ export function RatioBar({
         <span>{label}</span>
         <span className="tabular-nums">{valueText}</span>
       </div>
+      {/* Finding S1 (Gate 4A3 Commit 3): `role="meter"` REQUIRES `aria-valuenow`, and this element
+          carried only `aria-label` and `aria-valuetext` -- so assistive technology was handed a meter
+          with no current value. axe rates it critical.
+
+          It was found by the jsdom COMPONENT supplement and not by the browser screen sweep, and the
+          reason is worth keeping: nothing renders `RatioBar` yet, so no screen could exhibit it. A
+          screen-level audit structurally cannot find a defect in a component no screen mounts.
+
+          `aria-valuenow` takes the raw basis-point value and the range is declared from the scale's
+          own constants; `aria-valuetext` keeps carrying the human-readable form, which is exactly the
+          division of labour ARIA intends. No arithmetic happens here -- that would belong in
+          `src/format/**` and `format-boundary.test.ts` would refuse it. */}
       <div
         role="meter"
         aria-label={label}
+        aria-valuenow={ratioBps}
+        aria-valuemin={RATIO_BPS_MIN}
+        aria-valuemax={RATIO_BPS_MAX}
         aria-valuetext={valueText}
         className="h-2 w-full rounded bg-navy-800"
       >

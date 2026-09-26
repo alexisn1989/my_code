@@ -51,7 +51,7 @@ export function TurnResultView({
                     A cabinet change carries its people in `params`, and a label that said only
                     "a post changed hands" would tell a player less than the CLI does. */}
                 {driverSentence(driver.reason_id, driver.params, driver.label)}{" "}
-                <code className="text-xs text-parchment-200/50">{driver.reason_id}</code>
+                <code className="text-xs text-parchment-200/60">{driver.reason_id}</code>
               </li>
             ))}
           </ul>
@@ -112,7 +112,7 @@ export function TurnResultView({
                   cells: [
                     field.label,
                     field.value_text,
-                    <code key="src" className="text-xs text-parchment-200/50">
+                    <code key="src" className="text-xs text-parchment-200/60">
                       {field.source_field}
                     </code>,
                   ],

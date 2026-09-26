@@ -33,7 +33,7 @@ function Alert({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div
       role="alert"
-      className="rounded border border-red-900/60 bg-red-950/40 p-4 text-sm text-parchment-100"
+      className="rounded border border-danger-800/60 bg-danger-950/40 p-4 text-sm text-parchment-100"
     >
       <p className="font-semibold">{title}</p>
       <div className="mt-1 text-parchment-200/80">{children}</div>

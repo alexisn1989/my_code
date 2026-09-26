@@ -6,9 +6,15 @@
     "and `tools/write-accessibility-report.mjs` reads it so the review artifact renders these",
     "findings without anyone hand-typing a finding into a generated report.",
     "Numbered S1..Sn to keep them distinct from the browser sweep's A1..An and axe's N1..Nn.",
-    "Commit 2 records. Commit 3 fixes and deletes the entry."
+    "",
+    "`open` holds findings still present in the code. `fixed` holds findings a later commit closed,",
+    "kept on the record rather than deleted: a supplement finding is evidence that a component-level",
+    "audit reaches what a screen-level one cannot, and that stays true after the fix. The test asserts",
+    "BOTH directions -- every `open` entry still reproduces, and every `fixed` entry no longer does --",
+    "so neither list can quietly go stale."
   ],
-  "findings": [
+  "open": [],
+  "fixed": [
     {
       "id": "S1",
       "component": "RatioBar",
@@ -18,9 +24,11 @@
       "conformance": "wcag-aa",
       "help": "Required ARIA attributes must be provided",
       "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/aria-required-attr",
-      "detail": "role=\"meter\" is declared with aria-label and aria-valuetext but WITHOUT the required aria-valuenow, so assistive technology is given a meter with no current value.",
-      "whyTheBrowserSweepMissedIt": "Nothing in src/ renders RatioBar. It is exported from components.tsx and has no call site, so no screen can exhibit the defect and no screen-level audit could ever have found it. A test asserts that call-site absence, so if a screen starts using it this finding becomes user-facing and must appear in the browser baseline too.",
-      "commit3Options": "Add aria-valuenow (the projected ratio is already available), or delete the unused component. Either way the characterisation test in a11y.components.test.tsx must be updated, which is the intended pressure."
+      "detail": "role=\"meter\" was declared with aria-label and aria-valuetext but WITHOUT the required aria-valuenow, so assistive technology was given a meter with no current value.",
+      "whyTheBrowserSweepMissedIt": "Nothing in src/ renders RatioBar. It is exported from components.tsx and has no call site, so no screen could exhibit the defect and no screen-level audit could ever have found it. A test asserts that call-site absence, so if a screen starts using it this finding becomes user-facing and must appear in the browser baseline too.",
+      "fixedIn": "Gate 4A3 Commit 3",
+      "fix": "aria-valuenow now carries the raw basis-point value, with aria-valuemin/aria-valuemax declared from RATIO_BPS_MIN/RATIO_BPS_MAX in src/format/format.ts. aria-valuetext keeps the human-readable form. The range constants live in format.ts because computing them in a component would be arithmetic outside src/format/**, which format-boundary.test.ts refuses.",
+      "regression": "a11y.components.test.tsx asserts RatioBar now produces ZERO axe violations, and separately that the meter carries all three value attributes. The characterisation test that pinned the defect was replaced by these, so the fix cannot silently regress."
     }
   ]
 }

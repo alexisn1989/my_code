@@ -106,6 +106,21 @@ export default defineConfig({
     // committed evidence), and it depends on the same browser-provenance preflight, since an
     // accessibility finding is only attributable if the renderer that produced it is known.
     { name: "accessibility", testMatch: /accessibility\.spec\.ts/, dependencies: ["preflight"] },
+    // Commit 3's seated-cabinet stress pass. Its own project because it runs its own server against
+    // its own fixture and writes its own artifact, leaving Commit 1a's stress evidence untouched.
+    {
+      name: "stress-seated",
+      testMatch: /stress-seated-cabinet\.spec\.ts/,
+      dependencies: ["preflight"],
+    },
+    // Commit 3's regression checks. Unlike every project above it, this one ASSERTS: the baselines
+    // report so that finding a defect cannot fail them, whereas a fix without a failing-on-regression
+    // check is a claim rather than a guarantee.
+    {
+      name: "verify",
+      testMatch: /verify-commit3-fixes\.spec\.ts/,
+      dependencies: ["preflight"],
+    },
   ],
   webServer: {
     // The production entry point, with explicit paths so the run cannot accidentally read a

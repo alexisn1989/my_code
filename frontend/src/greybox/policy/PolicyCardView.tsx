@@ -65,7 +65,7 @@ export function PolicyCardView({
         aria-describedby={statusId}
         className="flex h-full flex-col gap-2 rounded border border-navy-800 bg-navy-900 p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500 aria-[pressed=true]:border-gold-500"
       >
-        <span className="text-[10px] uppercase tracking-wide text-parchment-200/50">
+        <span className="text-[10px] uppercase tracking-wide text-parchment-200/60">
           {card.category_label}
         </span>
         <h4 className="font-[family-name:var(--font-display)] text-sm text-parchment-100">

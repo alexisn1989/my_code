@@ -1,0 +1,240 @@
+{
+  "conformanceOverflow": [],
+  "belowFloorObservations": [
+    {
+      "screen": "Dashboard",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Dashboard",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Dashboard",
+      "detail": "div.grid gap-4 md:grid-cols-3 xl:grid-cols-5"
+    },
+    {
+      "screen": "Dashboard",
+      "detail": "div.flex gap-3"
+    },
+    {
+      "screen": "Government",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Economy",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Legislature",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Constitution",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "ul.flex flex-col gap-2"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "li."
+    },
+    {
+      "screen": "Relationships",
+      "detail": "button.flex w-full gap-3 rounded border border-"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "ul.flex flex-col gap-2"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "div.flex flex-col gap-4"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "div.flex flex-wrap gap-2"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "div."
+    },
+    {
+      "screen": "Decisions",
+      "detail": "ul.grid grid-cols-1 gap-3 sm:grid-cols-2 lg"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "li.list-none"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "div.flex h-full flex-col gap-2 rounded borde"
+    },
+    {
+      "screen": "Turn result",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "History",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Strategic map",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Victory / defeat",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Victory / defeat",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Victory / defeat",
+      "detail": "section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "screen": "Victory / defeat",
+      "detail": "div.flex gap-3"
+    }
+  ],
+  "coverage": [
+    "A8: 5 tabs, all carrying aria-controls; 5 unique whitespace-free ids; every aria-controls token resolves; ArrowRight moved focus policy-tab-major-budget -> policy-tab-major-constitution",
+    "A2-A15 + A1/A9: 11 screens plus the Glossary, each with zero region/contrast/banner violations and exactly one banner, one main and at least one navigation landmark",
+    "V1-V3: 11 screens clean at 320px (asserted); 33 observation(s) at 195px (recorded, below the floor)",
+    "F4: reduced-motion active, a 5s inline transition clamped to 1e-05s, and 0 animating elements across 4 screens",
+    "N1-N6: 88 text-bearing elements measured across 4 of 5 flagged screens; worst ratio 5.65:1; none below 4.5:1; 1 screen(s) not measurable mid-campaign and recorded as owed"
+  ],
+  "reducedMotion": {
+    "mediaQueryActive": true,
+    "inlineTransitionOverriddenTo": "1e-05s",
+    "animatedElements": 0,
+    "screensChecked": [
+      "Dashboard",
+      "Government",
+      "Relationships",
+      "Decisions"
+    ]
+  },
+  "needsReviewDisposition": {
+    "method": "For every text-bearing element on the screens axe flagged, the computed foreground colour (converted from Tailwind v4's OKLab output and composited with its own alpha) was measured against the first non-transparent ancestor background -- the resolution step axe skips when elements overlap. Ratios are computed in-page with the WCAG relative-luminance formula, and the probe is calibrated against an independently computed figure for a known token before any of its numbers are trusted. Visually hidden nodes (`.sr-only`) are excluded: they are never painted, so contrast does not apply to them.",
+    "precision": "The OKLab -> sRGB round trip can shift a channel by a unit, so a ratio here may differ from an offline calculation by roughly 1-2% (the calibration node measured 5.65:1 against 5.45-5.57:1 computed offline). That is immaterial at these margins -- the smallest measured ratio is 5.65:1 against a 4.5:1 bar -- but it is stated rather than presented as exact.",
+    "conclusion": "FIVE of the six resolve ABOVE the 4.5:1 AA bar, and one is deferred with a reason. N1 and N2 are the aria-hidden tone glyphs, which inherit a measured tone token and are paired with an sr-only word, so meaning never rests on the glyph. N3, N4 and N5 were overlap cases where axe could not find a background; resolving it by ancestor walk gives a passing ratio on every node.",
+    "deferred": [
+      {
+        "screen": "Victory / defeat",
+        "reason": "no text-bearing element was present to measure on this screen in a mid-campaign session",
+        "finding": "N6",
+        "disposition": "The terminal screen renders its outcome only in a CONCLUDED campaign, and this verification runs mid-campaign, so N6's node does not exist to be measured here. It is NOT claimed as resolved. Commit 5's end-to-end campaign drives a scenario to its terminal screen, which is where this measurement belongs; recorded as owed rather than folded into the passing count."
+      }
+    ],
+    "findings": [
+      {
+        "id": "N1",
+        "screen": "Dashboard",
+        "disposition": "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+      },
+      {
+        "id": "N2",
+        "screen": "Decisions",
+        "disposition": "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+      },
+      {
+        "id": "N3",
+        "screen": "Strategic map",
+        "disposition": "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+      },
+      {
+        "id": "N4",
+        "screen": "Relationships",
+        "disposition": "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+      },
+      {
+        "id": "N5",
+        "screen": "Decisions",
+        "disposition": "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+      },
+      {
+        "id": "N6",
+        "screen": "Victory / defeat",
+        "disposition": "NOT measured here -- see `deferred` below"
+      }
+    ],
+    "dispositions": [
+      {
+        "screen": "Dashboard",
+        "measured": 11,
+        "worstRatio": 15.43,
+        "worstOn": "span.text-parchment-200 \"100000000.00\"",
+        "glyphOnlyNodes": 5,
+        "belowBar": []
+      },
+      {
+        "screen": "Decisions",
+        "measured": 29,
+        "worstRatio": 5.65,
+        "worstOn": "span.text-parchment-200/60 \"(20)\"",
+        "glyphOnlyNodes": 6,
+        "belowBar": []
+      },
+      {
+        "screen": "Relationships",
+        "measured": 36,
+        "worstRatio": 5.65,
+        "worstOn": "span.text-xs text-parchment-200/60 \"loyalty 9.00%, independe\"",
+        "glyphOnlyNodes": 0,
+        "belowBar": []
+      },
+      {
+        "screen": "Strategic map",
+        "measured": 12,
+        "worstRatio": 7.5,
+        "worstOn": "span.block text-xs text-parchment-2 \"Valdrun Capital Region\"",
+        "glyphOnlyNodes": 3,
+        "belowBar": []
+      }
+    ],
+    "notMeasured": [
+      {
+        "screen": "Victory / defeat",
+        "reason": "no text-bearing element was present to measure on this screen in a mid-campaign session"
+      }
+    ]
+  }
+}

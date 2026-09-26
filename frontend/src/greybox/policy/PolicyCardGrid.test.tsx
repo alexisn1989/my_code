@@ -346,3 +346,91 @@ describe("PolicyCardGrid: keyboard roving tabindex on level-2 tabs", () => {
     expect(spendingTab).toHaveAttribute("aria-selected", "true");
   });
 });
+
+/**
+ * Gate 4A3 Commit 3, finding A8 — the regression guards, at unit speed.
+ *
+ * The browser verification (`e2e/verify-commit3-fixes.spec.ts`) is the authoritative check: it walks
+ * the live DOM and proves every `aria-controls` token resolves. These tests are the fast half, so a
+ * reintroduced label-derived id fails in `npm test` rather than waiting for an audit run.
+ *
+ * The defect being guarded: ids were built as `policy-tab-${ariaLabel}-${tab.id}` where `ariaLabel` is
+ * authored prose ("Budget policy"), producing `id="policy-tab-Budget policy-taxation"`. Because
+ * `aria-controls` is a space-separated IDREF LIST, one reference was read as two, and neither existed.
+ */
+describe("PolicyCardGrid: A8 regression -- tab/panel references", () => {
+  function renderGrid() {
+    return render(
+      <PolicyCardGrid
+        cards={CARDS}
+        selectedCardId={null}
+        onSelectCard={() => {}}
+        onClearSelection={() => {}}
+      />,
+    );
+  }
+
+  it("gives every tab an id containing no whitespace", () => {
+    const { container } = renderGrid();
+    const tabs = Array.from(container.querySelectorAll('[role="tab"]'));
+    expect(tabs.length, "there must be tabs for this to prove anything").toBeGreaterThan(2);
+    for (const tab of tabs) {
+      expect(tab.id, "every tab needs an id").not.toBe("");
+      // The whole of A8 in one assertion: a space here becomes two IDREFs downstream.
+      expect(tab.id, `tab id ${JSON.stringify(tab.id)} must not contain whitespace`).not.toMatch(/\s/);
+    }
+  });
+
+  it("gives every tab a unique id", () => {
+    const { container } = renderGrid();
+    const ids = Array.from(container.querySelectorAll('[role="tab"]')).map((t) => t.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("points every aria-controls at an element that exists", () => {
+    const { container } = renderGrid();
+    const referring = Array.from(container.querySelectorAll("[aria-controls]"));
+    expect(referring.length, "tabs must carry aria-controls").toBeGreaterThan(2);
+    for (const el of referring) {
+      const value = el.getAttribute("aria-controls") ?? "";
+      expect(value, "aria-controls must not be empty").not.toBe("");
+      for (const token of value.split(/\s+/).filter((t) => t !== "")) {
+        expect(
+          container.querySelector(`#${CSS.escape(token)}`),
+          `aria-controls token "${token}" resolves to nothing`,
+        ).not.toBeNull();
+      }
+    }
+  });
+
+  it("labels the panel with the deepest active tab, and that reference resolves", () => {
+    const { container } = renderGrid();
+    const panel = container.querySelector('[role="tabpanel"]');
+    expect(panel, "there must be a panel").not.toBeNull();
+    const labelledBy = panel?.getAttribute("aria-labelledby") ?? "";
+    expect(labelledBy, "the panel must name its active tab").not.toBe("");
+    expect(container.querySelector(`#${CSS.escape(labelledBy)}`)).not.toBeNull();
+  });
+
+  it("keeps the panel id stable when tabs change, since one panel serves every tab", () => {
+    const { container } = renderGrid();
+    const before = container.querySelector('[role="tabpanel"]')?.id;
+    fireEvent.click(screen.getByRole("tab", { name: /Constitutional reform/ }));
+    const after = container.querySelector('[role="tabpanel"]')?.id;
+    // One panel element whose CONTENT swaps is why a single fixed id is correct here: an id per tab
+    // would dangle for every tab whose panel is not currently rendered.
+    expect(after).toBe(before);
+  });
+
+  it("gives the level-1 tablist a roving tabindex, which it previously lacked entirely", () => {
+    const { container } = renderGrid();
+    const list = container.querySelector('[role="tablist"][aria-label="Policy choice"]');
+    expect(list, "the level-1 tablist must exist").not.toBeNull();
+    const tabs = Array.from(list!.querySelectorAll('[role="tab"]'));
+    const tabbable = tabs.filter((t) => t.getAttribute("tabIndex") === "0");
+    expect(tabs.length).toBeGreaterThan(1);
+    // Exactly one tab stop for the whole list is the ARIA tablist pattern; before this commit every
+    // level-1 tab was independently tabbable and none responded to arrow keys.
+    expect(tabbable.length, "exactly one level-1 tab may be in the tab order").toBe(1);
+  });
+});

@@ -258,7 +258,7 @@ export function MeetingScreen(_props: ScreenProps) {
             asks. It is paid whether the vote passes or fails.
           </p>
           {blockedReason === null ? null : (
-            <p data-testid="bargain-blocked" className="mb-3 text-sm text-amber-300">
+            <p data-testid="bargain-blocked" className="mb-3 text-sm text-warning-400">
               {blockedReason}
             </p>
           )}
@@ -502,7 +502,7 @@ export function MeetingScreen(_props: ScreenProps) {
               )}
               {selectedActive === null ? null : <li>{releaseCostLine()}</li>}
               {selectedLeader === null || blockedReason === null ? null : (
-                <li data-testid="review-bargain-blocked" className="text-amber-300">
+                <li data-testid="review-bargain-blocked" className="text-warning-400">
                   {blockedReason}
                 </li>
               )}

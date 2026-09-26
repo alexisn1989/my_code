@@ -11,15 +11,20 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
-const data = JSON.parse(readFileSync(path.join(REVIEW_DIR, "gate-4a3-accessibility.json"), "utf-8"));
+/** Matches the spec's `MANDATE_A11Y_OUT`, so a verification run renders its own artifact rather than
+ * overwriting the baseline it is measured against. */
+const OUT_NAME = process.env.MANDATE_A11Y_OUT ?? "gate-4a3-accessibility";
+const data = JSON.parse(readFileSync(path.join(REVIEW_DIR, `${OUT_NAME}.json`), "utf-8"));
 
 /** Findings the jsdom COMPONENT supplement found that a screen-level sweep structurally could not.
  * Read from the same file `a11y.components.test.tsx` imports and asserts against, so this report
  * cannot claim a defect axe does not produce — and cannot miss one it does. */
-const supplementFindings =
-  JSON.parse(
-    readFileSync(path.join(process.cwd(), "src", "greybox", "a11y.supplement-findings.json"), "utf-8"),
-  ).findings ?? [];
+const supplementRecord = JSON.parse(
+  readFileSync(path.join(process.cwd(), "src", "greybox", "a11y.supplement-findings.json"), "utf-8"),
+);
+const supplementOpen = supplementRecord.open ?? [];
+const supplementFixed = supplementRecord.fixed ?? [];
+const supplementFindings = [...supplementOpen, ...supplementFixed];
 
 const findings = data.findings ?? [];
 const needsReview = data.needsReview ?? [];
@@ -109,7 +114,8 @@ now would commit a deliberately red suite.
 | Beyond AA (AAA rules) | ${beyondAa.length} |
 | axe best-practice findings | ${bestPractice.length} |
 | Needs review (axe \`incomplete\`) | ${needsReview.length} |
-| **Component-supplement findings** (\`S1..Sn\`) | **${supplementFindings.length}** |
+| Component-supplement findings still open (\`S1..Sn\`) | ${supplementOpen.length} |
+| Component-supplement findings fixed | ${supplementFixed.length} |
 | Surfaces audited | ${surfaces.length} |
 | Surfaces the navigation did not offer | ${unreachable.length} |
 | Surfaces where axe itself failed (harness) | ${axeFailures.length} |
@@ -196,13 +202,16 @@ ${
     : supplementFindings
         .map(
           (f) =>
-            `### ${f.id} — \`${f.ruleId}\` in ${f.component} (${f.impact}, ${f.conformance})\n\n` +
+            `### ${f.id} — \`${f.ruleId}\` in ${f.component} (${f.impact}, ${f.conformance})` +
+            `${f.fixedIn === undefined ? " — **OPEN**" : ` — **FIXED in ${f.fixedIn}**`}\n\n` +
             `- **File:** \`${f.file}\`\n` +
             `- **Rule:** ${f.help}\n` +
             `- **Reference:** ${f.helpUrl}\n` +
             `- **Defect:** ${f.detail}\n` +
             `- **Why the browser sweep missed it:** ${f.whyTheBrowserSweepMissedIt}\n` +
-            `- **Commit 3 options:** ${f.commit3Options}\n`,
+            (f.fix === undefined ? "" : `- **Fix:** ${f.fix}\n`) +
+            (f.regression === undefined ? "" : `- **Regression check:** ${f.regression}\n`) +
+            (f.commit3Options === undefined ? "" : `- **Options:** ${f.commit3Options}\n`),
         )
         .join("\n") + "\n"
 }
@@ -247,7 +256,7 @@ ${
   review**, across **${surfaces.length} audited surface(s)**.
 `;
 
-writeFileSync(path.join(REVIEW_DIR, "gate-4a3-accessibility.md"), doc, "utf-8");
+writeFileSync(path.join(REVIEW_DIR, `${OUT_NAME}.md`), doc, "utf-8");
 console.log(
   `accessibility report written: ${findings.length} findings ` +
     `(${conformance.length} WCAG AA, ${bestPractice.length} best-practice), ` +

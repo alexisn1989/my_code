@@ -43,7 +43,10 @@ function SaveAsPanel() {
           type="text"
           value={displayName}
           onChange={(event) => setDisplayName(event.target.value)}
-          className="w-64 rounded border border-navy-800 bg-navy-950 px-2 py-1"
+          // Finding V1: `w-64` was a FIXED 256px, and at the 320px conformance width the panel's own
+          // padding leaves less room than that, so the label's box overflowed. `w-full max-w-64` keeps
+          // the identical appearance wherever it fits and lets it shrink where it does not.
+          className="w-full max-w-64 rounded border border-navy-800 bg-navy-950 px-2 py-1"
         />
       </label>
       <button
@@ -60,7 +63,7 @@ function SaveAsPanel() {
         </div>
       ) : null}
       {saveAs.isSuccess ? (
-        <p role="status" aria-live="polite" className="mt-3 text-sm text-emerald-300">
+        <p role="status" aria-live="polite" className="mt-3 text-sm text-success-400">
           Saved as &ldquo;{saveAs.data.display_name}&rdquo;. Load it from the Title screen.
         </p>
       ) : null}
@@ -124,7 +127,7 @@ export function DashboardScreen({ navigate }: ScreenProps) {
             data-testid="map-placeholder"
             role="img"
             aria-label={`Stylised outline of ${data.country_name}. Presentation only.`}
-            className="flex h-48 items-center justify-center rounded border border-dashed border-navy-800 bg-navy-950 text-parchment-200/40"
+            className="flex h-48 items-center justify-center rounded border border-dashed border-navy-800 bg-navy-950 text-parchment-200/60"
           >
             map placeholder
           </div>

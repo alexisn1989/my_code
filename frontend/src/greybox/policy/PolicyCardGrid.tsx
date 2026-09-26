@@ -22,16 +22,54 @@ import type { FamilyId, MajorChoiceId } from "./groupPolicyCards";
 import { groupPolicyCards, locateCard } from "./groupPolicyCards";
 import { PolicyCardView } from "./PolicyCardView";
 
+/**
+ * THE ONE CARD PANEL, and why it has a single fixed id (Gate 4A3 Commit 3, finding A8).
+ *
+ * This browser renders exactly ONE `role="tabpanel"` element, whose CONTENT swaps as tabs change.
+ * So every tab -- level 1 and level 2 alike -- points its `aria-controls` at this one id, and that
+ * reference always resolves. The alternative, an id per tab, cannot work here: only the active
+ * panel exists in the DOM, so every inactive tab's `aria-controls` would dangle, which is the
+ * defect A8 recorded in a different guise.
+ *
+ * Which tab the panel currently belongs to is carried by `aria-labelledby` instead, pointing at the
+ * deepest active tab. That is the part that genuinely varies, and it varies over ids that exist.
+ */
+const CARD_PANEL_ID = "policy-card-panel";
+
+/** A tab's DOM id, built from stable slug ids and never from a display label.
+ *
+ * A8, exactly: ids were built as `policy-tab-${ariaLabel}-${tab.id}` where `ariaLabel` is authored
+ * prose such as "Budget policy". That produced `id="policy-tab-Budget policy-taxation"` -- an id
+ * CONTAINING A SPACE -- and `aria-controls` is a space-separated IDREF LIST, so the browser read one
+ * reference as two ("policy-panel-Budget" and "policy-taxation"), neither of which existed. axe
+ * rated it critical. Slug ids (`budget`, `taxation`, `constitution`, ...) cannot contain spaces:
+ * `MajorChoiceId` and `FamilyId` are closed unions of lowercase identifiers, and a test asserts the
+ * generated ids match a no-whitespace pattern so a future label-derived id fails loudly.
+ */
+function tabDomId(level: "major" | "family", ...parts: string[]): string {
+  return ["policy-tab", level, ...parts].join("-");
+}
+
 function TabList({
   ariaLabel,
+  level,
+  idScope,
   tabs,
   activeId,
   onActivate,
+  buttonClassName,
 }: {
   ariaLabel: string;
+  /** Distinguishes the two tablists' id namespaces, so a family id can never collide with a major
+   * id even if the two vocabularies ever overlap. */
+  level: "major" | "family";
+  /** Extra id segments that scope this list. Family tabs are scoped by their major, so the same
+   * family id under two majors yields two distinct ids. */
+  idScope: string[];
   tabs: { id: string; label: string; count: number; hasSelection: boolean }[];
   activeId: string;
   onActivate: (id: string) => void;
+  buttonClassName: string;
 }) {
   function handleKeyDown(event: React.KeyboardEvent, index: number) {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") {
@@ -43,7 +81,7 @@ function TabList({
     const next = tabs[nextIndex];
     if (next) {
       onActivate(next.id);
-      const nextEl = document.getElementById(`policy-tab-${ariaLabel}-${next.id}`);
+      const nextEl = document.getElementById(tabDomId(level, ...idScope, next.id));
       nextEl?.focus();
     }
   }
@@ -53,23 +91,27 @@ function TabList({
       {tabs.map((tab, index) => (
         <button
           key={tab.id}
-          id={`policy-tab-${ariaLabel}-${tab.id}`}
+          id={tabDomId(level, ...idScope, tab.id)}
           role="tab"
           type="button"
           aria-selected={tab.id === activeId}
-          aria-controls={`policy-panel-${ariaLabel}-${tab.id}`}
+          aria-controls={CARD_PANEL_ID}
           tabIndex={tab.id === activeId ? 0 : -1}
           onClick={() => onActivate(tab.id)}
           onKeyDown={(event) => handleKeyDown(event, index)}
-          className="rounded border border-navy-800 px-3 py-1.5 text-sm aria-selected:border-gold-500 aria-selected:text-gold-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+          className={buttonClassName}
         >
-          {tab.label} <span className="text-parchment-200/50">({tab.count})</span>
+          {tab.label} <span className="text-parchment-200/60">({tab.count})</span>
           {tab.hasSelection ? <span className="ml-1 text-gold-500">· 1 selected</span> : null}
         </button>
       ))}
     </div>
   );
 }
+
+/** Shared by both tablists so they stay visually and behaviourally identical apart from padding. */
+const TAB_BASE =
+  "rounded border border-navy-800 text-sm aria-selected:border-gold-500 aria-selected:text-gold-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500";
 
 export function PolicyCardGrid({
   cards,
@@ -147,25 +189,31 @@ export function PolicyCardGrid({
         ) : null}
       </div>
 
-      <div role="tablist" aria-label="Policy choice" className="flex flex-wrap gap-2">
-        {majors.map((major) => (
-          <button
-            key={major.id}
-            type="button"
-            role="tab"
-            aria-selected={major.id === openMajor}
-            onClick={() => handleMajorChange(major.id)}
-            className="rounded border border-navy-800 px-3 py-2 text-sm aria-selected:border-gold-500 aria-selected:text-gold-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
-          >
-            {major.label} <span className="text-parchment-200/50">({major.cards.length})</span>
-            {located?.major === major.id ? <span className="ml-1 text-gold-500">· 1 selected</span> : null}
-          </button>
-        ))}
-      </div>
+      {/* Level 1 now goes through the SAME `TabList` as level 2, which is the other half of the A8
+          fix. Before, this list was hand-rolled: its tabs carried no `id`, no `aria-controls`, no
+          roving tabindex and no arrow-key handling, so it was a `role="tablist"` whose tabs
+          controlled nothing and could not be operated as a tablist. One component now guarantees
+          both lists resolve their references and behave the same from the keyboard. */}
+      <TabList
+        ariaLabel="Policy choice"
+        level="major"
+        idScope={[]}
+        tabs={majors.map((major) => ({
+          id: major.id,
+          label: major.label,
+          count: major.cards.length,
+          hasSelection: located?.major === major.id,
+        }))}
+        activeId={openMajor}
+        onActivate={handleMajorChange}
+        buttonClassName={`${TAB_BASE} px-3 py-2`}
+      />
 
       {activeMajor.families.length > 0 ? (
         <TabList
           ariaLabel={activeMajor.label}
+          level="family"
+          idScope={[activeMajor.id]}
           tabs={activeMajor.families.map((family) => ({
             id: family.id,
             label: family.label,
@@ -174,15 +222,21 @@ export function PolicyCardGrid({
           }))}
           activeId={effectiveFamily?.id ?? ""}
           onActivate={(id) => setOpenFamily(id as FamilyId)}
+          buttonClassName={`${TAB_BASE} px-3 py-1.5`}
         />
       ) : null}
 
+      {/* The panel id is UNCONDITIONAL now. It used to be omitted when a major had no families,
+          which left the tabs of that major pointing `aria-controls` at nothing at all — the same
+          dangling-reference class as A8 itself. `aria-labelledby` names the deepest active tab, which
+          is the family tab when one exists and the major tab otherwise. */}
       <div
         role="tabpanel"
-        id={
-          activeMajor.families.length > 0
-            ? `policy-panel-${activeMajor.label}-${effectiveFamily?.id ?? ""}`
-            : undefined
+        id={CARD_PANEL_ID}
+        aria-labelledby={
+          activeMajor.families.length > 0 && effectiveFamily !== undefined
+            ? tabDomId("family", activeMajor.id, effectiveFamily.id)
+            : tabDomId("major", activeMajor.id)
         }
       >
         {visibleCards.length === 0 ? (

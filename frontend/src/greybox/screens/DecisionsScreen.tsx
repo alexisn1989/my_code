@@ -307,7 +307,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
           onClearSelection={handleClearSelection}
         />
         {routeChangeAnnouncement ? (
-          <p role="alert" className="mt-2 text-xs text-amber-300">
+          <p role="alert" className="mt-2 text-xs text-warning-400">
             {routeChangeAnnouncement}
           </p>
         ) : null}
@@ -371,7 +371,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
               >
                 <span>
                   {SPENDING_CATEGORY_LABEL[category.category] ?? category.category}{" "}
-                  <span className="text-xs text-parchment-200/50">
+                  <span className="text-xs text-parchment-200/60">
                     (current {formatAmount(category.current_amount)})
                   </span>
                 </span>
@@ -411,7 +411,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
               >
                 <span>
                   {AXIS_LABEL[axis.axis] ?? axis.axis}{" "}
-                  <span className="text-xs text-parchment-200/50">
+                  <span className="text-xs text-parchment-200/60">
                     (current {axisCurrentValueText(axis.current_value)})
                   </span>
                 </span>

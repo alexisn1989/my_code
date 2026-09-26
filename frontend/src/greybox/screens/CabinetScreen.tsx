@@ -348,7 +348,7 @@ export function CabinetScreen(_props: ScreenProps) {
                       <li key={row.character_id}>
                         <p
                           data-candidate-incumbent={row.character_id}
-                          className="px-3 py-1 text-sm text-parchment-200/50"
+                          className="px-3 py-1 text-sm text-parchment-200/60"
                         >
                           {row.display_name} — already in post.
                         </p>
@@ -360,7 +360,7 @@ export function CabinetScreen(_props: ScreenProps) {
                       <li key={row.character_id}>
                         <p
                           data-candidate-refused={row.character_id}
-                          className="px-3 py-1 text-sm text-parchment-200/50"
+                          className="px-3 py-1 text-sm text-parchment-200/60"
                         >
                           {row.display_name} — {refusalReasonText(row.refusal_code)}
                         </p>
