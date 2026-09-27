@@ -155,6 +155,12 @@ describe("DecisionsScreen preview presentation", () => {
     await waitFor(() => expect(screen.getByText("Would pass")).toBeInTheDocument());
     expect(screen.getByText("Carries", { selector: "span" })).toBeInTheDocument();
     expect(screen.getByText("lower")).toBeInTheDocument();
+    // Gate 4A3 Commit 4: this table's caption read "Chamber-by-chamber projection". "Projection" is
+    // the engine's word for a server-built view, and using it here for a FORECAST invited a player to
+    // read one meaning where the interface meant the other. The caption now says what the table shows.
+    expect(
+      screen.getByRole("table", { name: "Expected vote, chamber by chamber" }),
+    ).toBeInTheDocument();
   });
 
   it("a failed legislative preview shows the chamber tally and 'Would not pass'", async () => {

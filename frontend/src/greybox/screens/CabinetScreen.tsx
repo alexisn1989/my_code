@@ -5,7 +5,7 @@
  * only summary concern cards, never a per-institution breakdown, and inventing one client-side is
  * the exact failure Gate 4A2 exists to avoid. `DecisionOptionsProjection.cabinet_posts` removes
  * that reason FOR THE CABINET, so the cabinet becomes live and the rest of the government
- * breakdown keeps saying, honestly, that it is not available in this gate.
+ * breakdown keeps saying, honestly, that it is not part of this version of the game.
  *
  * STAGING, NOT RESOLVING. Nothing here changes the game. Confirming writes to the shared turn draft
  * exactly as the strategic map's movement panel does, and the turn is still previewed and resolved
@@ -494,8 +494,8 @@ export function CabinetScreen(_props: ScreenProps) {
 
       <Panel title="The rest of the government">
         <EmptyNote>
-          Institutions, ministries and their metrics are not available in this gate. Only the
-          cabinet is projected so far.
+          The cabinet is the only part of the government you can see here. Institutions,
+          ministries and their figures are not part of this version of the game.
         </EmptyNote>
       </Panel>
     </div>

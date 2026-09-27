@@ -28,6 +28,7 @@ import { TerminalScreen } from "./screens/TerminalScreen";
 import { GreyboxApp } from "./GreyboxApp";
 import { SCREENS } from "./registry";
 import { SessionProvider, useSession } from "../state/SessionContext";
+import { useDraftStore } from "../state/draft";
 
 /** `revision` starts `null` in a fresh `SessionProvider`, and both
  * `useDecisionOptions`/`handlePreview` need a non-null one to behave like a
@@ -321,6 +322,103 @@ describe("GreyboxApp: Glossary is chrome-level, keyboard-activatable, and dismis
     // The underlying screen is still mounted -- the panel is inline, not a
     // navigation away or a blocking modal.
     expect(screen.getByRole("heading", { level: 2, name: "National dashboard" })).toBeInTheDocument();
+  });
+});
+
+describe("Gate 4A3 Commit 4: the \"How to govern\" introduction", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    mockFullApp();
+    // The flag is module-level Zustand and survives between tests in one file, so it is reset
+    // explicitly rather than relying on the default -- a test that ran after a dismissal would
+    // otherwise assert against an introduction that was already closed.
+    // Both flags, not just the one under test: the store is module-level Zustand and a Glossary left
+    // open by an earlier test in this file relabels its own toggle to "Close glossary", which is how
+    // the header assertion below first failed. Leaked UI state is worth resetting explicitly rather
+    // than working around with a looser matcher.
+    useDraftStore.setState({ dismissedHelp: false, glossaryOpen: false });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** The exact sentences, asserted as strings rather than matched by pattern. A pattern is what let
+   * the previous wording go unexamined for two gates: `/build one decision/` would have passed
+   * happily while teaching a player the wrong model of a turn. */
+  const LOOP_SENTENCE =
+    "Review your country, prepare your actions, preview their consequences, resolve the turn, " +
+    "and read what happened.";
+
+  it("states the turn loop correctly, and no longer says a turn is one decision", async () => {
+    renderApp();
+    const note = await screen.findByRole("complementary", { name: "How to govern" });
+    expect(within(note).getByText(LOOP_SENTENCE)).toBeInTheDocument();
+    // THE REGRESSION GUARD. "build one decision" was not merely thin -- it was wrong: a turn
+    // combines a policy proposal with appointments, bargains, assistance requests, promises and
+    // movement orders. If that wording returns, this fails.
+    expect(note.textContent ?? "").not.toContain("build one decision");
+  });
+
+  it("leaves the one-budget-or-amendment limit on the Decisions screen, where it applies", async () => {
+    renderApp();
+    const note = await screen.findByRole("complementary", { name: "How to govern" });
+    // Stating the limit in a GENERAL introduction would imply it governs the whole turn, which is
+    // the same misstatement relocated. The limit belongs to the policy proposal alone.
+    expect(note.textContent ?? "").not.toContain("amendment");
+    expect(note.textContent ?? "").not.toContain("budget");
+  });
+
+  it("is a complementary landmark and never a dialog", async () => {
+    renderApp();
+    const note = await screen.findByRole("complementary", { name: "How to govern" });
+    expect(note.tagName).toBe("ASIDE");
+    expect(note.getAttribute("role")).toBeNull();
+    expect(note.getAttribute("aria-modal")).toBeNull();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("can be dismissed AND reopened -- the defect this commit fixes", async () => {
+    renderApp();
+    const toggle = await screen.findByRole("button", { name: "How to govern" });
+    expect(toggle.tagName).toBe("BUTTON");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("complementary", { name: "How to govern" })).not.toBeInTheDocument();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    // Before this commit the introduction was dismissible and NOTHING ELSE: `dismissHelp` could only
+    // set the flag true, so the one place the game explains itself was a single-use resource for the
+    // whole session.
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const reopened = screen.getByRole("complementary", { name: "How to govern" });
+    expect(within(reopened).getByText(LOOP_SENTENCE)).toBeInTheDocument();
+  });
+
+  it("never blocks play: Start is operable while the introduction is open", async () => {
+    renderApp();
+    await screen.findByRole("complementary", { name: "How to govern" });
+    const start = await screen.findByRole("button", { name: /^Start / });
+    expect(start).toBeEnabled();
+    expect(start.getAttribute("aria-disabled")).toBeNull();
+    // No inert ancestor and no modal: the note is in normal flow beside the screen, so nothing about
+    // it removes the rest of the page from the accessibility tree.
+    expect(start.closest("[inert]")).toBeNull();
+    expect(start.closest("[aria-hidden=\"true\"]")).toBeNull();
+  });
+
+  it("the toggle sits beside the Glossary toggle and uses the same aria-expanded convention", async () => {
+    renderApp();
+    const banner = await screen.findByRole("banner");
+    const help = within(banner).getByRole("button", { name: "How to govern" });
+    const glossary = within(banner).getByRole("button", { name: "Glossary" });
+    for (const control of [help, glossary]) {
+      expect(control.getAttribute("aria-expanded")).not.toBeNull();
+    }
+    // One convention in the header rather than two, which is why the new control reuses the pattern
+    // the Glossary control already established rather than inventing a second one.
+    expect(help.parentElement).toBe(glossary.parentElement);
   });
 });
 

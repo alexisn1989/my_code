@@ -183,10 +183,19 @@ describe("CabinetScreen: rendering", () => {
     }
   });
 
-  it("says plainly that the rest of the government is still unavailable", async () => {
+  // Gate 4A3 Commit 4 replaced this assertion's PATTERN with the EXACT sentence, and the reason is
+  // that the pattern is what let the wording go unexamined: `/not available in this gate/i` passed
+  // for a string that spoke to a player about a development milestone. An exact string fails on a
+  // half-applied edit and fails again if anyone reintroduces build vocabulary here.
+  it("says plainly, in the player's terms, that the rest of the government is not in this version", async () => {
     renderScreen();
     await screen.findByText("chief of staff");
-    expect(screen.getByText(/not available in this gate/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The cabinet is the only part of the government you can see here. Institutions, " +
+          "ministries and their figures are not part of this version of the game.",
+      ),
+    ).toBeInTheDocument();
   });
 });
 

@@ -447,6 +447,23 @@ describe("MeetingScreen: assistance and promises", () => {
   });
 });
 
+describe("MeetingScreen: the copy speaks to a player, not about the build", () => {
+  // Gate 4A3 Commit 4. The EXACT sentence, because a pattern is what let the old wording ("not
+  // available in this gate. Only the people you can actually deal with are projected so far.") sit
+  // unexamined: two internal terms in one sentence, both meaningless to a player.
+  it("says what you can see here and what is not in this version, in the game's own terms", async () => {
+    renderScreen();
+    await ready();
+    expect(
+      screen.getByText(
+        "The people you can deal with directly are the only part of the picture you can see here. " +
+          "Bloc standings, institutional loyalty and the wider diplomatic situation are not part " +
+          "of this version of the game.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("MeetingScreen: the staged summary and the draft lifecycle", () => {
   it("names each staged approach and removes it on request", async () => {
     stageLegislativeBudget();

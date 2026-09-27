@@ -16,7 +16,8 @@
 
 import type { PolicyCard, PolicyCardEffect } from "../../api/client";
 import { formatAmount, formatBpsPercent } from "../../format/format";
-import { DIRECTION_GLYPH, DIRECTION_LABEL } from "../components";
+import { DIRECTION_LABEL } from "../components";
+import { DIRECTION_ICON } from "../icons";
 
 function formatEffectSide(effect: PolicyCardEffect, side: "current" | "proposed"): string {
   if (effect.unit === "enum") {
@@ -31,12 +32,13 @@ function formatEffectSide(effect: PolicyCardEffect, side: "current" | "proposed"
 }
 
 function EffectChip({ effect }: { effect: PolicyCardEffect }) {
+  const DirectionIcon = DIRECTION_ICON[effect.direction];
   return (
     <div className="flex items-center justify-between gap-2 text-xs text-parchment-200/80">
       <span>{effect.label}</span>
       <span className="flex items-center gap-1 tabular-nums">
         {formatEffectSide(effect, "current")}
-        <span aria-hidden="true">{DIRECTION_GLYPH[effect.direction]}</span>
+        <DirectionIcon />
         <span className="sr-only">{DIRECTION_LABEL[effect.direction]}</span>
         {formatEffectSide(effect, "proposed")}
       </span>

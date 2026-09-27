@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "check:bundle": "node tools/check-bundle.mjs",
     "check:palette": "node tools/check-palette.mjs",
+    "check:copy": "node tools/check-copy.mjs",
     "_comment:postinstall": "tools/openapi-gen holds an isolated typescript@5 (see its package.json for why). node_modules/ is gitignored, so a clean checkout has no TS5 unless this runs -- and BOTH `generate:api:types` AND src/format/format-boundary.test.ts import from it. Without this, `npm ci && npm test` fails from a fresh clone and in CI.",
     "postinstall": "cd tools/openapi-gen && npm ci",
     "generate:api:schema": "cd ../backend && uv run python scripts/dump_openapi.py > ../docs/contracts/phase4a-openapi.json",
@@ -22,6 +23,8 @@
     "audit:baseline": "playwright test --project=baseline --project=stress && node tools/write-baseline-report.mjs",
     "audit:accessibility": "playwright test --project=accessibility && node tools/write-accessibility-report.mjs",
     "audit:accessibility:verify": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit3 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit3 node tools/write-accessibility-report.mjs",
+    "_comment:audit:accessibility:verify": "ONE SCRIPT PER COMMIT, deliberately. The artifact name is baked into each script rather than defaulted, because a shared default is how Commit 3's post-fix evidence got overwritten the first time Commit 4 re-ran the sweep -- the same way Commit 2's baseline was overwritten during Commit 3. A commit's evidence is a historical record; the command that reproduces it must keep naming the same file.",
+    "audit:accessibility:verify:commit4": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit4 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit4 node tools/write-accessibility-report.mjs",
     "audit:stress:seated": "playwright test --project=stress-seated",
     "verify:fixes": "playwright test --project=verify",
     "test:preflight": "playwright test e2e/preflight.spec.ts"

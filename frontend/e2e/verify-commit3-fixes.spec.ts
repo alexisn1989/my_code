@@ -12,9 +12,12 @@
  *        which is the actual defect (an id built from the label "Budget policy" made
  *        `aria-controls="policy-panel-Budget policy-taxation"` read as two references, neither real).
  *        Arrow-key navigation still moves focus, so the fix did not trade a11y for keyboard breakage.
- *   A2-A15  No content outside a landmark, on every screen and the Glossary, plus exactly one banner --
- *        the trap the fix had to avoid, since making the title bar a `<header>` while `NationalHeader`
- *        was also one would have produced two banners.
+ *   A2-A7, A10-A15  No content outside a landmark, on every screen and the Glossary, plus exactly one
+ *        banner -- the trap the fix had to avoid, since making the title bar a `<header>` while
+ *        `NationalHeader` was also one would have produced two banners. The twelve landmark findings
+ *        are A2-A7 and A10-A15, NOT a contiguous A2-A15 range: A8 is the tab defect above and A9 is a
+ *        contrast defect below, so a range spanning them would credit this fix with two it did not
+ *        make.
  *   A1, A9  Zero `color-contrast` violations. Measured by axe in the real browser, because that is the
  *        only renderer that can evaluate contrast at all.
  *   V1-V3   No horizontal page scroll and no overflowing node at the 320px CONFORMANCE width, across
@@ -36,6 +39,13 @@ import path from "node:path";
 
 import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+
+import {
+  CALIBRATION,
+  NON_TEXT_CONTRAST_MINIMUM,
+  TEXT_CONTRAST_MINIMUM,
+  installColourProbe,
+} from "./contrast-probe";
 
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
 
@@ -65,13 +75,44 @@ const record: {
   coverage: string[];
   reducedMotion: Record<string, unknown>;
   needsReviewDisposition: Record<string, unknown>;
+  /** Gate 4A3 Commit 4. */
+  iconContrast: Record<string, unknown>;
+  introductionKeyboard: Record<string, unknown>;
+  renderedCopy: Record<string, unknown>;
 } = {
   conformanceOverflow: [],
   belowFloorObservations: [],
   coverage: [],
   reducedMotion: {},
   needsReviewDisposition: {},
+  iconContrast: {},
+  introductionKeyboard: {},
+  renderedCopy: {},
 };
+
+/** Gate 4A3 Commit 4: the words that belong to the build and not to the game. The same list
+ * `tools/check-copy.mjs` enforces on SOURCE -- asserted here against the LIVE DOM, which is the only
+ * place a claim about what reaches a player can honestly be made.
+ *
+ * `revision` is absent from this list on purpose, and it is the one word where the two checks must
+ * differ: it is a real player-facing concept with its own Glossary entry, so it is EXPECTED in the
+ * rendered Glossary. The source check permits it in exactly one entry; a DOM scan cannot tell which
+ * source entry a rendered word came from, so asserting its absence here would fail on the definition
+ * that legitimises it. The source check is the one that keeps that allowance narrow. */
+const BUILD_VOCABULARY = [
+  "gate",
+  "gates",
+  "projected",
+  "projection",
+  "projections",
+  "slot",
+  "slots",
+  "preflight",
+  "ruleset",
+  "fixture",
+  "fixtures",
+  "digest",
+] as const;
 
 async function startCampaign(page: Page): Promise<void> {
   await page.goto("/");
@@ -187,7 +228,7 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
     );
   });
 
-  test("A2-A15 and A1/A9: no content outside landmarks, one banner, zero contrast violations", async ({
+  test("A2-A7, A10-A15 and A1/A9: no content outside landmarks, one banner, zero contrast violations", async ({
     page,
   }) => {
     test.setTimeout(600_000);
@@ -245,7 +286,8 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
     await glossary.click();
 
     record.coverage.push(
-      `A2-A15 + A1/A9: ${audited} screens plus the Glossary, each with zero region/contrast/banner ` +
+      `A2-A7, A10-A15 + A1/A9: ${audited} screens plus the Glossary, each with zero ` +
+        `region/contrast/banner ` +
         `violations and exactly one banner, one main and at least one navigation landmark`,
     );
   });
@@ -386,6 +428,9 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
    */
   test("N1-N6: the six needs-review results, measured and dispositioned", async ({ page }) => {
     test.setTimeout(600_000);
+    // Before any navigation: `addInitScript` is what makes the probe survive the SPA's own
+    // navigations as well as the initial load.
+    await installColourProbe(page);
     await startCampaign(page);
 
     /** Compute the real contrast of every element matching a selector, resolving the background by
@@ -394,127 +439,26 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
       if (!(await visit(page, screen))) return [];
       return page.evaluate(() => {
         /*
-         * COLOUR PARSING, and why it converts OKLab by hand.
-         *
-         * This measurement failed twice before it worked, and both failures looked like application
-         * defects rather than probe defects -- every element came back at exactly 1.00:1.
-         *
-         *   1. An `rgba(...)` regex matched nothing, because Tailwind v4 emits computed colours in
-         *      OKLab: `oklab(0.896735 0.00171477 0.0394163 / 0.6)`.
-         *   2. A canvas 2D `fillStyle` round-trip -- normally the reliable way to make the browser
-         *      parse any colour -- ALSO failed: this Chromium's canvas rejects `oklab()` and yields
-         *      `rgba(0,0,0,0)`, which composited to exactly the background and produced 1.00:1 again.
-         *
-         * So the conversion is done explicitly: OKLab -> linear sRGB via the standard matrix, then
-         * gamma encoding. `oklch()` is accepted too, since that is the other form Tailwind emits.
-         * A ratio is only trustworthy if its inputs are, which is why `rawColor` travels with every
-         * measurement and why the sanity check below pins a KNOWN token against an independently
-         * computed figure.
+         * THE COLOUR MACHINERY NOW LIVES IN ONE PLACE: `e2e/contrast-probe.ts`, installed on
+         * `window.__mandateColour` by `installColourProbe`. Commit 4 needed the same machinery for the
+         * icon set's 2px strokes (SC 1.4.11), and a second copy would have been a second chance to
+         * regress independently into the three failures this probe already survived -- an `rgba` regex
+         * that missed Tailwind v4's OKLab output, a canvas round-trip this Chromium rejects, and
+         * `.sr-only` nodes being measured although they are never painted. The probe's own module
+         * documents all three. The numbers below are unchanged by the move, which the calibration
+         * assertion and the recorded worst-case ratios are what prove.
          */
-        const gamma = (c: number) => {
-          const v = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-          return Math.max(0, Math.min(255, Math.round(v * 255)));
-        };
-        const oklabToRgb = (L: number, a: number, b: number): [number, number, number] => {
-          const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
-          const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
-          const s_ = L - 0.0894841775 * a - 1.291485548 * b;
-          const l = l_ * l_ * l_;
-          const m = m_ * m_ * m_;
-          const s = s_ * s_ * s_;
-          return [
-            gamma(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
-            gamma(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
-            gamma(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
-          ];
-        };
-        const numbers = (body: string): { vals: number[]; alpha: number } => {
-          const [main, alphaPart] = body.split("/");
-          const vals = main!
-            .trim()
-            .split(/[\s,]+/)
-            .map((piece) => (piece.endsWith("%") ? parseFloat(piece) / 100 : parseFloat(piece)));
-          const alpha =
-            alphaPart === undefined
-              ? 1
-              : alphaPart.trim().endsWith("%")
-                ? parseFloat(alphaPart) / 100
-                : parseFloat(alphaPart);
-          return { vals, alpha: Number.isFinite(alpha) ? alpha : 1 };
-        };
-        const normalise = (colour: string): [number, number, number, number] => {
-          const c = colour.trim();
-          if (c === "transparent") return [0, 0, 0, 0];
-          let m = /^rgba?\(([^)]+)\)$/.exec(c);
-          if (m !== null) {
-            const { vals, alpha } = numbers(m[1]!);
-            return [vals[0] ?? 0, vals[1] ?? 0, vals[2] ?? 0, alpha];
+        const { normalise, ratio, effectiveBg, composite, isVisuallyHidden } = (
+          window as unknown as {
+            __mandateColour: {
+              normalise: (colour: string) => number[];
+              ratio: (fg: number[], bg: number[]) => number;
+              effectiveBg: (el: Element) => number[];
+              composite: (fg: number[], bg: number[], alpha: number) => number[];
+              isVisuallyHidden: (el: Element) => boolean;
+            };
           }
-          m = /^#([0-9a-f]{6})$/i.exec(c);
-          if (m !== null) {
-            const h = m[1]!;
-            return [
-              parseInt(h.slice(0, 2), 16),
-              parseInt(h.slice(2, 4), 16),
-              parseInt(h.slice(4, 6), 16),
-              1,
-            ];
-          }
-          m = /^oklab\(([^)]+)\)$/.exec(c);
-          if (m !== null) {
-            const { vals, alpha } = numbers(m[1]!);
-            const [r, g, b] = oklabToRgb(vals[0] ?? 0, vals[1] ?? 0, vals[2] ?? 0);
-            return [r, g, b, alpha];
-          }
-          m = /^oklch\(([^)]+)\)$/.exec(c);
-          if (m !== null) {
-            const { vals, alpha } = numbers(m[1]!);
-            const L = vals[0] ?? 0;
-            const C = vals[1] ?? 0;
-            const hDeg = vals[2] ?? 0;
-            const rad = (hDeg * Math.PI) / 180;
-            const [r, g, b] = oklabToRgb(L, C * Math.cos(rad), C * Math.sin(rad));
-            return [r, g, b, alpha];
-          }
-          // Unrecognised: reported as such rather than silently treated as transparent, which is the
-          // failure mode that produced two rounds of false 1.00:1 results.
-          return [Number.NaN, Number.NaN, Number.NaN, Number.NaN];
-        };
-        const lin = (v: number) => {
-          const s = v / 255;
-          return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
-        };
-        const lum = ([r, g, b]: number[]) => 0.2126 * lin(r!) + 0.7152 * lin(g!) + 0.0722 * lin(b!);
-        const ratio = (fg: number[], bg: number[]) => {
-          const a = lum(fg);
-          const b = lum(bg);
-          return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-        };
-        /** The first ancestor with a non-transparent background -- what is actually painted behind. */
-        const effectiveBg = (el: Element): number[] => {
-          let node: Element | null = el;
-          while (node !== null) {
-            const [r, g, b, a] = normalise(getComputedStyle(node).backgroundColor);
-            if (a > 0) return [r, g, b];
-            node = node.parentElement;
-          }
-          return [10, 15, 26]; // navy-950, the documented page background
-        };
-        const composite = (fg: number[], bg: number[], alpha: number) =>
-          fg.map((f, i) => Math.round(alpha * f + (1 - alpha) * bg[i]!));
-
-        /** Visually hidden text carries no contrast obligation -- it is never painted. `.sr-only` is
-         * this app's screen-reader-only helper, and axe skips such nodes for the same reason; including
-         * them would manufacture failures against invisible elements. */
-        const isVisuallyHidden = (el: Element): boolean => {
-          const style = getComputedStyle(el);
-          if (style.visibility === "hidden" || style.display === "none") return true;
-          if (parseFloat(style.opacity) === 0) return true;
-          if (style.clipPath !== "none" && style.clipPath !== "") return true;
-          if (el.classList.contains("sr-only")) return true;
-          const box = el.getBoundingClientRect();
-          return box.width <= 1 || box.height <= 1;
-        };
+        ).__mandateColour;
 
         const out: {
           selector: string;
@@ -613,7 +557,7 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
       // Large text (>=24px, or >=18.66px bold) has a 3:1 bar; nothing here relies on that, so the
       // stricter 4.5:1 is applied throughout rather than arguing size case by case.
       const belowBar = measurements
-        .filter((m) => m.ratio < 4.5)
+        .filter((m) => m.ratio < TEXT_CONTRAST_MINIMUM)
         .map((m) => ({
           selector: m.selector,
           text: m.text,
@@ -641,7 +585,7 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
     // token at 50%, matching that same calculation. If this in-page measurement cannot reproduce the
     // known figure, its other numbers mean nothing, so this is asserted BEFORE they are trusted.
     const knownToken = allMeasurements.find(
-      (m) => m.classes.includes("text-parchment-200/60") && m.ratio > 0,
+      (m) => m.classes.includes(CALIBRATION.className) && m.ratio > 0,
     );
     expect(knownToken, "a text-parchment-200/60 node must exist to calibrate the probe").toBeDefined();
     expect(
@@ -649,8 +593,8 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
       `the probe measured text-parchment-200/60 at ${knownToken!.ratio}:1; an independent calculation ` +
         `gives 5.45:1 on navy-900 and 5.57:1 on navy-950, so a figure outside that band means the ` +
         `probe is wrong rather than the application`,
-    ).toBeGreaterThan(5.2);
-    expect(knownToken!.ratio).toBeLessThan(5.7);
+    ).toBeGreaterThan(CALIBRATION.minRatio);
+    expect(knownToken!.ratio).toBeLessThan(CALIBRATION.maxRatio);
 
     // Nothing may be left UNMEASURED. A colour the probe cannot parse is a hole in the evidence, not a
     // pass -- this is the assertion that would have caught the two earlier false results immediately.
@@ -726,6 +670,635 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
         `${dispositions.length} of 5 flagged screens; worst ratio ` +
         `${Math.min(...dispositions.map((d) => d.worstRatio))}:1; none below 4.5:1; ` +
         `${notMeasured.length} screen(s) not measurable mid-campaign and recorded as owed`,
+    );
+  });
+
+  /* ==============================================================================================
+   * Gate 4A3 Commit 4 -- the icon set, the copy pass, and the introduction.
+   * ============================================================================================ */
+
+  test("Commit 4 icons: every mark clears 3:1 AT ITS OWN PLACEMENT, in all three groups", async ({
+    page,
+  }) => {
+    test.setTimeout(600_000);
+    await installColourProbe(page);
+    await startCampaign(page);
+
+    /* WHY THE TONE FIGURES DO NOT TRANSFER, which is the whole reason this test exists rather than a
+     * citation of Commit 3's numbers. A 2px stroke is a graphical object under WCAG 2.2 SC 1.4.11 and
+     * needs 3:1. Commit 3 measured the four TONE tokens at 6.24-8.86:1 -- on the navy backgrounds
+     * TONE text sits on. The other two groups sit elsewhere: direction icons render inside `DeltaText`
+     * (`text-parchment-200/70`) and inside the policy cards' effect chips (`text-parchment-200/80` on
+     * a card surface), and the legend icons sit on the strategic map's own panel. Borrowing the tone
+     * figures for those would be asserting a measurement nobody took.
+     *
+     * `stroke="currentColor"` is what makes this measurable at all: the stroke colour IS the element's
+     * computed `color`, so the probe resolves it exactly as it resolves text. */
+    const measureIcons = async (screen: string) => {
+      if (!(await visit(page, screen))) return [];
+      return page.evaluate(() => {
+        const { normalise, ratio, effectiveBg, composite, isVisuallyHidden } = (
+          window as unknown as {
+            __mandateColour: {
+              normalise: (colour: string) => number[];
+              ratio: (fg: number[], bg: number[]) => number;
+              effectiveBg: (el: Element) => number[];
+              composite: (fg: number[], bg: number[], alpha: number) => number[];
+              isVisuallyHidden: (el: Element) => boolean;
+            };
+          }
+        ).__mandateColour;
+
+        const out: {
+          icon: string;
+          group: string;
+          ratio: number;
+          strokeWidth: string;
+          rawColor: string;
+          bg: string;
+          placement: string;
+        }[] = [];
+        const group = (name: string) =>
+          name === "route-one-way" || name === "route-two-way" || name === "capital"
+            ? "map-legend"
+            : name === "up" || name === "down" || name === "unchanged"
+              ? "direction"
+              : "tone";
+
+        for (const el of Array.from(document.querySelectorAll("svg[data-icon]"))) {
+          if (isVisuallyHidden(el)) continue;
+          const name = el.getAttribute("data-icon") ?? "(unnamed)";
+          const style = getComputedStyle(el);
+          const parsed = normalise(style.color);
+          const bg = effectiveBg(el);
+          const alpha = parsed[3] ?? Number.NaN;
+          if (!Number.isFinite(parsed[0]) || !Number.isFinite(alpha)) {
+            out.push({
+              icon: name,
+              group: group(name),
+              ratio: -1, // UNMEASURED, never "measured as bad".
+              strokeWidth: style.strokeWidth,
+              rawColor: style.color,
+              bg: `rgb(${bg[0]},${bg[1]},${bg[2]})`,
+              placement: (el.parentElement?.className ?? "").toString().slice(0, 60),
+            });
+            continue;
+          }
+          const fg =
+            alpha < 1
+              ? composite([parsed[0]!, parsed[1]!, parsed[2]!], bg, alpha)
+              : [parsed[0]!, parsed[1]!, parsed[2]!];
+          out.push({
+            icon: name,
+            group: group(name),
+            ratio: Math.round(ratio(fg, bg) * 100) / 100,
+            strokeWidth: style.strokeWidth,
+            rawColor: style.color,
+            bg: `rgb(${bg[0]},${bg[1]},${bg[2]})`,
+            placement: (el.parentElement?.className ?? "").toString().slice(0, 60),
+          });
+        }
+        return out;
+      });
+    };
+
+    /** The probe is calibrated on the same page before its icon numbers are trusted -- the discipline
+     * Commit 3's three false 1.00:1 results earned. Measured on a text node, because the known figure
+     * is a text token's. */
+    const calibrate = async () =>
+      page.evaluate((className: string) => {
+        const { normalise, ratio, effectiveBg, composite, isVisuallyHidden } = (
+          window as unknown as {
+            __mandateColour: {
+              normalise: (colour: string) => number[];
+              ratio: (fg: number[], bg: number[]) => number;
+              effectiveBg: (el: Element) => number[];
+              composite: (fg: number[], bg: number[], alpha: number) => number[];
+              isVisuallyHidden: (el: Element) => boolean;
+            };
+          }
+        ).__mandateColour;
+        for (const el of Array.from(document.querySelectorAll(`[class*="${className}"]`))) {
+          if (isVisuallyHidden(el)) continue;
+          const own = Array.from(el.childNodes)
+            .filter((n) => n.nodeType === Node.TEXT_NODE)
+            .map((n) => n.textContent ?? "")
+            .join("")
+            .trim();
+          if (own === "") continue;
+          const style = getComputedStyle(el);
+          const parsed = normalise(style.color);
+          if (!Number.isFinite(parsed[0])) continue;
+          const bg = effectiveBg(el);
+          const alpha = parsed[3] ?? 1;
+          const fg =
+            alpha < 1
+              ? composite([parsed[0]!, parsed[1]!, parsed[2]!], bg, alpha)
+              : [parsed[0]!, parsed[1]!, parsed[2]!];
+          return Math.round(ratio(fg, bg) * 100) / 100;
+        }
+        return null;
+      }, CALIBRATION.className);
+
+    const all: Awaited<ReturnType<typeof measureIcons>> = [];
+    const perScreen: { screen: string; icons: number; worst: number }[] = [];
+    let calibrated: number | null = null;
+
+    for (const screen of SCREENS) {
+      const icons = await measureIcons(screen);
+      if (calibrated === null) calibrated = await calibrate();
+      if (icons.length === 0) continue;
+      all.push(...icons);
+      perScreen.push({
+        screen,
+        icons: icons.length,
+        worst: Math.min(...icons.map((i) => i.ratio)),
+      });
+    }
+
+    /* THE PREVIEW PANEL, reached deliberately. A first run of this test measured only 6 of the 10
+     * icons: the POSITIVE and NEGATIVE tone marks render in `ConsequencesPanel`, which exists only
+     * after a player presses Preview, so a sweep that only navigates never sees them. Measuring six
+     * icons and reporting the tone group as "clear" would have been the same vacuity as folding N6
+     * into the passing count -- so the panel is opened rather than the gap being argued away. */
+    if (await visit(page, "Decisions")) {
+      const previewButton = page.getByRole("button", { name: "Preview" }).first();
+      if (await previewButton.isVisible().catch(() => false)) {
+        await previewButton.click();
+        await page
+          .waitForResponse((r) => r.url().includes("/api/game/preview"), { timeout: 30_000 })
+          .catch(() => undefined);
+        await page.waitForTimeout(600);
+        const previewIcons = await page.evaluate(() => {
+          const { normalise, ratio, effectiveBg, composite, isVisuallyHidden } = (
+            window as unknown as {
+              __mandateColour: {
+                normalise: (colour: string) => number[];
+                ratio: (fg: number[], bg: number[]) => number;
+                effectiveBg: (el: Element) => number[];
+                composite: (fg: number[], bg: number[], alpha: number) => number[];
+                isVisuallyHidden: (el: Element) => boolean;
+              };
+            }
+          ).__mandateColour;
+          const out: {
+            icon: string;
+            group: string;
+            ratio: number;
+            strokeWidth: string;
+            rawColor: string;
+            bg: string;
+            placement: string;
+          }[] = [];
+          for (const el of Array.from(document.querySelectorAll("svg[data-icon]"))) {
+            if (isVisuallyHidden(el)) continue;
+            const name = el.getAttribute("data-icon") ?? "(unnamed)";
+            const style = getComputedStyle(el);
+            const parsed = normalise(style.color);
+            const bg = effectiveBg(el);
+            const alpha = parsed[3] ?? Number.NaN;
+            if (!Number.isFinite(parsed[0]) || !Number.isFinite(alpha)) {
+              out.push({
+                icon: name,
+                group: "tone",
+                ratio: -1,
+                strokeWidth: style.strokeWidth,
+                rawColor: style.color,
+                bg: `rgb(${bg[0]},${bg[1]},${bg[2]})`,
+                placement: "preview panel",
+              });
+              continue;
+            }
+            const fg =
+              alpha < 1
+                ? composite([parsed[0]!, parsed[1]!, parsed[2]!], bg, alpha)
+                : [parsed[0]!, parsed[1]!, parsed[2]!];
+            out.push({
+              icon: name,
+              group:
+                name === "route-one-way" || name === "route-two-way" || name === "capital"
+                  ? "map-legend"
+                  : name === "up" || name === "down" || name === "unchanged"
+                    ? "direction"
+                    : "tone",
+              ratio: Math.round(ratio(fg, bg) * 100) / 100,
+              strokeWidth: style.strokeWidth,
+              rawColor: style.color,
+              bg: `rgb(${bg[0]},${bg[1]},${bg[2]})`,
+              placement: `preview panel: ${(el.parentElement?.className ?? "").toString().slice(0, 40)}`,
+            });
+          }
+          return out;
+        });
+        if (previewIcons.length > 0) {
+          all.push(...previewIcons);
+          perScreen.push({
+            screen: "Decisions (preview panel)",
+            icons: previewIcons.length,
+            worst: Math.min(...previewIcons.map((i) => i.ratio)),
+          });
+        }
+      }
+    }
+
+    expect(
+      calibrated,
+      `the probe must reproduce ${CALIBRATION.className}'s known ratio before its icon figures are ` +
+        `trusted (${CALIBRATION.offlineNote})`,
+    ).not.toBeNull();
+    expect(calibrated!).toBeGreaterThan(CALIBRATION.minRatio);
+    expect(calibrated!).toBeLessThan(CALIBRATION.maxRatio);
+
+    // COVERAGE, asserted rather than assumed: all three groups must have been reached. A run that
+    // happened to visit no screen rendering a legend icon would otherwise report "all clear" for a
+    // group it never measured -- the vacuity this whole gate is written against.
+    const groups = new Set(all.map((i) => i.group));
+    for (const required of ["tone", "direction", "map-legend"]) {
+      expect(
+        groups.has(required),
+        `no ${required} icon was reached; this group's contrast is UNMEASURED, not clean`,
+      ).toBe(true);
+    }
+
+    const unmeasured = all.filter((i) => i.ratio === -1);
+    expect(
+      unmeasured.map((i) => `${i.icon}: ${i.rawColor}`),
+      "an unparseable colour is a broken probe, not a passing icon",
+    ).toEqual([]);
+
+    // Every icon must be a 2px stroke, since that is the premise the 3:1 bar is applied under.
+    const wrongWidth = all.filter((i) => parseFloat(i.strokeWidth) !== 2);
+    expect(
+      wrongWidth.map((i) => `${i.icon}: ${i.strokeWidth}`),
+      "every icon is specified at a 2px stroke; a thinner one would change which WCAG bar applies",
+    ).toEqual([]);
+
+    const belowBar = all
+      .filter((i) => i.ratio < NON_TEXT_CONTRAST_MINIMUM)
+      .map((i) => `${i.icon} (${i.group}) at ${i.ratio}:1 on ${i.bg} -- ${i.placement}`);
+    expect(
+      belowBar,
+      `every icon must clear ${NON_TEXT_CONTRAST_MINIMUM}:1 at its own placement (SC 1.4.11)`,
+    ).toEqual([]);
+
+    /* PER-ICON COVERAGE, recorded explicitly. Group coverage alone would let a whole status token go
+     * unmeasured behind a neutral one -- so every icon this set exports is accounted for as either
+     * MEASURED or NOT REACHED WITH A REASON, and the two lists must together cover all ten. This is
+     * Commit 3's "screens that yielded nothing" discipline applied per symbol. */
+    const EVERY_ICON = [
+      "positive",
+      "negative",
+      "caution",
+      "neutral",
+      "up",
+      "down",
+      "unchanged",
+      "route-one-way",
+      "route-two-way",
+      "capital",
+    ] as const;
+    const reached = new Set(all.map((i) => i.icon));
+    const notReached = EVERY_ICON.filter((name) => !reached.has(name)).map((name) => ({
+      icon: name,
+      reason:
+        "not rendered in any state this sweep enters: the sweep starts a campaign, visits every " +
+        "screen and opens the preview panel, but a mark only appears when the projected value it " +
+        "describes occurs. Its contrast here is UNMEASURED, not clean.",
+      mitigation:
+        "Every icon inherits its stroke from the tone token of the element it sits in " +
+        "(`stroke=\"currentColor\"`), and Commit 3 measured all four status tokens as TEXT at " +
+        "6.24-8.86:1 -- a 4.5:1 bar, stricter than the 3:1 this test applies. That is evidence about " +
+        "the token, not a measurement of this placement, and it is recorded as such.",
+    }));
+    expect(
+      [...reached].filter((name) => !EVERY_ICON.includes(name as (typeof EVERY_ICON)[number])),
+      "every measured icon must be one this set declares; an unknown `data-icon` is a drift",
+    ).toEqual([]);
+    expect(
+      reached.size + notReached.length,
+      "every icon must be accounted for as measured or explicitly not reached",
+    ).toBe(EVERY_ICON.length);
+
+    const worstByGroup = Object.fromEntries(
+      ["tone", "direction", "map-legend"].map((g) => {
+        const ratios = all.filter((i) => i.group === g).map((i) => i.ratio);
+        return [g, ratios.length === 0 ? null : Math.min(...ratios)];
+      }),
+    );
+
+    record.iconContrast = {
+      bar: `${NON_TEXT_CONTRAST_MINIMUM}:1, WCAG 2.2 SC 1.4.11 (a 2px stroke is a graphical object)`,
+      method:
+        "Every `svg[data-icon]` in the live DOM, measured at ITS OWN placement rather than borrowing " +
+        "Commit 3's tone-token figures: `stroke=\"currentColor\"` means the stroke colour is the " +
+        "element's computed `color`, resolved against the first non-transparent ancestor background " +
+        "with the same calibrated probe the N1-N6 measurement uses (`e2e/contrast-probe.ts`).",
+      calibrationRatio: calibrated,
+      measured: all.length,
+      distinctIcons: [...new Set(all.map((i) => i.icon))].sort(),
+      worstByGroup,
+      perScreen,
+      iconsMeasured: [...reached].sort(),
+      iconsNotReached: notReached,
+    };
+    record.coverage.push(
+      `Commit 4 icons: ${all.length} icon placements measured across ${perScreen.length} surfaces; ` +
+        `${reached.size} of ${EVERY_ICON.length} icons reached, ${notReached.length} recorded as not ` +
+        `reached with a reason; all three groups covered; worst ratios ` +
+        `${JSON.stringify(worstByGroup)}; none below ${NON_TEXT_CONTRAST_MINIMUM}:1`,
+    );
+  });
+
+  test("Commit 4 introduction: real Tab traversal, in both directions, and a predictable landing", async ({
+    page,
+  }) => {
+    test.setTimeout(300_000);
+    await page.goto("/");
+
+    const note = page.getByRole("complementary", { name: "How to govern" });
+    await note.waitFor({ state: "visible", timeout: 30_000 });
+
+    /* WHY THIS IS A TRAVERSAL AND NOT AN INFERENCE. An operable Start button and an absent
+     * `aria-modal` do NOT establish that focus cannot be trapped: a trap is a property of what Tab
+     * actually does, so Tab is what this has to do. jsdom cannot answer it at all -- it has no focus
+     * model for Tab -- which is why this half of the proof is here and not in the unit suite. */
+
+    const focused = () =>
+      page.evaluate(() => {
+        const el = document.activeElement;
+        if (el === null) return { tag: "none", text: "", inNote: false };
+        return {
+          tag: el.tagName.toLowerCase(),
+          text: (el.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 40),
+          inNote: el.closest('aside[aria-label="How to govern"]') !== null,
+        };
+      });
+
+    // (1) FORWARD. Tab from the top; focus must pass through the note and leave it for the page.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    const forward: { tag: string; text: string; inNote: boolean }[] = [];
+    let sawNote = false;
+    let leftNote = false;
+    for (let i = 0; i < 30; i += 1) {
+      await page.keyboard.press("Tab");
+      const state = await focused();
+      forward.push(state);
+      if (state.inNote) sawNote = true;
+      if (sawNote && !state.inNote) {
+        leftNote = true;
+        break;
+      }
+    }
+    expect(sawNote, "the introduction's Dismiss control must be Tab-reachable").toBe(true);
+    expect(
+      leftNote,
+      `focus never left the introduction in ${forward.length} forward tabs; that is a keyboard trap. ` +
+        `Sequence: ${JSON.stringify(forward)}`,
+    ).toBe(true);
+
+    // (2) BACKWARD. A one-directional check misses a trap that only bites going back.
+    let leftBackwards = false;
+    const backward: { tag: string; text: string; inNote: boolean }[] = [];
+    for (let i = 0; i < 30; i += 1) {
+      await page.keyboard.press("Shift+Tab");
+      const state = await focused();
+      backward.push(state);
+      if (state.inNote) {
+        // Keep going: leaving the note in the reverse direction is what is being proven.
+        continue;
+      }
+      if (backward.some((entry) => entry.inNote)) {
+        leftBackwards = true;
+        break;
+      }
+    }
+    expect(
+      leftBackwards,
+      `focus never left the introduction going backwards. Sequence: ${JSON.stringify(backward)}`,
+    ).toBe(true);
+
+    // (5) START STAYS OPERABLE while the note is open -- checked here, with the note still present.
+    const start = page.getByRole("button", { name: /^Start / }).first();
+    await expect(start).toBeEnabled();
+    await start.focus();
+    expect(await focused()).toMatchObject({ tag: "button" });
+
+    // (3) DISMISSAL WHILE THE DISMISS BUTTON HOLDS FOCUS -- the case most likely to break, because the
+    // focused element is removed from the DOM. The landing element is NAMED rather than accepted:
+    // `<body>` with the tab position lost is a real regression a lenient check would pass.
+    const dismiss = page.getByRole("button", { name: "Dismiss" });
+    await dismiss.focus();
+    expect(await focused(), "Dismiss must be able to hold focus").toMatchObject({ inNote: true });
+    await page.keyboard.press("Enter");
+    await expect(note).toBeHidden();
+    const afterDismiss = await focused();
+
+    // Whatever the browser does with focus after removing its holder, the next Tab must land on a real
+    // control -- that is the property a player depends on, and it is what "predictable" has to mean
+    // when the focused node no longer exists.
+    await page.keyboard.press("Tab");
+    const afterTab = await focused();
+    expect(
+      ["button", "a", "input", "select", "textarea"],
+      `after dismissing from the Dismiss button, the next Tab landed on <${afterTab.tag}> ` +
+        `(${JSON.stringify(afterTab.text)}), so the tab position was lost`,
+    ).toContain(afterTab.tag);
+
+    // (4) REOPENING BY KEYBOARD, with `aria-expanded` tracking the state.
+    const toggle = page.getByRole("button", { name: "How to govern" });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    await expect(note).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(note).toContainText(
+      "Review your country, prepare your actions, preview their consequences, resolve the turn, " +
+        "and read what happened.",
+    );
+
+    // And it is never a dialog: no `aria-modal`, no `role`, nothing inert behind it.
+    expect(await note.getAttribute("aria-modal")).toBeNull();
+    expect(await note.getAttribute("role")).toBeNull();
+    expect(await page.locator("[inert]").count()).toBe(0);
+
+    // THE HEADER TOGGLE AT THE 320px CONFORMANCE WIDTH. It is new chrome on every screen, so it is new
+    // opportunity for the header to overflow at the narrowest conforming viewport.
+    await page.setViewportSize({ width: CONFORMANCE.width, height: CONFORMANCE.height });
+    await page.waitForTimeout(200);
+    const narrow = await page.evaluate(() => {
+      const header = document.querySelector("header");
+      const buttons = Array.from(document.querySelectorAll("header button")).map((b) => ({
+        name: (b.textContent ?? "").trim(),
+        right: Math.round(b.getBoundingClientRect().right),
+        width: Math.round(b.getBoundingClientRect().width),
+      }));
+      return {
+        pageScrolls:
+          document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+        headerOverflows:
+          header !== null && header.scrollWidth > header.clientWidth + 2,
+        viewportWidth: document.documentElement.clientWidth,
+        buttons,
+      };
+    });
+    expect(narrow.pageScrolls, `the page must not scroll horizontally at ${CONFORMANCE.width}px`).toBe(
+      false,
+    );
+    expect(
+      narrow.headerOverflows,
+      `the header must not overflow at ${CONFORMANCE.width}px now that it carries two controls`,
+    ).toBe(false);
+    expect(
+      narrow.buttons.map((b) => b.name).sort(),
+      "both header controls must be present at the conformance width",
+    ).toEqual(["Glossary", "How to govern"]);
+    for (const button of narrow.buttons) {
+      expect(button.width, `${button.name} must be rendered, not collapsed`).toBeGreaterThan(0);
+      expect(
+        button.right,
+        `${button.name} must sit inside the ${narrow.viewportWidth}px viewport`,
+      ).toBeLessThanOrEqual(narrow.viewportWidth + 1);
+    }
+
+    record.introductionKeyboard = {
+      forwardTabs: forward,
+      backwardTabs: backward,
+      focusAfterDismissal: afterDismiss,
+      focusAfterNextTab: afterTab,
+      narrowHeader: narrow,
+      conclusion:
+        "Focus enters and leaves the introduction in BOTH directions, so it is not a trap; dismissing " +
+        "while the Dismiss button holds focus leaves the next Tab landing on a real control; the note " +
+        "reopens from the header toggle by keyboard with `aria-expanded` tracking it; Start stays " +
+        "operable throughout; and both header controls fit inside the 320px conformance width.",
+    };
+    record.coverage.push(
+      `Commit 4 introduction: ${forward.length} forward and ${backward.length} backward tabs traversed, ` +
+        `dismissal-under-focus and keyboard reopening proven, header toggle clean at ` +
+        `${CONFORMANCE.width}px`,
+    );
+  });
+
+  test("Commit 4 copy: no build vocabulary reaches a player IN THE AUDITED STATES", async ({ page }) => {
+    test.setTimeout(600_000);
+    await startCampaign(page);
+
+    /* THE CLAIM IS EXACTLY AS WIDE AS THE COVERAGE, and the test name says so. `document.body
+     * .textContent` alone would be two different kinds of wrong: it MISSES every `aria-label`,
+     * `title`, `placeholder` and `alt` -- the strings a screen-reader user hears and a sighted user
+     * never sees, and the panel title that said "(separate slot)" was exactly such a `title` -- and it
+     * INCLUDES text that is present but never painted. So both halves are scanned, and the audited
+     * states are named rather than generalised to "the player". */
+    const scanScreen = async (screen: string) => {
+      if (!(await visit(page, screen))) return null;
+      return page.evaluate(() => {
+        const attributes = ["aria-label", "aria-description", "title", "placeholder", "alt"];
+        const attributeValues: { attribute: string; value: string }[] = [];
+        for (const el of Array.from(
+          document.querySelectorAll("[aria-label], [aria-description], [title], [placeholder], [alt]"),
+        )) {
+          for (const attribute of attributes) {
+            const value = el.getAttribute(attribute);
+            if (value !== null && value.trim() !== "") attributeValues.push({ attribute, value });
+          }
+        }
+        return {
+          textContent: (document.body.textContent ?? "").replace(/\s+/g, " "),
+          attributeValues,
+        };
+      });
+    };
+
+    const scanned: string[] = [];
+    const offences: { screen: string; word: string; where: string; sample: string }[] = [];
+
+    for (const screen of SCREENS) {
+      const result = await scanScreen(screen);
+      if (result === null) continue;
+      scanned.push(screen);
+      for (const word of BUILD_VOCABULARY) {
+        const pattern = new RegExp(`\\b${word}\\b`, "i");
+        const textMatch = pattern.exec(result.textContent);
+        if (textMatch !== null) {
+          const at = Math.max(0, textMatch.index - 40);
+          offences.push({
+            screen,
+            word,
+            where: "text node",
+            sample: result.textContent.slice(at, at + 120),
+          });
+        }
+        for (const { attribute, value } of result.attributeValues) {
+          if (pattern.test(value)) {
+            offences.push({ screen, word, where: `@${attribute}`, sample: value.slice(0, 120) });
+          }
+        }
+      }
+    }
+
+    // The Glossary is chrome, opened by its own toggle rather than reached from the nav, so it is
+    // scanned separately -- and it is where `revision` legitimately appears, which is why that word is
+    // not in `BUILD_VOCABULARY` (see the list's own note).
+    await page.getByRole("button", { name: "Glossary" }).click();
+    await page.waitForTimeout(200);
+    const glossary = await page.evaluate(() => {
+      const region = document.querySelector('[aria-label="Glossary"]');
+      return (region?.textContent ?? "").replace(/\s+/g, " ");
+    });
+    expect(glossary, "the Glossary must actually be open, or scanning it proves nothing").toContain(
+      "Political capital",
+    );
+    for (const word of BUILD_VOCABULARY) {
+      const pattern = new RegExp(`\\b${word}\\b`, "i");
+      const match = pattern.exec(glossary);
+      if (match !== null) {
+        offences.push({
+          screen: "Glossary",
+          word,
+          where: "text node",
+          sample: glossary.slice(Math.max(0, match.index - 40), match.index + 80),
+        });
+      }
+    }
+    // And `revision` IS expected here: the Glossary is what teaches the word, which is the whole basis
+    // of the narrowly scoped source-check exception.
+    expect(
+      glossary,
+      "the Glossary must still define `revision`; the narrow source-check allowance depends on it",
+    ).toContain("Revision");
+
+    // ANTI-VACUITY: a scan that reached almost nothing would report "clean" for the wrong reason.
+    expect(scanned.length, "every screen must be scanned").toBe(SCREENS.length);
+    expect(offences, "no build vocabulary may reach a player in the audited states").toEqual([]);
+
+    record.renderedCopy = {
+      claim:
+        "No forbidden whole word appears in the rendered text nodes OR the player-visible attributes " +
+        "of the audited states: " +
+        `${scanned.length} screens plus the Glossary at the default viewport.`,
+      notClaimed:
+        "This is NOT a claim about every state of the application. The concluded-campaign terminal " +
+        "screen is not entered here -- the same reason N6's contrast and the terminal screen's reflow " +
+        "are both owed to Commit 5 -- so an unqualified \"no build vocabulary reaches the player\" " +
+        "would assert coverage this run does not have.",
+      inspected: {
+        textNodes: "document.body.textContent",
+        attributes: ["aria-label", "aria-description", "title", "placeholder", "alt"],
+      },
+      vocabulary: [...BUILD_VOCABULARY],
+      permittedByDesign: {
+        revision:
+          "a real player-facing concept with its own Glossary entry, so it is EXPECTED in the rendered " +
+          "Glossary and is therefore not in this scan's vocabulary; `tools/check-copy.mjs` is what " +
+          "keeps the allowance scoped to that single entry in source.",
+      },
+      screensScanned: scanned,
+      offences,
+    };
+    record.coverage.push(
+      `Commit 4 copy: ${scanned.length} screens plus the Glossary scanned for ` +
+        `${BUILD_VOCABULARY.length} forbidden whole words, in text nodes AND five player-visible ` +
+        `attributes; ${offences.length} offence(s)`,
     );
   });
 

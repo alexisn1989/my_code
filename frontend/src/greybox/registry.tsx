@@ -28,8 +28,10 @@
  * per-chamber, per-bloc, or per-budget-line breakdown these screens were
  * mocked up against in Gate 4A0. Building that breakdown client-side would be
  * exactly the invented-arithmetic/unprojected-value problem Gate 4A2 exists to
- * avoid; the honest state is "not available in this gate," not fabricated
- * detail. The playable loop -- Title, Dashboard, Decisions, Turn Result,
+ * avoid; the honest state is "not in this version of the game," not fabricated
+ * detail. (That string used to read "not available in this gate"; Gate 4A3
+ * Commit 4 reworded it, and this quotation is updated with it rather than left
+ * naming a string the screen no longer renders.) The playable loop -- Title, Dashboard, Decisions, Turn Result,
  * History, Terminal -- is fully live.
  */
 

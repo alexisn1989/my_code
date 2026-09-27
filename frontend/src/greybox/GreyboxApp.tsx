@@ -86,6 +86,7 @@ function GreyboxShell() {
   const { revision } = useSession();
   const dismissedHelp = useDraftStore((state) => state.dismissedHelp);
   const dismissHelp = useDraftStore((state) => state.dismissHelp);
+  const setHelpDismissed = useDraftStore((state) => state.setHelpDismissed);
   const glossaryOpen = useDraftStore((state) => state.glossaryOpen);
   const setGlossaryOpen = useDraftStore((state) => state.setGlossaryOpen);
 
@@ -94,13 +95,21 @@ function GreyboxShell() {
 
   return (
     <div className="min-h-screen">
-      {/* Gate 4A3 Commit 3, findings A2-A15: THE SITE BANNER.
+      {/* Gate 4A3 Commit 3, findings A2-A7 and A10-A15: THE SITE BANNER.
+          The twelve landmark findings are A2-A7 and A10-A15. They are NOT a contiguous A2-A15 range:
+          A8 is the `aria-valid-attr-value` tab defect and A9 is a `color-contrast` defect, both fixed
+          separately, and sweeping them into the range would claim this one change fixed them.
           This bar was a plain `<div>`, so the product title and the connection line sat outside every
           landmark — one of the two nodes axe reported on all twelve surfaces. A top-level `<header>`
           is the `banner` landmark, which is what this bar actually is. `NationalHeader` below was
           converted from `<header>` to a named `<section>` in the same change, because two top-level
           `<header>` elements would be two banners and would trade one violation for another. */}
-      <header className="flex items-start justify-between gap-4 border-b border-navy-800 bg-navy-950 px-6 py-2">
+      {/* `flex-wrap` on the HEADER, added with the second control: at the 320px conformance width the
+          title block plus two side-by-side controls need ~347px, so the page began scrolling
+          horizontally -- caught by `verify:fixes`'s V1-V3 assertion on the very first run after the
+          toggle was added. Wrapping the control group onto its own line is the fix; shrinking the
+          controls instead would have made them narrower than their own labels. */}
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-navy-800 bg-navy-950 px-6 py-2">
         <div>
           <h1 className="font-[family-name:var(--font-display)] text-2xl tracking-wide text-parchment-100">
             MANDATE
@@ -109,14 +118,30 @@ function GreyboxShell() {
             Connected to the local MANDATE server.
           </p>
         </div>
-        <button
-          type="button"
-          aria-expanded={glossaryOpen}
-          onClick={() => setGlossaryOpen(!glossaryOpen)}
-          className="shrink-0 rounded border border-navy-800 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
-        >
-          {glossaryOpen ? "Close glossary" : "Glossary"}
-        </button>
+        {/* Gate 4A3 Commit 4: the introduction was DISMISSIBLE AND NOTHING ELSE -- once closed it
+            could not be recalled for the rest of the session, so the one place the game explains
+            itself was a single-use resource. This toggle makes it recallable, and deliberately
+            reuses the `aria-expanded` pattern the Glossary control beside it already uses, so the
+            header has one convention rather than two. `aria-expanded` is the negation of the stored
+            flag because the note being OPEN is that flag being false. */}
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            aria-expanded={!dismissedHelp}
+            onClick={() => setHelpDismissed(!dismissedHelp)}
+            className="rounded border border-navy-800 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+          >
+            How to govern
+          </button>
+          <button
+            type="button"
+            aria-expanded={glossaryOpen}
+            onClick={() => setGlossaryOpen(!glossaryOpen)}
+            className="rounded border border-navy-800 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+          >
+            {glossaryOpen ? "Close glossary" : "Glossary"}
+          </button>
+        </div>
       </header>
 
       {glossaryOpen ? (
@@ -138,9 +163,25 @@ function GreyboxShell() {
           aria-label="How to govern"
           className="mx-6 mt-4 rounded border border-navy-800 bg-navy-900 p-4 text-sm"
         >
+          {/* THIS SENTENCE WAS WRONG, not merely thin, and that is why Gate 4A3 Commit 4 replaces
+              it rather than extending it. It read "build one decision", which teaches the wrong
+              model of a turn: a turn combines a policy proposal with appointments, bargains,
+              assistance requests, promises and movement orders. A player told they build ONE
+              decision would not look for the rest.
+
+              The one-budget-or-amendment limit is NOT stated here. It governs the policy proposal
+              alone, and `DecisionsScreen`'s own panel is where it is stated -- putting it in a
+              general introduction would imply the limit governs the whole turn, which is the same
+              misstatement moved to a different screen. */}
           <p>
-            Read your country&apos;s condition, build one decision, resolve the turn, then read why
-            it turned out that way. Repeat until victory or defeat.
+            Review your country, prepare your actions, preview their consequences, resolve the turn,
+            and read what happened.
+          </p>
+          <p className="mt-2">
+            Dashboard shows the country&apos;s condition. Government, Relationships and Strategic
+            map are where you appoint people, deal with them, and move formations. Decisions is
+            where you assemble the turn and resolve it, and Turn result and History are where you
+            read what your choices did.
           </p>
           <button
             type="button"

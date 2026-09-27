@@ -2094,4 +2094,55 @@ describe("StrategicMapScreen: narrow-layout parity", () => {
     expect(reason?.textContent).toContain("foreign entry is unavailable");
     expect(visual.contains(reason)).toBe(false);
   });
+
+  /* ----------------------------------------------------------------------------------------------
+   * Gate 4A3 Commit 4 -- THE LEGEND'S ICON MUST MATCH ITS OWN TERM.
+   *
+   * The legend is a key to a mark the map actually draws, so the pairing that can go wrong is
+   * icon-to-`<dt>`. Unlike `ToneValue` and `DeltaText`, these three carry no `sr-only` word: the
+   * `<dt>` IS the name, and the `<dd>` describes the mark in words. So a mispaired icon here would
+   * show a star beside "One-way route" while every automated presence check passed -- which is why
+   * each icon is asserted against the definition it belongs to rather than merely counted.
+   * -------------------------------------------------------------------------------------------- */
+  it.each([
+    ["One-way route", "route-one-way"],
+    ["Two-way route", "route-two-way"],
+    ["Capital", "capital"],
+  ])("the %s legend entry carries the %s mark and no other", async (term, icon) => {
+    renderScreen(RECIPROCAL_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const dt = screen.getByText(term, { selector: "dt" });
+    const dd = dt.nextElementSibling;
+    expect(dd?.tagName).toBe("DD");
+    expect(dd?.querySelector(`svg[data-icon="${icon}"]`)).not.toBeNull();
+    expect(dd?.querySelectorAll("svg[data-icon]")).toHaveLength(1);
+  });
+
+  it("every legend mark is hidden from assistive technology, because its own term names it", async () => {
+    renderScreen(RECIPROCAL_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+
+    const legendIcons = Array.from(
+      document.querySelectorAll(
+        'svg[data-icon="route-one-way"], svg[data-icon="route-two-way"], svg[data-icon="capital"]',
+      ),
+    );
+    expect(legendIcons).toHaveLength(3);
+    for (const node of legendIcons) {
+      expect(node.getAttribute("aria-hidden")).toBe("true");
+      expect(node.getAttribute("role")).toBeNull();
+      // Its `<dd>` must still say the mark in words, so the legend never rests on the picture.
+      expect((node.closest("dd")?.textContent ?? "").trim().length).toBeGreaterThan(20);
+    }
+  });
+
+  it("the replaced arrow and star characters no longer appear in the legend", async () => {
+    renderScreen(RECIPROCAL_MAP);
+    await screen.findByText("Capital Theater — Land, Republic of Arken, capital");
+    const legend = screen.getByText("One-way route", { selector: "dt" }).closest("dl");
+    for (const glyph of ["\u2192", "\u2194", "\u2605"]) {
+      expect(legend?.textContent ?? "").not.toContain(glyph);
+    }
+  });
 });

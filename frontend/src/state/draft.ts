@@ -176,6 +176,12 @@ export interface DraftState {
    * unconstructible on this side too. */
   promise: PromiseDraft | null;
 
+  /** Whether the "How to govern" introduction has been dismissed.
+   *
+   * Kept as "dismissed" rather than renamed to "open" because `clearCampaignScopedState` and three
+   * test modules already name it, and a rename would churn all of them to change no behaviour. The
+   * header toggle added in Gate 4A3 Commit 4 reads `aria-expanded={!dismissedHelp}`, which is the
+   * honest negation: the note being open IS this flag being false. */
   dismissedHelp: boolean;
   glossaryOpen: boolean;
 
@@ -233,6 +239,13 @@ export interface DraftState {
    * (mandate: "Clear the committed draft only after success"). */
   clearDraft: () => void;
   dismissHelp: () => void;
+  /** Set the introduction's dismissed state in either direction.
+   *
+   * `dismissHelp` could only ever close it, so once dismissed the introduction was unreachable for
+   * the rest of the session -- the defect Gate 4A3 Commit 4's header toggle fixes. `dismissHelp`
+   * stays as the Dismiss button's own action rather than being replaced by `setHelpDismissed(true)`:
+   * it reads as what that button means, and three test modules already call it. */
+  setHelpDismissed: (dismissed: boolean) => void;
   setGlossaryOpen: (open: boolean) => void;
 }
 
@@ -417,5 +430,6 @@ export const useDraftStore = create<DraftState>((set) => ({
     }),
 
   dismissHelp: () => set({ dismissedHelp: true }),
+  setHelpDismissed: (dismissed) => set({ dismissedHelp: dismissed }),
   setGlossaryOpen: (open) => set({ glossaryOpen: open }),
 }));

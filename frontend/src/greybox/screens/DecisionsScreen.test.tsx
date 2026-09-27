@@ -100,4 +100,74 @@ describe("DecisionsScreen and terminal state", () => {
     );
     expect(screen.queryByText("The campaign has ended")).not.toBeInTheDocument();
   });
+
+  /* ----------------------------------------------------------------------------------------------
+   * Gate 4A3 Commit 4 -- the copy pass, as EXACT rendered strings.
+   *
+   * "Slot" is `policySlot`, a field name in `src/state/draft.ts`. It told a player nothing, and this
+   * is also the screen that keeps the one-budget-or-amendment limit: the introduction deliberately
+   * does NOT state it, because stating it there would imply the limit governs the whole turn rather
+   * than the policy proposal alone.
+   * -------------------------------------------------------------------------------------------- */
+
+  it("states the one-proposal-per-turn limit in the player's terms, not as a 'slot'", async () => {
+    renderScreen(ACTIVE_DASHBOARD);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /resolve turn/i })).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(
+        "You can put forward one budget or one constitutional amendment each turn, never both. " +
+          "Selecting a card replaces the other. Choosing \u201cTake no major action\u201d is a valid " +
+          "turn with no proposal.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("uses typographic quotation marks, matching the rest of the interface", async () => {
+    renderScreen(ACTIVE_DASHBOARD);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /resolve turn/i })).toBeInTheDocument(),
+    );
+    const body = document.body.textContent ?? "";
+    expect(body).toContain("\u201cTake no major action\u201d");
+    expect(body).not.toContain('"Take no major action"');
+  });
+
+  // Found by `check:copy` and not by this commit's own survey of five sites, which had grepped for
+  // three specific PHRASES rather than for the words. Recorded here as its own assertion so the
+  // relationship-investment panel cannot drift back to describing itself as a slot.
+  it("describes relationship investment by what it does, not by which slot it occupies", async () => {
+    renderScreen(ACTIVE_DASHBOARD);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /resolve turn/i })).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Relationship investment (separate from your proposal)" }),
+    ).toBeInTheDocument();
+    expect(document.body.textContent ?? "").toContain(
+      "Separate from the budget or amendment above, so staging one does not use up the other.",
+    );
+  });
+
+  it("no player-visible text on this screen says 'slot'", async () => {
+    renderScreen(ACTIVE_DASHBOARD);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /resolve turn/i })).toBeInTheDocument(),
+    );
+    // Text nodes AND the attributes a player reads or hears -- the panel title that said
+    // "(separate slot)" was a `title` prop, invisible to a `textContent` scan.
+    const rendered: string[] = [document.body.textContent ?? ""];
+    for (const node of Array.from(
+      document.body.querySelectorAll("[title], [aria-label], [placeholder], [alt]"),
+    )) {
+      for (const attribute of ["title", "aria-label", "placeholder", "alt"]) {
+        const value = node.getAttribute(attribute);
+        if (value !== null) rendered.push(value);
+      }
+    }
+    for (const text of rendered) {
+      expect(text).not.toMatch(/\bslots?\b/i);
+    }
+  });
 });

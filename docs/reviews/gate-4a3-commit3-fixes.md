@@ -31,6 +31,18 @@ the artifact name is now a parameter (`MANDATE_A11Y_OUT`) rather than a constant
 
 89 surfaces audited, all 11 screens plus the Glossary, at 8 viewport cases.
 
+**The claim is “zero axe violations in the audited states”, and the qualification is load-bearing.**
+The sweep runs mid-campaign, so two things about the terminal screen are **unmeasured rather than
+clean**, and both are assigned to Commit 5, which drives a campaign to its conclusion:
+
+| open, and owned by Commit 5 | why it is unmeasured here |
+|---|---|
+| **N6 — terminal-screen contrast** | “Victory / defeat” renders its outcome only in a *concluded* campaign, so mid-campaign there is no node to measure. |
+| **Terminal-state reflow at 320px** | The same cause, on the other axis: the 320px conformance sweep visits the screen and finds a placeholder, so the outcome layout has never been reflowed at all. |
+
+Neither is a defect that was found and waived; each is a state the audit has not entered. Reporting
+them as clean would be the vacuity Commit 1a was written to correct — an empty result read as a pass.
+
 ## What was fixed
 
 ### A8 — `aria-controls` referenced ids that did not exist (critical)
@@ -77,7 +89,16 @@ Note what replacing the stock colours did *not* do: `emerald-300`, `red-300` and
 measured 10–13:1 already. This was a palette-consistency fix, not a contrast fix, and saying otherwise
 would overstate it.
 
-### A2–A15 — content outside landmarks (12 findings, one cause)
+### A2–A7 and A10–A15 — content outside landmarks (12 findings, one cause)
+
+**The twelve are A2, A3, A4, A5, A6, A7, A10, A11, A12, A13, A14 and A15** — Dashboard, Government,
+Economy, Legislature, Constitution, Relationships, Decisions, Turn result, History, Strategic map,
+Victory / defeat and the Glossary, one `region` finding each.
+
+They are **not** a contiguous `A2–A15` range, and an earlier draft of this record wrote them that way.
+That range wrongly swept in **A8**, the `aria-valid-attr-value` tab defect, and **A9**, a
+`color-contrast` defect — two different findings with two different fixes, each documented in its own
+section. Writing the range would have credited this one shell-level change with fixing them.
 
 Two nodes per screen, on all twelve surfaces, from **one** shell-level cause:
 
@@ -158,6 +179,12 @@ drives a scenario to its terminal screen, which is where the measurement belongs
 owed rather than folded into the passing count — a first run of this test did exactly that, until a
 "screens that yielded nothing" list was added to stop it.
 
+**Terminal-state reflow is owed on the same grounds, and is stated separately so it is not lost behind
+N6.** The 320px conformance sweep does visit "Victory / defeat", but mid-campaign it renders a
+placeholder, so what was reflowed is the placeholder and not the outcome. Contrast and reflow are two
+different measurements that happen to be blocked by one missing state; Commit 5 owns **both**, and this
+record names both rather than letting the reflow half ride silently on the contrast one.
+
 **Three measurement failures preceded this working result**, and all three looked like application
 defects rather than probe defects — every element came back at exactly 1.00:1:
 
@@ -193,7 +220,7 @@ present in the Government DOM, and only then is overflow measured.
 |---|---|---|
 | **33 observations at 195px** | Halving a 390px phone for 200% zoom lands at 195 CSS px, **below** the 320px floor WCAG 2.2 SC 1.4.10 sets. These are real user observations, not conformance failures. | Measured and recorded every run; deliberately **not** asserted. Asserting them would quietly redefine the standard. |
 | **`color-contrast` disabled in the jsdom supplement** | Not a deferral: A1/A9 are fixed. jsdom has no layout engine and cannot evaluate contrast **at all**, so a pass there would be meaningless. | One named rule in one file, with the reason; the browser sweep is the contrast evidence. |
-| **N6 unmeasured** | Needs a concluded campaign. | Named, dated to Commit 5, excluded from the passing count. |
+| **N6 unmeasured, and terminal-state reflow with it** | Both need a *concluded* campaign: mid-campaign the terminal screen shows a placeholder, so neither its contrast nor its reflow at 320px has been measured. | Both named, both dated to Commit 5, both excluded from the passing count. |
 | **`danger-800` / `danger-950` border at 1.84:1** | A decorative panel border, essentially matching the 1.91:1 of the `red-900` it replaces. The error panel's meaning is carried by `role="alert"` and its title text, never by hue. | Pre-existing property, neither improved nor worsened; surfaces, not information. |
 | **D1: `Portrait`'s intended backdrop never rendered** | `bg-parchment-900/40` referenced an **undefined** token, so Tailwind emitted nothing and the frame has always been transparent. Removing the dead reference is an exact visual no-op. | Recorded as D1. Choosing a real colour is a visual design decision and belongs with Commit 4's art pass. |
 | **Tailwind scanning test/e2e files** | A bare utility name in a *comment* emits that rule into the production stylesheet — hit three times here at 27 bytes each, once by the very note warning about it. | Worked around by wording; constraining the scanned sources is a build-config change **parked for Commit 6** as instructed. |

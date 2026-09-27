@@ -5,9 +5,15 @@
  * per-chamber, per-bloc, or per-budget-line breakdown, so these five screens
  * cannot render real detail yet. Rendering fabricated numbers here would be
  * exactly the "client computes/invents a value the server never returned"
- * problem Gate 4A2 exists to avoid -- an honest "not available in this gate"
- * state is the correct alternative, not an error and not silently fabricated
- * content.
+ * problem Gate 4A2 exists to avoid -- an honest "not in this version of the
+ * game" state is the correct alternative, not an error and not silently
+ * fabricated content.
+ *
+ * Gate 4A3 Commit 4 reworded the player-facing strings. They said "not available
+ * in this gate", and a gate is a development milestone: it tells a player nothing
+ * they can act on. The replacement says the same true thing in the game's own
+ * terms, and leads with the half that is useful -- where the information they
+ * wanted does exist.
  */
 
 import { Panel } from "../components";
@@ -19,10 +25,10 @@ export function UnavailableScreen({ heading, navigate }: ScreenProps & { heading
       <h2 className="font-[family-name:var(--font-display)] text-2xl text-parchment-100">
         {heading}
       </h2>
-      <Panel title="Not available in this gate">
+      <Panel title="Not in this version of the game">
         <p className="text-sm text-parchment-200/80">
-          The dashboard's summary card for this topic is available now. A detailed breakdown
-          screen for {heading.toLowerCase()} has not been built yet.
+          The Dashboard already has a summary card for this topic. A full{" "}
+          {heading.toLowerCase()} screen is not part of this version of the game.
         </p>
         <button
           type="button"

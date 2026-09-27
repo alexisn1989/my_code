@@ -611,8 +611,9 @@ export function MeetingScreen(_props: ScreenProps) {
 
       <Panel title="The rest of the relationship picture">
         <EmptyNote>
-          Bloc standings, institutional loyalty and the wider diplomatic picture are not available
-          in this gate. Only the people you can actually deal with are projected so far.
+          The people you can deal with directly are the only part of the picture you can see here.
+          Bloc standings, institutional loyalty and the wider diplomatic situation are not part of
+          this version of the game.
         </EmptyNote>
       </Panel>
     </div>

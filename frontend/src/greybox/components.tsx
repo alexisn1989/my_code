@@ -1,9 +1,19 @@
 /**
  * Gate 4A2 — shared, unstyled-by-design presentation primitives.
  *
- * "Greybox" means structure without art: flat panels from the existing token
+ * "Greybox" meant structure without art: flat panels from the existing token
  * palette, no icons, no portraits, no animation, no final imagery. Layout and
- * semantics are the deliverable; visual polish is Gate 4A5.
+ * semantics are the deliverable; visual polish is Gate 4A5 (which the roadmap
+ * numbers Gate 4A3).
+ *
+ * TWO CLAUSES OF THAT ARE NOW OUT OF DATE, corrected here rather than left to
+ * mislead a reader. Portraits shipped with the characters slice (`Portrait.tsx`,
+ * server-authored `portrait_ref`), and Gate 4A3 Commit 4 replaced the typographic
+ * tone/direction characters with a stroke-only icon set (`./icons`). Both are
+ * still art-free in the sense that mattered: inline SVG drawn from literal
+ * coordinates, no asset pipeline, no imagery to license. "No animation" and "no
+ * final imagery" still hold -- the application has no transition, animation or
+ * keyframe declaration anywhere, which Commit 3 measured rather than assumed.
  *
  * No component here performs simulation arithmetic. Where a bar has a width, it
  * scales an ALREADY-PROJECTED ratio field for visual purposes only (via
@@ -14,6 +24,7 @@
 import type { ReactNode } from "react";
 
 import { RATIO_BPS_MAX, RATIO_BPS_MIN, ratioBpsToWidthPercent } from "../format/format";
+import { DIRECTION_ICON, TONE_ICON } from "./icons";
 import type { Direction, Tone } from "./types";
 
 const TONE_CLASS: Record<Tone, string> = {
@@ -23,13 +34,10 @@ const TONE_CLASS: Record<Tone, string> = {
   neutral: "text-parchment-200",
 };
 
-const TONE_GLYPH: Record<Tone, string> = {
-  positive: "✓",
-  negative: "✗",
-  caution: "▲",
-  neutral: "■",
-};
-
+// `TONE_GLYPH` is gone: the four typographic characters it held (`✓ ✗ ▲ ■`) are now the stroke-only
+// marks in `./icons`, and `▲`/`■` no longer double as UP and UNCHANGED. The LABEL map below is
+// unchanged and is still what a screen reader hears -- the icon is decorative precisely because this
+// word is not.
 const TONE_LABEL: Record<Tone, string> = {
   positive: "positive",
   negative: "negative",
@@ -37,15 +45,8 @@ const TONE_LABEL: Record<Tone, string> = {
   neutral: "neutral",
 };
 
-/** Exported so other renderers of a `Direction` (e.g. a policy card's effect
- * chips) can match `DeltaText`'s own glyph/word convention exactly, instead
- * of maintaining a second copy of the same three-entry map. */
-export const DIRECTION_GLYPH: Record<Direction, string> = {
-  up: "▲",
-  down: "▼",
-  unchanged: "■",
-};
-
+// `DIRECTION_GLYPH` moved to `DIRECTION_ICON` in `./icons` for the same reason `TONE_GLYPH` did, and
+// it is still exported from one place so the policy cards' effect chips cannot keep a second copy.
 export const DIRECTION_LABEL: Record<Direction, string> = {
   up: "up",
   down: "down",
@@ -74,12 +75,15 @@ export function Panel({
 
 /**
  * Colour is never the only carrier of meaning: every toned value also gets a
- * glyph and a visually-hidden word.
+ * MARK and a visually-hidden word. The mark used to be a typographic character
+ * and is now a stroke-only icon from `./icons`; the word is unchanged, and it is
+ * what makes the icon safe to hide from assistive technology.
  */
 export function ToneValue({ tone, children }: { tone: Tone; children: ReactNode }) {
+  const ToneIcon = TONE_ICON[tone];
   return (
     <span className={TONE_CLASS[tone]}>
-      <span aria-hidden="true">{TONE_GLYPH[tone]}</span>{" "}
+      <ToneIcon />{" "}
       <span className="sr-only">{TONE_LABEL[tone]}</span>
       {children}
     </span>
@@ -96,9 +100,10 @@ export function DeltaText({
   if (deltaText === null) {
     return null;
   }
+  const DirectionIcon = DIRECTION_ICON[direction];
   return (
     <span className="text-xs text-parchment-200/70">
-      <span aria-hidden="true">{DIRECTION_GLYPH[direction]}</span>{" "}
+      <DirectionIcon />{" "}
       <span className="sr-only">{DIRECTION_LABEL[direction]}</span>
       {deltaText}
     </span>

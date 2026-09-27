@@ -292,8 +292,9 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
 
       <Panel title="Policy proposal (one per turn)">
         <p className="mb-3 text-sm text-parchment-200/70">
-          A budget and a constitutional amendment occupy the same slot. Selecting a card replaces
-          the other. Choosing "Take no major action" is a legal no-proposal turn.
+          You can put forward one budget or one constitutional amendment each turn, never both.
+          Selecting a card replaces the other. Choosing &ldquo;Take no major action&rdquo; is a
+          valid turn with no proposal.
         </p>
 
         <div role="status" aria-live="polite" className="sr-only">
@@ -466,9 +467,10 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         </details>
       </Panel>
 
-      <Panel title="Relationship investment (separate slot)">
+      <Panel title="Relationship investment (separate from your proposal)">
         <p className="mb-3 text-sm text-parchment-200/70">
-          Not part of the policy slot. Range: {data.relationship_investment_minimum}–
+          Separate from the budget or amendment above, so staging one does not use up the other.
+          Range: {data.relationship_investment_minimum}–
           {data.relationship_investment_maximum} per bloc.
         </p>
         {data.blocs.length === 0 ? (

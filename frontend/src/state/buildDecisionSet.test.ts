@@ -48,6 +48,7 @@ function baseDraft(overrides: Partial<DraftState> = {}): DraftState {
     setInvestment: () => {},
     clearDraft: () => {},
     dismissHelp: () => {},
+    setHelpDismissed: () => {},
     setGlossaryOpen: () => {},
     ...overrides,
   };

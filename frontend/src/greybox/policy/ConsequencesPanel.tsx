@@ -42,7 +42,7 @@ export function ConsequencesPanel({ preview }: { preview: PreviewProjection }) {
               <EmptyNote>No legislative vote applies to this route.</EmptyNote>
             ) : (
               <DataTable
-                caption="Chamber-by-chamber projection"
+                caption="Expected vote, chamber by chamber"
                 columns={["Chamber", "Supporting", "Required", "Seats", "Carries"]}
                 rows={preview.chambers.map((chamber) => ({
                   key: chamber.chamber,

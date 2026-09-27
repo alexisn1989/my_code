@@ -47,6 +47,7 @@ import { useSession } from "../../state/SessionContext";
 import { ErrorPanel } from "../../status/ErrorPanel";
 import { LoadingPanel } from "../../status/StatusPanels";
 import { EmptyNote, Panel } from "../components";
+import { IconCapital, IconRouteOneWay, IconRouteTwoWay } from "../icons";
 import type { ScreenProps } from "../registry";
 
 const KIND_LABEL: Record<StrategicTheaterProjection["kind"], string> = {
@@ -1178,12 +1179,11 @@ export function StrategicMapScreen(_props: ScreenProps) {
               <dd>Marks territory that is not yours. Ownership is also named in the list below.</dd>
               <dt className="text-parchment-200/60">One-way route</dt>
               <dd>
-                <span aria-hidden="true">→</span> A line with a single arrowhead, at the end it
-                leads to.
+                <IconRouteOneWay /> A line with a single arrowhead, at the end it leads to.
               </dd>
               <dt className="text-parchment-200/60">Two-way route</dt>
               <dd>
-                <span aria-hidden="true">↔</span> A line with an arrowhead at both ends.
+                <IconRouteTwoWay /> A line with an arrowhead at both ends.
                 &ldquo;Routes out&rdquo; and &ldquo;Routes in&rdquo; state every direction in words.
               </dd>
               <dt className="text-parchment-200/60">Theater marker</dt>
@@ -1192,8 +1192,8 @@ export function StrategicMapScreen(_props: ScreenProps) {
               </dd>
               <dt className="text-parchment-200/60">Capital</dt>
               <dd>
-                <span aria-hidden="true">★</span> A star on the capital theater, which the detail
-                panel also states as &ldquo;Capital: Yes&rdquo;.
+                <IconCapital /> A star on the capital theater, which the detail panel also states as
+                &ldquo;Capital: Yes&rdquo;.
               </dd>
               <dt className="text-parchment-200/60">Selected theater</dt>
               <dd>A dashed gold ring and an enlarged marker. Selecting only inspects.</dd>
