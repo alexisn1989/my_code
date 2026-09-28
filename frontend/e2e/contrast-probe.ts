@@ -161,6 +161,140 @@ export function offlineRatio({
   return Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 100) / 100;
 }
 
+export function toRgbString(hex: string): string {
+  const [r, g, b] = channels(hex);
+  return `rgb(${r},${g},${b})`;
+}
+
+/** Which authored surface a resolved backdrop is, or `null` when it is not in the palette at all.
+ *
+ * Shared rather than copied: `icon-coverage.spec.ts` defined this locally, and Commit 5 needs the same
+ * answer in two more places. A third copy of a palette lookup is how the palette and the checks that
+ * police it drift apart. */
+export function surfaceNameOf(rgb: string): SurfaceName | null {
+  const hit = Object.entries(SURFACES).find(([, hex]) => toRgbString(hex) === rgb);
+  return hit ? (hit[0] as SurfaceName) : null;
+}
+
+/** Which authored foreground token a normalised sRGB triple is, within `CHANNEL_TOLERANCE`. */
+export function foregroundNameOf(normalised: string): ForegroundName | null {
+  const m = /^rgb\((\d+),(\d+),(\d+)\)$/.exec(normalised);
+  if (m === null) return null;
+  const got = [Number(m[1]), Number(m[2]), Number(m[3])];
+  for (const [name, hex] of Object.entries(FOREGROUNDS)) {
+    const want = channels(hex);
+    if (want.every((w, i) => Math.abs(w - got[i]!) <= CHANNEL_TOLERANCE)) {
+      return name as ForegroundName;
+    }
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------------------------------------
+ * WHAT COUNTS AS A TEXT-BEARING ELEMENT. One definition, shared by every caller.
+ * ---------------------------------------------------------------------------------------------- */
+
+/**
+ * The candidate set: every element inside `main`.
+ *
+ * IT USED TO BE A TAG LIST, and that was the defect. Commit 3's measurement asked for
+ * `main [aria-hidden="true"], main span, main text`, which reaches a span, an SVG text node and an
+ * aria-hidden node -- and misses every `<p>`, `<dd>`, `<dt>`, `<li>`, `<td>` and heading. Counted in
+ * the greybox source that is 56 spans against 54 paragraphs, 52 definition terms and descriptions,
+ * 32 list items and 16 headings, while the recorded method claimed "every text-bearing element".
+ *
+ * It also produced a false NEGATIVE that mattered. The terminal screen's mid-campaign placeholder is
+ * built from an `<h2>`, two `Panel` headings, two `<p>` (one of them `EmptyNote`) and two `<button>` --
+ * not one span, SVG text or aria-hidden node among them. So the selector matched nothing and the
+ * record said "no text-bearing element was present", which was a statement about the selector rather
+ * than about the DOM. That is finding N6's whole apparent absence.
+ *
+ * The fix is not a longer tag list -- a list is a thing to forget to extend. It is to admit every
+ * element and let the two FILTERS below decide, which is what `measureTextOwners` does.
+ */
+export const TEXT_OWNER_SCOPE = "main, main *";
+
+/** One measured text owner. `ratio === -1` is the UNMEASURED sentinel -- an unparseable colour, which
+ * is a hole in the evidence and never a pass. */
+export interface TextOwnerMeasurement {
+  selector: string;
+  text: string;
+  ratio: number;
+  hasRealText: boolean;
+  fontPx: number;
+  fontWeight: string;
+  rawColor: string;
+  normalised: string;
+  alpha: number;
+  bg: string;
+  classes: string;
+  /** Whether this node lies inside the element named by `scanRegionSelector`, when one was given. Used
+   * to require that a scan reached a specific region rather than merely reaching the page. */
+  inRegion: boolean;
+}
+
+/** A whole scan, WITH the counts of what each rejection rule excluded.
+ *
+ * The rejection counts are not diagnostics, they are assertions waiting to be made: a rule that
+ * excludes nothing is a rule that is not running, and both of these must bite on every real screen.
+ * `rejectedHidden` in particular must be positive wherever a `ToneValue` renders, because every one of
+ * them carries an `sr-only` word -- and `.sr-only` nodes measuring 1.00:1 while looking like
+ * application defects is one of the three failures this probe already survived. */
+export interface TextOwnerScan {
+  measured: TextOwnerMeasurement[];
+  candidates: number;
+  rejectedNoOwnText: number;
+  rejectedHidden: number;
+}
+
+/**
+ * Measure every element in `main` that directly owns painted text.
+ *
+ * A node is measured if and only if it:
+ *
+ *   1. DIRECTLY OWNS at least one non-whitespace text node. Own text, not `textContent`: a wrapper is
+ *      never measured for its descendants' text, so the same string is never counted twice and an
+ *      ancestor never reports a colour that nothing paints with it. `TerminalScreen`'s outer
+ *      `<p className="text-lg">` is the worked example -- its only child is the `ToneValue` span, so it
+ *      owns no text and is correctly skipped.
+ *   2. IS PAINTED, i.e. survives `isVisuallyHidden`: not `display:none`, `visibility:hidden`,
+ *      `opacity:0`, `clip-path`, `.sr-only`, and not a box of 1px or less. The box test is what also
+ *      catches a node inside a hidden ancestor, since such a child still reports its own computed
+ *      `display` but has no rect.
+ *
+ * TWO CONSEQUENCES WORTH STATING, because they are what make the rule sufficient rather than merely
+ * wider:
+ *
+ *   - DECORATIVE MARKS NEED NO EXCLUSION RULE. An `svg[data-icon]` owns no text node, so rule 1 drops
+ *     every icon. Icons are measured separately, against the 3:1 bar of SC 1.4.11 (a 2px stroke is a
+ *     graphical object). This scan is text, against 4.5:1 (SC 1.4.3). The two bars never mix.
+ *   - ARIA-HIDDEN TEXT STAYS IN. It is painted, so a sighted reader sees it and SC 1.4.3 applies. The
+ *     old selector's `aria-hidden` clause existed for the typographic tone glyphs, which Commit 4
+ *     replaced with icons; the clause is gone but the coverage is not.
+ *
+ * On painted nodes this set is a strict superset of the old one, so SVG `<text>` on the strategic map
+ * keeps its coverage.
+ *
+ * @param regionSelector optional: nodes inside this element are flagged `inRegion`, so a caller can
+ *   assert the scan reached a named region and not just the page chrome.
+ */
+export async function measureTextOwners(
+  page: Page,
+  regionSelector: string | null = null,
+): Promise<TextOwnerScan> {
+  return page.evaluate(
+    ([scope, region]) =>
+      (
+        window as unknown as {
+          __mandateColour: {
+            measureTextOwners: (scope: string, region: string | null) => TextOwnerScan;
+          };
+        }
+      ).__mandateColour.measureTextOwners(scope!, region ?? null),
+    [TEXT_OWNER_SCOPE, regionSelector] as const,
+  );
+}
+
 /** Which surface a given icon placement authors as its nearest painted backdrop.
  *
  * DERIVED FROM THE COMPONENTS' OWN `className`, not from anything the probe reports -- that
@@ -321,12 +455,84 @@ const COLOUR_PROBE_SOURCE = String.raw`
     const box = el.getBoundingClientRect();
     return box.width <= 1 || box.height <= 1;
   };
+
+  /* EVERY ELEMENT THAT DIRECTLY OWNS PAINTED TEXT. The module's TEXT_OWNER_SCOPE doc explains why the
+   * candidate set is every element rather than a tag list; this is the pair of rejection rules that
+   * does the discriminating, and the counters are what prove each one ran.
+   *
+   * THE ORDER OF THE TWO RULES IS CHOSEN FOR THE COUNTERS, not for the result -- a node must pass
+   * both either way. Own-text is tested FIRST so that rejectedNoOwnText counts wrappers and icons,
+   * and rejectedHidden counts specifically "owns text but is never painted". That second number is the
+   * one worth asserting: it is positive wherever a ToneValue renders, because each carries an sr-only
+   * word, and sr-only nodes measuring 1.00:1 while looking like application defects is one of the
+   * three failures this probe already survived. */
+  const measureTextOwners = (scope, regionSelector) => {
+    const region = regionSelector ? document.querySelector(regionSelector) : null;
+    const measured = [];
+    let candidates = 0;
+    let rejectedNoOwnText = 0;
+    let rejectedHidden = 0;
+    for (const el of Array.from(document.querySelectorAll(scope))) {
+      candidates += 1;
+      const own = Array.from(el.childNodes)
+        .filter((n) => n.nodeType === Node.TEXT_NODE)
+        .map((n) => n.textContent || "")
+        .join("")
+        .trim();
+      if (own === "") {
+        rejectedNoOwnText += 1;
+        continue;
+      }
+      if (isVisuallyHidden(el)) {
+        rejectedHidden += 1;
+        continue;
+      }
+      const style = getComputedStyle(el);
+      const parsed = normalise(style.color);
+      const bg = effectiveBg(el);
+      const alpha = parsed[3];
+      const classes = el.className && el.className.toString ? el.className.toString() : "";
+      const base = {
+        selector: el.tagName.toLowerCase() + (classes ? "." + classes.slice(0, 40) : ""),
+        text: own.slice(0, 120),
+        hasRealText: /[A-Za-z0-9]/.test(own),
+        fontPx: parseFloat(style.fontSize) || 0,
+        fontWeight: String(style.fontWeight),
+        rawColor: style.color,
+        bg: "rgb(" + bg[0] + "," + bg[1] + "," + bg[2] + ")",
+        classes: classes,
+        inRegion: region !== null && region.contains(el),
+      };
+      if (!Number.isFinite(parsed[0]) || !Number.isFinite(alpha)) {
+        base.ratio = -1;
+        base.normalised = "UNPARSEABLE";
+        base.alpha = -1;
+        measured.push(base);
+        continue;
+      }
+      const fg =
+        alpha < 1
+          ? composite([parsed[0], parsed[1], parsed[2]], bg, alpha)
+          : [parsed[0], parsed[1], parsed[2]];
+      base.ratio = Math.round(ratio(fg, bg) * 100) / 100;
+      base.normalised = "rgb(" + parsed[0] + "," + parsed[1] + "," + parsed[2] + ")";
+      base.alpha = alpha;
+      measured.push(base);
+    }
+    return {
+      measured: measured,
+      candidates: candidates,
+      rejectedNoOwnText: rejectedNoOwnText,
+      rejectedHidden: rejectedHidden,
+    };
+  };
   window.__mandateColour = {
     normalise: normalise,
     ratio: ratio,
     effectiveBg: effectiveBg,
     composite: composite,
     isVisuallyHidden: isVisuallyHidden,
+    measureTextOwners: measureTextOwners,
   };
 })();
 `;

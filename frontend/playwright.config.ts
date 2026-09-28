@@ -130,6 +130,16 @@ export default defineConfig({
       testMatch: /icon-coverage\.spec\.ts$/,
       dependencies: ["preflight"],
     },
+    // Commit 5's concluded-campaign sweep, which closes N6 and terminal-state reflow. Its own project
+    // for the same reason `icon-coverage` has one, only more so: it RESOLVES AN ENTIRE CAMPAIGN (32
+    // turns) against its own server, and the shared server below holds one process-wide `GameSession`,
+    // so a concluded campaign there would leak into everything that ran after it. Anchored regex, so
+    // no other project can claim the file.
+    {
+      name: "terminal-coverage",
+      testMatch: /terminal-coverage\.spec\.ts$/,
+      dependencies: ["preflight"],
+    },
   ],
   webServer: {
     // The production entry point, with explicit paths so the run cannot accidentally read a

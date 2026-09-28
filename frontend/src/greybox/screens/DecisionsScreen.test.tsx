@@ -92,6 +92,35 @@ describe("DecisionsScreen and terminal state", () => {
     expect(screen.getByRole("button", { name: /go to victory \/ defeat/i })).toBeInTheDocument();
   });
 
+  /* Gate 4A3 Commit 5: THE HEADING ORDER OF THIS BRANCH, which was wrong and nothing caught.
+   *
+   * The concluded branch used to return the `Panel` alone, and a `Panel` is an `<h3>`. With no `<h2>`
+   * above it the document jumped from the site banner's `<h1>` straight to an `<h3>`, which axe reports
+   * as `heading-order` (moderate). It went unseen for two gates because this branch renders only in a
+   * CONCLUDED campaign and every audit before Commit 5 ran mid-campaign -- the real-browser sweep found
+   * it the first time a campaign was driven to its end (`e2e/terminal-coverage.spec.ts`).
+   *
+   * That browser assertion is the primary guard, since heading order is a whole-document property. This
+   * one is here because it is three orders of magnitude faster and fails for the same reason: it pins
+   * the screen heading's LEVEL and its position before the panel, so the structure cannot regress
+   * without a red test long before anyone runs Playwright. */
+  it("keeps the screen heading, so a concluded campaign does not jump from h1 to h3", async () => {
+    renderScreen(CONCLUDED_DASHBOARD);
+
+    await waitFor(() => expect(screen.getByText("The campaign has ended")).toBeInTheDocument());
+
+    const screenHeading = screen.getByRole("heading", { name: "Decision workspace" });
+    expect(screenHeading.tagName).toBe("H2");
+
+    const panelHeading = screen.getByRole("heading", { name: "The campaign has ended" });
+    expect(panelHeading.tagName).toBe("H3");
+
+    // And in that order: an h3 appearing before its h2 would be the same defect wearing both tags.
+    expect(screenHeading.compareDocumentPosition(panelHeading)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   it("renders the ordinary composer, with a Resolve control, while the campaign is still active", async () => {
     renderScreen(ACTIVE_DASHBOARD);
 

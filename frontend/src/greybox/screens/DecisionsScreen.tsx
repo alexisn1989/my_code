@@ -213,24 +213,38 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   // server's `game_concluded` 409 to surface after the fact.
   if (dashboard.data?.terminal) {
     const terminal = dashboard.data.terminal;
+    // Gate 4A3 Commit 5: THE SCREEN HEADING IS PART OF THIS BRANCH, not decoration.
+    // This early return used to render the `Panel` alone, and a `Panel` is an `<h3>` by default. With
+    // no `<h2>` above it the document went straight from the site banner's `<h1>` to an `<h3>`, which
+    // axe reports as `heading-order` (moderate) -- a real WCAG 2.4.6/1.3.1 defect that no audit could
+    // previously see, because this branch renders only in a CONCLUDED campaign and every sweep before
+    // Commit 5 ran mid-campaign. `DashboardScreen`'s terminal panel already does it correctly, keeping
+    // its own `<h2>` and placing the panel beneath; this now matches, so the two ended-campaign panels
+    // have one structure rather than two.
     return (
-      <Panel title="The campaign has ended">
-        <p>
-          <ToneValue tone={terminal.bucket === "victory" ? "positive" : "negative"}>
-            {terminal.headline}
-          </ToneValue>
-        </p>
-        <p className="mt-2 text-sm text-parchment-200/70">
-          No further turn can be resolved. Review the outcome instead.
-        </p>
-        <button
-          type="button"
-          onClick={() => navigate("terminal")}
-          className="mt-3 rounded border border-gold-600 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
-        >
-          Go to Victory / Defeat
-        </button>
-      </Panel>
+      <div className="flex flex-col gap-6">
+        <h2 className="font-[family-name:var(--font-display)] text-2xl text-parchment-100">
+          Decision workspace
+        </h2>
+
+        <Panel title="The campaign has ended">
+          <p>
+            <ToneValue tone={terminal.bucket === "victory" ? "positive" : "negative"}>
+              {terminal.headline}
+            </ToneValue>
+          </p>
+          <p className="mt-2 text-sm text-parchment-200/70">
+            No further turn can be resolved. Review the outcome instead.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate("terminal")}
+            className="mt-3 rounded border border-gold-600 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+          >
+            Go to Victory / Defeat
+          </button>
+        </Panel>
+      </div>
     );
   }
 

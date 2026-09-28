@@ -52,13 +52,29 @@ import {
   NON_TEXT_CONTRAST_MINIMUM,
   RATIO_TOLERANCE,
   SURFACES,
+  foregroundNameOf,
   installColourProbe,
   offlineRatio,
-  type ForegroundName,
+  surfaceNameOf,
+  toRgbString,
 } from "./contrast-probe";
 
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
 const SCENARIO_ROOT = path.join(process.cwd(), "..", "data", "scenarios");
+
+/**
+ * ONE SCRIPT PER COMMIT, and this file is where that rule was still unenforced.
+ *
+ * `verify-commit3-fixes.spec.ts` has had `MANDATE_VERIFY_OUT` since Commit 4a, because a shared
+ * default is how Commit 2's baseline was overwritten during Commit 3 and Commit 3's during Commit 4.
+ * This spec had no equivalent at all: it hard-coded `gate-4a3-commit4a-icon-coverage`, so any later
+ * commit re-running `verify:icons` would rewrite Commit 4a's committed evidence in place.
+ *
+ * The DEFAULT is Commit 4a's own name, deliberately, so the existing `verify:icons` command keeps
+ * reproducing the file it has always written. A commit that re-measures passes a new value
+ * (`verify:icons:commit5`) rather than editing this line.
+ */
+const OUT_NAME = process.env.MANDATE_ICONS_OUT ?? "gate-4a3-commit4a-icon-coverage";
 
 /** `deficit_demo`, chosen for stated reasons rather than by taking the first Start button: it is the
  * only shipped scenario with a negative pre-financing balance under no decisions (-458,800,000, its own
@@ -105,32 +121,6 @@ interface Measurement {
   classes: string;
 }
 
-function toRgbString(hex: string): string {
-  const h = hex.replace("#", "");
-  return `rgb(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)})`;
-}
-
-function surfaceNameOf(rgb: string): string | null {
-  const hit = Object.entries(SURFACES).find(([, hex]) => toRgbString(hex) === rgb);
-  return hit ? hit[0] : null;
-}
-
-/** Which authored foreground token a normalised sRGB triple is, within the channel tolerance. */
-function foregroundNameOf(normalised: string): ForegroundName | null {
-  const m = /^rgb\((\d+),(\d+),(\d+)\)$/.exec(normalised);
-  if (m === null) return null;
-  const got = [Number(m[1]), Number(m[2]), Number(m[3])];
-  for (const [name, hex] of Object.entries(FOREGROUNDS)) {
-    const h = hex.replace("#", "");
-    const want = [
-      parseInt(h.slice(0, 2), 16),
-      parseInt(h.slice(2, 4), 16),
-      parseInt(h.slice(4, 6), 16),
-    ];
-    if (want.every((w, i) => Math.abs(w - got[i]!) <= CHANNEL_TOLERANCE)) return name as ForegroundName;
-  }
-  return null;
-}
 
 function freePort(): number {
   const script =
@@ -326,11 +316,13 @@ test.describe("Gate 4A3 Commit 4a — ten-icon coverage", () => {
     await page.goto(`${base}/`);
     const start = page.getByRole("button", { name: startLabel });
     await start.waitFor({ state: "visible", timeout: 30_000 });
-    await start.click();
-    const startResponse = await page.waitForResponse(
+    // Same race, same fix: register the waiter BEFORE the click; see the note at the /preview site in `icon-coverage.spec.ts`. An awaited click can complete the request before the listener attaches, and then the wait times out on an event that has already gone by.
+    const startPending = page.waitForResponse(
       (r) => r.url().includes("/api/game/state") && r.status() === 200,
       { timeout: 30_000 },
     );
+    await start.click();
+    const startResponse = await startPending;
     expect(startResponse.ok(), "the campaign must actually start").toBe(true);
     await page.waitForTimeout(400);
 
@@ -407,12 +399,22 @@ test.describe("Gate 4A3 Commit 4a — ten-icon coverage", () => {
     await raiseCard.getByRole("button", { name: "Select" }).click();
     await page.waitForTimeout(300);
 
+    /* THE WAITER IS REGISTERED BEFORE THE CLICK, and that ordering is the bug fix.
+     *
+     * `await click()` then `waitForResponse(...)` is a race: the click is awaited, so if `/preview`
+     * completes while that await is still settling, the listener attaches after the response has
+     * already gone by and waits 30 seconds for an event that will never come again. It passed for
+     * Commit 4a and started timing out under Commit 5's changes without any behaviour changing --
+     * which is what a latent race does. Registering first and awaiting after is the documented
+     * pattern and removes the window entirely; it also means a genuine failure to fire still times
+     * out, so the assertion keeps its teeth. */
     const previewButton = page.getByRole("button", { name: "Preview" }).first();
-    await previewButton.click();
-    const previewResponse = await page.waitForResponse(
+    const previewPending = page.waitForResponse(
       (r) => r.url().includes("/api/game/preview") && r.status() === 200,
       { timeout: 30_000 },
     );
+    await previewButton.click();
+    const previewResponse = await previewPending;
     const preview = await previewResponse.json();
     // Server-side precondition: the preview must REALLY be a failing one.
     expect(preview.has_proposal, "the preview must carry a proposal").toBe(true);
@@ -443,11 +445,13 @@ test.describe("Gate 4A3 Commit 4a — ten-icon coverage", () => {
     await resolveButton.click();
     const confirm = page.getByRole("button", { name: "Confirm and resolve" });
     await confirm.waitFor({ state: "visible", timeout: 15_000 });
-    await confirm.click();
-    const resolved = await page.waitForResponse(
+    // Same race, same fix: register the waiter BEFORE the click; see the note at the /preview site in `icon-coverage.spec.ts`. An awaited click can complete the request before the listener attaches, and then the wait times out on an event that has already gone by.
+    const resolvePending = page.waitForResponse(
       (r) => r.url().includes("/api/game/resolve") && r.status() === 200,
       { timeout: 120_000 },
     );
+    await confirm.click();
+    const resolved = await resolvePending;
     expect(resolved.ok(), "the turn must actually resolve").toBe(true);
     await page.waitForTimeout(1_200);
 
@@ -614,7 +618,7 @@ test.describe("Gate 4A3 Commit 4a — ten-icon coverage", () => {
 
     mkdirSync(REVIEW_DIR, { recursive: true });
     writeFileSync(
-      path.join(REVIEW_DIR, "gate-4a3-commit4a-icon-coverage.json"),
+      path.join(REVIEW_DIR, `${OUT_NAME}.json`),
       JSON.stringify(
         {
           bar: `${NON_TEXT_CONTRAST_MINIMUM}:1, WCAG 2.2 SC 1.4.11 (a 2px stroke is a graphical object)`,

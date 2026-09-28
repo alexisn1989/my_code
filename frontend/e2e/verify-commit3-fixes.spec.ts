@@ -28,6 +28,15 @@
  *   F4   Under the browser's own reduced-motion setting, the media query is active AND no element
  *        reports a non-zero transition or animation duration. This is what makes F4's completion a
  *        measurement rather than the three-line CSS block being taken on trust.
+ *   N1-N6  Every element in `main` that DIRECTLY OWNS PAINTED TEXT is measured against 4.5:1, with the
+ *        effective background resolved by ancestor walk -- the step axe declines when elements overlap,
+ *        which is why it returned these six as `incomplete` rather than as verdicts. COMMIT 5 REPLACED
+ *        THE CANDIDATE SET: it was a tag list (`main [aria-hidden], main span, main text`) that missed
+ *        every paragraph, definition term, list item, table cell and heading while the record claimed
+ *        "every text-bearing element". The rule now lives in `contrast-probe.ts`, shared with
+ *        `terminal-coverage.spec.ts`. N6 is NOT resolved here and its deferral is unconditional: the
+ *        terminal outcome exists only in a concluded campaign, so what this mid-campaign run measures on
+ *        that screen is its placeholder.
  *
  * COVERAGE IS ASSERTED EXPLICITLY, not inferred. A missing screen, a missing viewport, or an axe run
  * that failed to execute fails this spec — because a verification that silently checked less than it
@@ -47,14 +56,12 @@ import {
   SURFACES,
   TEXT_CONTRAST_MINIMUM,
   installColourProbe,
+  measureTextOwners,
   offlineRatio,
+  surfaceNameOf,
+  type TextOwnerMeasurement,
+  toRgbString,
 } from "./contrast-probe";
-
-/** The probe records a backdrop as `rgb(r,g,b)`, so an authored hex is compared in that spelling. */
-function toRgbString(hex: string): string {
-  const h = hex.replace("#", "");
-  return `rgb(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)})`;
-}
 
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
 
@@ -142,11 +149,13 @@ async function startCampaign(page: Page): Promise<void> {
   await page.goto("/");
   const start = page.getByRole("button", { name: /^Start / }).first();
   await start.waitFor({ state: "visible", timeout: 30_000 });
-  await start.click();
-  const response = await page.waitForResponse(
+  // The waiter is registered BEFORE the click: register the waiter BEFORE the click; see the note at the /preview site in `icon-coverage.spec.ts`. An awaited click can complete the request before the listener attaches, and then the wait times out on an event that has already gone by.
+  const pending = page.waitForResponse(
     (r) => r.url().includes("/api/game/state") && r.status() === 200,
     { timeout: 30_000 },
   );
+  await start.click();
+  const response = await pending;
   expect(response.ok(), "the campaign must actually start, or nothing below means anything").toBe(true);
   await page.waitForTimeout(400);
 }
@@ -457,100 +466,40 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
     await installColourProbe(page);
     await startCampaign(page);
 
-    /** Compute the real contrast of every element matching a selector, resolving the background by
-     * walking ancestors -- the step axe declines to take when elements overlap. */
+    /** Compute the real contrast of every element that DIRECTLY OWNS PAINTED TEXT, resolving the
+     * background by walking ancestors -- the step axe declines to take when elements overlap.
+     *
+     * COMMIT 5 REPLACED THE CANDIDATE SET, and that is the substantive change to this test. It used to
+     * ask for `main [aria-hidden="true"], main span, main text`, which reached a span, an SVG text node
+     * and an aria-hidden node while missing every paragraph, definition term, list item, table cell and
+     * heading on the page -- 56 spans against 54 paragraphs, 52 dt/dd, 32 list items and 16 headings,
+     * counted in the greybox source. The method recorded below claimed "every text-bearing element",
+     * which was wider than the selector behind it: the same shape of defect as Commit 4a's black
+     * backdrop, a true-sounding claim with narrower code under it.
+     *
+     * The rule now lives in `contrast-probe.ts` as `measureTextOwners`, shared with
+     * `terminal-coverage.spec.ts` so the two measurements cannot disagree about what "text-bearing"
+     * means. Its own documentation carries the reasoning; in short, every element is a candidate and
+     * two rejection rules decide -- owns a non-whitespace text node of its own, and is actually painted.
+     *
+     * CONSEQUENCE, REPORTED RATHER THAN HIDDEN: every screen yields MORE nodes than Commit 4a recorded,
+     * and a screen's worst ratio may fall, because newly reached nodes can be worse than the ones the
+     * old selector happened to hit. That is a coverage increase, not a regression -- and a figure below
+     * the bar is a real defect this test was previously unable to see. */
     const measureScreen = async (screen: string) => {
-      if (!(await visit(page, screen))) return [];
-      return page.evaluate(() => {
-        /*
-         * THE COLOUR MACHINERY NOW LIVES IN ONE PLACE: `e2e/contrast-probe.ts`, installed on
-         * `window.__mandateColour` by `installColourProbe`. Commit 4 needed the same machinery for the
-         * icon set's 2px strokes (SC 1.4.11), and a second copy would have been a second chance to
-         * regress independently into the three failures this probe already survived -- an `rgba` regex
-         * that missed Tailwind v4's OKLab output, a canvas round-trip this Chromium rejects, and
-         * `.sr-only` nodes being measured although they are never painted. The probe's own module
-         * documents all three. The numbers below are unchanged by the move, which the calibration
-         * assertion and the recorded worst-case ratios are what prove.
-         */
-        const { normalise, ratio, effectiveBg, composite, isVisuallyHidden } = (
-          window as unknown as {
-            __mandateColour: {
-              normalise: (colour: string) => number[];
-              ratio: (fg: number[], bg: number[]) => number;
-              effectiveBg: (el: Element) => number[];
-              composite: (fg: number[], bg: number[], alpha: number) => number[];
-              isVisuallyHidden: (el: Element) => boolean;
-            };
-          }
-        ).__mandateColour;
-
-        const out: {
-          selector: string;
-          text: string;
-          ratio: number;
-          hasRealText: boolean;
-          fontPx: number;
-          rawColor: string;
-          normalised: string;
-          bg: string;
-          classes: string;
-        }[] = [];
-        const candidates = new Set<Element>();
-        for (const el of Array.from(
-          document.querySelectorAll('main [aria-hidden="true"], main span, main text'),
-        )) {
-          candidates.add(el);
-        }
-        for (const el of candidates) {
-          if (isVisuallyHidden(el)) continue;
-          const own = Array.from(el.childNodes)
-            .filter((n) => n.nodeType === Node.TEXT_NODE)
-            .map((n) => n.textContent ?? "")
-            .join("")
-            .trim();
-          if (own === "") continue;
-          const style = getComputedStyle(el);
-          const [fr, fg2, fb, fa] = normalise(style.color);
-          const bg = effectiveBg(el);
-          if (!Number.isFinite(fr) || !Number.isFinite(fa)) {
-            out.push({
-              selector: `${el.tagName.toLowerCase()}.${el.className.toString().slice(0, 30)}`,
-              text: own.slice(0, 24),
-              ratio: -1, // sentinel: UNMEASURED, not "measured as bad"
-              hasRealText: /[A-Za-z0-9]/.test(own),
-              fontPx: parseFloat(style.fontSize) || 0,
-              rawColor: style.color,
-              normalised: "UNPARSEABLE",
-              bg: `rgb(${bg[0]},${bg[1]},${bg[2]})`,
-              classes: el.className.toString(),
-            });
-            continue;
-          }
-          const fg = fa < 1 ? composite([fr, fg2, fb], bg, fa) : [fr, fg2, fb];
-          out.push({
-            selector: `${el.tagName.toLowerCase()}.${el.className.toString().slice(0, 30)}`,
-            text: own.slice(0, 24),
-            ratio: Math.round(ratio(fg, bg) * 100) / 100,
-            hasRealText: /[A-Za-z0-9]/.test(own),
-            fontPx: parseFloat(style.fontSize) || 0,
-            // Carried so a below-bar result names the colour it measured. A ratio without its inputs
-            // cannot be told apart from a broken probe -- which is exactly how the first two versions
-            // of this measurement failed.
-            rawColor: style.color,
-            normalised: `rgba(${fr},${fg2},${fb},${fa})`,
-            bg: `rgb(${bg[0]},${bg[1]},${bg[2]})`,
-            classes: el.className.toString(),
-          });
-        }
-        return out;
-      });
+      if (!(await visit(page, screen))) return null;
+      return measureTextOwners(page);
     };
 
     const dispositions: {
       screen: string;
       measured: number;
+      candidates: number;
+      rejectedNoOwnText: number;
+      rejectedHidden: number;
       worstRatio: number;
       worstOn: string;
+      worstSurface: string;
       glyphOnlyNodes: number;
       belowBar: {
         selector: string;
@@ -558,25 +507,50 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
         ratio: number;
         rawColor: string;
         normalised: string;
+        alpha: number;
+        bg: string;
       }[];
     }[] = [];
 
     // The screens the six needs-review results named.
-    const allMeasurements: Awaited<ReturnType<typeof measureScreen>> = [];
+    const allMeasurements: TextOwnerMeasurement[] = [];
     /** Screens that were flagged but produced nothing to measure, WITH the reason. A flagged screen
      * silently yielding no measurements would let the conclusion below claim more than the evidence
-     * supports -- which a first run of this test did, until this list was added. */
+     * supports -- which a first run of this test did, until this list was added.
+     *
+     * UNDER THE WIDENED CANDIDATE SET THIS LIST MEANS SOMETHING STRONGER than it did. It used to be
+     * satisfiable by a selector that simply did not ask for the tags a screen happens to use -- which
+     * is precisely what happened to the terminal screen, whose placeholder is built from headings,
+     * paragraphs and buttons. Now that every element is a candidate, an entry here says there really
+     * is no painted text in `main`. */
     const notMeasured: { screen: string; reason: string }[] = [];
     for (const screen of ["Dashboard", "Decisions", "Relationships", "Strategic map", "Victory / defeat"]) {
-      const measurements = await measureScreen(screen);
-      if (measurements.length === 0) {
+      const scan = await measureScreen(screen);
+      if (scan === null) {
+        notMeasured.push({ screen, reason: "the screen could not be reached in this session" });
+        continue;
+      }
+      if (scan.measured.length === 0) {
         notMeasured.push({
           screen,
           reason:
-            "no text-bearing element was present to measure on this screen in a mid-campaign session",
+            `no element in \`main\` directly owns painted text on this screen in a mid-campaign ` +
+            `session (${scan.candidates} candidate elements examined)`,
         });
         continue;
       }
+
+      /* BOTH RULES MUST BE SHOWN TO HAVE RUN. A rule that rejects nothing is a rule that is not
+       * running, and this test has already been fooled once by a measurement that looked thorough and
+       * was not. `rejectedHidden` counts nodes that OWN TEXT and are never painted -- every `ToneValue`
+       * contributes one, because each pairs its icon with an `sr-only` word -- so it is positive on any
+       * screen that renders a toned value. `rejectedNoOwnText` counts wrappers and icons. */
+      expect(
+        scan.rejectedNoOwnText,
+        `${screen}: the own-text rule rejected nothing, so it is not running`,
+      ).toBeGreaterThan(0);
+
+      const measurements = scan.measured;
       allMeasurements.push(...measurements);
       // Large text (>=24px, or >=18.66px bold) has a 3:1 bar; nothing here relies on that, so the
       // stricter 4.5:1 is applied throughout rather than arguing size case by case.
@@ -588,61 +562,152 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
           ratio: m.ratio,
           rawColor: m.rawColor,
           normalised: m.normalised,
+          alpha: m.alpha,
+          bg: m.bg,
         }));
       const worst = measurements.reduce((a, b) => (a.ratio <= b.ratio ? a : b));
       dispositions.push({
         screen,
         measured: measurements.length,
+        candidates: scan.candidates,
+        rejectedNoOwnText: scan.rejectedNoOwnText,
+        rejectedHidden: scan.rejectedHidden,
         worstRatio: worst.ratio,
         worstOn: `${worst.selector} ${JSON.stringify(worst.text)}`,
+        // Recorded PER NODE rather than claimed once for the whole scan -- see the backdrop assertion
+        // below, which is where the old blanket claim was corrected.
+        worstSurface: surfaceNameOf(worst.bg) ?? `NOT A PALETTE SURFACE (${worst.bg})`,
         glyphOnlyNodes: measurements.filter((m) => !m.hasRealText).length,
         belowBar,
       });
     }
 
+    /* THE VISIBILITY FILTER, asserted once across the whole run rather than per screen. It must bite
+     * somewhere -- the Dashboard's concern cards and the preview panel both render `ToneValue`, each of
+     * which carries an `sr-only` word that owns text and is never painted. Asserting it per screen
+     * would be wrong: a screen legitimately may have no hidden text at all. */
+    expect(
+      dispositions.reduce((n, d) => n + d.rejectedHidden, 0),
+      "the visually-hidden rule rejected nothing anywhere; `.sr-only` nodes measuring 1.00:1 while " +
+        "looking like application defects is one of the three failures this probe exists to have fixed",
+    ).toBeGreaterThan(0);
+
     expect(dispositions.length, "the needs-review screens must be measurable").toBeGreaterThan(3);
 
-    // THE PROBE IS ITSELF CHECKED, against ONE figure computed independently of the browser.
-    //
-    // Commit 4a tightened this from a 5.2-5.7 BAND to a tolerance around a single expected value, and
-    // the reason is that the band was what let a real bug through: it spanned navy-900 (5.45),
-    // navy-950 (5.57) AND the 5.65 that the probe's broken alpha parser produced by treating every
-    // transparent backdrop as painted pure black. A band containing both the truth and the bug cannot
-    // detect the bug, and for two commits it did not.
-    const knownToken = allMeasurements.find(
-      (m) => m.classes.includes(CALIBRATION.className) && m.ratio > 0,
-    );
-    expect(knownToken, "a text-parchment-200/60 node must exist to calibrate the probe").toBeDefined();
-    const calibrationExpected = offlineRatio({
-      foreground: "parchment-200",
-      backdrop: "navy-900",
-      alpha: 0.6,
-    });
+    /* THE PROBE IS ITSELF CHECKED, against figures computed independently of the browser.
+     *
+     * Commit 4a tightened this from a 5.2-5.7 BAND to a tolerance around a single expected value,
+     * because the band was what let a real bug through: it spanned navy-900 (5.45), navy-950 (5.57)
+     * AND the 5.65 that the broken alpha parser produced by treating every transparent backdrop as
+     * painted pure black. A band containing both the truth and the bug cannot detect the bug, and for
+     * two commits it did not.
+     *
+     * COMMIT 5 FOUND THE REMAINING HALF OF THAT SAME MISTAKE, and it is worth stating plainly because
+     * the failure looked like a probe defect and was not. This block used to take the FIRST
+     * calibration-class node it found and compare it against a hard-coded navy-900 expectation. Under
+     * the narrow selector the first such node happened to be a span inside a `Panel`, so 5.45 matched
+     * and the check passed. Under the widened candidate set an EARLIER node is reached which sits on
+     * `bg-navy-950`, and it measured 5.57 -- correctly. The measurement was right and the expectation
+     * was wrong.
+     *
+     * Commit 4a had already hit this exact wall in `icon-coverage.spec.ts` and resolved it by deriving
+     * the expectation from the backdrop the probe actually resolved, after asserting that backdrop is
+     * an authored surface. That fix was applied to the icon calibration and NOT to this one, which is
+     * why it surfaced again a commit later. It is applied here now.
+     *
+     * AND IT IS STRENGTHENED RATHER THAN MERELY RELAXED. Instead of one node, EVERY calibration-class
+     * node is grouped by the surface it resolved, and each group must match the offline figure for
+     * THAT surface. So the check is "every `text-parchment-200/60` node in the application agrees with
+     * the offline model for whichever authored surface it sits on", which is a stronger statement than
+     * the single-node version made, over more nodes than the old selector could reach.
+     *
+     * WHAT THIS STILL DOES NOT CATCH, said rather than glossed: an ancestor walk that stops at the
+     * wrong NAVY would be self-consistent here, because the expectation is derived from the surface the
+     * walk reported. Pure black is excluded (it is not an authored surface), which is the bug that
+     * actually happened. The strong per-placement form -- an expectation authored independently of the
+     * probe -- is applied to the ten icons via `EXPECTED_BACKDROP` and to the terminal outcome's own
+     * three nodes in `e2e/terminal-coverage.spec.ts`.
+     */
     expect(
-      calibrationExpected,
+      offlineRatio({ foreground: "parchment-200", backdrop: "navy-900", alpha: 0.6 }),
       "the offline model must reproduce the module's own recorded expectation",
     ).toBeCloseTo(CALIBRATION.expectedRatio, 2);
-    expect(
-      knownToken!.ratio,
-      `the probe measured ${CALIBRATION.className} at ${knownToken!.ratio}:1 where the offline model ` +
-        `gives ${calibrationExpected}:1 (${CALIBRATION.offlineNote}). A gap beyond ` +
-        `${RATIO_TOLERANCE} means the PROBE is wrong, not the application -- which is exactly what the ` +
-        `black-backdrop parser bug looked like.`,
-    ).toBeCloseTo(calibrationExpected, 1);
-    expect(Math.abs(knownToken!.ratio - calibrationExpected)).toBeLessThanOrEqual(RATIO_TOLERANCE);
 
-    // AND THE BACKDROP ITSELF, asserted against the authored surface rather than accepted.
-    // `.sr-only` aside, every text node measured here sits inside a `Panel` (`bg-navy-900`). Pure
-    // black is not a surface in this palette at all, so this assertion alone would have failed the
-    // parser bug on its first run instead of producing four plausible tables.
+    const calibrationNodes = allMeasurements.filter(
+      (m) => m.classes.includes(CALIBRATION.className) && m.ratio > 0,
+    );
+    expect(
+      calibrationNodes.length,
+      `at least one ${CALIBRATION.className} node must exist to calibrate the probe`,
+    ).toBeGreaterThan(0);
+
+    const calibrationGroups = [...new Set(calibrationNodes.map((m) => m.bg))].map((bg) => {
+      const surface = surfaceNameOf(bg);
+      const nodes = calibrationNodes.filter((m) => m.bg === bg);
+      return {
+        backdrop: bg,
+        surface: surface ?? `NOT A PALETTE SURFACE (${bg})`,
+        nodes: nodes.length,
+        measuredRatios: [...new Set(nodes.map((m) => m.ratio))],
+        offlineExpected:
+          surface === null
+            ? null
+            : offlineRatio({ foreground: "parchment-200", backdrop: surface, alpha: 0.6 }),
+      };
+    });
+
+    for (const group of calibrationGroups) {
+      // The backdrop must be an authored surface BEFORE any ratio is compared. This is the assertion
+      // that would have failed the black-backdrop parser bug on its first run.
+      expect(
+        group.offlineExpected,
+        `a ${CALIBRATION.className} node resolved a backdrop that is not in the palette at all ` +
+          `(${group.backdrop}); pure black above all means the ancestor walk is wrong`,
+      ).not.toBeNull();
+      for (const measured of group.measuredRatios) {
+        expect(
+          Math.abs(measured - group.offlineExpected!),
+          `the probe measured ${CALIBRATION.className} at ${measured}:1 on ${group.surface} where the ` +
+            `offline model gives ${group.offlineExpected}:1 (${CALIBRATION.offlineNote}). A gap beyond ` +
+            `${RATIO_TOLERANCE} means the PROBE is wrong, not the application -- which is exactly what ` +
+            `the black-backdrop parser bug looked like.`,
+        ).toBeLessThanOrEqual(RATIO_TOLERANCE);
+      }
+    }
+
+    /* AND THE BACKDROP ITSELF, asserted against the authored surfaces rather than accepted.
+     *
+     * A CLAIM HERE BECAME FALSE WITH THE WIDENED CANDIDATE SET, and is corrected rather than left to
+     * mislead. This block used to state that "`.sr-only` aside, every text node measured here sits
+     * inside a `Panel` (`bg-navy-900`)". That was true of a scan that only reached spans inside panels.
+     * It is false now: a screen's own `<h2>` title sits directly on the page background, so
+     * `navy-950` is a legitimate resolved backdrop for it. The surface is therefore recorded PER NODE
+     * (`worstSurface` above, and the distribution below) instead of asserted once for the whole scan.
+     *
+     * The assertion that survives is membership: every resolved backdrop must be one of the palette's
+     * authored surfaces. Pure black is not among them, which is why this one check alone would have
+     * failed the parser bug on its first run instead of producing four plausible tables. It is weaker
+     * than the per-placement authored expectation `icon-coverage.spec.ts` applies to its ten icons --
+     * hand-writing an authored table for several hundred text nodes would be transcription rather than
+     * verification -- and that difference is stated rather than glossed. `terminal-coverage.spec.ts`
+     * carries the strong form for the nodes that matter most, the terminal outcome's own three. */
     const foreignBackdrops = [
       ...new Set(allMeasurements.filter((m) => m.ratio > 0).map((m) => m.bg)),
-    ].filter((bg) => !Object.values(SURFACES).map(toRgbString).includes(bg));
+    ].filter((bg) => surfaceNameOf(bg) === null);
     expect(
       foreignBackdrops,
       "every resolved backdrop must be one of the palette's authored surfaces; a colour outside them " +
         "(pure black, above all) means the ancestor walk is wrong",
     ).toEqual([]);
+
+    /** How the measured nodes actually distribute across the authored surfaces -- recorded because the
+     * blanket "everything is on navy-900" claim above is what this replaces. */
+    const surfaceDistribution = Object.fromEntries(
+      Object.keys(SURFACES).map((name) => [
+        name,
+        allMeasurements.filter((m) => m.ratio > 0 && surfaceNameOf(m.bg) === name).length,
+      ]),
+    );
 
     // Nothing may be left UNMEASURED. A colour the probe cannot parse is a hole in the evidence, not a
     // pass -- this is the assertion that would have caught the two earlier false results immediately.
@@ -660,8 +725,23 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
       ).toEqual([]);
     }
 
-    // Which of the six each screen accounts for, so the disposition is per FINDING and not merely per
-    // screen: N1 Dashboard, N2 + N5 Decisions, N3 Strategic map, N4 Relationships, N6 Victory / defeat.
+    /* Which of the six each screen accounts for, so the disposition is per FINDING and not merely per
+     * screen: N1 Dashboard, N2 + N5 Decisions, N3 Strategic map, N4 Relationships, N6 Victory / defeat.
+     *
+     * N6 IS NOT DISPOSITIONED BY SCREEN PRESENCE, and that distinction is load-bearing. Until Commit 5
+     * the terminal screen yielded zero measurements, so "did this screen produce nodes" and "was N6's
+     * node measured" were the same question. The widened candidate set separates them: the screen now
+     * yields its PLACEHOLDER text mid-campaign -- the "campaign is still active" heading, the
+     * `EmptyNote` paragraph and the two buttons -- while N6's actual subject, the terminal OUTCOME, only
+     * exists once a campaign has concluded and still cannot be measured here.
+     *
+     * So a screen-presence test would now mark N6 "resolved by measurement" on the strength of text
+     * that is not the thing axe flagged. That is precisely the vacuous pass this whole measurement
+     * exists to avoid, and it would have been introduced BY the coverage improvement. N6 therefore
+     * stays deferred unconditionally in this mid-campaign run, and is owned by
+     * `e2e/terminal-coverage.spec.ts`, which drives a campaign to its terminal screen and asserts it
+     * measured the outcome's own three text owners. */
+    const TERMINAL_OUTCOME_FINDING = "N6";
     const measuredScreens = new Set(dispositions.map((d) => d.screen));
     const resolved = [
       { id: "N1", screen: "Dashboard" },
@@ -672,52 +752,137 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
       { id: "N6", screen: "Victory / defeat" },
     ].map((n) => ({
       ...n,
-      disposition: measuredScreens.has(n.screen)
-        ? "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
-        : "NOT measured here -- see `deferred` below",
+      disposition:
+        n.id === TERMINAL_OUTCOME_FINDING
+          ? "NOT resolved here. This mid-campaign run measures this screen's PLACEHOLDER text, not the " +
+            "terminal outcome axe flagged, which exists only in a concluded campaign -- see " +
+            "`deferred` below and `docs/reviews/gate-4a3-commit5-terminal.json`."
+          : measuredScreens.has(n.screen)
+            ? "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+            : "NOT measured here -- see `deferred` below",
     }));
+
+    /** N6's deferral, stated UNCONDITIONALLY rather than derived from an empty-measurement list.
+     *
+     * It used to ride on `notMeasured`, which was non-empty only because the old selector reached
+     * nothing on this screen. `notMeasured` is now empty, so keying the deferral to it would have made
+     * N6's "owed" note disappear from the artifact exactly when the coverage improvement landed. */
+    const terminalOutcomeDeferral = {
+      screen: "Victory / defeat",
+      finding: TERMINAL_OUTCOME_FINDING,
+      reason:
+        "the terminal OUTCOME renders only in a concluded campaign; this verification runs " +
+        "mid-campaign, where the screen shows its still-active placeholder instead",
+      disposition:
+        "NOT claimed as resolved by this run. The widened candidate set does now measure this screen " +
+        "mid-campaign, but what it measures is the placeholder -- so a reader must not read those " +
+        "figures as N6. Commit 5 measures the outcome itself in `e2e/terminal-coverage.spec.ts`, which " +
+        "resolves a campaign to its terminal state and requires the outcome's own three text owners to " +
+        "appear in the measured set; see `docs/reviews/gate-4a3-commit5-terminal.json`.",
+    };
 
     record.needsReviewDisposition = {
       method:
-        "For every text-bearing element on the screens axe flagged, the computed foreground colour " +
-        "(converted from Tailwind v4's OKLab output and composited with its own alpha) was measured " +
-        "against the first non-transparent ancestor background -- the resolution step axe skips when " +
-        "elements overlap. Ratios are computed in-page with the WCAG relative-luminance formula, and " +
-        "the probe is calibrated against an independently computed figure for a known token before any " +
-        "of its numbers are trusted. Visually hidden nodes (`.sr-only`) are excluded: they are never " +
-        "painted, so contrast does not apply to them.",
+        "Every element inside `main` that DIRECTLY OWNS at least one non-whitespace text node and is " +
+        "actually painted. Own text rather than `textContent`, so a wrapper is never measured for its " +
+        "descendants' text and no string is counted twice; painted meaning it survives the probe's " +
+        "visibility rule (`display:none`, `visibility:hidden`, `opacity:0`, `clip-path`, `.sr-only`, " +
+        "or a box of 1px or less, which also catches anything inside a hidden ancestor). For each such " +
+        "node the computed foreground colour -- converted from Tailwind v4's OKLab output and " +
+        "composited with its own alpha -- is measured against the first non-transparent ancestor " +
+        "background, the resolution step axe skips when elements overlap. Ratios are computed in-page " +
+        "with the WCAG relative-luminance formula, and the probe is calibrated against an " +
+        "independently computed figure for a known token before any of its numbers are trusted.",
+      candidateSetCorrection:
+        "COMMIT 5 WIDENED THIS, and the earlier records overstated their own coverage. Commits 3, 4 and " +
+        "4a asked for `main [aria-hidden=\"true\"], main span, main text` while describing the result as " +
+        "'every text-bearing element on the screens axe flagged'. That selector reaches a span, an SVG " +
+        "text node and an aria-hidden node, and misses every paragraph, definition term, list item, " +
+        "table cell and heading -- 56 spans against 54 paragraphs, 52 dt/dd, 32 list items and 16 " +
+        "headings in the greybox source. The candidate set is now every element, with the two rules " +
+        "above deciding, so the node counts here are LARGER than Commit 4a's and a screen's worst ratio " +
+        "may be lower: newly reached nodes can be worse than the ones the old selector happened to hit. " +
+        "That is a coverage increase, not a regression. Decorative marks need no exclusion rule, since " +
+        "an `svg[data-icon]` owns no text node and is dropped by the own-text rule; icons are measured " +
+        "separately against the 3:1 bar of SC 1.4.11, and this scan is text against 4.5:1 (SC 1.4.3). " +
+        "Aria-hidden TEXT is kept, because it is painted and a sighted reader sees it.",
+      rejectionRulesProvenToRun:
+        "A rule that rejects nothing is a rule that is not running, so both are asserted rather " +
+        "than assumed: each screen must reject at least one candidate for owning no text of its own, " +
+        "and the run as a whole must reject at least one painted-hidden node. The second is what " +
+        "`.sr-only` contributes -- every `ToneValue` pairs its icon with a visually hidden word -- and " +
+        "`.sr-only` nodes measuring 1.00:1 while looking like application defects is one of the three " +
+        "failures this probe exists to have fixed.",
       precision:
         "The OKLab -> sRGB round trip can shift a channel by a unit, so a ratio here may differ from an " +
-        "offline calculation by roughly 1-2% (the calibration node measured 5.65:1 against 5.45-5.57:1 " +
-        "computed offline). That is immaterial at these margins -- the smallest measured ratio is 5.65:1 " +
-        "against a 4.5:1 bar -- but it is stated rather than presented as exact.",
+        "offline calculation by about 1%. The tolerance is fixed in the probe module BEFORE a run at " +
+        "+/-0.05 absolute on a ratio and +/-1 per 8-bit channel on a conversion, so it cannot be chosen " +
+        "after seeing a number. THE EARLIER WORDING OF THIS FIELD WAS WRONG AND IS CORRECTED HERE: it " +
+        "said the calibration node measured 5.65:1 and that the smallest measured ratio was 5.65:1. " +
+        "Both figures came from the broken alpha parser that read every transparent backdrop as painted " +
+        "pure black; Commit 4a fixed the parser and its own dispositions in the same artifact already " +
+        "recorded 5.45:1, which the stale sentence contradicted. The calibration expectation is 5.45:1, " +
+        "computed offline for parchment-200 at 60% over navy-900.",
+      backdropIndependence:
+        "Every resolved backdrop is asserted to be one of the palette's authored surfaces (navy-950, " +
+        "navy-900, navy-800); pure black is not among them, which is why this check alone would have " +
+        "failed the parser bug on its first run. It is deliberately WEAKER than the per-placement " +
+        "authored expectation applied to the ten icons: hand-writing an authored table for several " +
+        "hundred text nodes would be transcription rather than verification. The strong form is applied " +
+        "where it matters most, to the terminal outcome's own three nodes, in " +
+        "`e2e/terminal-coverage.spec.ts`. The previous claim that 'every text node measured here sits " +
+        "inside a Panel (bg-navy-900)' is FALSE under the widened set -- a screen's own `<h2>` title " +
+        "sits on the page background -- so the surface is now recorded per node instead.",
+      surfaceDistribution,
+      calibration: {
+        className: CALIBRATION.className,
+        note: CALIBRATION.offlineNote,
+        tolerance: RATIO_TOLERANCE,
+        method:
+          "EVERY node carrying the calibration class is grouped by the surface its ancestor walk " +
+          "resolved, and each group's measured ratio must match the offline figure for THAT surface " +
+          "within the tolerance fixed in the probe module before the run. Commit 4a compared a single " +
+          "node against a hard-coded navy-900 figure; under the widened candidate set an earlier node " +
+          "is reached which sits on navy-950 and measured 5.57:1 -- correctly, so the expectation was " +
+          "what was wrong. Deriving it from the resolved surface is the fix Commit 4a had already " +
+          "applied to the icon calibration for the same reason, and grouping makes the check cover " +
+          "every such node rather than the first one found.",
+        groups: calibrationGroups,
+      },
       conclusion:
         "FIVE of the six resolve ABOVE the 4.5:1 AA bar, and one is deferred with a reason. N1 and N2 " +
-        "are the aria-hidden tone glyphs, which inherit a measured tone token and are paired with an " +
-        "sr-only word, so meaning never rests on the glyph. N3, N4 and N5 were overlap cases where axe " +
-        "could not find a background; resolving it by ancestor walk gives a passing ratio on every node.",
-      deferred:
-        notMeasured.length === 0
-          ? []
-          : notMeasured.map((n) => ({
-              ...n,
-              finding: n.screen === "Victory / defeat" ? "N6" : "(none)",
-              disposition:
-                "The terminal screen renders its outcome only in a CONCLUDED campaign, and this " +
-                "verification runs mid-campaign, so N6's node does not exist to be measured here. It " +
-                "is NOT claimed as resolved. Commit 5's end-to-end campaign drives a scenario to its " +
-                "terminal screen, which is where this measurement belongs; recorded as owed rather " +
-                "than folded into the passing count.",
-            })),
+        "were the aria-hidden tone glyphs, which Commit 4 replaced with a stroke-only icon set; the " +
+        "values they decorated are measured here and the icons are measured against 3:1 in " +
+        "`verify:icons`, so meaning never rests on a mark alone. N3, N4 and N5 were overlap cases where " +
+        "axe could not find a background; resolving it by ancestor walk gives a passing ratio on every " +
+        "node.",
+      deferred: [
+        terminalOutcomeDeferral,
+        ...notMeasured.map((n) => ({
+          ...n,
+          finding: "(none)",
+          disposition:
+            "Unmeasurable in this session. Under the WIDENED candidate set a screen appearing here " +
+            "means it genuinely paints no text in `main`, which is a stronger statement than it was " +
+            "in Commits 3 and 4a -- there it could simply mean the selector did not ask for the tags " +
+            "the screen happens to use.",
+        })),
+      ],
       findings: resolved,
       dispositions,
       notMeasured,
     };
     record.coverage.push(
-      `N1-N6: ${dispositions.reduce((n, d) => n + d.measured, 0)} text-bearing elements measured across ` +
-        `${dispositions.length} of 5 flagged screens; worst ratio ` +
-        `${Math.min(...dispositions.map((d) => d.worstRatio))}:1; none below 4.5:1; ` +
-        `${notMeasured.length} screen(s) not measurable mid-campaign and recorded as owed`,
+      `N1-N6: ${dispositions.reduce((n, d) => n + d.measured, 0)} elements that directly own painted ` +
+        `text, measured across ${dispositions.length} of 5 flagged screens (from ` +
+        `${dispositions.reduce((n, d) => n + d.candidates, 0)} candidates; ` +
+        `${dispositions.reduce((n, d) => n + d.rejectedNoOwnText, 0)} own no text, ` +
+        `${dispositions.reduce((n, d) => n + d.rejectedHidden, 0)} own text but are never painted); ` +
+        `worst ratio ${Math.min(...dispositions.map((d) => d.worstRatio))}:1; none below 4.5:1; ` +
+        `${notMeasured.length} screen(s) painted no text at all. The candidate set is WIDER than ` +
+        `Commit 4a's, which measured 74 nodes across four screens with a tag-list selector -- see ` +
+        `\`candidateSetCorrection\`. N6 REMAINS OWED: the terminal screen is measured here, but what ` +
+        `is measured mid-campaign is its placeholder, not the outcome axe flagged`,
     );
   });
 
@@ -884,10 +1049,15 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
     if (await visit(page, "Decisions")) {
       const previewButton = page.getByRole("button", { name: "Preview" }).first();
       if (await previewButton.isVisible().catch(() => false)) {
-        await previewButton.click();
-        await page
+        // The waiter is registered BEFORE the click, for the reason given at the same site in
+        // `icon-coverage.spec.ts`. This one already tolerated a miss via `.catch`, so the race cost a
+        // silent 30-second stall rather than a failure -- which is worse, not better: the measurement
+        // continued against a panel that might not have rendered yet.
+        const previewPending = page
           .waitForResponse((r) => r.url().includes("/api/game/preview"), { timeout: 30_000 })
           .catch(() => undefined);
+        await previewButton.click();
+        await previewPending;
         await page.waitForTimeout(600);
         const previewIcons = await page.evaluate(() => {
           const { normalise, ratio, effectiveBg, composite, isVisuallyHidden } = (
