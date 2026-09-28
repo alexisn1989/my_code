@@ -24,7 +24,11 @@ import { DataTable, EmptyNote, Panel, ToneValue } from "../components";
 
 export function ConsequencesPanel({ preview }: { preview: PreviewProjection }) {
   return (
-    <div className="flex flex-col gap-4">
+    // `data-testid` matching the convention `turn-result-view`, `concern-cards` and `meeting-panel`
+    // already set. Gate 4A3 Commit 4a needs to attribute a measured icon to the placement it sits in,
+    // and "an icon on Decisions that is NOT inside the policy-card tabpanel" is an inference where a
+    // named container is a fact.
+    <div data-testid="consequences-panel" className="flex flex-col gap-4">
       <Panel title="Known before resolution" headingLevel={3}>
         <p className="mb-3 text-xs text-parchment-200/60">
           This is an estimate, not a guarantee: it reflects the drafted decision as it stands

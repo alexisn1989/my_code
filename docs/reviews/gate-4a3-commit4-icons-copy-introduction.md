@@ -1,5 +1,23 @@
 # Gate 4A3 Commit 4 — an icon set, clearer copy and an introduction
 
+> **TWO CORRECTIONS FROM COMMIT 4a, APPLIED IN PLACE so no false claim stands here.** Marked rather
+> than silently rewritten, the way C1 and C2 were marked in the Commit 3 record.
+>
+> 1. **Every contrast figure in this document is INFLATED.** The colour probe read alpha only from a
+>    slash-separated component, so legacy `rgba(0, 0, 0, 0)` — what
+>    `getComputedStyle().backgroundColor` returns for a transparent background — parsed as *opaque
+>    black*, and the ancestor walk stopped at the first transparent element. Every ratio was therefore
+>    measured against pure black rather than the real navy surface. Corrected in Commit 4a:
+>    tone **11.84 → 10.18**, direction **9.76 → 8.78**, map legend **9.76 → 8.78**, calibration
+>    **5.65 → 5.57**. **No verdict changed** — all are far above a 3:1 bar — and the corrected figures
+>    are in `gate-4a3-commit4a-icon-coverage.json`. The old numbers are left in the tables below as
+>    the record of what this run measured.
+> 2. **`DeltaText` renders nowhere**, so where this document cites it as a direction-icon placement it
+>    names a context that never paints. Corrected inline below.
+>
+> Commit 4a also closed this commit's stated coverage gap: all **ten** icons are now measured at their
+> own placements, and `negative`, `caution` and `unchanged` are no longer recorded as unreached.
+
 **Hand-written, like `gate-4a3-commit3-fixes.md` and for the same reason.** The machine-readable
 results it cites are generated; this is the record of what was done, what was measured, and what is
 still owed.
@@ -61,17 +79,24 @@ A reader could not previously tell "no valence" from "no movement", or a warning
 
 **`aria-hidden`, which is the opposite of `Portrait`'s choice, deliberately.** A portrait *is* the
 content, so it carries `role="img"` and the person's name. Each icon here sits beside an existing
-`sr-only` word (`ToneValue` renders "positive", `DeltaText` renders "up") or, in the map legend, a
-`<dt>` that names it. Labelling the icon too would make a screen reader announce the meaning twice.
+`sr-only` word (`ToneValue` renders "positive", a policy card's effect chip renders "up" — **not
+`DeltaText`, which renders nowhere; see the banner**) or, in the map legend, a `<dt>` that names it. Labelling the icon too would make a screen reader announce the meaning twice.
 The never-colour-alone triple is unchanged: mark, colour, hidden word.
 
 ### Contrast measured at the icons' OWN placements, not borrowed
 
 A 2px stroke is a graphical object under WCAG 2.2 SC 1.4.11 and needs **3:1**. Commit 3's
 6.24–8.86:1 figures are for the four **tone** tokens on the navy backgrounds tone *text* sits on, and
-they say nothing about the other two groups: direction icons render inside `DeltaText`
-(`text-parchment-200/70`) and the policy cards' effect chips, and the legend icons sit on the
-strategic map's own surface.
+they say nothing about the other two groups: direction icons render in the policy cards' effect chips
+at `text-parchment-200/80`, and the legend icons sit on the strategic map's own surface.
+
+**Corrected by Commit 4a:** this sentence used to add "inside `DeltaText` (`text-parchment-200/70`)"
+as a second direction-icon placement. Nothing renders `DeltaText` — it is exported from
+`components.tsx` with no call site anywhere in `src/`, alongside `RatioBar` (finding S1), and the
+Dashboard concern card renders `concern.delta_text` as plain text while discarding
+`concern.direction`. The `/70` figure therefore described a context that never paints. The effect
+chips are the only direction-icon placement, measured by Commit 4a at **8.78:1**, and
+`a11y.components.test.tsx` now asserts the absence of a call site rather than leaving it as prose.
 
 | group | worst measured | bar |
 |---|---|---|
@@ -150,7 +175,8 @@ An exception that matches nothing **fails**, so a stale or misspelled one cannot
 like a considered decision. The allowlist is printed on every successful run.
 
 **The map legend's pairing needed its own assertions, and they were initially missing.** Unlike
-`ToneValue` and `DeltaText`, the three legend marks carry no `sr-only` word — the `<dt>` *is* the name
+`ToneValue` and `DeltaText` (as components, whether or not anything renders them), the three legend
+marks carry no `sr-only` word — the `<dt>` *is* the name
 and the `<dd>` describes the mark in words. So the pairing that can go wrong there is icon-to-`<dt>`,
 and a star beside "One-way route" would have passed every presence check. Each is now asserted against
 the definition it belongs to (verified by planting exactly that swap, which fails), each is asserted

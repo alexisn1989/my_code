@@ -261,4 +261,41 @@ describe("jsdom axe supplement (NOT the primary evidence)", () => {
       "RatioBar now has a call site, so S1 is user-facing and belongs in the browser baseline too",
     ).toEqual([]);
   });
+
+  /**
+   * I1 — `DeltaText` IS UNRENDERED TOO, and Commit 4's record said otherwise.
+   *
+   * Commit 4's icon docstring and its review record both described the direction icons as rendering
+   * "inside `DeltaText` (`text-parchment-200/70`) and inside the policy cards' effect chips". The
+   * second half is right; the first names a component **nothing renders**. `DeltaText` is exported from
+   * `components.tsx` and has no call site anywhere in `src/` — the Dashboard concern card renders
+   * `concern.delta_text` as plain text and discards `concern.direction` entirely.
+   *
+   * So `DIRECTION_ICON` reaches the DOM through the effect chips ALONE, at `text-parchment-200/80`, and
+   * the `/70` figure Commit 4 quoted for it described a context that never paints. Commit 4a measured
+   * the real one at 8.78:1.
+   *
+   * This joins `RatioBar` as the second exported-but-unrendered component, which is why it is asserted
+   * here rather than left as prose: a claim about what does not exist rots silently.
+   */
+  it("DeltaText is unused, so the effect chips are the only direction-icon placement (I1)", () => {
+    const sources = import.meta.glob("./**/*.{ts,tsx}", {
+      query: "?raw",
+      import: "default",
+      eager: true,
+    }) as Record<string, string>;
+
+    const callSites = Object.entries(sources).filter(
+      ([file, text]) =>
+        !file.includes("a11y.components.test") &&
+        !file.includes("icons.test") &&
+        !file.endsWith("components.tsx") &&
+        /<DeltaText[\s/>]/.test(text),
+    );
+    expect(
+      callSites.map(([file]) => file),
+      "DeltaText now has a call site, so it IS a live direction-icon placement and its own backdrop " +
+        "must be added to EXPECTED_BACKDROP in e2e/contrast-probe.ts and measured",
+    ).toEqual([]);
+  });
 });

@@ -43,11 +43,35 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   CALIBRATION,
   NON_TEXT_CONTRAST_MINIMUM,
+  RATIO_TOLERANCE,
+  SURFACES,
   TEXT_CONTRAST_MINIMUM,
   installColourProbe,
+  offlineRatio,
 } from "./contrast-probe";
 
+/** The probe records a backdrop as `rgb(r,g,b)`, so an authored hex is compared in that spelling. */
+function toRgbString(hex: string): string {
+  const h = hex.replace("#", "");
+  return `rgb(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)})`;
+}
+
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
+
+/** The artifact this run writes, PARAMETERIZED -- and the default is deliberately the existing name.
+ *
+ * `gate-4a3-commit3-verification.json` as committed is the record of what Commit 4's run measured. A
+ * record is not edited to make it look better, so Commit 4a writes its corrected figures to a
+ * DIFFERENT file via `MANDATE_VERIFY_OUT` (see `verify:fixes:commit4a`) and leaves the committed one
+ * byte-identical. This is the same parameter Commit 3 introduced for the accessibility artifact --
+ * which Commit 4 then overwrote anyway, because a parameter only helps if the caller passes a new
+ * value. Hence one script per commit, each baking its own name in.
+ *
+ * NOTE, stated rather than implied: once the probe's alpha parser was fixed (`e2e/contrast-probe.ts`),
+ * NO command reproduces the committed Commit 4 artifact. The code that produced it read every
+ * transparent backdrop as painted pure black, so its figures were inflated. It stands as history, not
+ * as something regenerable. */
+const OUT_NAME = process.env.MANDATE_VERIFY_OUT ?? "gate-4a3-commit3-verification";
 
 const SCREENS = [
   "Dashboard",
@@ -578,23 +602,47 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
 
     expect(dispositions.length, "the needs-review screens must be measurable").toBeGreaterThan(3);
 
-    // THE PROBE IS ITSELF CHECKED, against a figure computed independently of the browser.
+    // THE PROBE IS ITSELF CHECKED, against ONE figure computed independently of the browser.
     //
-    // `text-parchment-200/60` is parchment-200 (#e8dcc0) at 60% over navy-900 (#0f1626), which an
-    // offline WCAG calculation puts at 5.45:1 -- and axe independently reported 4.16:1 for the same
-    // token at 50%, matching that same calculation. If this in-page measurement cannot reproduce the
-    // known figure, its other numbers mean nothing, so this is asserted BEFORE they are trusted.
+    // Commit 4a tightened this from a 5.2-5.7 BAND to a tolerance around a single expected value, and
+    // the reason is that the band was what let a real bug through: it spanned navy-900 (5.45),
+    // navy-950 (5.57) AND the 5.65 that the probe's broken alpha parser produced by treating every
+    // transparent backdrop as painted pure black. A band containing both the truth and the bug cannot
+    // detect the bug, and for two commits it did not.
     const knownToken = allMeasurements.find(
       (m) => m.classes.includes(CALIBRATION.className) && m.ratio > 0,
     );
     expect(knownToken, "a text-parchment-200/60 node must exist to calibrate the probe").toBeDefined();
+    const calibrationExpected = offlineRatio({
+      foreground: "parchment-200",
+      backdrop: "navy-900",
+      alpha: 0.6,
+    });
+    expect(
+      calibrationExpected,
+      "the offline model must reproduce the module's own recorded expectation",
+    ).toBeCloseTo(CALIBRATION.expectedRatio, 2);
     expect(
       knownToken!.ratio,
-      `the probe measured text-parchment-200/60 at ${knownToken!.ratio}:1; an independent calculation ` +
-        `gives 5.45:1 on navy-900 and 5.57:1 on navy-950, so a figure outside that band means the ` +
-        `probe is wrong rather than the application`,
-    ).toBeGreaterThan(CALIBRATION.minRatio);
-    expect(knownToken!.ratio).toBeLessThan(CALIBRATION.maxRatio);
+      `the probe measured ${CALIBRATION.className} at ${knownToken!.ratio}:1 where the offline model ` +
+        `gives ${calibrationExpected}:1 (${CALIBRATION.offlineNote}). A gap beyond ` +
+        `${RATIO_TOLERANCE} means the PROBE is wrong, not the application -- which is exactly what the ` +
+        `black-backdrop parser bug looked like.`,
+    ).toBeCloseTo(calibrationExpected, 1);
+    expect(Math.abs(knownToken!.ratio - calibrationExpected)).toBeLessThanOrEqual(RATIO_TOLERANCE);
+
+    // AND THE BACKDROP ITSELF, asserted against the authored surface rather than accepted.
+    // `.sr-only` aside, every text node measured here sits inside a `Panel` (`bg-navy-900`). Pure
+    // black is not a surface in this palette at all, so this assertion alone would have failed the
+    // parser bug on its first run instead of producing four plausible tables.
+    const foreignBackdrops = [
+      ...new Set(allMeasurements.filter((m) => m.ratio > 0).map((m) => m.bg)),
+    ].filter((bg) => !Object.values(SURFACES).map(toRgbString).includes(bg));
+    expect(
+      foreignBackdrops,
+      "every resolved backdrop must be one of the palette's authored surfaces; a colour outside them " +
+        "(pure black, above all) means the ancestor walk is wrong",
+    ).toEqual([]);
 
     // Nothing may be left UNMEASURED. A colour the probe cannot parse is a hole in the evidence, not a
     // pass -- this is the assertion that would have caught the two earlier false results immediately.
@@ -764,7 +812,15 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
 
     /** The probe is calibrated on the same page before its icon numbers are trusted -- the discipline
      * Commit 3's three false 1.00:1 results earned. Measured on a text node, because the known figure
-     * is a text token's. */
+     * is a text token's.
+     *
+     * IT RETURNS THE BACKDROP TOO, and that is not incidental. A first version of this check compared
+     * against a hard-coded navy-900 expectation and failed at 5.57 -- which turned out to be CORRECT:
+     * the first `text-parchment-200/60` node on the page is the header's own connection line, which
+     * sits on `bg-navy-950`, not inside a `Panel`. The measurement was right and my expectation was
+     * wrong. So the expectation is derived from the backdrop the probe actually resolved, after
+     * asserting that backdrop is an authored surface -- which keeps the check independent without
+     * baking in an assumption about which node gets found. */
     const calibrate = async () =>
       page.evaluate((className: string) => {
         const { normalise, ratio, effectiveBg, composite, isVisuallyHidden } = (
@@ -795,14 +851,18 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
             alpha < 1
               ? composite([parsed[0]!, parsed[1]!, parsed[2]!], bg, alpha)
               : [parsed[0]!, parsed[1]!, parsed[2]!];
-          return Math.round(ratio(fg, bg) * 100) / 100;
+          return {
+            ratio: Math.round(ratio(fg, bg) * 100) / 100,
+            bg: `rgb(${bg[0]},${bg[1]},${bg[2]})`,
+            alpha,
+          };
         }
         return null;
       }, CALIBRATION.className);
 
     const all: Awaited<ReturnType<typeof measureIcons>> = [];
     const perScreen: { screen: string; icons: number; worst: number }[] = [];
-    let calibrated: number | null = null;
+    let calibrated: Awaited<ReturnType<typeof calibrate>> = null;
 
     for (const screen of SCREENS) {
       const icons = await measureIcons(screen);
@@ -906,8 +966,26 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
       `the probe must reproduce ${CALIBRATION.className}'s known ratio before its icon figures are ` +
         `trusted (${CALIBRATION.offlineNote})`,
     ).not.toBeNull();
-    expect(calibrated!).toBeGreaterThan(CALIBRATION.minRatio);
-    expect(calibrated!).toBeLessThan(CALIBRATION.maxRatio);
+    // The backdrop is asserted to be an AUTHORED SURFACE first. Pure black is not one, so this is the
+    // assertion the parser bug would have failed on immediately.
+    const calibrationSurface = Object.entries(SURFACES).find(
+      ([, hex]) => toRgbString(hex) === calibrated!.bg,
+    );
+    expect(
+      calibrationSurface,
+      `the calibration node resolved a backdrop of ${calibrated!.bg}, which is not one of this ` +
+        `palette's authored surfaces (${Object.keys(SURFACES).join(", ")}) -- the ancestor walk is wrong`,
+    ).toBeDefined();
+    const iconCalibrationExpected = offlineRatio({
+      foreground: "parchment-200",
+      backdrop: calibrationSurface![1],
+      alpha: calibrated!.alpha,
+    });
+    expect(
+      Math.abs(calibrated!.ratio - iconCalibrationExpected),
+      `calibration measured ${calibrated!.ratio}:1 on ${calibrationSurface![0]} at alpha ` +
+        `${calibrated!.alpha}, where the offline model gives ${iconCalibrationExpected}:1`,
+    ).toBeLessThanOrEqual(RATIO_TOLERANCE);
 
     // COVERAGE, asserted rather than assumed: all three groups must have been reached. A run that
     // happened to visit no screen rendering a legend icon would otherwise report "all clear" for a
@@ -993,7 +1071,10 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
         "Commit 3's tone-token figures: `stroke=\"currentColor\"` means the stroke colour is the " +
         "element's computed `color`, resolved against the first non-transparent ancestor background " +
         "with the same calibrated probe the N1-N6 measurement uses (`e2e/contrast-probe.ts`).",
-      calibrationRatio: calibrated,
+      calibrationRatio: calibrated?.ratio ?? null,
+      calibrationBackdrop: calibrated?.bg ?? null,
+      calibrationSurface: calibrationSurface?.[0] ?? null,
+      calibrationOfflineExpected: iconCalibrationExpected,
       measured: all.length,
       distinctIcons: [...new Set(all.map((i) => i.icon))].sort(),
       worstByGroup,
@@ -1305,7 +1386,7 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
   test.afterAll(() => {
     mkdirSync(REVIEW_DIR, { recursive: true });
     writeFileSync(
-      path.join(REVIEW_DIR, "gate-4a3-commit3-verification.json"),
+      path.join(REVIEW_DIR, `${OUT_NAME}.json`),
       JSON.stringify(record, null, 2) + "\n",
       "utf-8",
     );

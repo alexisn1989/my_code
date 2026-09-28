@@ -16,9 +16,9 @@
  *
  * WHY `aria-hidden`, WHICH IS THE OPPOSITE OF `Portrait`'S CHOICE. A portrait IS the content, so it
  * carries `role="img"` and the person's name. An icon here sits beside an existing `sr-only` word
- * that already names it — `ToneValue` renders "positive", `DeltaText` renders "up", the map legend's
- * `<dt>` reads "One-way route". Labelling the icon too would make a screen reader announce
- * "positive positive". The never-colour-alone triple is unchanged and still travels together: the
+ * that already names it — `ToneValue` renders "positive", a policy card's effect chip renders "up",
+ * the map legend's `<dt>` reads "One-way route". Labelling the icon too would make a screen reader
+ * announce "positive positive". The never-colour-alone triple is unchanged and still travels together: the
  * mark, the colour, and the visually-hidden word.
  *
  * WHY `currentColor`. The stroke inherits the tone token from the element's own `color`, so an icon
@@ -28,11 +28,19 @@
  * against the effective background.
  *
  * WHY 2px AT 24px, AND WHAT MUST BE MEASURED. A 2px stroke is a graphical object under WCAG 2.2
- * SC 1.4.11 and needs 3:1 against its background. The tone tokens were measured at 6.24–8.86:1 in
- * Commit 3, but the direction icons render inside `DeltaText` and the policy cards' effect chips,
- * and the legend icons sit on the strategic map's own surface — different foregrounds on different
- * backgrounds. Those figures do not transfer, so `verify:fixes` measures all three groups where they
- * actually sit rather than borrowing the tone numbers.
+ * SC 1.4.11 and needs 3:1 against its background, and Commit 3's tone-token figures do not transfer to
+ * the other two groups: the direction icons render in the policy cards' effect chips at
+ * `text-parchment-200/80`, and the legend icons sit on the map legend's own surface. So all ten are
+ * measured where they actually sit — `npm run verify:icons` (Commit 4a) reaches every one of them and
+ * requires each to clear the bar at its own placement.
+ *
+ * ONE CORRECTION TO COMMIT 4'S OWN NOTE HERE, because it named a placement that never paints: this
+ * docstring used to say the direction icons render "inside `DeltaText` and the policy cards' effect
+ * chips". **Nothing renders `DeltaText`** — it is exported from `components.tsx` with no call site
+ * anywhere in `src/`, alongside `RatioBar` (finding S1), and the Dashboard concern card renders
+ * `concern.delta_text` as plain text while discarding `concern.direction`. The effect chips are the
+ * only direction-icon placement, and `a11y.components.test.tsx` now asserts that rather than leaving
+ * it as prose.
  *
  * NO ARITHMETIC. Every number here is a literal SVG coordinate, which is not a computation; there is
  * nothing for `format-boundary.test.ts` to object to and nothing that belongs in `src/format/**`.

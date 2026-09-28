@@ -27,6 +27,9 @@
     "audit:accessibility:verify:commit4": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit4 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit4 node tools/write-accessibility-report.mjs",
     "audit:stress:seated": "playwright test --project=stress-seated",
     "verify:fixes": "playwright test --project=verify",
+    "_comment:verify:fixes:commit4a": "Commit 4a re-measured everything after fixing the colour probe's alpha parser, which had been reading every transparent backdrop as painted pure black and inflating every ratio. It writes a NEW artifact rather than rewriting Commit 4's, which stays byte-identical as the record of what that run measured. One script per commit; see the note beside audit:accessibility:verify.",
+    "verify:fixes:commit4a": "MANDATE_VERIFY_OUT=gate-4a3-commit4a-verification playwright test --project=verify",
+    "verify:icons": "playwright test --project=icon-coverage",
     "test:preflight": "playwright test e2e/preflight.spec.ts"
   },
   "dependencies": {

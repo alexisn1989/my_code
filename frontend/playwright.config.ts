@@ -121,6 +121,15 @@ export default defineConfig({
       testMatch: /verify-commit3-fixes\.spec\.ts/,
       dependencies: ["preflight"],
     },
+    // Commit 4a's ten-icon coverage sweep. Its own project because it SPAWNS ITS OWN SERVER and
+    // RESOLVES A TURN: the shared server below holds one process-wide `GameSession`, so a resolve
+    // here would leak into whatever ran next. The pattern is `stress-seated-cabinet.spec.ts`'s, and
+    // the regex is anchored so the unrelated `stress` project cannot also claim this file.
+    {
+      name: "icon-coverage",
+      testMatch: /icon-coverage\.spec\.ts$/,
+      dependencies: ["preflight"],
+    },
   ],
   webServer: {
     // The production entry point, with explicit paths so the run cannot accidentally read a
