@@ -1,0 +1,1038 @@
+{
+  "axeCoreVersion": "4.13.0",
+  "findings": [],
+  "needsReview": [
+    {
+      "id": "N1",
+      "screen": "Strategic map",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "text[data-theater-label=\"marnil_border\"]",
+        "text[data-theater-label=\"sorrend_plain\"]",
+        "text[data-theater-label=\"valdrun_capital\"]",
+        "text[data-theater-label=\"valdrun_east\"]",
+        "text[data-theater-label=\"valdrun_highlands\"]",
+        "text[y=\"-330\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it is overlapped by another element",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900",
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N2",
+      "screen": "Relationships",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 36,
+      "selectors": [
+        "button[data-leader-option=\"leader_opposition_party\"] > .gap-0\\.5.flex-col.flex > .text-parchment-100",
+        "span[data-leader-question=\"leader_opposition_party\"]",
+        "span[data-leader-refusal=\"leader_opposition_party\"]",
+        "button[data-leader-option=\"leader_opposition_party\"] > .gap-0\\.5.flex-col.flex > .text-parchment-200\\/60.text-xs",
+        "button[data-counterpart-option=\"marnil\"] > .gap-0\\.5.flex-col.flex > .text-parchment-100",
+        "span[data-counterpart-question=\"marnil\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it partially overlaps other elements",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N3",
+      "screen": "Decisions",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 10,
+      "selectors": [
+        "div[aria-label=\"Raise the personal income tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center",
+        "div[aria-label=\"Lower the personal income tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center",
+        "div[aria-label=\"Raise the corporate tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center",
+        "div[aria-label=\"Lower the corporate tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center",
+        "div[aria-label=\"Raise the consumption tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center",
+        "div[aria-label=\"Lower the consumption tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it partially overlaps other elements",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N4",
+      "screen": "Victory / defeat",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        ".gap-3.flex > .py-1:nth-child(2)"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "screen": "Dashboard",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 36,
+      "incomplete": 0,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 44,
+      "incomplete": 0,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "History",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 36,
+      "incomplete": 0,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 44,
+      "incomplete": 0,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "History",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 36,
+      "incomplete": 0,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 44,
+      "incomplete": 0,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "History",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 36,
+      "incomplete": 0,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 44,
+      "incomplete": 0,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "History",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 36,
+      "incomplete": 0,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 45,
+      "incomplete": 0,
+      "inapplicable": 44
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 36,
+      "incomplete": 0,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 44,
+      "incomplete": 0,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 36,
+      "incomplete": 0,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 31,
+      "incomplete": 0,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 44,
+      "incomplete": 0,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 36,
+      "incomplete": 0,
+      "inapplicable": 53
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 30,
+      "incomplete": 0,
+      "inapplicable": 59
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 31,
+      "incomplete": 1,
+      "inapplicable": 58
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 45,
+      "incomplete": 1,
+      "inapplicable": 44
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 0,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 26,
+      "incomplete": 1,
+      "inapplicable": 63
+    },
+    {
+      "screen": "Glossary",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    }
+  ],
+  "unreachable": [],
+  "axeFailures": [],
+  "coverage": [
+    "89 surface(s) audited, each evaluating between 89 and 90 axe rules — so every recorded result rests on rules that demonstrably ran",
+    "Dashboard at desktop-1920x1080: 0 violations with 89 rules evaluated (36 passed, 53 inapplicable)",
+    "Government at desktop-1920x1080: 0 violations with 89 rules evaluated (30 passed, 59 inapplicable)",
+    "Economy at desktop-1920x1080: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Legislature at desktop-1920x1080: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Constitution at desktop-1920x1080: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Relationships at desktop-1920x1080: 0 violations with 89 rules evaluated (31 passed, 58 inapplicable)",
+    "Decisions at desktop-1920x1080: 0 violations with 89 rules evaluated (44 passed, 45 inapplicable)",
+    "Turn result at desktop-1920x1080: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "History at desktop-1920x1080: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Strategic map at desktop-1920x1080: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Victory / defeat at desktop-1920x1080: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Dashboard at laptop-1440x900: 0 violations with 89 rules evaluated (36 passed, 53 inapplicable)",
+    "Government at laptop-1440x900: 0 violations with 89 rules evaluated (30 passed, 59 inapplicable)",
+    "Economy at laptop-1440x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Legislature at laptop-1440x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Constitution at laptop-1440x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Relationships at laptop-1440x900: 0 violations with 89 rules evaluated (31 passed, 58 inapplicable)",
+    "Decisions at laptop-1440x900: 0 violations with 89 rules evaluated (44 passed, 45 inapplicable)",
+    "Turn result at laptop-1440x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "History at laptop-1440x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Strategic map at laptop-1440x900: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Victory / defeat at laptop-1440x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Dashboard at narrow-820x900: 0 violations with 89 rules evaluated (36 passed, 53 inapplicable)",
+    "Government at narrow-820x900: 0 violations with 89 rules evaluated (30 passed, 59 inapplicable)",
+    "Economy at narrow-820x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Legislature at narrow-820x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Constitution at narrow-820x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Relationships at narrow-820x900: 0 violations with 89 rules evaluated (31 passed, 58 inapplicable)",
+    "Decisions at narrow-820x900: 0 violations with 89 rules evaluated (44 passed, 45 inapplicable)",
+    "Turn result at narrow-820x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "History at narrow-820x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Strategic map at narrow-820x900: 0 violations with 89 rules evaluated (32 passed, 57 inapplicable)",
+    "Victory / defeat at narrow-820x900: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Dashboard at mobile-390x844: 0 violations with 89 rules evaluated (36 passed, 53 inapplicable)",
+    "Government at mobile-390x844: 0 violations with 89 rules evaluated (30 passed, 59 inapplicable)",
+    "Economy at mobile-390x844: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Legislature at mobile-390x844: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Constitution at mobile-390x844: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Relationships at mobile-390x844: 0 violations with 89 rules evaluated (31 passed, 58 inapplicable)",
+    "Decisions at mobile-390x844: 0 violations with 89 rules evaluated (44 passed, 45 inapplicable)",
+    "Turn result at mobile-390x844: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "History at mobile-390x844: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Strategic map at mobile-390x844: 0 violations with 89 rules evaluated (32 passed, 57 inapplicable)",
+    "Victory / defeat at mobile-390x844: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Dashboard at reflow-wcag-320x512: 0 violations with 89 rules evaluated (36 passed, 53 inapplicable)",
+    "Government at reflow-wcag-320x512: 0 violations with 89 rules evaluated (30 passed, 59 inapplicable)",
+    "Economy at reflow-wcag-320x512: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Legislature at reflow-wcag-320x512: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Constitution at reflow-wcag-320x512: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Relationships at reflow-wcag-320x512: 0 violations with 89 rules evaluated (31 passed, 58 inapplicable)",
+    "Decisions at reflow-wcag-320x512: 0 violations with 89 rules evaluated (45 passed, 44 inapplicable)",
+    "Turn result at reflow-wcag-320x512: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "History at reflow-wcag-320x512: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Strategic map at reflow-wcag-320x512: 0 violations with 89 rules evaluated (32 passed, 57 inapplicable)",
+    "Victory / defeat at reflow-wcag-320x512: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Dashboard at reflow200-desktop-960x540: 0 violations with 89 rules evaluated (36 passed, 53 inapplicable)",
+    "Government at reflow200-desktop-960x540: 0 violations with 89 rules evaluated (30 passed, 59 inapplicable)",
+    "Economy at reflow200-desktop-960x540: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Legislature at reflow200-desktop-960x540: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Constitution at reflow200-desktop-960x540: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Relationships at reflow200-desktop-960x540: 0 violations with 89 rules evaluated (31 passed, 58 inapplicable)",
+    "Decisions at reflow200-desktop-960x540: 0 violations with 89 rules evaluated (44 passed, 45 inapplicable)",
+    "Turn result at reflow200-desktop-960x540: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "History at reflow200-desktop-960x540: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Strategic map at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Victory / defeat at reflow200-desktop-960x540: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Dashboard at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (36 passed, 53 inapplicable)",
+    "Government at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (30 passed, 59 inapplicable)",
+    "Economy at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Legislature at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Constitution at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Relationships at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (31 passed, 58 inapplicable)",
+    "Decisions at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (44 passed, 45 inapplicable)",
+    "Turn result at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "History at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Strategic map at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (32 passed, 57 inapplicable)",
+    "Victory / defeat at reflow200-laptop-720x450: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Dashboard at reflow200-mobile-195x422: 0 violations with 89 rules evaluated (36 passed, 53 inapplicable)",
+    "Government at reflow200-mobile-195x422: 0 violations with 89 rules evaluated (30 passed, 59 inapplicable)",
+    "Economy at reflow200-mobile-195x422: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Legislature at reflow200-mobile-195x422: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Constitution at reflow200-mobile-195x422: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Relationships at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (31 passed, 58 inapplicable)",
+    "Decisions at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (45 passed, 44 inapplicable)",
+    "Turn result at reflow200-mobile-195x422: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "History at reflow200-mobile-195x422: 0 violations with 89 rules evaluated (26 passed, 63 inapplicable)",
+    "Strategic map at reflow200-mobile-195x422: 0 violations with 89 rules evaluated (32 passed, 57 inapplicable)",
+    "Victory / defeat at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (26 passed, 63 inapplicable)",
+    "Glossary at laptop-1440x900: 0 violations with 89 rules evaluated (32 passed, 57 inapplicable)"
+  ],
+  "viewports": [
+    {
+      "name": "desktop-1920x1080",
+      "conformanceWidth": true
+    },
+    {
+      "name": "laptop-1440x900",
+      "conformanceWidth": true
+    },
+    {
+      "name": "narrow-820x900",
+      "conformanceWidth": true
+    },
+    {
+      "name": "mobile-390x844",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow-wcag-320x512",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow200-desktop-960x540",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow200-laptop-720x450",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow200-mobile-195x422",
+      "conformanceWidth": false
+    }
+  ]
+}

@@ -44,8 +44,13 @@ export function TurnResultView({
           <EmptyNote>No drivers were recorded for this turn.</EmptyNote>
         ) : (
           <ul className="flex list-disc flex-col gap-2 pl-5 text-sm">
-            {result.drivers.map((driver) => (
-              <li key={driver.reason_id}>
+            {/* Keyed by POSITION as well as reason id: one turn routinely emits the same reason
+                several times (a relationship reaction per bloc), and a reason-id key alone gave
+                React duplicate keys -- found by the Gate 4A3 Commit 5b walkthrough, whose real
+                budget turn produced five of each. The list is static per render, so the
+                position is a stable identity here. */}
+            {result.drivers.map((driver, index) => (
+              <li key={`${index}:${driver.reason_id}`}>
                 {/* Composed from the driver's OWN stored params where this build has wording for
                     the reason, and from the generic `label` otherwise -- see `driverSentence`.
                     A cabinet change carries its people in `params`, and a label that said only

@@ -35,6 +35,13 @@
     "verify:icons": "playwright test --project=icon-coverage",
     "verify:icons:commit5": "MANDATE_ICONS_OUT=gate-4a3-commit5-icon-coverage playwright test --project=icon-coverage",
     "verify:terminal": "playwright test --project=terminal-coverage",
+    "_comment:commit5b": "Commit 5b fixed T1, so the terminal spec's pinned reason label moved from the identifier `term_limit_exit` to the authored `Term limit exit`. It re-runs under its own artifact name so Commit 5's record is never rewritten. verify:campaigns plays T21 and the new-features campaign entirely through the interface.",
+    "verify:terminal:commit5b": "MANDATE_TERMINAL_OUT=gate-4a3-commit5b-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns": "playwright test --project=campaigns",
+    "_comment:commit5b:rerun": "The T21 walkthrough found two frontend defects (a duplicated terminal heading on Turn result, and duplicate React keys in the drivers list), so Commit 5b's shipped JS differs from Commit 5's and every browser gate is re-run under Commit 5b's own artifact names. The CSS is byte-identical by content hash.",
+    "verify:fixes:commit5b": "MANDATE_VERIFY_OUT=gate-4a3-commit5b-verification playwright test --project=verify",
+    "verify:icons:commit5b": "MANDATE_ICONS_OUT=gate-4a3-commit5b-icon-coverage playwright test --project=icon-coverage",
+    "audit:accessibility:verify:commit5b": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit5b playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit5b node tools/write-accessibility-report.mjs",
     "test:preflight": "playwright test e2e/preflight.spec.ts"
   },
   "dependencies": {

@@ -1,0 +1,135 @@
+{
+  "gate": "4A3",
+  "commit": "5b",
+  "method": "Both campaigns are played through the interface only; the API is read to check what the interface did and is never used to resolve a turn. Every response waiter is registered before the click that causes it.",
+  "sameOrigin": {
+    "requests": 78,
+    "distinctPaths": [
+      "/",
+      "/api/game/decision-options",
+      "/api/game/history",
+      "/api/game/history/1",
+      "/api/game/new",
+      "/api/game/preview",
+      "/api/game/resolve",
+      "/api/game/state",
+      "/api/saves",
+      "/api/scenarios",
+      "/assets/index-BuvaGxx7.js",
+      "/assets/index-epqjWpf0.css"
+    ],
+    "offOrigin": []
+  },
+  "t21": {
+    "scenario": "decree_state",
+    "seed": 77,
+    "steps": [
+      "turn 1: invested 85 in Reform Opposition Main; capital 798",
+      "turn 2: invested 118; capital 1000",
+      "turn 3: previewed the five-axis amendment with 300 influence: 67 of 100, 67 required, would pass",
+      "turn 3: resolved",
+      "concluded after 11 resolves: Removed from office: electoral defeat, turn 11."
+    ],
+    "resolvesThroughInterface": 11,
+    "terminal": {
+      "bucket": "defeat",
+      "reason_label": "Electoral defeat",
+      "turn": 11,
+      "headline": "Removed from office: electoral defeat, turn 11."
+    },
+    "t1LeaksByScreen": {
+      "Victory / defeat": [],
+      "Dashboard": [],
+      "Decisions": [],
+      "Turn result": []
+    },
+    "notDirectlyVisible": "The opposition bloc's relationship figures (-5,385 after turn 1, -2,774 after turn 2) are not carried by any projection, so they are proved by what they cause: the 67-of-100 tally and the turn-11 election."
+  },
+  "newFeatures": {
+    "scenario": "deficit_demo",
+    "steps": [
+      "Decisions: staged the budget (personal income 1225 bps, health 220,000,000)",
+      "Government: staged bela_ronsard as chief of staff",
+      "Relationships: staged the bargain, the assistance request and the promise",
+      "Decisions: previewed -- cabinet 147, bargain 113, release 0, assistance estimate 26250000, 51 of 51 required, 260 of 300 committed",
+      "Turn result: drivers tax_rate_changed, spending_category_changed, labor_market_resolved, resource_extraction_resolved, production_summary, tax_bases_derived, deficit_financed_with_new_borrowing, legitimacy_resolved, political_capital_resolved, coup_risk_assessed, legislative_vote_resolved, political_capital_ledger_resolved, enacted_policy_relationship_reaction, bloc_relationship_resolved, enacted_policy_relationship_reaction, bloc_relationship_resolved, enacted_policy_relationship_reaction, bloc_relationship_resolved, enacted_policy_relationship_reaction, bloc_relationship_resolved, enacted_policy_relationship_reaction, bloc_relationship_resolved, cabinet_appointed, legislative_bargain_accepted, foreign_assistance_granted, promise_made, turn_resolved",
+      "History: the turn's drivers re-read identically",
+      "Relationships lists the promise as active; Government shows the new chief of staff"
+    ],
+    "preview": {
+      "cabinet_capital": 147,
+      "legislative_bargain_capital": 113,
+      "promise_release_capital": 0,
+      "foreign_assistance_estimate": 26250000,
+      "committed_capital": 260,
+      "opening_capital": 300,
+      "affordable": true,
+      "would_pass": true,
+      "lowerChamber": {
+        "chamber": "lower",
+        "total_seats": 100,
+        "supporting_seats": 51,
+        "required_seats": 51,
+        "carries": true
+      }
+    },
+    "driverReasonIds": [
+      "tax_rate_changed",
+      "spending_category_changed",
+      "labor_market_resolved",
+      "resource_extraction_resolved",
+      "production_summary",
+      "tax_bases_derived",
+      "deficit_financed_with_new_borrowing",
+      "legitimacy_resolved",
+      "political_capital_resolved",
+      "coup_risk_assessed",
+      "legislative_vote_resolved",
+      "political_capital_ledger_resolved",
+      "enacted_policy_relationship_reaction",
+      "bloc_relationship_resolved",
+      "enacted_policy_relationship_reaction",
+      "bloc_relationship_resolved",
+      "enacted_policy_relationship_reaction",
+      "bloc_relationship_resolved",
+      "enacted_policy_relationship_reaction",
+      "bloc_relationship_resolved",
+      "enacted_policy_relationship_reaction",
+      "bloc_relationship_resolved",
+      "cabinet_appointed",
+      "legislative_bargain_accepted",
+      "foreign_assistance_granted",
+      "promise_made",
+      "turn_resolved"
+    ],
+    "historyIdenticalToLive": true,
+    "t2ReasonIdCodeElements": {
+      "count": 27,
+      "painted": 27,
+      "sample": [
+        {
+          "text": "tax_rate_changed",
+          "painted": true
+        },
+        {
+          "text": "spending_category_changed",
+          "painted": true
+        },
+        {
+          "text": "labor_market_resolved",
+          "painted": true
+        },
+        {
+          "text": "resource_extraction_resolved",
+          "painted": true
+        },
+        {
+          "text": "production_summary",
+          "painted": true
+        }
+      ],
+      "disposition": "Recorded, not fixed: an engine identifier rendered beside each driver sentence. Same class as T1; owner to be assigned in the Commit 6 closeout."
+    },
+    "f11": "closed -- the first automated test that plays Government and Relationships against a live server"
+  }
+}

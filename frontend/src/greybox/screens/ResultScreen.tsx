@@ -39,8 +39,13 @@ export function ResultScreen({ navigate }: ScreenProps) {
         Turn result
       </h2>
       <TurnResultView result={liveResult.data} context="live" />
+      {/* On the concluding turn `TurnResultView` already renders the "This turn ended the campaign"
+          panel with the headline. This used to wrap the button in a SECOND Panel with the identical
+          title, so the page carried two adjacent headings saying the same thing -- found by the
+          Gate 4A3 Commit 5b T21 walkthrough, the first test to reach this branch in a browser. The
+          action is now a plain button row, exactly like the branch below. */}
       {liveResult.data.terminal ? (
-        <Panel title="This turn ended the campaign">
+        <div className="flex gap-3">
           <button
             type="button"
             onClick={() => navigate("terminal")}
@@ -48,7 +53,7 @@ export function ResultScreen({ navigate }: ScreenProps) {
           >
             Review the outcome
           </button>
-        </Panel>
+        </div>
       ) : (
         <div className="flex gap-3">
           <button

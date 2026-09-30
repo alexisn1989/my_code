@@ -25,6 +25,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.api.outcome_labels import outcome_reason_text
 from app.core.money import BPS_DENOMINATOR, format_money
 from app.core.politics import RELATIONSHIP_INVESTMENT_CAP
 from app.simulation.cabinet import (
@@ -1521,16 +1522,15 @@ def _terminal_summary(politics: PoliticalState) -> TerminalSummary | None:
         return None
     victory = outcome.bucket is OutcomeBucket.VICTORY
     reason = outcome.victory_reason if victory else outcome.removal_reason
-    reason_label = reason.value if reason is not None else "unknown"
-    spoken = reason_label.replace("_", " ")
+    text = outcome_reason_text(reason)
     return TerminalSummary(
         bucket="victory" if victory else "defeat",
-        reason_label=reason_label,
+        reason_label=text.label,
         turn=outcome.turn,
         headline=(
-            f"Victory: {spoken}, turn {outcome.turn}."
+            f"Victory: {text.phrase}, turn {outcome.turn}."
             if victory
-            else f"Removed from office: {spoken}, turn {outcome.turn}."
+            else f"Removed from office: {text.phrase}, turn {outcome.turn}."
         ),
     )
 

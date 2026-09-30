@@ -34,6 +34,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from app.api.outcome_labels import outcome_reason_text
 from app.core.errors import MandateError
 from app.saves import read_save_file, write_save_atomic
 from app.simulation.history import GameSave, validate_history
@@ -283,5 +284,5 @@ class SaveRepository:
         if outcome is None:
             return None
         reason = outcome.victory_reason or outcome.removal_reason
-        label = reason.value.replace("_", " ") if reason is not None else "unknown"
+        label = outcome_reason_text(reason).phrase
         return f"{outcome.bucket.value.capitalize()} - {label}, turn {outcome.turn}"

@@ -48,6 +48,7 @@ import {
   surfaceNameOf,
   type TextOwnerMeasurement,
 } from "./contrast-probe";
+import { findIdentifierLeaks } from "./player-text";
 
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
 const SCENARIO_ROOT = path.join(process.cwd(), "..", "data", "scenarios");
@@ -88,9 +89,14 @@ const SCENARIO_ID = "tiny_valid";
 const EXPECTED_TERMINAL = {
   turn: 32,
   bucket: "defeat",
-  reasonLabel: "term_limit_exit",
+  // Commit 5b (T1): the label is the server's AUTHORED wording, no longer the engine identifier
+  // `term_limit_exit` Commit 5 recorded. The headline is deliberately unchanged, byte for byte.
+  reasonLabel: "Term limit exit",
   headline: "Removed from office: term limit exit, turn 32.",
 } as const;
+
+/** The engine value behind `reasonLabel`. It must reach the server's state and never the page. */
+const EXPECTED_TERMINAL_IDENTIFIER = "term_limit_exit";
 
 /** A hard stop, so a scenario that stops concluding fails instead of resolving for ever. */
 const RESOLVE_CAP = 60;
@@ -398,6 +404,11 @@ test.describe("Gate 4A3 Commit 5 — the concluded terminal screen", () => {
       }
       const scan = await measureTextOwners(page);
       if (screen === "Victory / defeat") terminalScreenScan = scan;
+      // T1 (fixed in Commit 5b): no screen in the concluded state shows a player the engine's
+      // identifier for why the campaign ended. Checked on EVERY screen, because the headline also
+      // reaches Dashboard and Decisions, and the save list reaches Title.
+      const leaks = await findIdentifierLeaks(page, [EXPECTED_TERMINAL_IDENTIFIER]);
+      expect(leaks, `${screen} must not render the raw reason identifier`).toEqual([]);
       if (scan.measured.length === 0) {
         perScreen.push({
           screen,

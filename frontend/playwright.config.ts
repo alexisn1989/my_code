@@ -140,6 +140,12 @@ export default defineConfig({
       testMatch: /terminal-coverage\.spec\.ts$/,
       dependencies: ["preflight"],
     },
+    // Gate 4A3 Commit 5b: both campaigns played through the interface, on their own server.
+    {
+      name: "campaigns",
+      testMatch: /campaigns\.spec\.ts$/,
+      dependencies: ["preflight"],
+    },
   ],
   webServer: {
     // The production entry point, with explicit paths so the run cannot accidentally read a
