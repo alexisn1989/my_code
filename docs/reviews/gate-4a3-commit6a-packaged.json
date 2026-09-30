@@ -1,0 +1,26 @@
+{
+  "against": "the installed release archive (see gate-4a3-commit6-release.json)",
+  "requests": 13,
+  "distinctPaths": [
+    "/",
+    "/api/game/decision-options",
+    "/api/game/new",
+    "/api/game/preview",
+    "/api/game/resolve",
+    "/api/game/state",
+    "/api/saves",
+    "/api/scenarios",
+    "/assets/index-CjkzPwt-.js",
+    "/assets/index-DjFAPDAb.css"
+  ],
+  "offOrigin": [],
+  "feedback": {
+    "navigationMs": 7.899999999965075,
+    "previewMs": 2.8999999999650754,
+    "confirmMs": 3.800000000046566,
+    "worst": 7.899999999965075,
+    "targetMs": 100,
+    "stopMs": 200
+  },
+  "method": "performance.now() in the page, with a MutationObserver armed on document.body before the click; the first mutation after which the control's own feedback condition holds ends the timing."
+}

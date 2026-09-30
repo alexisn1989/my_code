@@ -48,13 +48,13 @@ SHIPPED_SCENARIOS = {"decree_state", "deficit_demo", "tiny_valid"}
 STARTUP_TIMEOUT_S = 60.0
 
 
-BUDGETS_OUT = "gate-4a3-commit6-budgets"
-
-#: The ONE budget breach the user ruled on (Gate 4A3 Commit 6, "Record breach, ship rest"):
+#: The ONE budget FAILURE the user WAIVED (Gate 4A3 Commit 6, ruling "Record breach, ship rest"):
 #: `GET /api/saves` replays `validate_history` on every save file on every listing, so it passes the
-#: 200 ms read-projection STOP. It is recorded verbatim, not fixed and not reclassified. The exception
-#: is exactly that narrow: any OTHER breached budget, or any other endpoint over the read STOP, fails.
+#: 200 ms read-projection STOP. That budget FAILED; the ruling waives the failure, it does not pass
+#: the budget. It is recorded as FAILED_WAIVED, not fixed and not reclassified. The waiver is exactly
+#: that narrow: any OTHER breached budget, or any other endpoint over the read STOP, fails the run.
 RULED_BREACH_ENDPOINT = "/api/saves"
+BUDGET_WAIVER = "docs/reviews/gate-4a3-commit6-budget-waiver.md"
 
 
 class VerifyError(RuntimeError):
@@ -235,6 +235,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("archive", type=Path)
     parser.add_argument("--out", default="gate-4a3-commit6-release")
+    # Each output name is a parameter so a re-run can never overwrite committed evidence: a later
+    # commit passes its own names rather than reusing these defaults.
+    parser.add_argument("--budgets-out", default="gate-4a3-commit6-budgets")
+    parser.add_argument("--packaged-out", default="gate-4a3-commit6-packaged")
     parser.add_argument(
         "--skip-browser", action="store_true", help="for drafting only; never for the gate"
     )
@@ -313,7 +317,11 @@ def main(argv: list[str] | None = None) -> int:
                 browser = subprocess.run(
                     ["npx", "playwright", "test", "--project=packaged", "--reporter=line"],
                     cwd=REPO_ROOT / "frontend",
-                    env={**os.environ, "MANDATE_PACKAGED_BASE_URL": f"http://127.0.0.1:{port}"},
+                    env={
+                        **os.environ,
+                        "MANDATE_PACKAGED_BASE_URL": f"http://127.0.0.1:{port}",
+                        "MANDATE_PACKAGED_OUT": args.packaged_out,
+                    },
                     capture_output=True,
                     text=True,
                 )
@@ -330,21 +338,25 @@ def main(argv: list[str] | None = None) -> int:
                         "--base-url",
                         f"http://127.0.0.1:{port}",
                         "--out",
-                        BUDGETS_OUT,
+                        args.budgets_out,
                     ],
                     capture_output=True,
                     text=True,
                 )
                 measured = json.loads(
-                    (REPO_ROOT / "docs" / "reviews" / f"{BUDGETS_OUT}.json").read_text()
+                    (REPO_ROOT / "docs" / "reviews" / f"{args.budgets_out}.json").read_text()
                 )
+                waived = budgets.returncode != 0 and ruled_breach_only(measured)
                 record["budgets"] = {
                     "exit": budgets.returncode,
                     "report": budgets.stdout.strip().splitlines(),
                     "breaches": measured["breaches"],
-                    "knownBreach": ruled_breach_only(measured),
+                    # PASSED only when no budget breached. A waived failure is still a failure.
+                    "verdict": "FAILED_WAIVED" if waived else "PASSED",
+                    "waivedEndpoint": RULED_BREACH_ENDPOINT if waived else None,
+                    "waiver": BUDGET_WAIVER if waived else None,
                 }
-                if budgets.returncode != 0 and not ruled_breach_only(measured):
+                if budgets.returncode != 0 and not waived:
                     raise VerifyError(
                         "a budget passed its STOP threshold:\n" + budgets.stdout + budgets.stderr
                     )

@@ -1,0 +1,110 @@
+Gate 4A3 Commits 5b and 6 -- browser rerun evidence, retained from the run logs.
+ANSI colour codes stripped; lines otherwise verbatim. Playwright's own WebServer request lines are omitted from the tails.
+
+=== Commit 5b -- npm run verify:campaigns
+exit: 0   source: harness task output bn36bqi6h: 'verify:campaigns EXIT=0  7 passed (28.6s)', echoed from $? per script
+    ✓  3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (135ms)
+    ✓  4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (17ms)
+    ✓  5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (225ms)
+    ✓  6 [campaigns] › e2e/campaigns.spec.ts:233:3 › Gate 4A3 Commit 5b: campaigns through the interface › T21: decree_state, 85 / 118 / 300, to the lost turn-11 election (17.4s)
+    ✓  7 [campaigns] › e2e/campaigns.spec.ts:364:3 › Gate 4A3 Commit 5b: campaigns through the interface › new features: appoint, bargain, request aid and promise, then read it back (5.4s)
+    7 passed (28.6s)
+
+=== Commit 5b -- npm run verify:terminal:commit5b  [MANDATE_TERMINAL_OUT=gate-4a3-commit5b-terminal]
+exit: 0   source: harness task output bn36bqi6h: 'verify:terminal:commit5b EXIT=0  6 passed (43.6s)', echoed from $? per script
+    ✓  2 [preflight] › e2e/preflight.spec.ts:33:3 › §9.2 browser provenance › the pinned Playwright expects exactly the cached revision (6ms)
+    ✓  3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (110ms)
+    ✓  4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (4ms)
+    ✓  5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (232ms)
+    ✓  6 [terminal-coverage] › e2e/terminal-coverage.spec.ts:245:3 › Gate 4A3 Commit 5 — the concluded terminal screen › a concluded campaign: N6 contrast measured, terminal reflow asserted at 320px (37.3s)
+    6 passed (43.6s)
+
+=== Commit 5b -- npm run verify:fixes:commit5b  [MANDATE_VERIFY_OUT=gate-4a3-commit5b-verification]
+exit: 0   source: harness task output bn36bqi6h: 'verify:fixes:commit5b EXIT=0  13 passed (50.7s)', echoed from $? per script
+    ✓   9 [verify] › e2e/verify-commit3-fixes.spec.ts:372:3 › Gate 4A3 Commit 3 — fix verification › F4: under the browser's reduced-motion setting nothing animates (3.0s)
+    ✓  10 [verify] › e2e/verify-commit3-fixes.spec.ts:462:3 › Gate 4A3 Commit 3 — fix verification › N1-N6: the six needs-review results, measured and dispositioned (3.3s)
+    ✓  11 [verify] › e2e/verify-commit3-fixes.spec.ts:893:3 › Gate 4A3 Commit 3 — fix verification › Commit 4 icons: every mark clears 3:1 AT ITS OWN PLACEMENT, in all three groups (6.0s)
+    ✓  12 [verify] › e2e/verify-commit3-fixes.spec.ts:1263:3 › Gate 4A3 Commit 3 — fix verification › Commit 4 introduction: real Tab traversal, in both directions, and a predictable landing (1.1s)
+    ✓  13 [verify] › e2e/verify-commit3-fixes.spec.ts:1433:3 › Gate 4A3 Commit 3 — fix verification › Commit 4 copy: no build vocabulary reaches a player IN THE AUDITED STATES (5.2s)
+    13 passed (50.7s)
+
+=== Commit 5b -- npm run verify:icons:commit5b  [MANDATE_ICONS_OUT=gate-4a3-commit5b-icon-coverage]
+exit: 0   source: harness task output bn36bqi6h: 'verify:icons:commit5b EXIT=0  7 passed (13.1s)', echoed from $? per script
+    ✓  3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (125ms)
+    ✓  4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (13ms)
+    ✓  5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (218ms)
+    ✓  6 [icon-coverage] › e2e/icon-coverage.spec.ts:231:3 › Gate 4A3 Commit 4a — ten-icon coverage › the colour probe parses every spelling a browser can hand it (139ms)
+    ✓  7 [icon-coverage] › e2e/icon-coverage.spec.ts:278:3 › Gate 4A3 Commit 4a — ten-icon coverage › every one of the ten icons is measured at its own placement, at or above 3:1 (8.0s)
+    7 passed (13.1s)
+
+=== Commit 5b -- npm run audit:stress:seated
+exit: 0   source: harness task output bn36bqi6h: 'audit:stress:seated EXIT=0  6 passed (7.0s)', echoed from $? per script
+    ✓  2 [preflight] › e2e/preflight.spec.ts:33:3 › §9.2 browser provenance › the pinned Playwright expects exactly the cached revision (7ms)
+    ✓  3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (115ms)
+    ✓  4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (13ms)
+    ✓  5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (205ms)
+    ✓  6 [stress-seated] › e2e/stress-seated-cabinet.spec.ts:77:1 › Government under a SEATED cabinet with maximum-length holder names (3.1s)
+    6 passed (7.0s)
+
+=== Commit 5b -- npm run audit:accessibility:verify:commit5b  [MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit5b]
+exit: 0   source: session transcript line 415: 'a11y EXIT=0', echoed from $? immediately after the npm run
+    ✓  3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (131ms)
+    ✓  4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (15ms)
+    ✓  5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (200ms)
+    ✓  6 [accessibility] › e2e/accessibility.spec.ts:282:3 › Gate 4A3 accessibility baseline › audit every screen at every viewport case with axe-core (1.7m)
+    6 passed (1.8m)
+  accessibility report written: 0 findings (0 WCAG AA, 0 best-practice), 4 needs-review, 89 surfaces
+
+=== Commit 6 -- npm run verify:campaigns:commit6  [MANDATE_CAMPAIGNS_OUT=gate-4a3-commit6-campaigns]
+exit: 0   source: harness task output bxpjj729q: 'verify:campaigns:commit6 EXIT=0  7 passed (24.1s)', echoed from $? per script
+    ✓  3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (86ms)
+    ✓  4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (12ms)
+    ✓  5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (233ms)
+    ✓  6 [campaigns] › e2e/campaigns.spec.ts:233:3 › Gate 4A3 Commit 5b: campaigns through the interface › T21: decree_state, 85 / 118 / 300, to the lost turn-11 election (15.9s)
+    ✓  7 [campaigns] › e2e/campaigns.spec.ts:364:3 › Gate 4A3 Commit 5b: campaigns through the interface › new features: appoint, bargain, request aid and promise, then read it back (4.8s)
+    7 passed (24.1s)
+
+=== Commit 6 -- npm run verify:terminal:commit6  [MANDATE_TERMINAL_OUT=gate-4a3-commit6-terminal]
+exit: 0   source: harness task output bxpjj729q: 'verify:terminal:commit6 EXIT=0  6 passed (33.6s)', echoed from $? per script
+    ✓  2 [preflight] › e2e/preflight.spec.ts:33:3 › §9.2 browser provenance › the pinned Playwright expects exactly the cached revision (4ms)
+    ✓  3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (106ms)
+    ✓  4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (10ms)
+    ✓  5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (189ms)
+    ✓  6 [terminal-coverage] › e2e/terminal-coverage.spec.ts:245:3 › Gate 4A3 Commit 5 — the concluded terminal screen › a concluded campaign: N6 contrast measured, terminal reflow asserted at 320px (29.7s)
+    6 passed (33.6s)
+
+=== Commit 6 -- npm run verify:fixes:commit6  [MANDATE_VERIFY_OUT=gate-4a3-commit6-verification]
+exit: 0   source: harness task output bxpjj729q: 'verify:fixes:commit6 EXIT=0  13 passed (42.8s)', echoed from $? per script
+    ✓   9 [verify] › e2e/verify-commit3-fixes.spec.ts:372:3 › Gate 4A3 Commit 3 — fix verification › F4: under the browser's reduced-motion setting nothing animates (2.6s)
+    ✓  10 [verify] › e2e/verify-commit3-fixes.spec.ts:462:3 › Gate 4A3 Commit 3 — fix verification › N1-N6: the six needs-review results, measured and dispositioned (3.0s)
+    ✓  11 [verify] › e2e/verify-commit3-fixes.spec.ts:893:3 › Gate 4A3 Commit 3 — fix verification › Commit 4 icons: every mark clears 3:1 AT ITS OWN PLACEMENT, in all three groups (5.6s)
+    ✓  12 [verify] › e2e/verify-commit3-fixes.spec.ts:1263:3 › Gate 4A3 Commit 3 — fix verification › Commit 4 introduction: real Tab traversal, in both directions, and a predictable landing (629ms)
+    ✓  13 [verify] › e2e/verify-commit3-fixes.spec.ts:1433:3 › Gate 4A3 Commit 3 — fix verification › Commit 4 copy: no build vocabulary reaches a player IN THE AUDITED STATES (4.9s)
+    13 passed (42.8s)
+
+=== Commit 6 -- npm run verify:icons:commit6  [MANDATE_ICONS_OUT=gate-4a3-commit6-icon-coverage]
+exit: 0   source: harness task output bxpjj729q: 'verify:icons:commit6 EXIT=0  7 passed (10.9s)', echoed from $? per script
+    ✓  3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (77ms)
+    ✓  4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (2ms)
+    ✓  5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (158ms)
+    ✓  6 [icon-coverage] › e2e/icon-coverage.spec.ts:231:3 › Gate 4A3 Commit 4a — ten-icon coverage › the colour probe parses every spelling a browser can hand it (102ms)
+    ✓  7 [icon-coverage] › e2e/icon-coverage.spec.ts:278:3 › Gate 4A3 Commit 4a — ten-icon coverage › every one of the ten icons is measured at its own placement, at or above 3:1 (7.4s)
+    7 passed (10.9s)
+
+=== Commit 6 -- npm run audit:stress:seated
+exit: 0   source: harness task output bxpjj729q: 'audit:stress:seated EXIT=0  6 passed (6.3s)', echoed from $? per script
+    ✓  2 [preflight] › e2e/preflight.spec.ts:33:3 › §9.2 browser provenance › the pinned Playwright expects exactly the cached revision (5ms)
+    ✓  3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (103ms)
+    ✓  4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (9ms)
+    ✓  5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (149ms)
+    ✓  6 [stress-seated] › e2e/stress-seated-cabinet.spec.ts:77:1 › Government under a SEATED cabinet with maximum-length holder names (3.0s)
+    6 passed (6.3s)
+
+=== Commit 6 -- npm run audit:accessibility:verify:commit6  [MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit6]
+exit: 0   source: harness task output bxpjj729q: 'audit:accessibility:verify:commit6 EXIT=0  6 passed (1.4m) accessibility report written: 0 findings (0 WCAG AA, 0 best-practice), 4 needs-review, 89 surfaces', echoed from $? per script
+    ✓  3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (81ms)
+    ✓  4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (8ms)
+    ✓  5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (146ms)
+    ✓  6 [accessibility] › e2e/accessibility.spec.ts:282:3 › Gate 4A3 accessibility baseline › audit every screen at every viewport case with axe-core (1.3m)
+    6 passed (1.4m)
+  accessibility report written: 0 findings (0 WCAG AA, 0 best-practice), 4 needs-review, 89 surfaces

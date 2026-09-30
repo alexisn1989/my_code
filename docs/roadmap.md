@@ -769,7 +769,7 @@ than assumed in advance.
   defects (raw enum values, a literal `"null"` render, indistinguishable "Details" buttons,
   `ToneValue`'s missing glyph) found and fixed alongside it.
 - **Gate 4A3 (frozen-plan 4A5) — visual and functional review, polish and packaging — internally
-  complete; externally pending; one budget breach recorded.** The mandate numbers this gate 4A3;
+  complete; externally pending; one budget FAILED and waived by user ruling.** The mandate numbers this gate 4A3;
   the frozen plan calls it 4A5, and its own "4A3" was folded into 4A2 above. Frozen as the ninth plan
   in [`docs/plans/phase-4a-gate-4a3-visual-and-functional-review-plan.md`](plans/phase-4a-gate-4a3-visual-and-functional-review-plan.md)
   (`e51cb48d`), then landed as nine commits, each with its record in `docs/reviews/`:
@@ -786,9 +786,11 @@ than assumed in advance.
   **Internally complete** means every automated gate is green and the playtest is prepared
   (`docs/playtest/`). **Externally pending** means the frozen plan's section 22 playtest — five
   strangers, at least three of whom must voluntarily want another turn — has not been run; nothing
-  stronger may be claimed until it has. **One budget is breached and recorded, by the user's
-  ruling:** `GET /api/saves` passes its 200 ms STOP (worst 245-314 ms across runs) because it replays
-  `validate_history` on every save on every listing; the fix is its own follow-up decision. Also
+  stronger may be claimed until it has. **One budget FAILED and is waived by user ruling**
+  ([`gate-4a3-commit6-budget-waiver.md`](reviews/gate-4a3-commit6-budget-waiver.md), Commit 6a):
+  `GET /api/saves` exceeds its 200 ms STOP (worst 245-314 ms across runs) because it replays
+  `validate_history` on every save on every listing. The waiver lets the rest ship; it does not pass
+  the budget, and the fix is its own follow-up decision. Also
   still owed: **D1** (`Portrait`'s frame colour), **T2** (the `reason_id` shown beside each driver),
   and the three divergences carried from the characters slice.
 

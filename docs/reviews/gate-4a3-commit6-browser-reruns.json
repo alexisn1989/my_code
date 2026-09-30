@@ -1,0 +1,151 @@
+{
+  "purpose": "Exit-code and disposition evidence for every browser gate re-run under Commit 5b's and Commit 6's own artifact names. Each artifact carries exactly one disposition: byte-identical to its predecessor, measurements unchanged with bytes differing for a stated reason, or reproduced byte-for-byte in place.",
+  "method": "Exit codes captured as $? directly after each npm run (never a pipeline's status, PD-2); summary lines are Playwright's own; byte identity checked with cmp; field-level differences listed by a recursive JSON comparison.",
+  "runs": [
+    {
+      "commit": "5b",
+      "script": "verify:campaigns",
+      "artifactEnv": null,
+      "exit": 0,
+      "exitSource": "harness task output bn36bqi6h: 'verify:campaigns EXIT=0  7 passed (28.6s)', echoed from $? per script",
+      "summary": "7 passed (28.6s)",
+      "reportLine": null,
+      "artifact": "gate-4a3-commit5b-campaigns.json",
+      "comparedWith": null,
+      "disposition": "first measurement; no prior artifact to compare"
+    },
+    {
+      "commit": "5b",
+      "script": "verify:terminal:commit5b",
+      "artifactEnv": "MANDATE_TERMINAL_OUT=gate-4a3-commit5b-terminal",
+      "exit": 0,
+      "exitSource": "harness task output bn36bqi6h: 'verify:terminal:commit5b EXIT=0  6 passed (43.6s)', echoed from $? per script",
+      "summary": "6 passed (43.6s)",
+      "reportLine": null,
+      "artifact": "gate-4a3-commit5b-terminal.json",
+      "comparedWith": "gate-4a3-commit5-terminal.json",
+      "disposition": "contrast and reflow figures unchanged; bytes differ in exactly 4 fields, all the rendered outcome reason text, which moved from 'term_limit_exit' to 'Term limit exit' by the intended T1 fix - campaign.terminal.reason_label, coverage[2], n6.perScreen[7].worstOn, n6.terminalOutcomeNodes[2].text"
+    },
+    {
+      "commit": "5b",
+      "script": "verify:fixes:commit5b",
+      "artifactEnv": "MANDATE_VERIFY_OUT=gate-4a3-commit5b-verification",
+      "exit": 0,
+      "exitSource": "harness task output bn36bqi6h: 'verify:fixes:commit5b EXIT=0  13 passed (50.7s)', echoed from $? per script",
+      "summary": "13 passed (50.7s)",
+      "reportLine": null,
+      "artifact": "gate-4a3-commit5b-verification.json",
+      "comparedWith": "gate-4a3-commit5-verification.json",
+      "disposition": "byte-identical to gate-4a3-commit5-verification.json (cmp, at commit time)"
+    },
+    {
+      "commit": "5b",
+      "script": "verify:icons:commit5b",
+      "artifactEnv": "MANDATE_ICONS_OUT=gate-4a3-commit5b-icon-coverage",
+      "exit": 0,
+      "exitSource": "harness task output bn36bqi6h: 'verify:icons:commit5b EXIT=0  7 passed (13.1s)', echoed from $? per script",
+      "summary": "7 passed (13.1s)",
+      "reportLine": null,
+      "artifact": "gate-4a3-commit5b-icon-coverage.json",
+      "comparedWith": "gate-4a3-commit4a-icon-coverage.json",
+      "disposition": "byte-identical to gate-4a3-commit4a-icon-coverage.json (cmp, at commit time)"
+    },
+    {
+      "commit": "5b",
+      "script": "audit:stress:seated",
+      "artifactEnv": null,
+      "exit": 0,
+      "exitSource": "harness task output bn36bqi6h: 'audit:stress:seated EXIT=0  6 passed (7.0s)', echoed from $? per script",
+      "summary": "6 passed (7.0s)",
+      "reportLine": null,
+      "artifact": "gate-4a3-stress-seated-cabinet.json",
+      "comparedWith": "gate-4a3-stress-seated-cabinet.json",
+      "disposition": "reproduced byte-for-byte in place (the committed blob, last changed at b909032, is unchanged)"
+    },
+    {
+      "commit": "5b",
+      "script": "audit:accessibility:verify:commit5b",
+      "artifactEnv": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit5b",
+      "exit": 0,
+      "exitSource": "session transcript line 415: 'a11y EXIT=0', echoed from $? immediately after the npm run",
+      "summary": "6 passed (1.8m)",
+      "reportLine": "accessibility report written: 0 findings (0 WCAG AA, 0 best-practice), 4 needs-review, 89 surfaces",
+      "artifact": "gate-4a3-accessibility-after-commit5b.{json,md}",
+      "comparedWith": "gate-4a3-accessibility-after-commit5.{json,md}",
+      "disposition": "byte-identical to gate-4a3-accessibility-after-commit5.{json,md} (cmp, at commit time)"
+    },
+    {
+      "commit": "6",
+      "script": "verify:campaigns:commit6",
+      "artifactEnv": "MANDATE_CAMPAIGNS_OUT=gate-4a3-commit6-campaigns",
+      "exit": 0,
+      "exitSource": "harness task output bxpjj729q: 'verify:campaigns:commit6 EXIT=0  7 passed (24.1s)', echoed from $? per script",
+      "summary": "7 passed (24.1s)",
+      "reportLine": null,
+      "artifact": "gate-4a3-commit6-campaigns.json",
+      "comparedWith": "gate-4a3-commit5b-campaigns.json",
+      "disposition": "measurements unchanged; bytes differ: exactly 2 fields, sameOrigin.distinctPaths[10] and [11], the built asset filenames (/assets/index-BuvaGxx7.js -> index-CjkzPwt-.js, /assets/index-epqjWpf0.css -> index-DjFAPDAb.css). The CSS changed in Commit 6; the JS bytes did not, but Vite's chunk hash includes the imported CSS"
+    },
+    {
+      "commit": "6",
+      "script": "verify:terminal:commit6",
+      "artifactEnv": "MANDATE_TERMINAL_OUT=gate-4a3-commit6-terminal",
+      "exit": 0,
+      "exitSource": "harness task output bxpjj729q: 'verify:terminal:commit6 EXIT=0  6 passed (33.6s)', echoed from $? per script",
+      "summary": "6 passed (33.6s)",
+      "reportLine": null,
+      "artifact": "gate-4a3-commit6-terminal.json",
+      "comparedWith": "gate-4a3-commit5b-terminal.json",
+      "disposition": "byte-identical to gate-4a3-commit5b-terminal.json (cmp, at commit time)"
+    },
+    {
+      "commit": "6",
+      "script": "verify:fixes:commit6",
+      "artifactEnv": "MANDATE_VERIFY_OUT=gate-4a3-commit6-verification",
+      "exit": 0,
+      "exitSource": "harness task output bxpjj729q: 'verify:fixes:commit6 EXIT=0  13 passed (42.8s)', echoed from $? per script",
+      "summary": "13 passed (42.8s)",
+      "reportLine": null,
+      "artifact": "gate-4a3-commit6-verification.json",
+      "comparedWith": "gate-4a3-commit5b-verification.json",
+      "disposition": "byte-identical to gate-4a3-commit5b-verification.json (cmp, at commit time)"
+    },
+    {
+      "commit": "6",
+      "script": "verify:icons:commit6",
+      "artifactEnv": "MANDATE_ICONS_OUT=gate-4a3-commit6-icon-coverage",
+      "exit": 0,
+      "exitSource": "harness task output bxpjj729q: 'verify:icons:commit6 EXIT=0  7 passed (10.9s)', echoed from $? per script",
+      "summary": "7 passed (10.9s)",
+      "reportLine": null,
+      "artifact": "gate-4a3-commit6-icon-coverage.json",
+      "comparedWith": "gate-4a3-commit5b-icon-coverage.json",
+      "disposition": "byte-identical to gate-4a3-commit5b-icon-coverage.json (cmp, at commit time)"
+    },
+    {
+      "commit": "6",
+      "script": "audit:stress:seated",
+      "artifactEnv": null,
+      "exit": 0,
+      "exitSource": "harness task output bxpjj729q: 'audit:stress:seated EXIT=0  6 passed (6.3s)', echoed from $? per script",
+      "summary": "6 passed (6.3s)",
+      "reportLine": null,
+      "artifact": "gate-4a3-stress-seated-cabinet.json",
+      "comparedWith": "gate-4a3-stress-seated-cabinet.json",
+      "disposition": "reproduced byte-for-byte in place (the committed blob, last changed at b909032, is unchanged)"
+    },
+    {
+      "commit": "6",
+      "script": "audit:accessibility:verify:commit6",
+      "artifactEnv": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit6",
+      "exit": 0,
+      "exitSource": "harness task output bxpjj729q: 'audit:accessibility:verify:commit6 EXIT=0  6 passed (1.4m) accessibility report written: 0 findings (0 WCAG AA, 0 best-practice), 4 needs-review, 89 surfaces', echoed from $? per script",
+      "summary": "6 passed (1.4m)",
+      "reportLine": "accessibility report written: 0 findings (0 WCAG AA, 0 best-practice), 4 needs-review, 89 surfaces",
+      "artifact": "gate-4a3-accessibility-after-commit6.{json,md}",
+      "comparedWith": "gate-4a3-accessibility-after-commit5b.{json,md}",
+      "disposition": "byte-identical to gate-4a3-accessibility-after-commit5b.{json,md} (cmp, at commit time)"
+    }
+  ],
+  "allExitZero": true
+}
