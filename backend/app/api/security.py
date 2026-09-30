@@ -30,12 +30,17 @@ from starlette.types import ASGIApp
 from .errors import problem_response
 
 #: Verbs that can change server state. `GET`/`HEAD` are exempt from the
-#: Content-Type and Origin rules because they carry no body and cannot mutate.
+#: Content-Type rule because they carry no body and cannot mutate. They are NOT
+#: exempt from the Origin rule: `dispatch` checks Origin on every method, so a
+#: hostile page cannot even read state (proved against a running server by
+#: `tests/test_live_server.py`).
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 #: Headers a reverse proxy would set. There is no proxy here, so a request
 #: carrying one is either confused or hostile; either way it is ignored, never
-#: preferred over the real `Host`.
+#: preferred over the real `Host`. Nothing in `dispatch` reads them; this tuple
+#: is what `tests/test_live_server.py` iterates, so every header named here is
+#: proved ignored by a running server and the list cannot drift from behaviour.
 UNTRUSTED_FORWARDING_HEADERS = ("x-forwarded-host", "x-forwarded-proto", "forwarded")
 
 JSON_CONTENT_TYPE = "application/json"

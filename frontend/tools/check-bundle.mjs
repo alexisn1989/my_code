@@ -20,8 +20,19 @@
 // if that literal shows up anywhere in the shipped JS, which is exactly the
 // condition "no dev-only raw-report viewer reached production" describes.
 
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+//
+// Gate 4A3 Commit 6 extends this, because it is the one check that reads the SHIPPED files:
+//   * no sourcemap ships: no `*.map` file anywhere under dist/, and no `sourceMappingURL` comment in
+//     any built .js or .css (the source-level config already has none; this is the artifact half);
+//   * no `import.meta.env` survives into built JS -- frozen plan section 24's "verified, not assumed";
+//   * dist/index.html references only same-origin paths: no `http:`, `https:` or protocol-relative
+//     `//` in any src or href, so the page can make no request to a CDN or third party;
+//   * THE BUNDLE BUDGET, section 5's one row written as a ceiling: the initial JS, gzipped at level 9,
+//     must be at most 250 KiB. Its threshold equals its target, with no 2x headroom.
+
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { gzipSync } from "node:zlib";
 
 export const DEV_RAW_REPORT_SENTINEL = "dev-raw-report-viewer";
 
@@ -51,8 +62,53 @@ for (const name of jsFiles) {
   }
 }
 
-if (found) {
+const distDir = join(distAssetsDir, "..");
+const problems = [];
+
+function walk(dir) {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? walk(path) : [path];
+  });
+}
+
+for (const path of walk(distDir)) {
+  const rel = relative(distDir, path);
+  if (rel.endsWith(".map")) problems.push(`a sourcemap ships: ${rel}`);
+  if (rel.endsWith(".js") || rel.endsWith(".css")) {
+    const text = readFileSync(path, "utf8");
+    if (text.includes("sourceMappingURL")) problems.push(`a sourceMappingURL comment ships in ${rel}`);
+    if (rel.endsWith(".js") && text.includes("import.meta.env")) {
+      problems.push(`import.meta.env survives in ${rel}`);
+    }
+  }
+}
+
+const indexHtml = readFileSync(join(distDir, "index.html"), "utf8");
+for (const match of indexHtml.matchAll(/\b(?:src|href)\s*=\s*["']([^"']*)["']/gi)) {
+  const url = match[1];
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(url)) problems.push(`index.html references a non-same-origin URL: ${url}`);
+}
+
+// The initial JS is what index.html loads as a module entry.
+const BUNDLE_BUDGET_BYTES = 250 * 1024;
+const moduleEntries = [...indexHtml.matchAll(/<script[^>]*type=["']module["'][^>]*src=["']\/?([^"']+)["']/gi)].map((m) => m[1]);
+if (moduleEntries.length === 0) problems.push("index.html loads no module script -- cannot measure the bundle budget");
+let initialGzip = 0;
+for (const entry of moduleEntries) {
+  initialGzip += gzipSync(readFileSync(join(distDir, entry)), { level: 9 }).length;
+}
+if (initialGzip > BUNDLE_BUDGET_BYTES) {
+  problems.push(`initial JS is ${(initialGzip / 1024).toFixed(2)} KiB gzipped, over the 250 KiB budget`);
+}
+
+for (const problem of problems) console.error(`check-bundle: ${problem}`);
+if (found || problems.length > 0) {
   process.exit(1);
 }
 
-console.log(`check-bundle: OK -- no dev-raw-report sentinel in ${jsFiles.length} built JS file(s).`);
+console.log(
+  `check-bundle: OK -- no dev-raw-report sentinel in ${jsFiles.length} built JS file(s); no sourcemap, ` +
+    `no import.meta.env, index.html same-origin; initial JS ${(initialGzip / 1024).toFixed(2)} KiB gzip ` +
+    `(level 9) of a 250 KiB budget, ${((BUNDLE_BUDGET_BYTES - initialGzip) / 1024).toFixed(2)} KiB headroom.`,
+);

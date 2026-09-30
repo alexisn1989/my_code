@@ -48,7 +48,9 @@ mandate = "app.cli:main"
 mandate-gui = "app.api.main:run"
 
 [build-system]
-requires = ["hatchling"]
+# Pinned (Gate 4A3 Commit 6): the release archive is reproducible only if the wheel is, and a
+# different hatchling can write different wheel bytes from the same sources.
+requires = ["hatchling==1.32.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

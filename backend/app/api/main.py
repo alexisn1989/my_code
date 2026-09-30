@@ -167,9 +167,12 @@ class FrontendBuildMissingError(RuntimeError):
 
 def require_frontend_build(frontend_dist: Path) -> None:
     if not (frontend_dist / "index.html").is_file():
+        # The flag comes FIRST. From a release archive the build already exists and only the path
+        # is wrong; a source-tree command would send a player off to install Node for nothing.
         raise FrontendBuildMissingError(
-            f"frontend/dist/index.html not found at {frontend_dist}. "
-            "Build it first: cd frontend && npm ci && npm run build"
+            f"frontend build not found at {frontend_dist}: pass --frontend-dist with the directory "
+            "that contains index.html (from a source checkout, build it with: "
+            "cd frontend && npm ci && npm run build)"
         )
 
 
@@ -180,10 +183,21 @@ def probe_port_available(host: str, port: int) -> None:
     this call and uvicorn's own bind. It exists to turn the COMMON case (a
     previous `mandate-gui` still running) into a clear message instead of a
     traceback from deep inside uvicorn's startup.
+
+    **`SO_REUSEADDR` matches uvicorn's own bind on POSIX** (Gate 4A3 Commit 6).
+    The probe used to set it to 0, which on Linux and macOS makes a TIME_WAIT
+    socket count as "in use": after a clean Ctrl+C, any connection the server
+    had closed itself -- the normal case with a browser open -- blocked a
+    restart on the same port for up to a minute with "Stop the other
+    process", when no other process existed. With it set to 1 a live LISTEN
+    socket still refuses the bind, so a real collision is still reported.
+    Windows keeps 0: there `SO_REUSEADDR` lets a second socket bind over a
+    live listener, which would defeat the check entirely.
     """
     probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+        reuse = 0 if os.name == "nt" else 1
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, reuse)
         probe.bind((host, port))
     except OSError as error:
         raise PortInUseError(

@@ -4,11 +4,21 @@
  *
  * Tailwind v4 is configured primarily through CSS: `@theme` below extends
  * Tailwind's default token set with MANDATE's palette (e.g. `bg-navy-900`,
- * `text-parchment-100`) instead of a JS/TS theme object. See
- * tailwind.config.ts for the (secondary, tooling-facing) content globs.
+ * `text-parchment-100`) instead of a JS/TS theme object.
+ *
+ * WHICH FILES TAILWIND SCANS is set here too, and only here (Gate 4A3 Commit 6). Tailwind emits a
+ * utility for every word in a scanned file that happens to be a class name, and its automatic source
+ * detection scanned e2e specs, tools, JSON and test files along with the app -- so words in comments
+ * and test assertions shipped as dead rules, including two default-palette colours check:palette
+ * forbids. `source(none)` turns detection off; the `@source` lines name exactly what ships: the app's
+ * TypeScript and index.html, never a test file. `npm run check:css-sources` keeps it that way.
+ * tailwind.config.ts is NOT loaded by this build; it exists for editor tooling only.
  */
 
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "../**/*.{ts,tsx}";
+@source "../../index.html";
+@source not "../**/*.test.{ts,tsx}";
 
 @theme {
   --color-navy-950: #0a0f1a;

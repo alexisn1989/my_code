@@ -146,6 +146,12 @@ export default defineConfig({
       testMatch: /campaigns\.spec\.ts$/,
       dependencies: ["preflight"],
     },
+    // Gate 4A3 Commit 6: one turn against the INSTALLED release archive. Run by
+    // scripts/verify_release.py, which sets MANDATE_PACKAGED_BASE_URL; skipped otherwise.
+    {
+      name: "packaged",
+      testMatch: /packaged-instance\.spec\.ts$/,
+    },
   ],
   webServer: {
     // The production entry point, with explicit paths so the run cannot accidentally read a

@@ -752,13 +752,14 @@ than assumed in advance.
   own TS5 install rather than adding a dependency) structurally enforces that no arithmetic exists
   outside `src/format/`. The frozen plan's per-gate names below (4A3, 4A4) are therefore already
   done, folded into this one push -- they are NOT the same "Gate 4A3" the mandate itself points to
-  next (visual and functional review, then final art/polish/packaging), which has not started.
+  next (visual and functional review, then final art/polish/packaging), which is the "Gate 4A3
+  (frozen-plan 4A5)" entry below.
 - ~~Gate 4A3 — Decision workspace and turn resolution — not started.~~ Folded into Gate 4A2 above.
 - ~~Gate 4A4 — Results, explanations, history, terminal screens — not started.~~ Folded into Gate
   4A2 above.
 - **Gate 4A3A — policy cards and consequences — complete.** A separately-mandated follow-up,
-  distinct from the frozen plan's "Gate 4A3" name above (which stays not-started: visual/functional
-  review, then final art/polish/packaging). Replaces the Decisions screen's raw-editor-only flow
+  distinct from the frozen plan's "Gate 4A3" name above (the visual/functional review, polish and
+  packaging gate, recorded as "Gate 4A3 (frozen-plan 4A5)" below). Replaces the Decisions screen's raw-editor-only flow
   with a server-authored policy-card catalog (`backend/app/api/policy_cards.py`, ADR 0015) as the
   default UI: a two-level card browser (`frontend/src/greybox/policy/PolicyCardGrid.tsx`), route
   preservation on card switch (R5), and a three-honest-groups consequences panel
@@ -767,6 +768,29 @@ than assumed in advance.
   power-user functionality was removed. See ADR 0015 for the full architecture and the presentation
   defects (raw enum values, a literal `"null"` render, indistinguishable "Details" buttons,
   `ToneValue`'s missing glyph) found and fixed alongside it.
+- **Gate 4A3 (frozen-plan 4A5) — visual and functional review, polish and packaging — internally
+  complete; externally pending; one budget breach recorded.** The mandate numbers this gate 4A3;
+  the frozen plan calls it 4A5, and its own "4A3" was folded into 4A2 above. Frozen as the ninth plan
+  in [`docs/plans/phase-4a-gate-4a3-visual-and-functional-review-plan.md`](plans/phase-4a-gate-4a3-visual-and-functional-review-plan.md)
+  (`e51cb48d`), then landed as nine commits, each with its record in `docs/reviews/`:
+  1 `9660b248` real-browser baseline (Playwright on the pre-installed Chromium) ·
+  1a `903060dd` per-screen stress evidence · 2 `c0f4671c` axe accessibility baseline ·
+  3 `b9090327` every visual and accessibility finding fixed (0 axe violations in the audited
+  states, 320px reflow clean) · 4 `b1b12f6e` stroke-only icon set, copy pass, introduction ·
+  4a `16f35cb6` all ten icons measured, and the colour probe's black-backdrop bug fixed ·
+  5 `5e61b945` the concluded terminal screen measured (N6, terminal reflow) ·
+  5b `abcc9a9b` T21 and the new-features campaign played entirely through the interface (F11
+  closed), T1 fixed · 6 — Tailwind scans shipped source only, the live-server security and F12
+  tests, and a reproducible release archive verified on a clean path
+  (`scripts/build_release.py`, `scripts/verify_release.py`).
+  **Internally complete** means every automated gate is green and the playtest is prepared
+  (`docs/playtest/`). **Externally pending** means the frozen plan's section 22 playtest — five
+  strangers, at least three of whom must voluntarily want another turn — has not been run; nothing
+  stronger may be claimed until it has. **One budget is breached and recorded, by the user's
+  ruling:** `GET /api/saves` passes its 200 ms STOP (worst 245-314 ms across runs) because it replays
+  `validate_history` on every save on every listing; the fix is its own follow-up decision. Also
+  still owed: **D1** (`Portrait`'s frame colour), **T2** (the `reason_id` shown beside each driver),
+  and the three divergences carried from the characters slice.
 
 ## Characters, cabinet appointments and leader negotiations — **complete**
 

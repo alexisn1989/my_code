@@ -10,6 +10,7 @@ assertions -- not a running server -- prove the worker/bind rules.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -237,6 +238,30 @@ def test_probe_detects_a_bound_port() -> None:
         holder.close()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX TIME_WAIT semantics")
+def test_probe_ignores_time_wait_left_by_a_server_closed_connection() -> None:
+    """Gate 4A3 Commit 6: the regression test for a restart refused after a clean shutdown.
+
+    A server that closes a connection itself leaves that socket in TIME_WAIT on its own port. The
+    probe used to bind with SO_REUSEADDR=0, which counts TIME_WAIT as "in use" on POSIX, so a
+    restart right after Ctrl+C was told to "stop the other process" when none existed."""
+    import socket
+
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    port = listener.getsockname()[1]
+    client = socket.create_connection(("127.0.0.1", port))
+    accepted, _ = listener.accept()
+    accepted.close()  # the SERVER side closes first -> TIME_WAIT on the server's port
+    client.recv(1)
+    client.close()
+    listener.close()
+
+    probe_port_available("127.0.0.1", port)  # must not raise
+
+
 def test_probe_succeeds_on_a_free_port() -> None:
     import socket
 
@@ -267,6 +292,16 @@ def test_run_exits_cleanly_on_a_taken_port(tmp_path: Path, monkeypatch: pytest.M
 def test_require_frontend_build_names_the_exact_fix(tmp_path: Path) -> None:
     with pytest.raises(FrontendBuildMissingError, match="npm ci && npm run build"):
         require_frontend_build(tmp_path / "does-not-exist")
+
+
+def test_require_frontend_build_names_the_flag_first(tmp_path: Path) -> None:
+    """From a release archive the build exists and only the path is wrong, so the flag is the fix
+    that applies everywhere; the source-tree command is the parenthetical."""
+    with pytest.raises(FrontendBuildMissingError) as excinfo:
+        require_frontend_build(tmp_path / "does-not-exist")
+    message = str(excinfo.value)
+    assert "--frontend-dist" in message
+    assert message.index("--frontend-dist") < message.index("npm ci")
 
 
 def test_require_frontend_build_passes_when_index_html_exists(tmp_path: Path) -> None:

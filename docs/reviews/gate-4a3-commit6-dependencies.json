@@ -1,0 +1,169 @@
+{
+  "python": {
+    "source": "uv export --frozen --no-dev --extra gui --no-emit-project (the archive's requirements.txt)",
+    "packages": [
+      {
+        "name": "annotated-doc",
+        "version": "0.0.5",
+        "marker": null
+      },
+      {
+        "name": "annotated-types",
+        "version": "0.8.0",
+        "marker": null
+      },
+      {
+        "name": "anyio",
+        "version": "4.14.2",
+        "marker": null
+      },
+      {
+        "name": "click",
+        "version": "8.4.2",
+        "marker": null
+      },
+      {
+        "name": "colorama",
+        "version": "0.4.6",
+        "marker": "sys_platform == 'win32'"
+      },
+      {
+        "name": "fastapi",
+        "version": "0.141.1",
+        "marker": null
+      },
+      {
+        "name": "h11",
+        "version": "0.16.0",
+        "marker": null
+      },
+      {
+        "name": "httptools",
+        "version": "0.8.0",
+        "marker": null
+      },
+      {
+        "name": "idna",
+        "version": "3.18",
+        "marker": null
+      },
+      {
+        "name": "pydantic",
+        "version": "2.13.4",
+        "marker": null
+      },
+      {
+        "name": "pydantic-core",
+        "version": "2.46.4",
+        "marker": null
+      },
+      {
+        "name": "python-dotenv",
+        "version": "1.2.2",
+        "marker": null
+      },
+      {
+        "name": "pyyaml",
+        "version": "6.0.3",
+        "marker": null
+      },
+      {
+        "name": "starlette",
+        "version": "1.3.1",
+        "marker": null
+      },
+      {
+        "name": "typing-extensions",
+        "version": "4.16.0",
+        "marker": null
+      },
+      {
+        "name": "typing-inspection",
+        "version": "0.4.2",
+        "marker": null
+      },
+      {
+        "name": "uvicorn",
+        "version": "0.52.1",
+        "marker": null
+      },
+      {
+        "name": "uvloop",
+        "version": "0.22.1",
+        "marker": "platform_python_implementation != 'PyPy' and sys_platform != 'cygwin' and sys_platform != 'win32'"
+      },
+      {
+        "name": "watchfiles",
+        "version": "1.2.0",
+        "marker": null
+      },
+      {
+        "name": "websockets",
+        "version": "17.0.1",
+        "marker": null
+      }
+    ],
+    "count": 20,
+    "hashLines": 204,
+    "everyLinePinnedWithHash": true
+  },
+  "spaRuntime": {
+    "source": "frontend/package-lock.json, packages not marked dev",
+    "packages": [
+      {
+        "name": "@tanstack/query-core",
+        "version": "5.101.4"
+      },
+      {
+        "name": "@tanstack/react-query",
+        "version": "5.101.4"
+      },
+      {
+        "name": "react",
+        "version": "19.2.8"
+      },
+      {
+        "name": "react-dom",
+        "version": "19.2.8"
+      },
+      {
+        "name": "scheduler",
+        "version": "0.27.0"
+      },
+      {
+        "name": "zustand",
+        "version": "5.0.15"
+      }
+    ],
+    "count": 6
+  },
+  "integrity": {
+    "uv lock --check": "clean",
+    "npm ls --all": "exit 0",
+    "npm ci --dry-run": "exit 0"
+  },
+  "advisories": {
+    "npm audit --omit=dev": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "npm audit (all)": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "pip-audit 2.10.1 -r requirements.txt --require-hashes": {
+      "packages": 19,
+      "vulnerabilities": 0
+    }
+  },
+  "FE-1": "RESOLVED. The frozen plan recorded one high, dev-only nanoid advisory (GHSA-2v37-7h3g-55p8) via vite -> postcss. The lockfile now resolves nanoid 3.3.18 there and npm audit reports 0 advisories of any severity; it was never in the shipped closure.",
+  "rangesInPackageJson": "The ^ ranges in frontend/package.json are not a shipping risk: npm ci installs exactly the lockfile and the SPA ships bundled, so the ranges govern only a future npm install. Recorded, not churned."
+}
