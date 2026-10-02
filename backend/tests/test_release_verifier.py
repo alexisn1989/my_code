@@ -1,7 +1,9 @@
-"""The release verifier's evidence guards (Gate 4A3 Commit 6b).
+"""The release verifier's evidence guards (Gate 4A3 Commits 6b and 6c).
 
-`scripts/verify_release.py` is a standalone script, loaded here by path. These tests pin the three
-guards Commit 6b added after an audit of 6a:
+`scripts/verify_release.py` is a standalone script, loaded here by path. These tests pin the guards
+Commit 6b added after an audit of 6a, and Commit 6c's changes: the `/api/saves` waiver is ended (any
+breach now fails, through the real budget step), and a failed reservation or a failed final write
+leaves no placeholder behind.
 
 * a budget report is accepted only if THIS run wrote it (its own path, its own `runId`) and it agrees
   with the measurement's exit status -- so a stale report carrying the waived `/api/saves` breach can
@@ -19,9 +21,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
@@ -76,7 +80,7 @@ def test_a_stale_breach_report_cannot_stand_in_for_a_measurement_that_wrote_noth
     an earlier run sits where 6a used to look. 6a read it and recorded FAILED_WAIVED; now the run's
     own path is empty, and that is refused."""
     stale = _write(tmp_path / "stale-budgets.json", _report(None, ["read_projection_ms"]))
-    assert vr.ruled_breach_only(json.loads(stale.read_text())), "the stale report must be tempting"
+    assert json.loads(stale.read_text())["breaches"] == ["read_projection_ms"], "a tempting bait"
     with pytest.raises(vr.VerifyError, match="wrote no report: exit 1"):
         vr.read_fresh_budgets(1, tmp_path / "run" / "budgets.json", "this-run")
 
@@ -111,10 +115,25 @@ def test_any_other_exit_status_is_refused(tmp_path: Path) -> None:
         vr.read_fresh_budgets(2, path, "r")
 
 
-def test_a_fresh_waived_report_is_accepted_and_is_exactly_the_ruled_breach(tmp_path: Path) -> None:
+def test_a_fresh_breach_report_is_read_but_never_passes(tmp_path: Path) -> None:
+    """Commit 6c ended the waiver: the fresh /api/saves breach that 6a/6b recorded as FAILED_WAIVED
+    is now a failed run."""
     path = _write(tmp_path / "budgets.json", _report("r", ["read_projection_ms"]))
     measured = vr.read_fresh_budgets(1, path, "r")
-    assert vr.ruled_breach_only(measured)
+    with pytest.raises(vr.VerifyError, match="passed its STOP threshold"):
+        vr.budget_verdict(1, measured)
+
+
+def test_only_a_clean_measurement_passes() -> None:
+    assert vr.budget_verdict(0, {"breaches": []}) == "PASSED"
+    for breaches in (
+        ["read_projection_ms"],
+        ["new_game_ms"],
+        ["new_game_ms", "read_projection_ms"],
+    ):
+        with pytest.raises(vr.VerifyError):
+            vr.budget_verdict(1, {"breaches": breaches})
+    assert not hasattr(vr, "ruled_breach_only"), "the waiver path is gone"
 
 
 def test_a_fresh_clean_report_is_accepted(tmp_path: Path) -> None:
@@ -263,3 +282,90 @@ def test_a_failed_run_removes_exactly_its_own_placeholders(
         )
     assert sorted(p.name for p in tmp_path.iterdir()) == ["unrelated.json"]
     assert (tmp_path / "unrelated.json").read_text() == "keep\n"
+
+
+# ------------------------------------------------------------------ Commit 6c: wiring and cleanup
+
+
+def _fake_measurement(report: dict[str, object] | None, returncode: int) -> Any:
+    """A stand-in for `subprocess.run` that writes `report` (with the run's own id) to --out-path."""
+
+    def runner(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        out_path = Path(command[command.index("--out-path") + 1])
+        run_id = command[command.index("--run-id") + 1]
+        if report is not None:
+            out_path.write_text(json.dumps({**report, "runId": run_id}))
+        return subprocess.CompletedProcess(command, returncode, stdout="STOP\n", stderr="")
+
+    return runner
+
+
+def test_a_fresh_saves_breach_through_the_real_budget_step_leaves_no_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Wiring, not just `budget_verdict`: `main` runs, `verify` reaches the REAL
+    `measure_budget_step`, the measurement writes a FRESH report with this run's id carrying the
+    /api/saves breach and exits 1 -- and the run fails with none of its three outputs left."""
+    reviews = tmp_path / "reviews"
+    reviews.mkdir()
+    monkeypatch.setattr(vr, "REVIEWS_DIR", reviews)
+    runner = _fake_measurement(_report(None, ["read_projection_ms"]), 1)
+
+    def verify_through_the_budget_step(archive: Path) -> tuple[dict[str, object], str, str]:
+        work = tmp_path / "work"
+        work.mkdir()
+        budgets, text = vr.measure_budget_step(8420, work, "run-6c", runner=runner)
+        return {"budgets": budgets}, text, "{}"
+
+    monkeypatch.setattr(vr, "verify", verify_through_the_budget_step)
+    with pytest.raises(vr.VerifyError, match="passed its STOP threshold"):
+        vr.main(["a.tar.gz", "--out", "release", "--budgets-out", "budgets", "--packaged-out", "p"])
+    assert list(reviews.iterdir()) == []
+
+
+def test_the_real_budget_step_passes_a_clean_fresh_report(tmp_path: Path) -> None:
+    runner = _fake_measurement(_report(None, [], saves_worst=150.0), 0)
+    record, text = vr.measure_budget_step(8420, tmp_path, "run-6c", runner=runner)
+    assert record["verdict"] == "PASSED"
+    assert json.loads(text)["runId"] == "run-6c"
+
+
+def test_a_reservation_failing_for_another_reason_strands_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    names = [tmp_path / "r.json", tmp_path / "b.json", tmp_path / "p.json"]
+    real_open = Path.open
+
+    def failing_open(self: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+        if self == names[1] and mode == "x":
+            raise PermissionError(13, "Permission denied", str(self))
+        return real_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", failing_open)
+    with pytest.raises(vr.VerifyError, match=r"could not reserve .*b\.json"):
+        vr.reserve(names)
+    assert not names[0].exists(), "the first placeholder must be released"
+    assert not names[2].exists(), "the third must never have been created"
+
+
+@pytest.mark.parametrize("failing_write", [2, 3])
+def test_a_failed_final_write_releases_all_three_reservations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failing_write: int
+) -> None:
+    monkeypatch.setattr(vr, "REVIEWS_DIR", tmp_path)
+    (tmp_path / "unrelated.json").write_text("keep\n")
+    monkeypatch.setattr(vr, "verify", lambda archive: ({"ok": True}, "{}", "{}"))
+    writes = {"n": 0}
+    real_write = Path.write_text
+
+    def failing_write_text(self: Path, data: str, *args: Any, **kwargs: Any) -> int:
+        writes["n"] += 1
+        if writes["n"] == failing_write:
+            raise OSError(28, "No space left on device")
+        return real_write(self, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing_write_text)
+    with pytest.raises(OSError, match="No space left"):
+        vr.main(["a.tar.gz", "--out", "release", "--budgets-out", "budgets", "--packaged-out", "p"])
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["unrelated.json"]
+    assert (tmp_path / "unrelated.json").read_bytes() == b"keep\n"

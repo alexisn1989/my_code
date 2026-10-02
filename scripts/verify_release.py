@@ -50,6 +50,7 @@ import tarfile
 import tempfile
 import time
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -57,13 +58,9 @@ SHIPPED_SCENARIOS = {"decree_state", "deficit_demo", "tiny_valid"}
 STARTUP_TIMEOUT_S = 60.0
 
 
-#: The ONE budget FAILURE the user WAIVED (Gate 4A3 Commit 6, ruling "Record breach, ship rest"):
-#: `GET /api/saves` replays `validate_history` on every save file on every listing, so it passes the
-#: 200 ms read-projection STOP. That budget FAILED; the ruling waives the failure, it does not pass
-#: the budget. It is recorded as FAILED_WAIVED, not fixed and not reclassified. The waiver is exactly
-#: that narrow: any OTHER breached budget, or any other endpoint over the read STOP, fails the run.
-RULED_BREACH_ENDPOINT = "/api/saves"
-BUDGET_WAIVER = "docs/reviews/gate-4a3-commit6-budget-waiver.md"
+#: No budget waiver remains. Commit 6 waived the `GET /api/saves` breach by user ruling; Commit 6c
+#: fixed it (a content-keyed validation memo, also by user ruling), which ended the waiver. Every
+#: budget breach -- `/api/saves` included -- now fails the run (`budget_verdict`).
 REVIEWS_DIR = REPO_ROOT / "docs" / "reviews"
 #: An artifact name: lowercase, digits, dots and dashes, no path separator, no `..`, no `.json`.
 SAFE_NAME = re.compile(r"[a-z0-9][a-z0-9.-]*")
@@ -112,6 +109,13 @@ def reserve(paths: list[Path]) -> list[Path]:
                 f"{path} already exists; pass new output names (committed evidence and another "
                 "run's output are never overwritten)"
             ) from None
+        except BaseException as error:
+            # Any other failure (permissions, a full disk, an interrupt) must not strand the
+            # placeholders this call already created.
+            release(created)
+            if isinstance(error, OSError):
+                raise VerifyError(f"could not reserve {path}: {error}") from error
+            raise
         created.append(path)
     return created
 
@@ -149,14 +153,49 @@ def read_fresh_budgets(returncode: int, path: Path, run_id: str) -> dict[str, ob
     return measured
 
 
-def ruled_breach_only(measured: dict[str, object]) -> bool:
-    breaches = measured["breaches"]
-    if breaches != ["read_projection_ms"]:
-        return False
-    stop = measured["budgets"]["read_projection_ms"]["stop"]  # type: ignore[index]
-    per_endpoint = measured["results"]["read_projection_ms"]["perEndpoint"]  # type: ignore[index]
-    over = sorted(path for path, row in per_endpoint.items() if row["worst"] > stop)
-    return over == [RULED_BREACH_ENDPOINT]
+def budget_verdict(returncode: int, measured: dict[str, object]) -> str:
+    """`"PASSED"` for a clean measurement; any breach -- `/api/saves` included -- fails the run."""
+    breaches = measured.get("breaches")
+    if returncode == 0 and breaches == []:
+        return "PASSED"
+    raise VerifyError(f"a budget passed its STOP threshold: {breaches} (exit {returncode})")
+
+
+Runner = Callable[..., "subprocess.CompletedProcess[str]"]
+
+
+def measure_budget_step(
+    port: int, work: Path, run_id: str, runner: Runner = subprocess.run
+) -> tuple[dict[str, object], str]:
+    """Measure the budgets against the installed server: the record and the validated report text.
+
+    The report is written into this run's own `work` directory and accepted only if it is fresh
+    (`read_fresh_budgets`) and clean (`budget_verdict`); anything else raises.
+    """
+    budgets_path = work / "budgets.json"
+    budgets = runner(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "measure_budgets.py"),
+            "--base-url",
+            f"http://127.0.0.1:{port}",
+            "--out-path",
+            str(budgets_path),
+            "--run-id",
+            run_id,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    measured = read_fresh_budgets(budgets.returncode, budgets_path, run_id)
+    verdict = budget_verdict(budgets.returncode, measured)
+    record = {
+        "exit": budgets.returncode,
+        "report": budgets.stdout.strip().splitlines(),
+        "breaches": measured["breaches"],
+        "verdict": verdict,
+    }
+    return record, budgets_path.read_text()
 
 
 # ------------------------------------------------------------------ 1. safe inspection
@@ -334,12 +373,14 @@ def main(argv: list[str] | None = None) -> int:
     reserved = reserve(list(paths.values()))
     try:
         record, budgets_text, packaged_text = verify(archive)
+        # The writes are inside the protected region too: a failure on any of them releases all
+        # three reservations rather than leaving a half-written release behind.
+        paths["--budgets-out"].write_text(budgets_text)
+        paths["--packaged-out"].write_text(packaged_text)
+        paths["--out"].write_text(json.dumps(record, indent=2) + "\n")
     except BaseException:
         release(reserved)
         raise
-    paths["--budgets-out"].write_text(budgets_text)
-    paths["--packaged-out"].write_text(packaged_text)
-    paths["--out"].write_text(json.dumps(record, indent=2) + "\n")
     print(json.dumps(record, indent=2))
     return 0
 
@@ -437,37 +478,7 @@ def verify(archive: Path) -> tuple[dict[str, object], str, str]:
             packaged_text = packaged_path.read_text()
             json.loads(packaged_text)
 
-            budgets_path = work / "budgets.json"
-            budgets = subprocess.run(
-                [
-                    sys.executable,
-                    str(REPO_ROOT / "scripts" / "measure_budgets.py"),
-                    "--base-url",
-                    f"http://127.0.0.1:{port}",
-                    "--out-path",
-                    str(budgets_path),
-                    "--run-id",
-                    run_id,
-                ],
-                capture_output=True,
-                text=True,
-            )
-            measured = read_fresh_budgets(budgets.returncode, budgets_path, run_id)
-            waived = budgets.returncode == 1 and ruled_breach_only(measured)
-            record["budgets"] = {
-                "exit": budgets.returncode,
-                "report": budgets.stdout.strip().splitlines(),
-                "breaches": measured["breaches"],
-                # PASSED only when no budget breached. A waived failure is still a failure.
-                "verdict": "FAILED_WAIVED" if waived else "PASSED",
-                "waivedEndpoint": RULED_BREACH_ENDPOINT if waived else None,
-                "waiver": BUDGET_WAIVER if waived else None,
-            }
-            if budgets.returncode != 0 and not waived:
-                raise VerifyError(
-                    "a budget passed its STOP threshold:\n" + budgets.stdout + budgets.stderr
-                )
-            budgets_text = budgets_path.read_text()
+            record["budgets"], budgets_text = measure_budget_step(port, work, run_id)
 
             second = launch(top, run_line, port, work / "saves2", env)
             _, second_err = second.communicate(timeout=30)

@@ -11,6 +11,7 @@ never parses save content, only bytes.
 
 from __future__ import annotations
 
+import io
 import os
 import tempfile
 from pathlib import Path
@@ -95,9 +96,31 @@ def read_save_file(path: str | Path) -> str:
     Rejected rather than decoded leniently: a save whose bytes are not UTF-8 is not recoverable
     data -- `load_save_json` would refuse it a line later -- so a specific, honest failure is
     better than a mangled string, exactly as a missing file is refused above.
+
+    Since Gate 4A3 Commit 6c this is `decode_save_bytes(read_save_bytes(path), path)`: the same
+    behaviour, split so a caller can hash the exact on-disk bytes and decode that one buffer.
     """
     path = Path(path)
+    return decode_save_bytes(read_save_bytes(path), path)
+
+
+def read_save_bytes(path: str | Path) -> bytes:
+    """A save file's exact on-disk bytes. Raises `SaveFileError` if it can't be read."""
+    path = Path(path)
     try:
-        return path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
+        return path.read_bytes()
+    except OSError as exc:
         raise SaveFileError(f"could not read save file {path}: {exc}") from exc
+
+
+def decode_save_bytes(raw: bytes, path: str | Path) -> str:
+    """Decode bytes exactly as `Path.read_text(encoding="utf-8")` would.
+
+    `read_text` opens a `TextIOWrapper` with universal newlines, so `\\r\\n` and `\\r` become
+    `\\n`; this uses the same machinery over an in-memory buffer, so the text -- and the
+    `UnicodeDecodeError` it can raise -- is identical to what `read_save_file` always returned.
+    """
+    try:
+        return io.TextIOWrapper(io.BytesIO(raw), encoding="utf-8").read()
+    except UnicodeDecodeError as exc:
+        raise SaveFileError(f"could not read save file {Path(path)}: {exc}") from exc

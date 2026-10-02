@@ -1,0 +1,26 @@
+{
+  "against": "the installed release archive (see the release record verify_release.py wrote in the same run)",
+  "requests": 13,
+  "distinctPaths": [
+    "/",
+    "/api/game/decision-options",
+    "/api/game/new",
+    "/api/game/preview",
+    "/api/game/resolve",
+    "/api/game/state",
+    "/api/saves",
+    "/api/scenarios",
+    "/assets/index-CjkzPwt-.js",
+    "/assets/index-DjFAPDAb.css"
+  ],
+  "offOrigin": [],
+  "feedback": {
+    "navigationMs": 5.099999999976717,
+    "previewMs": 2.5,
+    "confirmMs": 2.5,
+    "worst": 5.099999999976717,
+    "targetMs": 100,
+    "stopMs": 200
+  },
+  "method": "performance.now() in the page, with a MutationObserver armed on document.body before the click; the first mutation after which the control's own feedback condition holds ends the timing."
+}

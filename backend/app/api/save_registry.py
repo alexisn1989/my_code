@@ -26,17 +26,19 @@ never silently registered -- it is reported as unreadable so the UI can say so.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from app.api.outcome_labels import outcome_reason_text
 from app.core.errors import MandateError
-from app.saves import read_save_file, write_save_atomic
+from app.saves import decode_save_bytes, read_save_bytes, read_save_file, write_save_atomic
 from app.simulation.history import GameSave, validate_history
 from app.simulation.save_format import dump_save_json, load_save_json
 
@@ -46,6 +48,11 @@ SAVE_ID_PATTERN = re.compile(
 )
 
 INDEX_FILENAME = "index.json"
+
+#: Gate 4A3 Commit 6c: the most save verdicts the listing memo holds. A miss is admitted only while a
+#: slot is free and nothing is ever evicted, so a directory larger than this keeps the first
+#: `VALIDATION_MEMO_MAX` saves memoized and revalidates only the overflow -- never a full rescan.
+VALIDATION_MEMO_MAX = 4096
 MAX_DISPLAY_NAME_LENGTH = 80
 
 
@@ -113,11 +120,46 @@ class SaveRecord:
     integrity_problem: str | None = None
 
 
+@dataclass(frozen=True)
+class _Verdict:
+    """Everything a listing derives from one save's bytes -- and nothing it does not."""
+
+    scenario_id: str
+    current_turn: int
+    problems: tuple[str, ...]
+    terminal_summary: str | None
+
+
+@dataclass
+class _InFlight:
+    """One verdict being computed. Waiters read the result from HERE, not from the memo, so
+    single-flight holds even for a key that was not admitted because the memo is full."""
+
+    admitted: bool
+    done: threading.Event = field(default_factory=threading.Event)
+    verdict: _Verdict | None = None
+    waiters: int = 0
+
+
 class SaveRepository:
-    """All filesystem access in the API goes through this one object."""
+    """All filesystem access in the API goes through this one object.
+
+    THE LISTING MEMO (Gate 4A3 Commit 6c, authorized by the user's ruling "Content-keyed memo").
+    `list_saves` used to re-parse and fully replay `validate_history` for every save on every
+    listing, which failed the 200 ms read budget. A listing now remembers each save's verdict keyed by
+    the SHA-256 of the file's EXACT on-disk bytes. That is sound because the verdict is a pure
+    function of those bytes for the life of a process: `validate_history` does no I/O, reads no
+    clock, no randomness and no scenario file, and decoding and parsing are deterministic. Any
+    changed byte is a new key and a full re-validation. Only successful verdicts are memoized; a
+    read, decode, parse or version failure is re-checked on every listing. Loading a save
+    (`read_save`, and the load endpoint) still validates in full, every time.
+    """
 
     def __init__(self, root: Path) -> None:
         self._root = root
+        self._memo_lock = threading.Lock()
+        self._memo: dict[str, _Verdict] = {}
+        self._in_flight: dict[str, _InFlight] = {}
 
     @property
     def root(self) -> Path:
@@ -140,11 +182,17 @@ class SaveRepository:
 
     # -- reads ----------------------------------------------------------
 
-    def read_save(self, save_id: str) -> GameSave:
-        """Read, parse and version-check one save. Raises rather than guessing."""
+    def _checked_path(self, save_id: str) -> Path:
+        """The save's file, refusing a symlink or anything but a regular file. Shared by `read_save`
+        and the listing so the two can never apply different checks."""
         path = self.path_for(save_id)
         if path.is_symlink() or not path.is_file():
             raise SaveNotFoundError(f"no save {save_id}")
+        return path
+
+    def read_save(self, save_id: str) -> GameSave:
+        """Read, parse and version-check one save. Raises rather than guessing."""
+        path = self._checked_path(save_id)
         return load_save_json(read_save_file(path), source=f"save:{save_id}")
 
     # -- writes ---------------------------------------------------------
@@ -227,15 +275,12 @@ class SaveRepository:
         """
         stored = self.read_index()
         records: list[SaveRecord] = []
+        seen_keys: set[str] = set()
         for save_id, stat_result in self._candidate_files():
             updated_at = datetime.fromtimestamp(stat_result.st_mtime, tz=UTC).isoformat()
             row = stored.get(save_id, {})
             try:
-                save = self.read_save(save_id)
-                state = save.current_state()
-                scenario_id = state.world.player_country_id
-                current_turn = state.turn
-                problems = validate_history(save)
+                key, verdict = self._verdict_for(save_id)
             except MandateError as error:
                 records.append(
                     SaveRecord(
@@ -249,6 +294,10 @@ class SaveRepository:
                     )
                 )
                 continue
+            seen_keys.add(key)
+            scenario_id = verdict.scenario_id
+            current_turn = verdict.current_turn
+            problems = verdict.problems
 
             stored_name = row.get("display_name")
             display_name = (
@@ -258,7 +307,7 @@ class SaveRepository:
                 # never invented to look like an authored name.
                 else f"Recovered campaign - {scenario_id} turn {current_turn}"
             )
-            terminal = self._terminal_summary_text(save)
+            terminal = verdict.terminal_summary
             records.append(
                 SaveRecord(
                     save_id=save_id,
@@ -272,8 +321,80 @@ class SaveRepository:
                 )
             )
 
+        # Retention follows the directory: a key no current file has is dropped, so deleted or
+        # rewritten saves free their slots. In-flight keys are untouched.
+        with self._memo_lock:
+            for stale in [key for key in self._memo if key not in seen_keys]:
+                del self._memo[stale]
         self.write_index(tuple(records))
         return tuple(records)
+
+    # -- the listing memo (Gate 4A3 Commit 6c) --------------------------
+
+    def _verdict_for(self, save_id: str) -> tuple[str, _Verdict]:
+        """The verdict for this save's bytes, computed at most once per key across threads.
+
+        The file is read ONCE; the key, the decode, the parse and the validation all come from that
+        one buffer, so a verdict can never be stored under the key of bytes it was not computed from.
+        """
+        path = self._checked_path(save_id)
+        raw = read_save_bytes(path)
+        key = hashlib.sha256(raw).hexdigest()
+        while True:
+            with self._memo_lock:
+                cached = self._memo.get(key)
+                if cached is not None:
+                    return key, cached
+                flight = self._in_flight.get(key)
+                if flight is None:
+                    # Admission is decided HERE, under the lock, counting admitted computations
+                    # still in flight -- so concurrent misses on distinct keys cannot overshoot.
+                    admitted_in_flight = sum(1 for f in self._in_flight.values() if f.admitted)
+                    flight = _InFlight(
+                        admitted=len(self._memo) + admitted_in_flight < VALIDATION_MEMO_MAX
+                    )
+                    self._in_flight[key] = flight
+                    owner = True
+                else:
+                    flight.waiters += 1
+                    owner = False
+            if not owner:
+                flight.done.wait()
+                if flight.verdict is not None:
+                    return key, flight.verdict
+                continue  # the owner failed; failures are never memoized, so compute ourselves
+            try:
+                verdict = self._compute_verdict(raw, path, save_id)
+                flight.verdict = verdict
+                with self._memo_lock:
+                    if flight.admitted:
+                        self._memo[key] = verdict
+            finally:
+                with self._memo_lock:
+                    del self._in_flight[key]
+                flight.done.set()
+            return key, verdict
+
+    def _compute_verdict(self, raw: bytes, path: Path, save_id: str) -> _Verdict:
+        save = load_save_json(decode_save_bytes(raw, path), source=f"save:{save_id}")
+        state = save.current_state()
+        return _Verdict(
+            scenario_id=state.world.player_country_id,
+            current_turn=state.turn,
+            problems=tuple(validate_history(save)),
+            terminal_summary=self._terminal_summary_text(save),
+        )
+
+    def _waiting_for(self, key: str) -> int:
+        """Test hook: how many threads are waiting on an in-flight verdict for `key`."""
+        with self._memo_lock:
+            flight = self._in_flight.get(key)
+            return 0 if flight is None else flight.waiters
+
+    def _in_flight_count(self) -> int:
+        """Test hook: how many verdicts are being computed right now."""
+        with self._memo_lock:
+            return len(self._in_flight)
 
     @staticmethod
     def _terminal_summary_text(save: GameSave) -> str | None:

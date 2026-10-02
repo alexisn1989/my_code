@@ -1,0 +1,63 @@
+{
+  "archive": "mandate-gui-0.1.0.tar.gz",
+  "sha256": "1dafdc746eee165e5056f6177bfe95b2a314b263ede12f0eead12f8525546c90",
+  "runId": "54d9fe69599153eb5e460b0f16928497",
+  "hostileArchivesRejected": {
+    "absolute": [
+      "absolute path: /etc/mandate-evil",
+      "expected one top-level mandate-gui-<version>/ directory, found ['/']"
+    ],
+    "traversal": [
+      "parent traversal: mandate-gui-0/../../evil"
+    ],
+    "symlink": [
+      "not a regular file or directory: mandate-gui-0/link (type b'2')"
+    ]
+  },
+  "members": 14,
+  "checksummedFiles": 9,
+  "readme": {
+    "install": "python3.11 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt && .venv/bin/pip install --no-deps mandate_backend-0.1.0-py3-none-any.whl",
+    "run": ".venv/bin/mandate-gui --frontend-dist dist --scenario-root scenarios",
+    "runAppended": "--port <free port> --save-root <temporary directory>"
+  },
+  "provenance": {
+    "app.__file__": "<work>/x/mandate-gui-0.1.0/.venv/lib/python3.11/site-packages/app/__init__.py",
+    "sys.prefix": "<work>/x/mandate-gui-0.1.0/.venv"
+  },
+  "served": {
+    "/": 200,
+    "/api/scenarios": 200,
+    "scenarios": [
+      "decree_state",
+      "deficit_demo",
+      "tiny_valid"
+    ]
+  },
+  "packagedTurn": {
+    "exit": 0,
+    "tail": "\n\n\n\u001b[1A\u001b[2K\u001b[2m[WebServer] \u001b[22mINFO:     127.0.0.1:42060 - \"GET /api/scenarios HTTP/1.1\" 200 OK\n\n\nRunning 1 test using 1 worker\n\n\u001b[1A\u001b[2K[1/1] [packaged] \u203a e2e/packaged-instance.spec.ts:89:1 \u203a one turn against the installed archive, same-origin, within the feedback budget\n\u001b[1A\u001b[2K  1 passed (4.8s)\n"
+  },
+  "budgets": {
+    "exit": 0,
+    "report": [
+      "new_game_ms                        median      41.37 (target     150)   worst      68.58 (STOP     300)  OK",
+      "resolve_turn_le_20_ms              median      93.57 (target     250)   worst     184.06 (STOP     500)  OK",
+      "resolve_turn_21_to_40_ms           median     246.01 (target     400)   worst     331.72 (STOP     800)  OK",
+      "read_projection_ms                 median       6.01 (target     100)   worst     154.61 (STOP     200)  OK",
+      "load_validate_40_turn_save_ms      median     132.76 (target     500)   worst     184.74 (STOP    1000)  OK",
+      "projection_payload_bytes           median       2752 (target  102400)   worst      68113 (STOP  204800)  OK"
+    ],
+    "breaches": [],
+    "verdict": "PASSED"
+  },
+  "f12Collision": {
+    "exit": 1,
+    "message": "mandate-gui: port 43173 is already in use on 127.0.0.1. Stop the other process, or start with --port <a different port>."
+  },
+  "f12Shutdown": {
+    "sigintExit": 0,
+    "restartOnSamePort": "served 200",
+    "restartSigintExit": 0
+  }
+}
