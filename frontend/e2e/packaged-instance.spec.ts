@@ -15,16 +15,42 @@
  *   3. the "interaction -> visible feedback" budget (section 5, STOP at 200 ms), measured IN the page
  *      with `performance.now()` and a MutationObserver armed before the click, for a navigation, a
  *      Preview and a Confirm and resolve. The worst of the three is compared with the STOP.
+ *
+ * Where it writes (Gate 4A3 Commit 6b): there is NO default artifact name, because a default once
+ * pointed at committed evidence. `verify_release.py` passes `MANDATE_PACKAGED_OUT_PATH`, an absolute
+ * file inside its own temporary directory, and copies the result into the name it reserved; standalone
+ * use passes `MANDATE_PACKAGED_OUT`, a bare artifact name. Either way the file is created exclusively
+ * (`wx`), so an existing report is never overwritten.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
 const BASE = process.env.MANDATE_PACKAGED_BASE_URL;
-const OUT_NAME = process.env.MANDATE_PACKAGED_OUT ?? "gate-4a3-commit6-packaged";
+const OUT_PATH = process.env.MANDATE_PACKAGED_OUT_PATH;
+const OUT_NAME = process.env.MANDATE_PACKAGED_OUT;
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
+const SAFE_NAME = /^[a-z0-9][a-z0-9.-]*$/;
+
+/** The one file this run may create, decided before anything is measured. */
+function outputFile(): string {
+  if (OUT_PATH !== undefined && OUT_NAME !== undefined) {
+    throw new Error("set MANDATE_PACKAGED_OUT_PATH or MANDATE_PACKAGED_OUT, not both");
+  }
+  if (OUT_PATH !== undefined) {
+    if (!path.isAbsolute(OUT_PATH)) throw new Error(`MANDATE_PACKAGED_OUT_PATH must be absolute: ${OUT_PATH}`);
+    return OUT_PATH;
+  }
+  if (OUT_NAME === undefined) {
+    throw new Error("MANDATE_PACKAGED_OUT_PATH or MANDATE_PACKAGED_OUT is required; there is no default name");
+  }
+  if (!SAFE_NAME.test(OUT_NAME) || OUT_NAME.endsWith(".json") || OUT_NAME.includes("..")) {
+    throw new Error(`unsafe MANDATE_PACKAGED_OUT name: ${JSON.stringify(OUT_NAME)}`);
+  }
+  return path.join(REVIEW_DIR, `${OUT_NAME}.json`);
+}
 const FEEDBACK_STOP_MS = 200;
 const FEEDBACK_TARGET_MS = 100;
 
@@ -63,6 +89,7 @@ async function timeFeedback(page: Page, selector: string, predicate: string): Pr
 test("one turn against the installed archive, same-origin, within the feedback budget", async ({ page }) => {
   test.skip(!BASE, "run by scripts/verify_release.py against an installed archive");
   test.setTimeout(180_000);
+  const outFile = outputFile();
   const requests: string[] = [];
   page.on("request", (request) => {
     const url = request.url();
@@ -135,12 +162,11 @@ test("one turn against the installed archive, same-origin, within the feedback b
   const feedback = { navigationMs: navMs, previewMs, confirmMs };
   const worst = Math.max(navMs, previewMs, confirmMs);
 
-  mkdirSync(REVIEW_DIR, { recursive: true });
   writeFileSync(
-    path.join(REVIEW_DIR, `${OUT_NAME}.json`),
+    outFile,
     `${JSON.stringify(
       {
-        against: "the installed release archive (see gate-4a3-commit6-release.json)",
+        against: "the installed release archive (see the release record verify_release.py wrote in the same run)",
         requests: requests.length,
         distinctPaths: [...new Set(requests.map((u) => new URL(u).pathname))].sort(),
         offOrigin,
@@ -153,6 +179,7 @@ test("one turn against the installed archive, same-origin, within the feedback b
       null,
       2,
     )}\n`,
+    { flag: "wx" },
   );
 
   expect(offOrigin, "every request must be same-origin").toEqual([]);

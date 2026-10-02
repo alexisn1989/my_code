@@ -783,8 +783,9 @@ than assumed in advance.
   closed), T1 fixed · 6 — Tailwind scans shipped source only, the live-server security and F12
   tests, and a reproducible release archive verified on a clean path
   (`scripts/build_release.py`, `scripts/verify_release.py`).
-  **Internally complete** means every automated gate is green and the playtest is prepared
-  (`docs/playtest/`). **Externally pending** means the frozen plan's section 22 playtest — five
+  **Internally complete** means every automated gate is green **except one budget** — `GET
+  /api/saves` read latency, which FAILED and is waived by user ruling (below) — and the playtest is
+  prepared (`docs/playtest/`). **Externally pending** means the frozen plan's section 22 playtest — five
   strangers, at least three of whom must voluntarily want another turn — has not been run; nothing
   stronger may be claimed until it has. **One budget FAILED and is waived by user ruling**
   ([`gate-4a3-commit6-budget-waiver.md`](reviews/gate-4a3-commit6-budget-waiver.md), Commit 6a):

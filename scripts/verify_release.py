@@ -22,7 +22,15 @@ removed from the environment. In order:
    SIGINT stops the first with status 0; a restart on the same port then succeeds.
 8. The section 5 budgets, measured against this instance (`scripts/measure_budgets.py`).
 
-Writes `docs/reviews/<name>.json` (default `gate-4a3-commit6-release`). Standard library only.
+OUTPUTS (Gate 4A3 Commit 6b). `--out`, `--budgets-out` and `--packaged-out` are required and have no
+default, because the defaults once named committed evidence. Each must be a safe, distinct artifact
+name, and all three `docs/reviews/<name>.json` files are created EXCLUSIVELY before anything is
+measured, so neither committed evidence nor a concurrent run's output can be overwritten. A failed run
+deletes exactly the placeholders it created. Child processes never write into `docs/reviews`: the
+budget report and the packaged-turn report go to this run's own temporary directory, and only a report
+proven to belong to this run (its `runId`) and consistent with its exit status is copied in. There is
+no way to skip the browser turn or the budgets: a release record exists only for a complete run.
+Standard library only.
 """
 
 from __future__ import annotations
@@ -33,6 +41,7 @@ import io
 import json
 import os
 import re
+import secrets
 import signal
 import socket
 import subprocess
@@ -55,10 +64,89 @@ STARTUP_TIMEOUT_S = 60.0
 #: that narrow: any OTHER breached budget, or any other endpoint over the read STOP, fails the run.
 RULED_BREACH_ENDPOINT = "/api/saves"
 BUDGET_WAIVER = "docs/reviews/gate-4a3-commit6-budget-waiver.md"
+REVIEWS_DIR = REPO_ROOT / "docs" / "reviews"
+#: An artifact name: lowercase, digits, dots and dashes, no path separator, no `..`, no `.json`.
+SAFE_NAME = re.compile(r"[a-z0-9][a-z0-9.-]*")
 
 
 class VerifyError(RuntimeError):
     pass
+
+
+# ------------------------------------------------------------------ 0. outputs and the budget report
+
+
+def output_paths(names: dict[str, str], reviews_dir: Path | None = None) -> dict[str, Path]:
+    """Map each `--flag` to its `docs/reviews/<name>.json`, refusing unsafe or repeated names."""
+    directory = (reviews_dir or REVIEWS_DIR).resolve()
+    paths: dict[str, Path] = {}
+    owner: dict[str, str] = {}
+    for flag, name in names.items():
+        if not SAFE_NAME.fullmatch(name) or name.endswith(".json") or ".." in name:
+            raise VerifyError(
+                f"{flag}: unsafe artifact name {name!r} (lowercase letters, digits, '.' and '-'; "
+                "no path, no '..', no .json suffix)"
+            )
+        if name in owner:
+            raise VerifyError(
+                f"{owner[name]} and {flag} both name {name!r}; outputs must be distinct"
+            )
+        owner[name] = flag
+        path = directory / f"{name}.json"
+        if path.resolve().parent != directory:
+            raise VerifyError(f"{flag}: {name!r} escapes {directory}")
+        paths[flag] = path
+    return paths
+
+
+def reserve(paths: list[Path]) -> list[Path]:
+    """Create every path exclusively; on any collision remove what this call created and refuse."""
+    created: list[Path] = []
+    for path in paths:
+        try:
+            with path.open("x"):
+                pass
+        except FileExistsError:
+            release(created)
+            raise VerifyError(
+                f"{path} already exists; pass new output names (committed evidence and another "
+                "run's output are never overwritten)"
+            ) from None
+        created.append(path)
+    return created
+
+
+def release(created: list[Path]) -> None:
+    """Delete exactly the placeholders this run created, and nothing else."""
+    for path in created:
+        path.unlink(missing_ok=True)
+
+
+def read_fresh_budgets(returncode: int, path: Path, run_id: str) -> dict[str, object]:
+    """The budget report THIS run produced, or a VerifyError.
+
+    The report must exist at the path this run chose, inside its own temporary directory; carry this
+    run's id; and agree with the measurement's exit status (0 with no breach, 1 with at least one).
+    Anything else -- a measurement that died before writing, a report from another run, an exit status
+    the report does not explain -- is refused, so a stale breach can never be read as a waiver.
+    """
+    if not path.is_file():
+        raise VerifyError(f"the measurement wrote no report: exit {returncode}")
+    measured: dict[str, object] = json.loads(path.read_text())
+    if measured.get("runId") != run_id:
+        raise VerifyError(
+            f"the budget report belongs to run {measured.get('runId')!r}, not this one"
+        )
+    breaches = measured.get("breaches")
+    if not isinstance(breaches, list):
+        raise VerifyError("the budget report carries no breaches list")
+    if returncode == 0 and breaches:
+        raise VerifyError(f"the measurement exited 0 but reports breaches {breaches}")
+    if returncode == 1 and not breaches:
+        raise VerifyError("the measurement exited 1 but reports no breach")
+    if returncode not in (0, 1):
+        raise VerifyError(f"the measurement exited {returncode}")
+    return measured
 
 
 def ruled_breach_only(measured: dict[str, object]) -> bool:
@@ -234,19 +322,35 @@ def stop(proc: subprocess.Popen[bytes]) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("archive", type=Path)
-    parser.add_argument("--out", default="gate-4a3-commit6-release")
-    # Each output name is a parameter so a re-run can never overwrite committed evidence: a later
-    # commit passes its own names rather than reusing these defaults.
-    parser.add_argument("--budgets-out", default="gate-4a3-commit6-budgets")
-    parser.add_argument("--packaged-out", default="gate-4a3-commit6-packaged")
-    parser.add_argument(
-        "--skip-browser", action="store_true", help="for drafting only; never for the gate"
-    )
+    # Required, with no default: a default once named committed evidence.
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--budgets-out", required=True)
+    parser.add_argument("--packaged-out", required=True)
     args = parser.parse_args(argv)
     archive = args.archive.resolve()
+    paths = output_paths(
+        {"--out": args.out, "--budgets-out": args.budgets_out, "--packaged-out": args.packaged_out}
+    )
+    reserved = reserve(list(paths.values()))
+    try:
+        record, budgets_text, packaged_text = verify(archive)
+    except BaseException:
+        release(reserved)
+        raise
+    paths["--budgets-out"].write_text(budgets_text)
+    paths["--packaged-out"].write_text(packaged_text)
+    paths["--out"].write_text(json.dumps(record, indent=2) + "\n")
+    print(json.dumps(record, indent=2))
+    return 0
+
+
+def verify(archive: Path) -> tuple[dict[str, object], str, str]:
+    """Every check, in order: the release record, then the budget and packaged reports' text."""
+    run_id = secrets.token_hex(16)
     record: dict[str, object] = {
         "archive": archive.name,
         "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+        "runId": run_id,
     }
 
     with tempfile.TemporaryDirectory(prefix="mandate-verify-") as tmp:
@@ -313,53 +417,57 @@ def main(argv: list[str] | None = None) -> int:
                 "scenarios": sorted(ids),
             }
 
-            if not args.skip_browser:
-                browser = subprocess.run(
-                    ["npx", "playwright", "test", "--project=packaged", "--reporter=line"],
-                    cwd=REPO_ROOT / "frontend",
-                    env={
-                        **os.environ,
-                        "MANDATE_PACKAGED_BASE_URL": f"http://127.0.0.1:{port}",
-                        "MANDATE_PACKAGED_OUT": args.packaged_out,
-                    },
-                    capture_output=True,
-                    text=True,
-                )
-                record["packagedTurn"] = {"exit": browser.returncode, "tail": browser.stdout[-600:]}
-                if browser.returncode != 0:
-                    raise VerifyError(
-                        "the packaged Playwright turn failed:\n" + browser.stdout[-3000:]
-                    )
+            packaged_path = work / "packaged.json"
+            browser = subprocess.run(
+                ["npx", "playwright", "test", "--project=packaged", "--reporter=line"],
+                cwd=REPO_ROOT / "frontend",
+                env={
+                    **os.environ,
+                    "MANDATE_PACKAGED_BASE_URL": f"http://127.0.0.1:{port}",
+                    "MANDATE_PACKAGED_OUT_PATH": str(packaged_path),
+                },
+                capture_output=True,
+                text=True,
+            )
+            record["packagedTurn"] = {"exit": browser.returncode, "tail": browser.stdout[-600:]}
+            if browser.returncode != 0:
+                raise VerifyError("the packaged Playwright turn failed:\n" + browser.stdout[-3000:])
+            if not packaged_path.is_file():
+                raise VerifyError("the packaged Playwright turn passed but wrote no report")
+            packaged_text = packaged_path.read_text()
+            json.loads(packaged_text)
 
-                budgets = subprocess.run(
-                    [
-                        sys.executable,
-                        str(REPO_ROOT / "scripts" / "measure_budgets.py"),
-                        "--base-url",
-                        f"http://127.0.0.1:{port}",
-                        "--out",
-                        args.budgets_out,
-                    ],
-                    capture_output=True,
-                    text=True,
+            budgets_path = work / "budgets.json"
+            budgets = subprocess.run(
+                [
+                    sys.executable,
+                    str(REPO_ROOT / "scripts" / "measure_budgets.py"),
+                    "--base-url",
+                    f"http://127.0.0.1:{port}",
+                    "--out-path",
+                    str(budgets_path),
+                    "--run-id",
+                    run_id,
+                ],
+                capture_output=True,
+                text=True,
+            )
+            measured = read_fresh_budgets(budgets.returncode, budgets_path, run_id)
+            waived = budgets.returncode == 1 and ruled_breach_only(measured)
+            record["budgets"] = {
+                "exit": budgets.returncode,
+                "report": budgets.stdout.strip().splitlines(),
+                "breaches": measured["breaches"],
+                # PASSED only when no budget breached. A waived failure is still a failure.
+                "verdict": "FAILED_WAIVED" if waived else "PASSED",
+                "waivedEndpoint": RULED_BREACH_ENDPOINT if waived else None,
+                "waiver": BUDGET_WAIVER if waived else None,
+            }
+            if budgets.returncode != 0 and not waived:
+                raise VerifyError(
+                    "a budget passed its STOP threshold:\n" + budgets.stdout + budgets.stderr
                 )
-                measured = json.loads(
-                    (REPO_ROOT / "docs" / "reviews" / f"{args.budgets_out}.json").read_text()
-                )
-                waived = budgets.returncode != 0 and ruled_breach_only(measured)
-                record["budgets"] = {
-                    "exit": budgets.returncode,
-                    "report": budgets.stdout.strip().splitlines(),
-                    "breaches": measured["breaches"],
-                    # PASSED only when no budget breached. A waived failure is still a failure.
-                    "verdict": "FAILED_WAIVED" if waived else "PASSED",
-                    "waivedEndpoint": RULED_BREACH_ENDPOINT if waived else None,
-                    "waiver": BUDGET_WAIVER if waived else None,
-                }
-                if budgets.returncode != 0 and not waived:
-                    raise VerifyError(
-                        "a budget passed its STOP threshold:\n" + budgets.stdout + budgets.stderr
-                    )
+            budgets_text = budgets_path.read_text()
 
             second = launch(top, run_line, port, work / "saves2", env)
             _, second_err = second.communicate(timeout=30)
@@ -384,10 +492,7 @@ def main(argv: list[str] | None = None) -> int:
             "restartSigintExit": restart_code,
         }
 
-    out = REPO_ROOT / "docs" / "reviews" / f"{args.out}.json"
-    out.write_text(json.dumps(record, indent=2) + "\n")
-    print(json.dumps(record, indent=2))
-    return 0
+    return record, budgets_text, packaged_text
 
 
 if __name__ == "__main__":

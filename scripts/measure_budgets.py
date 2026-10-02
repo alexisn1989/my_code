@@ -18,13 +18,16 @@ Method, stated so a second person gets the same kind of number:
 
 `--base-url` attaches to a running instance (the packaged one, in `verify_release.py`); otherwise this
 starts `mandate-gui` from the active environment against the repository's scenarios. Standard library
-only. Writes `docs/reviews/<name>.json` when `--out` is given.
+only. Writes `docs/reviews/<name>.json` when `--out` is given, or exactly `--out-path` when that is
+given; either file is created exclusively, so an existing report is never overwritten. `--run-id` is
+written into the record so a caller can prove the report it reads came from the run it started.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import statistics
 import subprocess
 import sys
@@ -35,6 +38,9 @@ import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+REVIEWS_DIR = REPO_ROOT / "docs" / "reviews"
+#: An artifact name: lowercase, digits, dots and dashes, no path separator, no `..`, no `.json`.
+SAFE_NAME = re.compile(r"[a-z0-9][a-z0-9.-]*")
 KIB = 1024
 
 # (target, STOP) in milliseconds or bytes. STOP is the only number that fails the run.
@@ -204,7 +210,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--out", default=None, help="write docs/reviews/<out>.json")
+    parser.add_argument("--out-path", type=Path, default=None, help="write exactly this file")
+    parser.add_argument("--run-id", default=None, help="recorded as runId")
     args = parser.parse_args(argv)
+    if args.out is not None and args.out_path is not None:
+        parser.error("pass --out or --out-path, not both")
+    target: Path | None = None
+    if args.out is not None:
+        if not SAFE_NAME.fullmatch(args.out) or args.out.endswith(".json") or ".." in args.out:
+            parser.error(f"unsafe --out name: {args.out!r}")
+        target = REVIEWS_DIR / f"{args.out}.json"
+    elif args.out_path is not None:
+        if not args.out_path.is_absolute():
+            parser.error("--out-path must be absolute")
+        target = args.out_path
     proc = None
     with tempfile.TemporaryDirectory(prefix="mandate-budgets-") as tmp:
         if args.base_url:
@@ -225,10 +244,13 @@ def main(argv: list[str] | None = None) -> int:
         "results": results,
         "breaches": breaches,
     }
-    if args.out:
-        (REPO_ROOT / "docs" / "reviews" / f"{args.out}.json").write_text(
-            json.dumps(record, indent=2) + "\n"
-        )
+    if args.run_id is not None:
+        record["runId"] = args.run_id
+    if target is not None:
+        # "x": exclusive creation. An existing report -- committed evidence, or another run's -- is
+        # never overwritten; the run fails instead.
+        with target.open("x") as handle:
+            handle.write(json.dumps(record, indent=2) + "\n")
     if breaches:
         print(f"STOP: {', '.join(breaches)} past threshold", file=sys.stderr)
         return 1
