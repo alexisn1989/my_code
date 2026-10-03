@@ -814,3 +814,38 @@ export function isRoutineDriver(driver: {
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Gate 4A3 UX-3 — the Dashboard's national tint, drawn rather than claimed
+// ---------------------------------------------------------------------------------------------------
+
+/** The tint's weakest and strongest mix of `gold-600` into `navy-950`, in percent: never so faint it
+ * reads as empty, never so strong it outshouts the panel. No text sits on the mix -- the country name
+ * has its own `navy-950` label, because every text backdrop is an authored palette surface. */
+export const TINT_MIX_MIN_PERCENT = 15;
+export const TINT_MIX_MAX_PERCENT = 60;
+
+/** A server-provided ratio in basis points -> how much gold to mix into the box, linear between the
+ * two bounds above and clamped to them. A purely visual figure; the value itself is stated in text. */
+export function tintMixPercent(valueBps: number): number {
+  const clamped = Math.min(RATIO_BPS_MAX, Math.max(RATIO_BPS_MIN, valueBps));
+  const span = TINT_MIX_MAX_PERCENT - TINT_MIX_MIN_PERCENT;
+  return Math.round((TINT_MIX_MIN_PERCENT + (span * clamped) / RATIO_BPS_MAX) * 100) / 100;
+}
+
+/** The opaque fill for the tint box: a mix of two palette tokens, so the box shows one solid colour. */
+export function tintFill(valueBps: number): string {
+  return `color-mix(in oklab, var(--color-gold-600) ${tintMixPercent(valueBps)}%, var(--color-navy-950))`;
+}
+
+/** The player-facing caption, composed from the server's metric label. It replaces the server's
+ * `map.note`, whose developer-facing wording the interface no longer renders. */
+export function tintCaption(metricLabel: string): string {
+  return `The colour shows national ${metricLabel.toLowerCase()}: the stronger it is, the deeper the tint.`;
+}
+
+/** What the box draws, and nothing it does not: a name on a tint. No outline exists, so none is
+ * claimed. */
+export function tintAccessibleName(country: string, metricLabel: string, valueText: string): string {
+  return `${country}: national tint by ${metricLabel.toLowerCase()}, ${valueText}.`;
+}

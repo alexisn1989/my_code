@@ -68,9 +68,9 @@ export interface ScreenDefinition {
   requiresActiveGame?: boolean;
 }
 
-function unavailable(heading: string): ComponentType<ScreenProps> {
+function unavailable(heading: string, screen: ScreenId): ComponentType<ScreenProps> {
   function Screen(props: ScreenProps) {
-    return <UnavailableScreen heading={heading} {...props} />;
+    return <UnavailableScreen heading={heading} screen={screen} {...props} />;
   }
   Screen.displayName = `Unavailable(${heading})`;
   return Screen;
@@ -105,21 +105,21 @@ export const SCREENS: readonly ScreenDefinition[] = [
     id: "economy",
     label: "Economy",
     heading: "Economy & budget",
-    component: unavailable("Economy & budget"),
+    component: unavailable("Economy & budget", "economy"),
     showsGameplayChrome: true,
   },
   {
     id: "legislature",
     label: "Legislature",
     heading: "Legislature",
-    component: unavailable("Legislature"),
+    component: unavailable("Legislature", "legislature"),
     showsGameplayChrome: true,
   },
   {
     id: "constitution",
     label: "Constitution",
     heading: "Constitution",
-    component: unavailable("Constitution"),
+    component: unavailable("Constitution", "constitution"),
     showsGameplayChrome: true,
   },
   {

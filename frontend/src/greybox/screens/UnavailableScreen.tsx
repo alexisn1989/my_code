@@ -16,15 +16,24 @@
  * wanted does exist.
  */
 
+import { ConcernSummaries } from "../ConcernCards";
 import { Panel } from "../components";
 import type { ScreenProps } from "../registry";
+import type { ScreenId } from "../types";
 
-export function UnavailableScreen({ heading, navigate }: ScreenProps & { heading: string }) {
+export function UnavailableScreen({
+  heading,
+  screen,
+  navigate,
+}: ScreenProps & { heading: string; screen: ScreenId }) {
   return (
     <div className="flex flex-col gap-6">
       <h2 className="font-[family-name:var(--font-display)] text-2xl text-parchment-100">
         {heading}
       </h2>
+      {/* Gate 4A3 UX-3 (U10): the Dashboard card whose "Details" led here, so the link lands on
+          what it was linked for. Nothing without a campaign. */}
+      <ConcernSummaries screen={screen} />
       <Panel title="Not in this version of the game">
         <p className="text-sm text-parchment-200/80">
           The Dashboard already has a summary card for this topic. A full{" "}

@@ -47,6 +47,7 @@ import { useSession } from "../../state/SessionContext";
 import type { CabinetOrderDraft } from "../../state/cabinetCompanions";
 import { useDraftStore } from "../../state/draft";
 import { ErrorPanel } from "../../status/ErrorPanel";
+import { ConcernSummaries } from "../ConcernCards";
 import { EmptyNote, Panel } from "../components";
 import type { ScreenProps } from "../registry";
 
@@ -66,7 +67,23 @@ function holderDescription(
   return order.characterId === null ? "left vacant" : candidateName(order.characterId);
 }
 
-export function CabinetScreen(_props: ScreenProps) {
+/** Gate 4A3 UX-3 (U10): Government is where the Dashboard's Legitimacy AND Survival cards link, so
+ * both sit above the cabinet in every state of it -- loading, error and loaded alike. The screen
+ * heading moved up here from the body's branches, so it now leads every state, the loading and error
+ * states included, which previously had none. */
+export function CabinetScreen(props: ScreenProps) {
+  return (
+    <div className="flex flex-col gap-6">
+      <h2 className="font-[family-name:var(--font-display)] text-2xl text-parchment-100">
+        Government
+      </h2>
+      <ConcernSummaries screen="government" />
+      <CabinetBody {...props} />
+    </div>
+  );
+}
+
+function CabinetBody(_props: ScreenProps) {
   const { revision } = useSession();
   const options = useDecisionOptions(revision, { enabled: revision !== null });
 
@@ -90,9 +107,6 @@ export function CabinetScreen(_props: ScreenProps) {
   if (revision === null) {
     return (
       <div className="flex flex-col gap-6">
-        <h2 className="font-[family-name:var(--font-display)] text-2xl text-parchment-100">
-          Government
-        </h2>
         <Panel title="Cabinet">
           <EmptyNote>Start or load a campaign to see the government.</EmptyNote>
         </Panel>
@@ -253,10 +267,6 @@ export function CabinetScreen(_props: ScreenProps) {
 
   return (
     <div className="flex flex-col gap-6">
-      <h2 className="font-[family-name:var(--font-display)] text-2xl text-parchment-100">
-        Government
-      </h2>
-
       <div role="status" aria-live="polite" className="sr-only">
         {announcement}
       </div>

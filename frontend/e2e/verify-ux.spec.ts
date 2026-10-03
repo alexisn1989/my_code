@@ -23,6 +23,14 @@ import path from "node:path";
 import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
+import {
+  RATIO_TOLERANCE,
+  TEXT_CONTRAST_MINIMUM,
+  installColourProbe,
+  measureTextOwners,
+  offlineRatio,
+  surfaceNameOf,
+} from "./contrast-probe";
 import { findIdentifierLeaks } from "./player-text";
 
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
@@ -348,6 +356,128 @@ for (const viewport of VIEWPORTS) {
         live: { violations: liveAxe.violations.length, passes: liveAxe.passes },
         history: { violations: historyAxe.violations.length, passes: historyAxe.passes },
       },
+    });
+  });
+}
+
+const CAPITAL_DEFINITION =
+  "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.";
+const WIN_LINE_START = "You win by turning this into a competitive constitution";
+
+for (const viewport of VIEWPORTS) {
+  test(`@ux3 orientation, next action, no dead ends — ${viewport.name}`, async ({ page }) => {
+    test.setTimeout(240_000);
+    await installColourProbe(page);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await ensureServer(page);
+    await startValdrun(page);
+    const dashboard = (await (await page.request.get(`${base}/api/game/state`)).json()) as {
+      turn: number;
+      country_name: string;
+      concerns: Record<string, { label: string; headline: string; detail_screen: string }>;
+    };
+
+    // ---- U1: the stakes and the first action, where a new player first looks ----
+    await visit(page, "Dashboard");
+    const priority = page.getByRole("heading", { name: "Your current priority" }).locator("xpath=ancestor::section[1]");
+    const winLine = priority.getByTestId("win-and-loss");
+    await expect(winLine).toContainText(WIN_LINE_START);
+    const build = priority.getByRole("button", { name: "Build a decision" });
+    await expect(build).toBeVisible();
+    let firstViewport: { winBottom: number; buttonBottom: number } | null = null;
+    if (viewport.name === "desktop") {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const winBox = (await winLine.boundingBox())!;
+      const buttonBox = (await build.boundingBox())!;
+      firstViewport = { winBottom: winBox.y + winBox.height, buttonBottom: buttonBox.y + buttonBox.height };
+      expect(firstViewport.winBottom, "the stakes are inside the first 1440x900 viewport").toBeLessThanOrEqual(viewport.height);
+      expect(firstViewport.buttonBottom, "Build a decision is inside the first viewport").toBeLessThanOrEqual(viewport.height);
+    }
+    await expect(page.getByRole("complementary", { name: "How to govern" }).getByTestId("win-and-loss")).toContainText(
+      WIN_LINE_START,
+    );
+    const meter = page.getByTestId("capital-meter");
+    await expect(meter).toHaveAttribute("title", CAPITAL_DEFINITION);
+    await expect(meter).toHaveAttribute("aria-description", CAPITAL_DEFINITION);
+
+    // ---- U10: the tint draws what it claims, legibly ----
+    const tint = page.getByTestId("national-tint");
+    const tintBg = await tint.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(tintBg, "the tint box is filled").not.toMatch(/rgba?\(0, 0, 0, 0\)|transparent/);
+    await expect(tint).toContainText(dashboard.country_name);
+    const scan = await measureTextOwners(page, '[data-testid="national-tint"]');
+    // Calibrate before trusting a figure: the caption is parchment-200 at 70% on the panel's navy-900.
+    const calibration = scan.measured.filter((m) => m.classes.includes("text-parchment-200/70") && m.ratio > 0);
+    expect(calibration.length, "a calibration node exists on the Dashboard").toBeGreaterThan(0);
+    for (const node of calibration) {
+      const surface = surfaceNameOf(node.bg);
+      expect(surface, `calibration backdrop ${node.bg} is a palette surface`).not.toBeNull();
+      const expected = offlineRatio({ foreground: "parchment-200", backdrop: surface!, alpha: 0.7 });
+      expect(Math.abs(node.ratio - expected), `probe ${node.ratio} vs offline ${expected}`).toBeLessThanOrEqual(
+        RATIO_TOLERANCE,
+      );
+    }
+    // The fill is the mix, visibly distinct from the navy-950 label the name sits on.
+    const labelBg = await tint.locator("span").evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(tintBg, "the tint differs from the label's navy-950").not.toBe(labelBg);
+    // The name has its own navy-950 label: an authored surface, as every text backdrop must be.
+    const onTint = scan.measured.filter((m) => m.inRegion);
+    expect(onTint.map((m) => m.text.trim())).toEqual([dashboard.country_name]);
+    const countryName = onTint[0]!;
+    expect(countryName.ratio, "measured, not the unmeasured sentinel").toBeGreaterThan(0);
+    expect(surfaceNameOf(countryName.bg), "the name's backdrop is an authored surface").toBe("navy-950");
+    expect(countryName.ratio, "country name on its label").toBeGreaterThanOrEqual(TEXT_CONTRAST_MINIMUM);
+    const devCopy = await findIdentifierLeaks(page, ["placeholder", "province", "mechanics", "Stylised outline"]);
+    expect(devCopy, "no developer-facing map copy").toEqual([]);
+
+    // ---- U10: every Details link lands on its own card ----
+    const landed: Record<string, string> = {};
+    for (const concern of Object.values(dashboard.concerns)) {
+      await visit(page, "Dashboard");
+      await page.getByRole("button", { name: `Details: ${concern.label}` }).click();
+      const summaries = page.getByTestId("concern-summaries");
+      await expect(summaries.getByRole("heading", { name: concern.label, exact: true })).toBeVisible();
+      await expect(summaries).toContainText(concern.headline);
+      landed[concern.label] = concern.detail_screen;
+    }
+    expect(Object.keys(landed)).toHaveLength(5);
+    const nav = page.getByRole("navigation", { name: "Screens" });
+    await expect(nav.getByRole("list", { name: "Summaries" }).getByRole("button")).toHaveText([
+      "Economy",
+      "Legislature",
+      "Constitution",
+    ]);
+
+    // ---- U5: after a turn, the next action is the next turn ----
+    await visit(page, "Decisions");
+    await selectCard(page, "Raise the personal income tax");
+    await page.getByRole("button", { name: "Resolve turn" }).click();
+    const pending = page.waitForResponse(
+      (r) => r.url().includes("/api/game/resolve") && r.request().method() === "POST",
+      { timeout: 120_000 },
+    );
+    await page.getByRole("button", { name: "Confirm and resolve" }).click();
+    const resolved = (await (await pending).json()) as { turnResult: { turn: number } };
+    const n = resolved.turnResult.turn;
+    await expect(page.getByTestId("national-header")).toContainText(new RegExp(`Turn ${n}(?!\\d)`));
+    await page.getByRole("button", { name: `Plan turn ${n}` }).click();
+    await expect(nav.getByRole("button", { name: "Decisions", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByTestId("national-header")).toContainText(new RegExp(`Turn ${n}(?!\\d)`));
+
+    results.push({
+      block: "ux3",
+      viewport: viewport.name,
+      firstViewport,
+      capitalTooltip: CAPITAL_DEFINITION,
+      tint: {
+        background: tintBg,
+        labelBackground: labelBg,
+        countryNameBackdrop: surfaceNameOf(countryName.bg),
+        countryNameRatio: countryName.ratio,
+        calibrationNodes: calibration.length,
+      },
+      detailsLanded: landed,
+      planTurn: { resultTurn: n, headerTurn: n, landedOn: "Decisions" },
     });
   });
 }

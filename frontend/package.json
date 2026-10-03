@@ -66,7 +66,15 @@
     "verify:terminal:ux2": "MANDATE_TERMINAL_OUT=gate-4a3-ux2-terminal playwright test --project=terminal-coverage",
     "verify:campaigns:ux2": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux2-campaigns playwright test --project=campaigns",
     "audit:stress:seated:ux2": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux2-stress-seated-cabinet playwright test --project=stress-seated",
-    "audit:accessibility:verify:ux2": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux2 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux2 node tools/write-accessibility-report.mjs"
+    "audit:accessibility:verify:ux2": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux2 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux2 node tools/write-accessibility-report.mjs",
+    "_comment:ux3": "Gate 4A3 UX-3 (orientation, next action, no dead ends). Every browser gate re-runs under UX-3's own artifact names; verify:ux:3 runs the cumulative UX spec through @ux3.",
+    "verify:ux:3": "MANDATE_UX_OUT=gate-4a3-ux3-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3\"",
+    "verify:fixes:ux3": "MANDATE_VERIFY_OUT=gate-4a3-ux3-verification playwright test --project=verify",
+    "verify:icons:ux3": "MANDATE_ICONS_OUT=gate-4a3-ux3-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:ux3": "MANDATE_TERMINAL_OUT=gate-4a3-ux3-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:ux3": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux3-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:ux3": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux3-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:ux3": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3 node tools/write-accessibility-report.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

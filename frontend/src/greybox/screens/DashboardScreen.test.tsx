@@ -41,7 +41,7 @@ const DASHBOARD_NO_TERMINAL_NO_DELTA = {
     survival: concern({ label: "Survival", headline: "Not yet assessed", delta_text: null }),
   },
   goal: { headline: "Nothing is pressing.", detail: null },
-  map: { note: "presentation only", tint_metric_label: "Legitimacy" },
+  map: { note: "presentation only", tint_metric_label: "Legitimacy", tint_value_bps: 6000 },
   political_capital: { display: "500 / 1000" },
   alerts: [],
   terminal: null,

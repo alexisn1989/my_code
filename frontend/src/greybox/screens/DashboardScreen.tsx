@@ -1,7 +1,7 @@
 /**
  * Gate 4A2 — Dashboard, over the real `DashboardProjection`: five summary
- * concern cards, alerts, goal, the presentation-only map placeholder, and
- * terminal state when present. Every field here is a projection field;
+ * concern cards, alerts, goal, the national tint, and terminal state when
+ * present. Every field here is a projection field;
  * nothing is recomputed.
  *
  * Also the one place a player can Save As: `useSaveAs` was already fully
@@ -17,12 +17,14 @@
 import { useState } from "react";
 
 import { useDashboard, useSaveAs } from "../../api/queries";
+import { formatBpsPercent, tintAccessibleName, tintCaption, tintFill } from "../../format/format";
 import { useSession } from "../../state/SessionContext";
 import { ErrorPanel } from "../../status/ErrorPanel";
 import { LoadingPanel } from "../../status/StatusPanels";
+import { ConcernCardGrid, concernsOf } from "../ConcernCards";
 import { EmptyNote, Panel, ToneValue } from "../components";
 import type { ScreenProps } from "../registry";
-import type { ScreenId } from "../types";
+import { WIN_AND_LOSS_LINE } from "./GlossaryScreen";
 
 const SEVERITY_LABEL: Record<"critical" | "warning" | "info", string> = {
   critical: "Critical",
@@ -83,13 +85,7 @@ export function DashboardScreen({ navigate }: ScreenProps) {
   }
 
   const data = dashboard.data;
-  const concerns = [
-    data.concerns.money,
-    data.concerns.legitimacy,
-    data.concerns.legislature,
-    data.concerns.constitution,
-    data.concerns.survival,
-  ];
+  const concerns = concernsOf(data);
 
   return (
     <div className="flex flex-col gap-6">
@@ -114,26 +110,57 @@ export function DashboardScreen({ navigate }: ScreenProps) {
         </Panel>
       ) : null}
 
+      {/* Gate 4A3 UX-3 (U1): the stakes and the first action, in the panel a new player reads first.
+          The goal itself still comes from the server; the stakes line is the Glossary's own copy. */}
       <Panel title="Your current priority">
         <p>{data.goal.headline}</p>
         {data.goal.detail ? (
           <p className="mt-1 text-sm text-parchment-200/70">{data.goal.detail}</p>
         ) : null}
+        <p data-testid="win-and-loss" className="mt-2 text-sm text-parchment-200/80">
+          {WIN_AND_LOSS_LINE}
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate("decisions")}
+          className="mt-3 rounded border border-gold-600 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+        >
+          Build a decision
+        </button>
       </Panel>
 
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+        {/* Gate 4A3 UX-3 (U10): this box used to say "map placeholder" under a caption about
+            "province-level mechanics" -- developer copy, and an aria-label describing an outline
+            that was never drawn. It now draws what the projection actually carries: one national
+            value as a tint, with the country's name on it. The server's `map.note` is deliberately
+            not rendered; the caption is the player-facing equivalent, composed from the label. */}
         <Panel title={data.country_name}>
           <div
-            data-testid="map-placeholder"
+            data-testid="national-tint"
+            data-tint-bps={data.map.tint_value_bps}
             role="img"
-            aria-label={`Stylised outline of ${data.country_name}. Presentation only.`}
-            className="flex h-48 items-center justify-center rounded border border-dashed border-navy-800 bg-navy-950 text-parchment-200/60"
+            aria-label={tintAccessibleName(
+              data.country_name,
+              data.map.tint_metric_label,
+              formatBpsPercent(data.map.tint_value_bps),
+            )}
+            style={{ backgroundColor: tintFill(data.map.tint_value_bps) }}
+            className="flex h-48 items-center justify-center rounded border border-navy-800"
           >
-            map placeholder
+            {/* The name sits on its own navy-950 label rather than on the mix itself: every text
+                backdrop in this interface is one of the palette's authored surfaces, an invariant
+                the contrast sweeps assert (`verify-commit3-fixes`, `terminal-coverage`), and the
+                tint is a graphic, not a text surface. */}
+            <span
+              aria-hidden="true"
+              className="rounded bg-navy-950 px-3 py-1 font-[family-name:var(--font-display)] text-2xl text-parchment-100"
+            >
+              {data.country_name}
+            </span>
           </div>
-          <p className="mt-2 text-xs text-parchment-200/60">{data.map.note}</p>
-          <p className="mt-1 text-xs text-parchment-200/60">
-            Presentation only — tinted by {data.map.tint_metric_label}.
+          <p className="mt-2 text-xs text-parchment-200/70">
+            {tintCaption(data.map.tint_metric_label)}
           </p>
         </Panel>
 
@@ -156,35 +183,9 @@ export function DashboardScreen({ navigate }: ScreenProps) {
         </Panel>
       </div>
 
-      <div data-testid="concern-cards" className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
-        {concerns.map((concern) => (
-          <Panel key={concern.label} title={concern.label}>
-            <p className="text-xl tabular-nums">
-              <ToneValue tone={concern.tone}>{concern.headline}</ToneValue>
-            </p>
-            {concern.delta_text ? (
-              <p className="mt-1 text-xs text-parchment-200/70">{concern.delta_text}</p>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => navigate(concern.detail_screen as ScreenId)}
-              aria-label={`Details: ${concern.label}`}
-              className="mt-2 text-xs underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
-            >
-              Details
-            </button>
-          </Panel>
-        ))}
-      </div>
+      <ConcernCardGrid concerns={concerns} navigate={navigate} />
 
       <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={() => navigate("decisions")}
-          className="rounded border border-gold-600 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
-        >
-          Build a decision
-        </button>
         <button
           type="button"
           onClick={() => navigate("history")}

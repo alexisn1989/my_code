@@ -55,11 +55,22 @@ export function ResultScreen({ navigate }: ScreenProps) {
           </button>
         </div>
       ) : (
-        <div className="flex gap-3">
+        // Gate 4A3 UX-3 (U5): the next thing to do is play the next turn, so that is the primary
+        // action. `turn` is the turn this result PRODUCED -- the state's turn after resolution, the
+        // same number the national header now shows -- so it names the turn being planned with no
+        // arithmetic here.
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("decisions")}
+            className="rounded border border-gold-600 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+          >
+            Plan turn {liveResult.data.turn}
+          </button>
           <button
             type="button"
             onClick={() => navigate("dashboard")}
-            className="rounded border border-gold-600 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+            className="rounded border border-navy-800 px-3 py-1 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
           >
             Back to Dashboard
           </button>

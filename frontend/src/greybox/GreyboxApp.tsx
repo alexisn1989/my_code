@@ -17,8 +17,8 @@ import { useState } from "react";
 import { useDashboard } from "../api/queries";
 import { useDraftStore } from "../state/draft";
 import { SessionProvider, useSession } from "../state/SessionContext";
-import { INITIAL_SCREEN, SCREENS, screenById } from "./registry";
-import { GlossaryScreen } from "./screens/GlossaryScreen";
+import { INITIAL_SCREEN, SCREENS, screenById, type ScreenDefinition } from "./registry";
+import { GlossaryScreen, WIN_AND_LOSS_LINE, glossaryDefinition } from "./screens/GlossaryScreen";
 import type { ScreenId } from "./types";
 
 function NationalHeader() {
@@ -67,7 +67,15 @@ function NationalHeader() {
         <div className="flex flex-wrap gap-4 text-sm tabular-nums">
           <span>Turn {data.turn}</span>
           <span>Election: {data.next_election_label}</span>
-          <span>Capital {data.political_capital.display}</span>
+          {/* Gate 4A3 UX-3 (U1): "Capital 500 / 1,000" meant nothing to a new player. The Glossary's
+              own definition is the tooltip and the accessible description, quoted, not restated. */}
+          <span
+            data-testid="capital-meter"
+            title={glossaryDefinition("Political capital")}
+            aria-description={glossaryDefinition("Political capital")}
+          >
+            Capital {data.political_capital.display}
+          </span>
         </div>
       </div>
       <ul className="mt-2 flex flex-wrap gap-4 text-xs text-parchment-200/80">
@@ -81,6 +89,28 @@ function NationalHeader() {
   );
 }
 
+/** Economy, Legislature and Constitution: the screens that show a summary card and nothing more. */
+const SUMMARY_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>(["economy", "legislature", "constitution"]);
+
+type NavGroup =
+  | { kind: "screen"; entry: ScreenDefinition }
+  | { kind: "summaries"; entries: ScreenDefinition[] };
+
+/** The registry in its own order, with the summary screens gathered at the position of the first. */
+function navGroups(screens: readonly ScreenDefinition[]): NavGroup[] {
+  const groups: NavGroup[] = [];
+  const summaries: ScreenDefinition[] = [];
+  for (const entry of screens) {
+    if (SUMMARY_SCREENS.has(entry.id)) {
+      if (summaries.length === 0) groups.push({ kind: "summaries", entries: summaries });
+      summaries.push(entry);
+    } else {
+      groups.push({ kind: "screen", entry });
+    }
+  }
+  return groups;
+}
+
 function GreyboxShell() {
   const [screenId, setScreenId] = useState<ScreenId>(INITIAL_SCREEN);
   const { revision } = useSession();
@@ -92,6 +122,26 @@ function GreyboxShell() {
 
   const screen = screenById(screenId);
   const ScreenComponent = screen.component;
+
+  function navItem(entry: ScreenDefinition) {
+    const disabled = (entry.requiresActiveGame ?? false) && revision === null;
+    return (
+      <li key={entry.id}>
+        <button
+          type="button"
+          aria-current={entry.id === screenId ? "page" : undefined}
+          disabled={disabled}
+          // Gate 4A3 UX-3: this said "…to view the strategic map." on Government and Relationships
+          // too -- every screen that needs a campaign shared the Strategic map's sentence.
+          title={disabled ? `Load or start a game to view the ${entry.label.toLowerCase()}.` : undefined}
+          onClick={disabled ? undefined : () => setScreenId(entry.id)}
+          className="w-full rounded border border-navy-800 px-3 py-2 text-left text-sm aria-[current=page]:border-gold-500 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+        >
+          {entry.label}
+        </button>
+      </li>
+    );
+  }
 
   return (
     <div className="min-h-screen">
@@ -183,6 +233,9 @@ function GreyboxShell() {
             where you assemble the turn and resolve it, and Turn result and History are where you
             read what your choices did.
           </p>
+          <p data-testid="win-and-loss" className="mt-2">
+            {WIN_AND_LOSS_LINE}
+          </p>
           <button
             type="button"
             onClick={dismissHelp}
@@ -196,23 +249,27 @@ function GreyboxShell() {
       <div className="flex flex-col gap-6 px-6 py-6 lg:flex-row">
         <nav aria-label="Screens" className="lg:w-56 lg:shrink-0">
           <ul className="flex flex-wrap gap-2 lg:flex-col">
-            {SCREENS.map((entry) => {
-              const disabled = (entry.requiresActiveGame ?? false) && revision === null;
-              return (
-                <li key={entry.id}>
-                  <button
-                    type="button"
-                    aria-current={entry.id === screenId ? "page" : undefined}
-                    disabled={disabled}
-                    title={disabled ? "Load or start a game to view the strategic map." : undefined}
-                    onClick={disabled ? undefined : () => setScreenId(entry.id)}
-                    className="w-full rounded border border-navy-800 px-3 py-2 text-left text-sm aria-[current=page]:border-gold-500 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+            {/* Gate 4A3 UX-3 (U10): Economy, Legislature and Constitution have no full screen in this
+                version; each shows the Dashboard's summary card for its topic. A visible
+                "Summaries" caption says so before the player clicks. The registry's order is
+                unchanged, and so is every control's accessible name. */}
+            {navGroups(SCREENS).map((group) =>
+              group.kind === "summaries" ? (
+                <li key="summaries" className="flex w-full flex-col gap-2">
+                  <span
+                    id="nav-summaries"
+                    className="px-1 pt-1 text-xs uppercase tracking-wide text-parchment-200/70"
                   >
-                    {entry.label}
-                  </button>
+                    Summaries
+                  </span>
+                  <ul aria-labelledby="nav-summaries" className="flex flex-wrap gap-2 lg:flex-col">
+                    {group.entries.map(navItem)}
+                  </ul>
                 </li>
-              );
-            })}
+              ) : (
+                navItem(group.entry)
+              ),
+            )}
           </ul>
         </nav>
 

@@ -21,14 +21,26 @@
  * `CabinetScreen.test.tsx`, `MeetingScreen.test.tsx` and `DecisionsScreen.test.tsx`.
  */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { SessionProvider } from "../state/SessionContext";
 import { UnavailableScreen } from "./screens/UnavailableScreen";
 
 describe("UnavailableScreen speaks to a player, not about the build", () => {
+  // Gate 4A3 UX-3: the screen now opens with the Dashboard's summary card for its topic, which reads
+  // the session and the dashboard query -- so it renders inside the same providers as in the app.
+  // With no campaign the summary renders nothing, so every assertion below is about the same copy.
   function renderIt(heading: string) {
-    return render(<UnavailableScreen heading={heading} navigate={vi.fn()} />);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={client}>
+        <SessionProvider>
+          <UnavailableScreen heading={heading} screen="economy" navigate={vi.fn()} />
+        </SessionProvider>
+      </QueryClientProvider>,
+    );
   }
 
   it("titles the panel in the game's terms", () => {

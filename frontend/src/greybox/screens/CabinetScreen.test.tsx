@@ -157,11 +157,16 @@ function panelState(): string | null {
 
 beforeEach(() => {
   useDraftStore.getState().clearDraft();
-  vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
-    new Response(JSON.stringify(DECISION_OPTIONS), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    }),
+  // Gate 4A3 UX-3: the screen now also reads the dashboard (for the Legitimacy and Survival summary
+  // cards above the cabinet). These tests are about the cabinet, so that request is answered with a
+  // 404 and the summary renders nothing; `ux3.test.tsx` covers the summary itself.
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL) =>
+    String(input).includes("/api/game/state")
+      ? new Response(JSON.stringify({ detail: "not in this test" }), { status: 404 })
+      : new Response(JSON.stringify(DECISION_OPTIONS), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
   );
 });
 

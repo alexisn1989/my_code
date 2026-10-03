@@ -12,7 +12,7 @@
 
 import { Panel } from "../components";
 
-const GLOSSARY_ENTRIES: readonly { term: string; definition: string }[] = [
+export const GLOSSARY_ENTRIES: readonly { term: string; definition: string }[] = [
   {
     term: "Political capital",
     definition:
@@ -44,6 +44,29 @@ const GLOSSARY_ENTRIES: readonly { term: string; definition: string }[] = [
       "An opaque marker identifying the exact game state a screen was drawn from. The interface echoes it back when resolving, so a stale decision is refused rather than misapplied.",
   },
 ];
+
+/** One glossary definition, by its term, so another surface (the capital tooltip) quotes the Glossary
+ * rather than restating it. A missing term is a programming error, not a fallback case. */
+export function glossaryDefinition(term: string): string {
+  const entry = GLOSSARY_ENTRIES.find((candidate) => candidate.term === term);
+  if (entry === undefined) {
+    throw new Error(`no glossary entry for ${term}`);
+  }
+  return entry.definition;
+}
+
+/** Gate 4A3 UX-3: the stakes, stated where a new player first looks. It restates the "Peaceful
+ * liberalization" entry for the player's own country, and names every way to lose by the backend's
+ * authored phrase (`app/api/outcome_labels.py`, `REMOVAL_REASON_TEXT`).
+ *
+ * Two backend tests keep it true (`backend/tests/test_orientation_copy.py`): every removal phrase
+ * appears here verbatim, and every shipped scenario starts noncompetitive -- the condition under
+ * which "turning this into a competitive constitution" describes the player's country at all. */
+export const WIN_AND_LOSS_LINE = [
+  "You win by turning this into a competitive constitution and then winning the first election",
+  "held under it. You lose if you are removed by coup, forced abdication, assassination,",
+  "impeachment, electoral defeat or term limit exit.",
+].join(" ");
 
 export function GlossaryScreen() {
   return (
