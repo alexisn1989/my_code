@@ -47,7 +47,12 @@ from app.simulation.legislative_voting import (
     CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
 )
-from app.simulation.legislature import GovernmentRole, LegislativeOutcome, ProposalRoute
+from app.simulation.legislature import (
+    CapitalExpenditureCategory,
+    GovernmentRole,
+    LegislativeOutcome,
+    ProposalRoute,
+)
 from app.simulation.military import classify_destinations
 from app.simulation.phases import available_promise_term, promise_subject_is_valid
 from app.simulation.promises import (
@@ -2077,6 +2082,22 @@ def build_turn_result(state: GameState, report: TurnReport) -> TurnResultProject
 _ENACTED = (LegislativeOutcome.PASSED_LEGISLATIVE, LegislativeOutcome.ENACTED_BY_DECREE)
 
 
+_VOTE_EXPENDITURES = (
+    CapitalExpenditureCategory.LEGISLATIVE_INFLUENCE,
+    CapitalExpenditureCategory.LEGISLATIVE_BARGAIN,
+)
+
+
+def _capital_committed_to_the_vote(report: TurnReport) -> bool:
+    capital = report.political_capital
+    if capital is None:
+        return False
+    return any(
+        row.category in _VOTE_EXPENDITURES and row.political_capital > 0
+        for row in capital.expenditures
+    )
+
+
 def _outcome_headline(report: TurnReport) -> tuple[str, Tone]:
     """Layer 1: one sentence, chosen from what the report actually records."""
     amendment = report.constitutional_amendment
@@ -2108,7 +2129,15 @@ def _outcome_headline(report: TurnReport) -> tuple[str, Tone]:
         if legislative.outcome is LegislativeOutcome.ENACTED_BY_DECREE:
             return ("The budget was enacted by decree. The legislature was bypassed.", "caution")
         if legislative.outcome is LegislativeOutcome.FAILED_LEGISLATIVE:
-            return ("The budget was blocked. Committed capital was still spent.", "negative")
+            # Gate 4A3 UX-2: the clause is true only when capital was actually committed TOWARD THIS
+            # VOTE (influence on a bloc, or a leader's bargain) -- the two expenditures a blocked
+            # vote spends anyway. A blocked budget that bought no votes used to say "Committed
+            # capital was still spent" directly above a ledger reading "Nothing was committed".
+            # A relationship investment the same turn is not spending on the vote, so it does not
+            # trigger the clause.
+            if _capital_committed_to_the_vote(report):
+                return ("The budget was blocked. Committed capital was still spent.", "negative")
+            return ("The budget was blocked.", "negative")
     return ("The turn was resolved.", "neutral")
 
 

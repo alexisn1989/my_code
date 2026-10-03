@@ -450,19 +450,13 @@ test.describe("Gate 4A3 Commit 5b: campaigns through the interface", () => {
     expect(live).toContain("backed the budget, for 113 political capital.");
     steps.push(`Turn result: drivers ${reasonIds.join(", ")}`);
 
-    /* T2, RECORDED, NOT FIXED. Each driver line also renders its `reason_id` in a <code> element. That
-     * is an engine identifier shown to the player -- T1's class -- so the run records whether it is
-     * painted rather than letting it pass unremarked. It is not absorbed into this commit. */
-    const codeProbe = await page.getByTestId("turn-result-view").locator("li code").evaluateAll((nodes) =>
-      nodes.map((n) => {
-        const rect = n.getBoundingClientRect();
-        const style = getComputedStyle(n);
-        return {
-          text: n.textContent ?? "",
-          painted: rect.width > 1 && rect.height > 1 && style.visibility !== "hidden" && style.display !== "none",
-        };
-      }),
-    );
+    /* T2, FIXED IN GATE 4A3 UX-2. Reason ids now live only in the collapsed Trace, linked to their
+     * sentences, so with the Trace closed no driver's reason id is player-visible -- in rendered text
+     * or in any player-visible attribute -- and no driver line carries a <code> element. */
+    const codeInDriverLines = await page.getByTestId("turn-result-view").locator("li[data-reason-id] code").count();
+    expect(codeInDriverLines, "no painted reason id beside a driver sentence").toBe(0);
+    const liveLeaks = await findIdentifierLeaks(page, reasonIds);
+    expect(liveLeaks, "no reason id visible outside the Trace on the live result").toEqual([]);
 
     // ---- History: the same turn, re-read, must say exactly the same thing ----
     await visit(page, "History");
@@ -472,6 +466,8 @@ test.describe("Gate 4A3 Commit 5b: campaigns through the interface", () => {
     await expect(page.getByTestId("turn-result-view")).toHaveAttribute("data-context", "history");
     const history = await driversText(page);
     expect(history, "History must re-render the turn's drivers text-for-text").toBe(live);
+    const historyLeaks = await findIdentifierLeaks(page, reasonIds);
+    expect(historyLeaks, "no reason id visible outside the Trace in History").toEqual([]);
     steps.push("History: the turn's drivers re-read identically");
 
     // ---- the consequences persist where a player would look for them ----
@@ -497,13 +493,11 @@ test.describe("Gate 4A3 Commit 5b: campaigns through the interface", () => {
       },
       driverReasonIds: reasonIds,
       historyIdenticalToLive: history === live,
-      t2ReasonIdCodeElements: {
-        count: codeProbe.length,
-        painted: codeProbe.filter((c) => c.painted).length,
-        sample: codeProbe.slice(0, 5),
-        disposition:
-          "Recorded, not fixed: an engine identifier rendered beside each driver sentence. Same class " +
-          "as T1; owner to be assigned in the Commit 6 closeout.",
+      t2ReasonIds: {
+        codeElementsInDriverLines: codeInDriverLines,
+        leaksOutsideTraceLive: liveLeaks.length,
+        leaksOutsideTraceHistory: historyLeaks.length,
+        disposition: "Fixed in Gate 4A3 UX-2: reason ids appear only in the Trace, linked to their sentences.",
       },
       f11: "closed -- the first automated test that plays Government and Relationships against a live server",
     };

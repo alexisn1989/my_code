@@ -1,0 +1,373 @@
+{
+  "gate": "4A3 (frozen-plan 4A5) Commit 5",
+  "subject": "the concluded terminal screen: N6 contrast and terminal-state reflow",
+  "scenario": "tiny_valid, via the real data/scenarios root, on this spec's own server",
+  "coverage": [
+    "N6: 203 elements owning painted text measured across 8 screens of a CONCLUDED campaign; the terminal outcome's own three nodes measured at 15.31:1, 7.17:1, 7.01:1 against a 4.5:1 bar, each on its authored bg-navy-900",
+    "Terminal reflow: 8 screens clean at 320px (ASSERTED); 14 overflow observation(s) at 195px (RECORDED, below the WCAG floor, never asserted)",
+    "Campaign: 32 turns resolved to reach defeat at turn 32 (Term limit exit); pinned, with a cap of 60"
+  ],
+  "campaign": {
+    "scenarioId": "tiny_valid",
+    "resolvedTurns": 32,
+    "cap": 60,
+    "terminal": {
+      "bucket": "defeat",
+      "reason_label": "Term limit exit",
+      "turn": 32,
+      "headline": "Removed from office: term limit exit, turn 32."
+    },
+    "determinism": "empty decision sets throughout, so the campaign is a function of the scenario and its own authored seed 42; the ending is the 2-term limit against a 16-turn election interval, a game rule rather than a draw. Pinned from a direct measurement against the SHIPPED configuration (foreign dyad enabled), which `test_soak.py` measures with that dyad disabled."
+  },
+  "n6": {
+    "finding": "N6",
+    "status": "RESOLVED BY MEASUREMENT in the state where it exists",
+    "bar": "4.5:1, WCAG 2.2 SC 1.4.3",
+    "whyItCouldNotBeMeasuredBefore": "The terminal OUTCOME renders only once `terminal` is non-null. Every earlier audit ran mid-campaign, where this screen shows a still-active placeholder instead -- and Commit 3's contrast selector (`main [aria-hidden], main span, main text`) additionally matched NOTHING on it, because the placeholder is built from an h2, two Panel headings, two paragraphs and two buttons. So 'no text-bearing element was present' described the selector, not the DOM.",
+    "terminalOutcomeNodes": [
+      {
+        "role": "panel heading",
+        "selector": "h3.mb-3 font-[family-name:var(--font-displa",
+        "text": "Defeat",
+        "ratio": 15.31,
+        "authoredSurface": "navy-900",
+        "resolvedSurface": "navy-900",
+        "alpha": 1,
+        "normalised": "rgb(243,236,217)",
+        "fontPx": 18
+      },
+      {
+        "role": "outcome headline",
+        "selector": "span.text-danger-400",
+        "text": "Removed from office: term limit exit, turn 32.",
+        "ratio": 7.17,
+        "authoredSurface": "navy-900",
+        "resolvedSurface": "navy-900",
+        "alpha": 1,
+        "normalised": "rgb(229,138,138)",
+        "fontPx": 18
+      },
+      {
+        "role": "reason and turn",
+        "selector": "p.mt-1 text-sm text-parchment-200/70",
+        "text": "Term limit exit, turn 32",
+        "ratio": 7.01,
+        "authoredSurface": "navy-900",
+        "resolvedSurface": "navy-900",
+        "alpha": 0.7,
+        "normalised": "rgb(232,220,192)",
+        "fontPx": 14
+      }
+    ],
+    "anchoring": "The three outcome nodes are identified by strings the SERVER projected (`terminal.headline`, `terminal.reason_label`, and the bucket heading), never by layout position, so the assertion proves the measured text IS the outcome rather than something that resembles it. Their backdrop is asserted against what `Panel` authors (bg-navy-900) rather than against what the probe resolved -- the strong form of the rule, which the sweep-wide token-membership test below is deliberately weaker than.",
+    "calibration": {
+      "className": "text-parchment-200/60",
+      "tolerance": 0.05,
+      "groups": [
+        {
+          "backdrop": "rgb(10,15,26)",
+          "surface": "navy-950",
+          "nodes": 1,
+          "measuredRatios": [
+            5.57
+          ],
+          "offlineExpected": 5.57
+        },
+        {
+          "backdrop": "rgb(15,22,38)",
+          "surface": "navy-900",
+          "nodes": 23,
+          "measuredRatios": [
+            5.45
+          ],
+          "offlineExpected": 5.45
+        }
+      ]
+    },
+    "perScreen": [
+      {
+        "screen": "Dashboard",
+        "measured": 39,
+        "candidates": 87,
+        "rejectedNoOwnText": 42,
+        "rejectedHidden": 6,
+        "worstRatio": 5.45,
+        "worstOn": "p.mt-2 text-xs text-parchment-200/60 \"This is a national identity tint, not a \"",
+        "worstSurface": "navy-900",
+        "belowBar": []
+      },
+      {
+        "screen": "Government",
+        "measured": 11,
+        "candidates": 22,
+        "rejectedNoOwnText": 11,
+        "rejectedHidden": 0,
+        "worstRatio": 5.45,
+        "worstOn": "p.text-sm text-parchment-200/60 \"The cabinet is the only part of the gove\"",
+        "worstSurface": "navy-900",
+        "belowBar": []
+      },
+      {
+        "screen": "Relationships",
+        "measured": 61,
+        "candidates": 328,
+        "rejectedNoOwnText": 267,
+        "rejectedHidden": 0,
+        "worstRatio": 5.45,
+        "worstOn": "span.text-xs text-parchment-200/60 \"loyalty 12.00%, independence 76.00%, amb\"",
+        "worstSurface": "navy-900",
+        "belowBar": []
+      },
+      {
+        "screen": "Strategic map",
+        "measured": 41,
+        "candidates": 158,
+        "rejectedNoOwnText": 115,
+        "rejectedHidden": 2,
+        "worstRatio": 5.45,
+        "worstOn": "p.mb-4 text-xs italic text-parchment-200/6 \"Schematic — not to geographic scale\"",
+        "worstSurface": "navy-900",
+        "belowBar": []
+      },
+      {
+        "screen": "Decisions",
+        "measured": 5,
+        "candidates": 13,
+        "rejectedNoOwnText": 7,
+        "rejectedHidden": 1,
+        "worstRatio": 7.01,
+        "worstOn": "p.mt-2 text-sm text-parchment-200/70 \"No further turn can be resolved. Review \"",
+        "worstSurface": "navy-900",
+        "belowBar": []
+      },
+      {
+        "screen": "Turn result",
+        "measured": 4,
+        "candidates": 7,
+        "rejectedNoOwnText": 3,
+        "rejectedHidden": 0,
+        "worstRatio": 5.45,
+        "worstOn": "p.text-sm text-parchment-200/60 \"Resolve a turn from the Decision workspa\"",
+        "worstSurface": "navy-900",
+        "belowBar": []
+      },
+      {
+        "screen": "History",
+        "measured": 34,
+        "candidates": 70,
+        "rejectedNoOwnText": 36,
+        "rejectedHidden": 0,
+        "worstRatio": 15.31,
+        "worstOn": "h3.mb-3 font-[family-name:var(--font-displa \"Timeline\"",
+        "worstSurface": "navy-900",
+        "belowBar": []
+      },
+      {
+        "screen": "Victory / defeat",
+        "measured": 8,
+        "candidates": 18,
+        "rejectedNoOwnText": 9,
+        "rejectedHidden": 1,
+        "worstRatio": 7.01,
+        "worstOn": "p.mt-1 text-sm text-parchment-200/70 \"Term limit exit, turn 32\"",
+        "worstSurface": "navy-900",
+        "belowBar": []
+      }
+    ],
+    "unreachableScreens": []
+  },
+  "reflow": {
+    "conformance": {
+      "viewport": {
+        "name": "reflow-wcag-320x512",
+        "width": 320,
+        "height": 512
+      },
+      "asserted": true,
+      "standard": "WCAG 2.2 SC 1.4.10 Reflow, whose conformance width is 320 CSS px",
+      "whyItCouldNotBeMeasuredBefore": "The existing 320px sweep does visit this screen, so it has been reflowing the still-active PLACEHOLDER. A concluded campaign changes three screens: the terminal outcome itself, the Dashboard's 'campaign has ended' panel, and Decisions -- which takes an early return that replaces the whole composer, so its 320px layout in this state is a different layout that had never been measured.",
+      "screens": [
+        {
+          "screen": "Dashboard",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "Government",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "Relationships",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "Strategic map",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "Decisions",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "Turn result",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "History",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "Victory / defeat",
+          "overflow": [],
+          "scrolls": false
+        }
+      ]
+    },
+    "belowFloor": {
+      "viewport": {
+        "name": "reflow200-mobile-195x422",
+        "width": 195,
+        "height": 422
+      },
+      "asserted": false,
+      "screens": [
+        {
+          "screen": "Dashboard",
+          "overflow": [
+            "div.flex flex-col gap-6",
+            "div.grid gap-4 md:grid-cols-3 xl:grid-cols-5",
+            "div.flex gap-3"
+          ],
+          "scrolls": true
+        },
+        {
+          "screen": "Government",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "Relationships",
+          "overflow": [
+            "div.flex flex-col gap-6",
+            "div.flex flex-col gap-6",
+            "section.rounded border border-navy-800 bg-navy-9",
+            "ul.flex flex-col gap-2",
+            "li.",
+            "button.flex w-full gap-3 rounded border border-",
+            "li.",
+            "button.flex w-full gap-3 rounded border border-"
+          ],
+          "scrolls": true
+        },
+        {
+          "screen": "Strategic map",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "Decisions",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "Turn result",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "History",
+          "overflow": [],
+          "scrolls": false
+        },
+        {
+          "screen": "Victory / defeat",
+          "overflow": [
+            "div.flex flex-col gap-6",
+            "section.rounded border border-navy-800 bg-navy-9",
+            "div.flex gap-3"
+          ],
+          "scrolls": true
+        }
+      ]
+    }
+  },
+  "axe": {
+    "method": "@axe-core/playwright against the running application, on a CONCLUDED campaign",
+    "antiVacuity": "Each screen records `rulesEvaluated` and the run asserts it non-zero, so an empty violation list can never be read as clean when in fact no rule ran.",
+    "screens": [
+      {
+        "screen": "Dashboard",
+        "violations": [],
+        "incomplete": [],
+        "rulesEvaluated": 89
+      },
+      {
+        "screen": "Government",
+        "violations": [],
+        "incomplete": [],
+        "rulesEvaluated": 89
+      },
+      {
+        "screen": "Relationships",
+        "violations": [],
+        "incomplete": [],
+        "rulesEvaluated": 89
+      },
+      {
+        "screen": "Strategic map",
+        "violations": [],
+        "incomplete": [
+          {
+            "id": "color-contrast",
+            "nodes": 6
+          }
+        ],
+        "rulesEvaluated": 90
+      },
+      {
+        "screen": "Decisions",
+        "violations": [],
+        "incomplete": [],
+        "rulesEvaluated": 89
+      },
+      {
+        "screen": "Turn result",
+        "violations": [],
+        "incomplete": [],
+        "rulesEvaluated": 89
+      },
+      {
+        "screen": "History",
+        "violations": [],
+        "incomplete": [],
+        "rulesEvaluated": 89
+      },
+      {
+        "screen": "Victory / defeat",
+        "violations": [],
+        "incomplete": [],
+        "rulesEvaluated": 89
+      }
+    ],
+    "violationTotal": 0,
+    "incompleteDisposition": [
+      {
+        "screen": "Strategic map",
+        "rule": "color-contrast",
+        "nodes": 6,
+        "disposition": "answered by this run's own measurement: 41 element(s) owning painted text on this screen, worst ratio 5.45:1 on navy-900, against a 4.5:1 bar, with the effective background resolved by ancestor walk -- the step axe declines when elements overlap"
+      }
+    ]
+  },
+  "surfaces": {
+    "navy-950": "#0a0f1a",
+    "navy-900": "#0f1626",
+    "navy-800": "#182338"
+  }
+}

@@ -10,10 +10,10 @@
  * trace layer is collapsed by default and expanded on demand.
  */
 
-import { useState } from "react";
+import { useEffect, useId, useState, type MouseEvent } from "react";
 
 import type { TurnResultProjection } from "../api/client";
-import { driverSentence } from "../format/format";
+import { driverSentence, isRoutineDriver } from "../format/format";
 import { DataTable, EmptyNote, Panel, ToneValue } from "./components";
 
 export function TurnResultView({
@@ -25,6 +25,56 @@ export function TurnResultView({
   context: "live" | "history";
 }) {
   const [traceOpen, setTraceOpen] = useState(false);
+  // Gate 4A3 UX-2: bookkeeping drivers are folded into a CONTROLLED disclosure, so a Trace link can
+  // open it before moving focus -- a native toggle alone would leave the target hidden.
+  const [routineOpen, setRoutineOpen] = useState(false);
+  const [focusTarget, setFocusTarget] = useState<number | null>(null);
+  // Anchors are scoped per rendered view, so two views on one page could never share an id.
+  const scope = useId();
+  const anchorId = (index: number) => `${scope}driver-${index}`;
+
+  const drivers = result.drivers.map((driver, index) => ({ driver, index }));
+  const visible = drivers.filter(({ driver }) => !isRoutineDriver(driver));
+  const routine = drivers.filter(({ driver }) => isRoutineDriver(driver));
+
+  useEffect(() => {
+    if (focusTarget === null) return;
+    const target = document.getElementById(anchorId(focusTarget));
+    if (target !== null) {
+      target.scrollIntoView?.({ block: "center" });
+      target.focus();
+    }
+    setFocusTarget(null);
+    // `anchorId` is derived from the stable `scope`; the effect runs per requested target.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTarget]);
+
+  function followReason(event: MouseEvent<HTMLAnchorElement>, index: number, isRoutine: boolean) {
+    event.preventDefault();
+    if (isRoutine) setRoutineOpen(true);
+    setFocusTarget(index);
+  }
+
+  function driverItem({ driver, index }: { driver: (typeof result.drivers)[number]; index: number }) {
+    return (
+      // Keyed by POSITION as well as reason id: one turn routinely emits the same reason several
+      // times (a relationship reaction per bloc), and a reason-id key alone gave React duplicate
+      // keys -- found by the Gate 4A3 Commit 5b walkthrough. The list is static per render, so the
+      // position is a stable identity here.
+      <li
+        key={`${index}:${driver.reason_id}`}
+        id={anchorId(index)}
+        data-reason-id={driver.reason_id}
+        tabIndex={-1}
+        className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+      >
+        {/* Composed from the driver's OWN stored params where this build has wording for the
+            reason, and from the generic `label` otherwise -- see `driverSentence`. The reason id
+            itself is no longer painted here (T2): it lives in the Trace, linked back to this line. */}
+        {driverSentence(driver.reason_id, driver.params, driver.label)}
+      </li>
+    );
+  }
 
   return (
     <div data-testid="turn-result-view" data-context={context} className="flex flex-col gap-4">
@@ -43,23 +93,28 @@ export function TurnResultView({
         {result.drivers.length === 0 ? (
           <EmptyNote>No drivers were recorded for this turn.</EmptyNote>
         ) : (
-          <ul className="flex list-disc flex-col gap-2 pl-5 text-sm">
-            {/* Keyed by POSITION as well as reason id: one turn routinely emits the same reason
-                several times (a relationship reaction per bloc), and a reason-id key alone gave
-                React duplicate keys -- found by the Gate 4A3 Commit 5b walkthrough, whose real
-                budget turn produced five of each. The list is static per render, so the
-                position is a stable identity here. */}
-            {result.drivers.map((driver, index) => (
-              <li key={`${index}:${driver.reason_id}`}>
-                {/* Composed from the driver's OWN stored params where this build has wording for
-                    the reason, and from the generic `label` otherwise -- see `driverSentence`.
-                    A cabinet change carries its people in `params`, and a label that said only
-                    "a post changed hands" would tell a player less than the CLI does. */}
-                {driverSentence(driver.reason_id, driver.params, driver.label)}{" "}
-                <code className="text-xs text-parchment-200/60">{driver.reason_id}</code>
-              </li>
-            ))}
-          </ul>
+          <>
+            {visible.length === 0 ? (
+              <EmptyNote>Only routine steps were recorded for this turn.</EmptyNote>
+            ) : (
+              <ul data-testid="drivers-consequential" className="flex list-disc flex-col gap-2 pl-5 text-sm">
+                {visible.map(driverItem)}
+              </ul>
+            )}
+            {routine.length === 0 ? null : (
+              <details
+                data-testid="drivers-routine"
+                open={routineOpen}
+                onToggle={(event) => setRoutineOpen(event.currentTarget.open)}
+                className="mt-3 text-sm"
+              >
+                <summary className="cursor-pointer rounded text-parchment-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500">
+                  Routine steps this turn ({routine.length})
+                </summary>
+                <ul className="mt-2 flex list-disc flex-col gap-2 pl-5">{routine.map(driverItem)}</ul>
+              </details>
+            )}
+          </>
         )}
       </Panel>
 
@@ -105,7 +160,25 @@ export function TurnResultView({
           {traceOpen ? "Hide exact values" : "Show exact values"}
         </button>
         {traceOpen ? (
-          <div className="mt-3">
+          <div className="mt-3 flex flex-col gap-3">
+            {result.drivers.length === 0 ? null : (
+              <div>
+                <h4 className="text-sm font-semibold">Reasons recorded</h4>
+                <ol data-testid="trace-reasons" className="mt-1 flex list-decimal flex-col gap-1 pl-5 text-sm">
+                  {drivers.map(({ driver, index }) => (
+                    <li key={`${index}:${driver.reason_id}`}>
+                      <a
+                        href={`#${anchorId(index)}`}
+                        onClick={(event) => followReason(event, index, isRoutineDriver(driver))}
+                        className="underline focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                      >
+                        <code className="text-xs">{driver.reason_id}</code>
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
             {result.trace.length === 0 ? (
               <EmptyNote>No trace fields were recorded for this turn.</EmptyNote>
             ) : (

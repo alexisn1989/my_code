@@ -483,7 +483,7 @@ export function driverSentence(
     case "foreign_assistance_pool_exhausted":
       return profile === undefined ? label : `${profile} has no assistance left to give.`;
     default:
-      return label;
+      return economySentence(reasonId, params) ?? label;
   }
 }
 
@@ -702,4 +702,115 @@ export function decreePreviewSentence(preview: {
   return `If resolved now: enacted by decree — the legislature is bypassed. Route cost ${formatAmount(
     preview.route_capital_cost,
   )}.`;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Gate 4A3 UX-2 — the turn result: cause first, bookkeeping folded away, nothing lost
+// ---------------------------------------------------------------------------------------------------
+
+/** Display names for the engine's eleven `SectorCategory` values. Authored here because a driver's
+ * params carry the raw category and no display name; a backend test reads this map and pins its keys
+ * to the enum, so a new sector cannot ship without a label. An unknown value falls back to the
+ * generic driver label, never to the raw identifier. */
+export const SECTOR_LABEL: Readonly<Record<string, string>> = {
+  agriculture: "Agriculture",
+  extraction: "Extraction",
+  manufacturing: "Manufacturing",
+  construction: "Construction",
+  energy: "Energy",
+  transportation: "Transportation",
+  consumer_services: "Consumer services",
+  finance_and_professional_services: "Finance and professional services",
+  technology: "Technology",
+  defense_industry: "Defence industry",
+  public_services: "Public services",
+};
+
+function num(value: string | number | undefined): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
+/** Sentences for the economy and bookkeeping drivers, composed ONLY from each driver's stored
+ * params. `undefined` means "no wording for this reason or a param is missing", and the caller then
+ * shows the generic label -- the same fallback rule every other driver follows. */
+function economySentence(
+  reasonId: string,
+  params: Record<string, string | number>,
+): string | undefined {
+  switch (reasonId) {
+    case "sector_inactive": {
+      const category = params["category"];
+      const name = typeof category === "string" ? SECTOR_LABEL[category] : undefined;
+      return name === undefined ? undefined : `The ${name} sector produced nothing this turn.`;
+    }
+    case "resource_extraction_resolved": {
+      const depleted = num(params["deposits_depleted"]);
+      const unassigned = num(params["unassigned_resource_workers"]);
+      if (depleted === undefined || unassigned === undefined) return undefined;
+      const parts: string[] = [];
+      if (depleted > 0) {
+        parts.push(`${formatAmount(depleted)} deposit${depleted === 1 ? "" : "s"} ran dry`);
+      }
+      if (unassigned > 0) {
+        parts.push(`${formatAmount(unassigned)} resource workers had no deposit to work`);
+      }
+      return parts.length === 0
+        ? "Resource extraction ran normally: no deposit ran dry and every resource worker was placed."
+        : `Resource extraction: ${parts.join("; ")}.`;
+    }
+    case "labor_market_resolved": {
+      const employed = num(params["total_employment"]);
+      const rate = num(params["unemployment_rate_bps"]);
+      const unfilled = num(params["unfilled_jobs"]);
+      if (employed === undefined || rate === undefined || unfilled === undefined) return undefined;
+      return `Labour market: ${formatAmount(employed)} employed, ${formatBpsPercent(rate)} unemployment, ${formatAmount(unfilled)} unfilled jobs.`;
+    }
+    case "production_summary": {
+      const output = num(params["total_gross_output"]);
+      const capacity = num(params["sectors_capacity_constrained"]);
+      const labour = num(params["sectors_labor_constrained"]);
+      if (output === undefined || capacity === undefined || labour === undefined) return undefined;
+      return `Production: ${formatAmount(output)} output; ${formatAmount(capacity)} sectors at capacity, ${formatAmount(labour)} short of workers.`;
+    }
+    case "tax_bases_derived": {
+      const personal = num(params["personal_income"]);
+      const corporate = num(params["corporate_profit"]);
+      const consumption = num(params["taxable_consumption"]);
+      if (personal === undefined || corporate === undefined || consumption === undefined) {
+        return undefined;
+      }
+      return `Tax bases: personal income ${formatAmount(personal)}, corporate profit ${formatAmount(corporate)}, consumption ${formatAmount(consumption)}.`;
+    }
+    case "turn_resolved": {
+      const turn = num(params["turn"]);
+      return turn === undefined ? undefined : `Turn ${turn} resolved.`;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** Bookkeeping that says nothing about THIS turn's choices, folded into a collapsed "Routine steps"
+ * section. Decided only from the driver's reason and stored params; consequential events stay
+ * visible -- a sector producing nothing always, and resource extraction whenever a deposit ran dry
+ * or resource workers went unplaced. */
+const ALWAYS_ROUTINE = new Set([
+  "labor_market_resolved",
+  "production_summary",
+  "tax_bases_derived",
+  "turn_resolved",
+]);
+
+export function isRoutineDriver(driver: {
+  reason_id: string;
+  params?: Record<string, string | number>;
+}): boolean {
+  if (ALWAYS_ROUTINE.has(driver.reason_id)) return true;
+  if (driver.reason_id === "resource_extraction_resolved") {
+    const depleted = num(driver.params?.["deposits_depleted"]);
+    const unassigned = num(driver.params?.["unassigned_resource_workers"]);
+    // Only a CONFIRMED quiet extraction is folded away; missing figures keep it visible.
+    return depleted === 0 && unassigned === 0;
+  }
+  return false;
 }

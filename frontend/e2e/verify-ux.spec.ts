@@ -20,7 +20,10 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+
+import { findIdentifierLeaks } from "./player-text";
 
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
 const SCENARIO_ROOT = path.join(process.cwd(), "..", "data", "scenarios");
@@ -211,6 +214,140 @@ for (const viewport of VIEWPORTS) {
       decree: { chambers: decree.chambers.length, would_pass: decree.would_pass, affordable: decree.affordable },
       focusAfterPreview: focusedId,
       resolvedHeadline: headline,
+    });
+  });
+}
+
+async function driversText(page: Page): Promise<string> {
+  const heading = page.getByRole("heading", { name: "Why this happened" });
+  await heading.waitFor({ state: "visible", timeout: 15_000 });
+  return heading.locator("xpath=ancestor::section[1]").innerText();
+}
+
+/** Opens the Trace and follows one reason link with the KEYBOARD only: Enter on the toggle, Tab
+ * until the link for `reasonId` has focus, then Enter. Returns the focused element afterwards. */
+async function followReasonByKeyboard(page: Page, reasonId: string): Promise<{ tag: string; reason: string | null; text: string }> {
+  const view = page.getByTestId("turn-result-view");
+  const toggle = view.getByRole("button", { name: "Show exact values" });
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(view.getByRole("button", { name: "Hide exact values" })).toBeFocused();
+  let reached = false;
+  for (let i = 0; i < 60 && !reached; i += 1) {
+    await page.keyboard.press("Tab");
+    reached = await page.evaluate(
+      (id) => document.activeElement?.tagName === "A" && document.activeElement.textContent === id,
+      reasonId,
+    );
+  }
+  expect(reached, `Tab reaches the Trace link for ${reasonId}`).toBe(true);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).toBe("LI");
+  return page.evaluate(() => {
+    const el = document.activeElement as HTMLElement;
+    return { tag: el.tagName, reason: el.getAttribute("data-reason-id"), text: el.innerText };
+  });
+}
+
+/** axe over the turn result with its NEW UX-2 parts on screen: Routine steps open and the Trace's
+ * "Reasons recorded" links rendered. The accessibility baseline audits Turn result only before any
+ * turn is resolved -- its empty state -- so without this no gate would evaluate these elements. */
+async function axeOpenTurnResult(page: Page): Promise<{ violations: string[]; passes: number }> {
+  const view = page.getByTestId("turn-result-view");
+  await expect(view.getByTestId("drivers-routine")).toHaveAttribute("open", "");
+  await expect(view.getByTestId("trace-reasons").getByRole("link").first()).toBeVisible();
+  const results = await new AxeBuilder({ page }).include('[data-testid="turn-result-view"]').analyze();
+  return {
+    violations: results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`),
+    passes: results.passes.length,
+  };
+}
+
+async function closeTrace(page: Page): Promise<void> {
+  await page.getByTestId("turn-result-view").getByRole("button", { name: "Hide exact values" }).click();
+}
+
+for (const viewport of VIEWPORTS) {
+  test(`@ux2 turn result: cause first, routine folded, reasons in Trace — ${viewport.name}`, async ({ page }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await ensureServer(page);
+    await startValdrun(page);
+    await visit(page, "Decisions");
+
+    // A legislative tax rise with no capital committed: Valdrun's legislature blocks it.
+    await selectCard(page, "Raise the personal income tax");
+    await page.getByRole("button", { name: "Resolve turn" }).click();
+    const pending = page.waitForResponse(
+      (r) => r.url().includes("/api/game/resolve") && r.request().method() === "POST",
+      { timeout: 120_000 },
+    );
+    await page.getByRole("button", { name: "Confirm and resolve" }).click();
+    const resolved = await pending;
+    expect(resolved.status()).toBe(200);
+    const turnResult = ((await resolved.json()) as any).turnResult as {
+      turn: number;
+      outcome_headline: string;
+      ledger: unknown[];
+      drivers: { reason_id: string }[];
+    };
+    const view = page.getByTestId("turn-result-view");
+    await expect(view).toHaveAttribute("data-context", "live");
+
+    // U6: the headline speaks of spent capital only when capital went to the vote.
+    expect(turnResult.ledger).toEqual([]);
+    expect(turnResult.outcome_headline).toBe("The budget was blocked.");
+    await expect(view).toContainText("The budget was blocked.");
+    await expect(view).not.toContainText("Committed capital was still spent.");
+
+    // U4: no reason id is player-visible with the Trace closed; bookkeeping is folded.
+    const reasonIds = [...new Set(turnResult.drivers.map((d) => d.reason_id))];
+    expect(await findIdentifierLeaks(page, reasonIds), "live: no reason id outside the Trace").toEqual([]);
+    const routine = view.getByTestId("drivers-routine");
+    await expect(routine).not.toHaveAttribute("open", /.*/);
+    const routineCount = await routine.locator("li[data-reason-id]").count();
+    expect(routineCount, "turn 1 records routine bookkeeping").toBeGreaterThan(0);
+    await expect(view.getByTestId("drivers-consequential")).toContainText("The legislature blocked the budget.");
+    const live = await driversText(page);
+
+    // T2 keyboard path, live: a routine reason opens Routine steps and lands on its sentence.
+    const liveFocus = await followReasonByKeyboard(page, "labor_market_resolved");
+    expect(liveFocus.reason).toBe("labor_market_resolved");
+    expect(liveFocus.text).toMatch(/^Labour market: [\d,]+ employed, \d+\.\d{2}% unemployment, [\d,]+ unfilled jobs\.$/);
+    await expect(routine).toHaveAttribute("open", "");
+    const liveAxe = await axeOpenTurnResult(page);
+    expect(liveAxe.violations, "axe: live turn result, Routine steps and Trace open").toEqual([]);
+    expect(liveAxe.passes, "axe evaluated rules on the live turn result").toBeGreaterThan(0);
+
+    // History: the same turn reads the same, and the same keyboard path works.
+    await visit(page, "History");
+    const turnButton = page.getByRole("button", { name: new RegExp(`^Turn ${turnResult.turn} — `) });
+    await turnButton.click();
+    await expect(page.getByTestId("turn-result-view")).toHaveAttribute("data-context", "history");
+    const history = await driversText(page);
+    expect(history, "History re-renders the drivers text-for-text").toBe(live);
+    expect(await findIdentifierLeaks(page, reasonIds), "history: no reason id outside the Trace").toEqual([]);
+    const historyFocus = await followReasonByKeyboard(page, "labor_market_resolved");
+    expect(historyFocus).toEqual(liveFocus);
+    const historyAxe = await axeOpenTurnResult(page);
+    expect(historyAxe.violations, "axe: History turn result, Routine steps and Trace open").toEqual([]);
+    expect(historyAxe.passes, "axe evaluated rules on the History turn result").toBeGreaterThan(0);
+    await closeTrace(page);
+
+    results.push({
+      block: "ux2",
+      viewport: viewport.name,
+      headline: turnResult.outcome_headline,
+      ledgerEntries: turnResult.ledger.length,
+      drivers: turnResult.drivers.length,
+      routineFolded: routineCount,
+      leaksOutsideTrace: 0,
+      historyIdenticalToLive: history === live,
+      keyboardFocus: liveFocus,
+      axeOpenTurnResult: {
+        live: { violations: liveAxe.violations.length, passes: liveAxe.passes },
+        history: { violations: historyAxe.violations.length, passes: historyAxe.passes },
+      },
     });
   });
 }

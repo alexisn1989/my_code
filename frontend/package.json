@@ -58,7 +58,15 @@
     "verify:terminal:ux1": "MANDATE_TERMINAL_OUT=gate-4a3-ux1-terminal playwright test --project=terminal-coverage",
     "verify:campaigns:ux1": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux1-campaigns playwright test --project=campaigns",
     "audit:stress:seated:ux1": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux1-stress-seated-cabinet playwright test --project=stress-seated",
-    "audit:accessibility:verify:ux1": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux1 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux1 node tools/write-accessibility-report.mjs"
+    "audit:accessibility:verify:ux1": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux1 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux1 node tools/write-accessibility-report.mjs",
+    "_comment:ux2": "Gate 4A3 UX-2 (turn result: routine folded, reason ids into Trace, headline matches the ledger). Every browser gate re-runs under UX-2's own artifact names; verify:ux:2 runs the cumulative UX spec through @ux2.",
+    "verify:ux:2": "MANDATE_UX_OUT=gate-4a3-ux2-verify-ux playwright test --project=ux --grep \"@ux1|@ux2\"",
+    "verify:fixes:ux2": "MANDATE_VERIFY_OUT=gate-4a3-ux2-verification playwright test --project=verify",
+    "verify:icons:ux2": "MANDATE_ICONS_OUT=gate-4a3-ux2-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:ux2": "MANDATE_TERMINAL_OUT=gate-4a3-ux2-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:ux2": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux2-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:ux2": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux2-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:ux2": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux2 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux2 node tools/write-accessibility-report.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
