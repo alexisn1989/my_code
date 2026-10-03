@@ -1,0 +1,252 @@
+{
+  "gate": "4A3 UX",
+  "out": "gate-4a3-ux3a-verify-ux",
+  "results": [
+    {
+      "block": "ux1",
+      "viewport": "desktop",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": "The budget was enacted by decree. The legislature was bypassed."
+    },
+    {
+      "block": "ux1",
+      "viewport": "mobile",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": null
+    },
+    {
+      "block": "ux1",
+      "viewport": "narrow",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": null
+    },
+    {
+      "block": "ux2",
+      "viewport": "desktop",
+      "headline": "The budget was blocked.",
+      "ledgerEntries": 0,
+      "drivers": 12,
+      "routineFolded": 4,
+      "leaksOutsideTrace": 0,
+      "historyIdenticalToLive": true,
+      "keyboardFocus": {
+        "tag": "LI",
+        "reason": "labor_market_resolved",
+        "text": "Labour market: 540,000 employed, 10.00% unemployment, 0 unfilled jobs."
+      },
+      "axeOpenTurnResult": {
+        "live": {
+          "violations": 0,
+          "passes": 25
+        },
+        "history": {
+          "violations": 0,
+          "passes": 25
+        }
+      }
+    },
+    {
+      "block": "ux2",
+      "viewport": "mobile",
+      "headline": "The budget was blocked.",
+      "ledgerEntries": 0,
+      "drivers": 12,
+      "routineFolded": 4,
+      "leaksOutsideTrace": 0,
+      "historyIdenticalToLive": true,
+      "keyboardFocus": {
+        "tag": "LI",
+        "reason": "labor_market_resolved",
+        "text": "Labour market: 540,000 employed, 10.00% unemployment, 0 unfilled jobs."
+      },
+      "axeOpenTurnResult": {
+        "live": {
+          "violations": 0,
+          "passes": 26
+        },
+        "history": {
+          "violations": 0,
+          "passes": 26
+        }
+      }
+    },
+    {
+      "block": "ux2",
+      "viewport": "narrow",
+      "headline": "The budget was blocked.",
+      "ledgerEntries": 0,
+      "drivers": 12,
+      "routineFolded": 4,
+      "leaksOutsideTrace": 0,
+      "historyIdenticalToLive": true,
+      "keyboardFocus": {
+        "tag": "LI",
+        "reason": "labor_market_resolved",
+        "text": "Labour market: 540,000 employed, 10.00% unemployment, 0 unfilled jobs."
+      },
+      "axeOpenTurnResult": {
+        "live": {
+          "violations": 0,
+          "passes": 26
+        },
+        "history": {
+          "violations": 0,
+          "passes": 26
+        }
+      }
+    },
+    {
+      "block": "ux3",
+      "viewport": "desktop",
+      "firstViewport": {
+        "winBottom": 551,
+        "buttonBottom": 593
+      },
+      "capitalTooltip": "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.",
+      "tint": {
+        "background": "oklab(0.341267 0.00420278 0.025815)",
+        "labelBackground": "rgb(10, 15, 26)",
+        "countryNameBackdrop": "navy-950",
+        "countryNameRatio": 16.25,
+        "calibrationNodes": 1
+      },
+      "detailsLanded": {
+        "Money": "economy",
+        "Legitimacy": "government",
+        "Legislature": "legislature",
+        "Constitution": "constitution",
+        "Survival": "government"
+      },
+      "planTurn": {
+        "resultTurn": 1,
+        "headerTurn": 1,
+        "landedOn": "Decisions"
+      },
+      "tintAcrossTurn": {
+        "before": {
+          "legitimacy": "60.00%",
+          "bps": 6000,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 60.00%.",
+          "mixPercent": 42,
+          "background": "oklab(0.341267 0.00420278 0.025815)"
+        },
+        "after": {
+          "legitimacy": "61.00%",
+          "bps": 6100,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 61.00%.",
+          "mixPercent": 42.45,
+          "background": "oklab(0.34311 0.00426987 0.0263533)"
+        }
+      }
+    },
+    {
+      "block": "ux3",
+      "viewport": "mobile",
+      "firstViewport": null,
+      "capitalTooltip": "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.",
+      "tint": {
+        "background": "oklab(0.341267 0.00420278 0.025815)",
+        "labelBackground": "rgb(10, 15, 26)",
+        "countryNameBackdrop": "navy-950",
+        "countryNameRatio": 16.25,
+        "calibrationNodes": 1
+      },
+      "detailsLanded": {
+        "Money": "economy",
+        "Legitimacy": "government",
+        "Legislature": "legislature",
+        "Constitution": "constitution",
+        "Survival": "government"
+      },
+      "planTurn": {
+        "resultTurn": 1,
+        "headerTurn": 1,
+        "landedOn": "Decisions"
+      },
+      "tintAcrossTurn": {
+        "before": {
+          "legitimacy": "60.00%",
+          "bps": 6000,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 60.00%.",
+          "mixPercent": 42,
+          "background": "oklab(0.341267 0.00420278 0.025815)"
+        },
+        "after": {
+          "legitimacy": "61.00%",
+          "bps": 6100,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 61.00%.",
+          "mixPercent": 42.45,
+          "background": "oklab(0.34311 0.00426987 0.0263533)"
+        }
+      }
+    },
+    {
+      "block": "ux3",
+      "viewport": "narrow",
+      "firstViewport": null,
+      "capitalTooltip": "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.",
+      "tint": {
+        "background": "oklab(0.341267 0.00420278 0.025815)",
+        "labelBackground": "rgb(10, 15, 26)",
+        "countryNameBackdrop": "navy-950",
+        "countryNameRatio": 16.25,
+        "calibrationNodes": 1
+      },
+      "detailsLanded": {
+        "Money": "economy",
+        "Legitimacy": "government",
+        "Legislature": "legislature",
+        "Constitution": "constitution",
+        "Survival": "government"
+      },
+      "planTurn": {
+        "resultTurn": 1,
+        "headerTurn": 1,
+        "landedOn": "Decisions"
+      },
+      "tintAcrossTurn": {
+        "before": {
+          "legitimacy": "60.00%",
+          "bps": 6000,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 60.00%.",
+          "mixPercent": 42,
+          "background": "oklab(0.341267 0.00420278 0.025815)"
+        },
+        "after": {
+          "legitimacy": "61.00%",
+          "bps": 6100,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 61.00%.",
+          "mixPercent": 42.45,
+          "background": "oklab(0.34311 0.00426987 0.0263533)"
+        }
+      }
+    }
+  ]
+}

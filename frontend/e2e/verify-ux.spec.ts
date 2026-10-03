@@ -360,6 +360,39 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
+type DashboardRead = {
+  turn: number;
+  country_name: string;
+  concerns: Record<string, { label: string; headline: string; detail_screen: string }>;
+  map: { tint_value_bps: number; tint_metric_label: string };
+};
+
+async function readDashboard(page: Page): Promise<DashboardRead> {
+  return (await (await page.request.get(`${base}/api/game/state`)).json()) as DashboardRead;
+}
+
+/** The mix percentage `format.ts`'s `tintMixPercent` should produce for a value, restated here so the
+ * browser check is an independent computation of the same linear rule (15 at 0 bps, 60 at 10,000). */
+function expectedMixPercent(bps: number): number {
+  const clamped = Math.min(10_000, Math.max(0, bps));
+  return Math.round((15 + (45 * clamped) / 10_000) * 100) / 100;
+}
+
+/** What the tint box renders: its value attribute, accessible name, authored mix and computed fill. */
+async function readTint(page: Page): Promise<{ bps: number; name: string; mixPercent: number; background: string }> {
+  const tint = page.getByTestId("national-tint");
+  await tint.waitFor({ state: "visible" });
+  return tint.evaluate((el) => {
+    const mix = /var\(--color-gold-600\)\s+([\d.]+)%/.exec(el.getAttribute("style") ?? "");
+    return {
+      bps: Number(el.getAttribute("data-tint-bps")),
+      name: el.getAttribute("aria-label") ?? "",
+      mixPercent: mix === null ? Number.NaN : Number(mix[1]),
+      background: getComputedStyle(el).backgroundColor,
+    };
+  });
+}
+
 const CAPITAL_DEFINITION =
   "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.";
 const WIN_LINE_START = "You win by turning this into a competitive constitution";
@@ -371,11 +404,7 @@ for (const viewport of VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await ensureServer(page);
     await startValdrun(page);
-    const dashboard = (await (await page.request.get(`${base}/api/game/state`)).json()) as {
-      turn: number;
-      country_name: string;
-      concerns: Record<string, { label: string; headline: string; detail_screen: string }>;
-    };
+    const dashboard = await readDashboard(page);
 
     // ---- U1: the stakes and the first action, where a new player first looks ----
     await visit(page, "Dashboard");
@@ -427,6 +456,11 @@ for (const viewport of VIEWPORTS) {
     expect(countryName.ratio, "measured, not the unmeasured sentinel").toBeGreaterThan(0);
     expect(surfaceNameOf(countryName.bg), "the name's backdrop is an authored surface").toBe("navy-950");
     expect(countryName.ratio, "country name on its label").toBeGreaterThanOrEqual(TEXT_CONTRAST_MINIMUM);
+    // UX-3a: the tint as rendered BEFORE any turn, to compare with after one (below).
+    const tintBefore = await readTint(page);
+    expect(tintBefore.bps, "the box carries the server's value").toBe(dashboard.map.tint_value_bps);
+    expect(tintBefore.mixPercent, "the authored mix follows the rule").toBe(expectedMixPercent(tintBefore.bps));
+    expect(tintBefore.background).toBe(tintBg);
     const devCopy = await findIdentifierLeaks(page, ["placeholder", "province", "mechanics", "Stylised outline"]);
     expect(devCopy, "no developer-facing map copy").toEqual([]);
 
@@ -464,6 +498,34 @@ for (const viewport of VIEWPORTS) {
     await expect(nav.getByRole("button", { name: "Decisions", exact: true })).toHaveAttribute("aria-current", "page");
     await expect(page.getByTestId("national-header")).toContainText(new RegExp(`Turn ${n}(?!\\d)`));
 
+    // ---- UX-3a: after the turn, the tint follows legitimacy ----
+    const after = await readDashboard(page);
+    expect(
+      after.map.tint_value_bps,
+      "non-vacuity: this turn must move legitimacy, or two equal tints would prove nothing",
+    ).not.toBe(dashboard.map.tint_value_bps);
+    expect(after.concerns.legitimacy.headline).not.toBe(dashboard.concerns.legitimacy.headline);
+    expect(dashboard.map.tint_metric_label).toBe("Legitimacy");
+    expect(after.map.tint_metric_label).toBe("Legitimacy");
+    await visit(page, "Dashboard");
+    await expect(page.getByTestId("national-tint")).toHaveAttribute("data-tint-bps", String(after.map.tint_value_bps));
+    const tintAfter = await readTint(page);
+    expect(tintAfter.bps).toBe(after.map.tint_value_bps);
+    expect(tintAfter.name, "the accessible name states the new legitimacy").toBe(
+      `${dashboard.country_name}: national tint by legitimacy, ${after.concerns.legitimacy.headline}.`,
+    );
+    expect(tintBefore.name).toBe(
+      `${dashboard.country_name}: national tint by legitimacy, ${dashboard.concerns.legitimacy.headline}.`,
+    );
+    expect(tintAfter.mixPercent, "the authored mix follows the rule").toBe(expectedMixPercent(tintAfter.bps));
+    expect(tintAfter.mixPercent).not.toBe(tintBefore.mixPercent);
+    expect(tintAfter.background, "the computed fill changed with legitimacy").not.toBe(tintBefore.background);
+    const scanAfter = await measureTextOwners(page, '[data-testid="national-tint"]');
+    const nameAfter = scanAfter.measured.filter((m) => m.inRegion);
+    expect(nameAfter.map((m) => m.text.trim())).toEqual([dashboard.country_name]);
+    expect(surfaceNameOf(nameAfter[0]!.bg)).toBe("navy-950");
+    expect(nameAfter[0]!.ratio).toBeGreaterThanOrEqual(TEXT_CONTRAST_MINIMUM);
+
     results.push({
       block: "ux3",
       viewport: viewport.name,
@@ -478,6 +540,10 @@ for (const viewport of VIEWPORTS) {
       },
       detailsLanded: landed,
       planTurn: { resultTurn: n, headerTurn: n, landedOn: "Decisions" },
+      tintAcrossTurn: {
+        before: { legitimacy: dashboard.concerns.legitimacy.headline, ...tintBefore },
+        after: { legitimacy: after.concerns.legitimacy.headline, ...tintAfter },
+      },
     });
   });
 }

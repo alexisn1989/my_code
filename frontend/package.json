@@ -74,7 +74,16 @@
     "verify:terminal:ux3": "MANDATE_TERMINAL_OUT=gate-4a3-ux3-terminal playwright test --project=terminal-coverage",
     "verify:campaigns:ux3": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux3-campaigns playwright test --project=campaigns",
     "audit:stress:seated:ux3": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux3-stress-seated-cabinet playwright test --project=stress-seated",
-    "audit:accessibility:verify:ux3": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3 node tools/write-accessibility-report.mjs"
+    "audit:accessibility:verify:ux3": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3 node tools/write-accessibility-report.mjs",
+    "_comment:ux3a": "Gate 4A3 UX-3a (the post-turn tint check, and accessibility reports that state their own provenance). report:accessibility:ux3-corrected re-renders the committed UX-3 JSON under a NEW name; the committed after-ux3.md is preserved. Every browser gate re-runs under UX-3a's own names.",
+    "report:accessibility:ux3-corrected": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3 MANDATE_A11Y_MD_OUT=gate-4a3-accessibility-after-ux3-corrected node tools/write-accessibility-report.mjs",
+    "verify:ux:3a": "MANDATE_UX_OUT=gate-4a3-ux3a-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3\"",
+    "verify:fixes:ux3a": "MANDATE_VERIFY_OUT=gate-4a3-ux3a-verification playwright test --project=verify",
+    "verify:icons:ux3a": "MANDATE_ICONS_OUT=gate-4a3-ux3a-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:ux3a": "MANDATE_TERMINAL_OUT=gate-4a3-ux3a-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:ux3a": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux3a-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:ux3a": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux3a-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:ux3a": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3a playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3a node tools/write-accessibility-report.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
