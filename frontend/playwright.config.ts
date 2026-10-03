@@ -146,6 +146,12 @@ export default defineConfig({
       testMatch: /campaigns\.spec\.ts$/,
       dependencies: ["preflight"],
     },
+    // Gate 4A3 UX pass: the cumulative UX verification, on its own server (see verify-ux.spec.ts).
+    {
+      name: "ux",
+      testMatch: /verify-ux\.spec\.ts$/,
+      dependencies: ["preflight"],
+    },
     // Gate 4A3 Commit 6: one turn against the INSTALLED release archive. Run by
     // scripts/verify_release.py, which sets MANDATE_PACKAGED_BASE_URL; skipped otherwise.
     {

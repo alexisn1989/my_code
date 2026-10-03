@@ -98,7 +98,10 @@ function jsonResponse(body: unknown): Response {
   });
 }
 
-function renderScreenAndPreview(preview: unknown) {
+function renderScreenAndPreview(
+  preview: unknown,
+  options: Record<string, unknown> = DECISION_OPTIONS,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
@@ -106,7 +109,7 @@ function renderScreenAndPreview(preview: unknown) {
       return Promise.resolve(jsonResponse(ACTIVE_DASHBOARD));
     }
     if (url.includes("/api/game/decision-options")) {
-      return Promise.resolve(jsonResponse(DECISION_OPTIONS));
+      return Promise.resolve(jsonResponse(options));
     }
     if (url.includes("/api/game/preview") && init?.method === "POST") {
       return Promise.resolve(jsonResponse(preview));
@@ -154,7 +157,9 @@ describe("DecisionsScreen preview presentation", () => {
 
     await waitFor(() => expect(screen.getByText("Would pass")).toBeInTheDocument());
     expect(screen.getByText("Carries", { selector: "span" })).toBeInTheDocument();
-    expect(screen.getByText("lower")).toBeInTheDocument();
+    // Gate 4A3 UX-1: the chamber is named in words, never by its raw identity `lower`.
+    expect(screen.getByText("Lower chamber")).toBeInTheDocument();
+    expect(screen.queryByText("lower")).not.toBeInTheDocument();
     // Gate 4A3 Commit 4: this table's caption read "Chamber-by-chamber projection". "Projection" is
     // the engine's word for a server-built view, and using it here for a FORECAST invited a player to
     // read one meaning where the interface meant the other. The caption now says what the table shows.
@@ -191,12 +196,15 @@ describe("DecisionsScreen preview presentation", () => {
     );
     await clickPreview();
 
+    // Gate 4A3 UX-1: a decree is not put to a vote, so it gets a pre-resolution sentence -- never a
+    // vote table, never "Would pass"/"Would not pass", never shortfall advice.
     await waitFor(() =>
-      expect(screen.getByText("No legislative vote applies to this route.")).toBeInTheDocument(),
+      expect(screen.getByTestId("decree-preview").textContent).toContain(
+        "If resolved now: enacted by decree — the legislature is bypassed. Route cost 250.",
+      ),
     );
-    // A decree still resolves to a pass/fail estimate -- it just never routes
-    // through a chamber table, since there is no vote to tabulate.
-    expect(screen.getByText("Would pass")).toBeInTheDocument();
+    expect(screen.queryByText("Would pass")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("failing-vote-advice")).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
@@ -213,8 +221,8 @@ describe("DecisionsScreen preview presentation", () => {
     );
     await clickPreview();
 
-    await waitFor(() => expect(screen.getByText("lower")).toBeInTheDocument());
-    expect(screen.getByText("upper")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Lower chamber")).toBeInTheDocument());
+    expect(screen.getByText("Upper chamber")).toBeInTheDocument();
     // Two distinct chamber rows, each carrying its OWN totals -- 100 and 60
     // seats respectively must both be visible; a pooled implementation would
     // show a single combined total (160) instead of these two.
@@ -444,5 +452,172 @@ describe("DecisionsScreen: a preview stops describing an edited draft", () => {
     useDraftStore.getState().setMovementOrder("arken_first_army", "arken_north");
 
     await waitFor(() => expect(screen.getByTestId("preview-outdated")).toBeInTheDocument());
+  });
+});
+
+// --------------------------------------------------------------------------
+// Gate 4A3 UX-1: a route-aware, actionable preview
+// --------------------------------------------------------------------------
+
+describe("DecisionsScreen UX-1: the route is visible and the preview says what to do", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    useDraftStore.getState().clearDraft();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    useDraftStore.getState().clearDraft();
+  });
+
+  it("an unaffordable decree is worded as a refusal, never as an enactment", async () => {
+    renderScreenAndPreview(
+      baseProjection({
+        route: "decree",
+        would_pass: true,
+        chambers: [],
+        route_capital_cost: 250,
+        committed_capital: 650,
+        opening_capital: 500,
+        affordable: false,
+      }),
+    );
+    await clickPreview();
+    await waitFor(() =>
+      expect(screen.getByTestId("decree-preview").textContent).toContain(
+        "Not affordable: 650 of 500 committed — resolving this draft would be refused.",
+      ),
+    );
+    expect(screen.queryByText(/enacted by decree/)).not.toBeInTheDocument();
+  });
+
+  it("a failing legislative vote gets one line per FAILING chamber, never a pooled gap", async () => {
+    useDraftStore.getState().setPolicySlot("budget");
+    renderScreenAndPreview(
+      baseProjection({
+        route: "legislative",
+        would_pass: false,
+        chambers: [
+          { chamber: "lower", supporting_seats: 58, required_seats: 51, total_seats: 100, carries: true },
+          { chamber: "upper", supporting_seats: 27, required_seats: 31, total_seats: 60, carries: false },
+        ],
+      }),
+      { ...DECISION_OPTIONS, decree_available: false },
+    );
+    await clickPreview();
+    const advice = await screen.findByTestId("failing-vote-advice");
+    const lines = Array.from(advice.querySelectorAll("li")).map((li) => li.textContent);
+    expect(lines).toEqual(["Upper chamber: 4 short of 31."]);
+    expect(advice.textContent).toContain("You can add influence capital for blocs above.");
+    expect(advice.textContent).not.toMatch(/decree/i);
+  });
+
+  it("the decree clause appears only when this proposal kind may be decreed, at its own price", async () => {
+    useDraftStore.getState().setPolicySlot("budget");
+    renderScreenAndPreview(
+      baseProjection({
+        route: "legislative",
+        would_pass: false,
+        chambers: [
+          { chamber: "lower", supporting_seats: 45, required_seats: 51, total_seats: 100, carries: false },
+        ],
+      }),
+      {
+        ...DECISION_OPTIONS,
+        decree_available: true,
+        decree_legislative_capital_cost: 250,
+        chambers: ["lower"],
+      },
+    );
+    await clickPreview();
+    const advice = await screen.findByTestId("failing-vote-advice");
+    expect(advice.textContent).toContain("Lower chamber: 6 short of 51.");
+    expect(advice.textContent).toContain("or switch the route to decree (cost 250).");
+  });
+
+  it("an amendment where a legislature sits is never offered a decree, in the control or the advice", async () => {
+    useDraftStore.getState().setPolicySlot("amendment");
+    renderScreenAndPreview(
+      baseProjection({
+        route: "legislative",
+        would_pass: false,
+        chambers: [
+          { chamber: "lower", supporting_seats: 45, required_seats: 67, total_seats: 100, carries: false },
+        ],
+      }),
+      {
+        ...DECISION_OPTIONS,
+        decree_available: true,
+        chambers: ["lower"],
+        decree_amendment_capital_cost: 400,
+      },
+    );
+    const decree = await screen.findByRole("radio", { name: /^Decree/ });
+    expect(decree).toBeDisabled();
+    await clickPreview();
+    const advice = await screen.findByTestId("failing-vote-advice");
+    expect(advice.textContent).not.toMatch(/decree/i);
+  });
+
+  it("an amendment with no sitting legislature IS offered a decree, at the amendment price", async () => {
+    useDraftStore.getState().setPolicySlot("amendment");
+    renderScreenAndPreview(baseProjection({}), {
+      ...DECISION_OPTIONS,
+      decree_available: true,
+      chambers: [],
+      decree_amendment_capital_cost: 400,
+      decree_legislative_capital_cost: 250,
+    });
+    const decree = await screen.findByRole("radio", { name: /^Decree/ });
+    expect(decree).toBeEnabled();
+    expect(decree.textContent).toContain("400");
+  });
+
+  it("the route control is visible without opening Customize, and exists exactly once", async () => {
+    useDraftStore.getState().setPolicySlot("budget");
+    renderScreenAndPreview(baseProjection({}), {
+      ...DECISION_OPTIONS,
+      decree_available: true,
+      chambers: ["lower"],
+      decree_legislative_capital_cost: 250,
+    });
+    const groups = await screen.findAllByRole("radiogroup", { name: "Route" });
+    expect(groups).toHaveLength(1);
+    expect(groups[0].closest("details")).toBeNull();
+    expect(screen.getByRole("radio", { name: /^Decree/ })).toBeEnabled();
+  });
+
+  it("zero capital terms are hidden and the total is always shown", async () => {
+    renderScreenAndPreview(baseProjection({ influence_capital: 40, committed_capital: 40 }));
+    await clickPreview();
+    await waitFor(() => expect(screen.getByText("Total committed")).toBeInTheDocument());
+    expect(screen.getByText("Bargaining")).toBeInTheDocument();
+    for (const hidden of ["Route cost", "Cabinet", "Investment", "Leader bargain", "Promise release"]) {
+      expect(screen.queryByText(hidden)).not.toBeInTheDocument();
+    }
+  });
+
+  it("after Preview, focus moves to the result heading", async () => {
+    renderScreenAndPreview(baseProjection(PASSING));
+    await clickPreview();
+    await waitFor(() => expect(document.activeElement?.id).toBe("preview-result-heading"));
+    expect(document.activeElement?.textContent).toBe("Known before resolution");
+  });
+
+  it("no raw route or chamber identity is rendered", async () => {
+    renderScreenAndPreview(
+      baseProjection({
+        route: "legislative",
+        would_pass: false,
+        chambers: [
+          { chamber: "lower", supporting_seats: 45, required_seats: 51, total_seats: 100, carries: false },
+        ],
+      }),
+    );
+    await clickPreview();
+    await screen.findByTestId("failing-vote-advice");
+    const text = document.body.textContent ?? "";
+    expect(text).not.toMatch(/\blower\b/);
+    expect(text).not.toMatch(/\blegislative\b/);
+    expect(text).toContain("Legislative vote");
   });
 });

@@ -424,7 +424,8 @@ test.describe("Gate 4A3 Commit 5b: campaigns through the interface", () => {
     const panel = page.getByTestId("consequences-panel");
     await expect(panel).toContainText("Would pass");
     await expect(page.getByTestId("bargain-capital")).toHaveText(String(expected.bargainCapital));
-    await expect(page.getByTestId("promise-release-capital")).toHaveText("0");
+    // Gate 4A3 UX-1 hides capital terms this draft does not spend, so a zero release is not listed.
+    await expect(page.getByTestId("promise-release-capital")).toHaveCount(0);
     await expect(page.getByTestId("assistance-estimate")).toBeVisible();
     await expect(panel).toContainText("money received");
     await expect(panel).toContainText(`${expected.committed} of ${expected.openingCapital} committed`);

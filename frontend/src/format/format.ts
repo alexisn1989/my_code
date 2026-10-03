@@ -621,3 +621,85 @@ export function releaseStagedAnnouncement(displayName: string): string {
 export function meetingDraftClearedAnnouncement(): string {
   return "Removed from this turn's draft. Nothing has changed.";
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Gate 4A3 UX-1 — route-aware preview copy and the decree rule
+// ---------------------------------------------------------------------------------------------------
+
+/** Display words for the server's chamber identities. Authored, never a transformation of the id;
+ * an identity this build has no word for falls back to a neutral phrase rather than the raw id. */
+export const CHAMBER_LABEL: Readonly<Record<string, string>> = {
+  lower: "Lower chamber",
+  upper: "Upper chamber",
+};
+
+export function chamberLabel(chamber: string): string {
+  return CHAMBER_LABEL[chamber] ?? "The chamber";
+}
+
+/** Display words for a proposal route. */
+export function routeLabel(route: string | null | undefined): string {
+  if (route === "decree") return "Decree";
+  if (route === "legislative") return "Legislative vote";
+  return "No route";
+}
+
+/** Which proposals may be decreed, mirroring the resolver exactly
+ * (`phases.py`: a budget needs unlimited decree authority; an amendment ALSO needs that no
+ * legislature sits). Built only from fields `DecisionOptionsProjection` already carries. */
+export function decreeAllowed(
+  kind: "budget" | "amendment",
+  options: { decree_available: boolean; chambers: readonly string[] },
+): boolean {
+  if (kind === "budget") return options.decree_available;
+  return options.decree_available && options.chambers.length === 0;
+}
+
+/** The decree price for this proposal kind. */
+export function decreeCost(
+  kind: "budget" | "amendment",
+  options: { decree_legislative_capital_cost: number; decree_amendment_capital_cost: number },
+): number {
+  return kind === "budget"
+    ? options.decree_legislative_capital_cost
+    : options.decree_amendment_capital_cost;
+}
+
+/** One line per FAILING chamber, from that chamber's own row -- never a pooled gap. */
+export function chamberShortfallSentence(chamber: {
+  chamber: string;
+  supporting_seats: number;
+  required_seats: number;
+}): string {
+  const short = chamber.required_seats - chamber.supporting_seats;
+  return `${chamberLabel(chamber.chamber)}: ${formatAmount(short)} short of ${formatAmount(
+    chamber.required_seats,
+  )}.`;
+}
+
+/** What the player can do about a legislative proposal that would fail. The decree clause appears
+ * only when this proposal kind may actually be decreed. */
+export function failingVoteAdvice(decreeOption: { cost: number } | null): string {
+  const base = "You can add influence capital for blocs above";
+  return decreeOption === null
+    ? `${base}.`
+    : `${base}, or switch the route to decree (cost ${formatAmount(decreeOption.cost)}).`;
+}
+
+/** Pre-resolution wording for a decree. It never claims an enactment the resolver would refuse. */
+export function decreePreviewSentence(preview: {
+  affordable: boolean;
+  route_capital_cost: number;
+  committed_capital: number;
+  opening_capital: number;
+}): string {
+  if (!preview.affordable) {
+    return `Not affordable: ${formatCommitted(
+      preview.committed_capital,
+      preview.opening_capital,
+    )} — resolving this draft would be refused.`;
+  }
+  return `If resolved now: enacted by decree — the legislature is bypassed. Route cost ${formatAmount(
+    preview.route_capital_cost,
+  )}.`;
+}

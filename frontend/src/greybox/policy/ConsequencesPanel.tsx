@@ -12,24 +12,50 @@
  * expected" table and a "what happened" table can never accidentally share
  * a row or a heading.
  *
- * Nothing here computes a margin or shortfall the server did not already
- * supply: `ChamberPreview` carries `supporting_seats`/`required_seats`/
- * `total_seats`/`carries` and nothing else, so that is exactly what is
- * shown, chamber by chamber, never pooled into a single number.
+ * Chambers are shown chamber by chamber, never pooled into a single number. Gate 4A3 UX-1 adds one
+ * shortfall line PER FAILING CHAMBER, computed in `src/format/` from that chamber's own row, and
+ * makes the panel ROUTE-AWARE: a decree is not put to a vote, so it shows no vote table and no
+ * shortfall advice -- only a pre-resolution sentence that never claims an enactment the resolver
+ * would refuse (an unaffordable decree is worded as a refusal).
  */
 
 import type { PreviewProjection } from "../../api/client";
-import { formatAmount, formatCommitted } from "../../format/format";
+import {
+  chamberLabel,
+  chamberShortfallSentence,
+  decreePreviewSentence,
+  failingVoteAdvice,
+  formatAmount,
+  formatCommitted,
+  routeLabel,
+} from "../../format/format";
 import { DataTable, EmptyNote, Panel, ToneValue } from "../components";
 
-export function ConsequencesPanel({ preview }: { preview: PreviewProjection }) {
+export function ConsequencesPanel({
+  preview,
+  decreeOption = null,
+}: {
+  preview: PreviewProjection;
+  /** Present only when THIS proposal kind may be decreed (`decreeAllowed`), with its own price. */
+  decreeOption?: { cost: number } | null;
+}) {
+  const isDecree = preview.route === "decree";
+  const failingChambers = preview.chambers.filter((chamber) => !chamber.carries);
+  const capitalTerms: { label: string; value: number; testId?: string }[] = [
+    { label: "Route cost", value: preview.route_capital_cost },
+    { label: "Bargaining", value: preview.influence_capital },
+    { label: "Cabinet", value: preview.cabinet_capital },
+    { label: "Investment", value: preview.investment_capital },
+    { label: "Leader bargain", value: preview.legislative_bargain_capital, testId: "bargain-capital" },
+    { label: "Promise release", value: preview.promise_release_capital, testId: "promise-release-capital" },
+  ];
   return (
     // `data-testid` matching the convention `turn-result-view`, `concern-cards` and `meeting-panel`
     // already set. Gate 4A3 Commit 4a needs to attribute a measured icon to the placement it sits in,
     // and "an icon on Decisions that is NOT inside the policy-card tabpanel" is an inference where a
     // named container is a fact.
     <div data-testid="consequences-panel" className="flex flex-col gap-4">
-      <Panel title="Known before resolution" headingLevel={3}>
+      <Panel title="Known before resolution" headingLevel={3} headingId="preview-result-heading">
         <p className="mb-3 text-xs text-parchment-200/60">
           This is an estimate, not a guarantee: it reflects the drafted decision as it stands
           right now, and resolving can still differ from this if the draft changes first.
@@ -40,65 +66,69 @@ export function ConsequencesPanel({ preview }: { preview: PreviewProjection }) {
         ) : (
           <>
             <p className="mb-2 text-sm">
-              Route: <span className="text-parchment-100">{preview.route}</span>
+              Route: <span className="text-parchment-100">{routeLabel(preview.route)}</span>
             </p>
-            {preview.chambers.length === 0 ? (
-              <EmptyNote>No legislative vote applies to this route.</EmptyNote>
+            {isDecree ? (
+              <p data-testid="decree-preview" className="text-sm">
+                <ToneValue tone={preview.affordable ? "positive" : "negative"}>
+                  {decreePreviewSentence(preview)}
+                </ToneValue>
+              </p>
             ) : (
-              <DataTable
-                caption="Expected vote, chamber by chamber"
-                columns={["Chamber", "Supporting", "Required", "Seats", "Carries"]}
-                rows={preview.chambers.map((chamber) => ({
-                  key: chamber.chamber,
-                  cells: [
-                    chamber.chamber,
-                    formatAmount(chamber.supporting_seats),
-                    formatAmount(chamber.required_seats),
-                    formatAmount(chamber.total_seats),
-                    <ToneValue key="c" tone={chamber.carries ? "positive" : "negative"}>
-                      {chamber.carries ? "Carries" : "Fails"}
-                    </ToneValue>,
-                  ],
-                }))}
-              />
+              <>
+                {preview.chambers.length === 0 ? (
+                  <EmptyNote>No legislative vote applies to this route.</EmptyNote>
+                ) : (
+                  <DataTable
+                    caption="Expected vote, chamber by chamber"
+                    columns={["Chamber", "Supporting", "Required", "Seats", "Carries"]}
+                    rows={preview.chambers.map((chamber) => ({
+                      key: chamber.chamber,
+                      cells: [
+                        chamberLabel(chamber.chamber),
+                        formatAmount(chamber.supporting_seats),
+                        formatAmount(chamber.required_seats),
+                        formatAmount(chamber.total_seats),
+                        <ToneValue key="c" tone={chamber.carries ? "positive" : "negative"}>
+                          {chamber.carries ? "Carries" : "Fails"}
+                        </ToneValue>,
+                      ],
+                    }))}
+                  />
+                )}
+                <p className="mt-3 text-sm">
+                  <ToneValue tone={preview.would_pass ? "positive" : "negative"}>
+                    {preview.would_pass ? "Would pass" : "Would not pass"}
+                  </ToneValue>
+                </p>
+                {!preview.would_pass && failingChambers.length > 0 ? (
+                  <div data-testid="failing-vote-advice" className="mt-2 text-sm">
+                    <ul className="list-disc pl-5">
+                      {failingChambers.map((chamber) => (
+                        <li key={chamber.chamber}>{chamberShortfallSentence(chamber)}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-parchment-200/80">{failingVoteAdvice(decreeOption)}</p>
+                  </div>
+                ) : null}
+              </>
             )}
-            <p className="mt-3 text-sm">
-              <ToneValue tone={preview.would_pass ? "positive" : "negative"}>
-                {preview.would_pass ? "Would pass" : "Would not pass"}
-              </ToneValue>
-            </p>
           </>
         )}
 
+        {/* Gate 4A3 UX-1: only the terms this draft actually spends are listed -- seven zeros read as
+            noise -- and the total is always shown. */}
         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-parchment-200/70 sm:grid-cols-4">
-          <div>
-            <dt>Route cost</dt>
-            <dd className="text-parchment-100">{formatAmount(preview.route_capital_cost)}</dd>
-          </div>
-          <div>
-            <dt>Bargaining</dt>
-            <dd className="text-parchment-100">{formatAmount(preview.influence_capital)}</dd>
-          </div>
-          <div>
-            <dt>Cabinet</dt>
-            <dd className="text-parchment-100">{formatAmount(preview.cabinet_capital)}</dd>
-          </div>
-          <div>
-            <dt>Investment</dt>
-            <dd className="text-parchment-100">{formatAmount(preview.investment_capital)}</dd>
-          </div>
-          <div>
-            <dt>Leader bargain</dt>
-            <dd data-testid="bargain-capital" className="text-parchment-100">
-              {formatAmount(preview.legislative_bargain_capital)}
-            </dd>
-          </div>
-          <div>
-            <dt>Promise release</dt>
-            <dd data-testid="promise-release-capital" className="text-parchment-100">
-              {formatAmount(preview.promise_release_capital)}
-            </dd>
-          </div>
+          {capitalTerms
+            .filter((term) => term.value !== 0)
+            .map((term) => (
+              <div key={term.label}>
+                <dt>{term.label}</dt>
+                <dd data-testid={term.testId} className="text-parchment-100">
+                  {formatAmount(term.value)}
+                </dd>
+              </div>
+            ))}
           <div>
             <dt>Total committed</dt>
             <dd className="text-parchment-100">{formatAmount(preview.committed_capital)}</dd>

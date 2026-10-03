@@ -170,9 +170,17 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
     proposal: BudgetDecision | ConstitutionalAmendmentDecision | None = budget or amendment
     _require_no_structural_problem(state, decision_set)
 
+    # ROUTE-AWARE (Gate 4A3 UX-1). A decree is not put to a vote: the resolver enacts a decree budget
+    # as `ENACTED_BY_DECREE` with no chamber report (`phases.py`, the `ProposalRoute.DECREE` branch)
+    # and a decreed amendment the same way. Scoring the legislature for a decree used to report
+    # "would not pass" for a proposal resolution then enacted. So a decree previews NO chambers, and
+    # `would_pass` says it would be enacted -- which holds exactly when resolution accepts the set,
+    # i.e. when it clears the structural check above and is `affordable` (the resolver raises on an
+    # unaffordable commitment, and so the interface words that case as a refusal, not an enactment).
     chambers: tuple[ChamberPreview, ...] = ()
     legislature = politics.legislature
-    if proposal is not None and legislature is not None:
+    decreed = proposal is not None and proposal.route is ProposalRoute.DECREE
+    if proposal is not None and legislature is not None and not decreed:
         chambers = (
             _preview_amendment(politics, legislature, amendment, endorsed_party_id)
             if amendment is not None
@@ -213,7 +221,7 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
         estimate=True,
         excludes_stochastic_channels=EXCLUDED_STOCHASTIC_CHANNELS,
         chambers=chambers,
-        would_pass=bool(chambers) and all(row.carries for row in chambers),
+        would_pass=decreed or (bool(chambers) and all(row.carries for row in chambers)),
         has_proposal=proposal is not None,
         route=None if proposal is None else proposal.route.value,
         route_capital_cost=route_cost,

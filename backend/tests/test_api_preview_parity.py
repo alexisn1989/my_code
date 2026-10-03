@@ -789,3 +789,249 @@ def test_162_bargaining_plus_139_investment_previews_as_unaffordable_and_resolve
 
         state_response = resolver.get("/api/game/state")
         assert state_response.json()["revision"] == revision, "the revision token is unchanged"
+
+
+# --------------------------------------------------------------------------
+# Gate 4A3 UX-1: the preview is ROUTE-AWARE, proved against real resolution
+# --------------------------------------------------------------------------
+#
+# A decree is enacted without a vote: the resolver records `ENACTED_BY_DECREE` and no chamber
+# report. The preview used to score the legislature anyway and could say "would not pass" for a
+# decree that resolution then enacted. Every case below runs the preview AND a real resolve from
+# the same opening save, so the two cannot disagree silently.
+
+
+def _variant_client(tmp_path: Path, scenario_dir: Path, name: str) -> TestClient:
+    app = create_app(
+        ApiSettings(save_root=tmp_path / name, scenario_root=scenario_dir, serve_spa=False)
+    )
+    return TestClient(app, base_url="http://127.0.0.1:8420")
+
+
+def _legislature_holder(document: Any) -> Any:
+    """The mapping that owns the scenario's `legislature: {chambers: ...}` block."""
+    if isinstance(document, dict):
+        block = document.get("legislature")
+        if isinstance(block, dict) and "chambers" in block:
+            return document
+        for value in document.values():
+            found = _legislature_holder(value)
+            if found is not None:
+                return found
+    elif isinstance(document, list):
+        for value in document:
+            found = _legislature_holder(value)
+            if found is not None:
+                return found
+    return None
+
+
+def _test_only_variant(tmp_path: Path, scenario: str, edit: Any) -> Path:
+    """A TEST-ONLY copy of a shipped scenario, edited and written under `tmp_path`.
+
+    Used only where shipped content cannot reach a case (measured: no budget in `tiny_valid`
+    fails in either chamber, every amendment there fails in BOTH, and no shipped scenario lacks a
+    legislature). The shipped files are never modified.
+    """
+    import yaml
+
+    document = yaml.safe_load((SCENARIO_DIR / f"{scenario}.yaml").read_text(encoding="utf-8"))
+    edit(document)
+    directory = tmp_path / f"variant-{scenario}"
+    directory.mkdir()
+    (directory / f"{scenario}.yaml").write_text(yaml.safe_dump(document, sort_keys=False))
+    return directory
+
+
+def _rebalance_tiny_upper_chamber(document: Any) -> None:
+    """Move six upper seats from the coalition's mainstream bloc to the opposition conservatives,
+    so the coalition still carries the lower chamber but not the upper one."""
+    legislature = _legislature_holder(document)["legislature"]
+    for party in legislature["parties"]:
+        for bloc in party["blocs"]:
+            for row in bloc["seats"]:
+                if row["chamber"] != "upper":
+                    continue
+                if (party["id"], bloc["id"]) == ("civic_union", "mainstream"):
+                    row["seats"] -= 6
+                if (party["id"], bloc["id"]) == ("national_front", "conservatives"):
+                    row["seats"] += 6
+
+
+def _remove_the_legislature(document: Any) -> None:
+    del _legislature_holder(document)["legislature"]
+
+    def no_legislature(node: Any) -> None:
+        if isinstance(node, dict):
+            if node.get("legislature") in ("unicameral", "bicameral"):
+                node["legislature"] = "none"
+            for value in node.values():
+                no_legislature(value)
+        elif isinstance(node, list):
+            for value in node:
+                no_legislature(value)
+
+    no_legislature(document)
+
+
+def _preview_and_resolve(
+    tmp_path: Path,
+    scenario: str,
+    decisions: list[dict[str, Any]],
+    scenario_dir: Path = SCENARIO_DIR,
+) -> tuple[Any, Any]:
+    with _variant_client(tmp_path, scenario_dir, "preview") as previewer:
+        previewed = _preview(previewer, _new(previewer, scenario), decisions)
+    with _variant_client(tmp_path, scenario_dir, "resolve") as resolver:
+        resolved = _resolve(resolver, _new(resolver, scenario), decisions)
+    return previewed, resolved
+
+
+def test_a_decree_budget_previews_no_vote_and_is_enacted_by_resolution(tmp_path: Path) -> None:
+    previewed, resolved = _preview_and_resolve(tmp_path, "decree_state", [_budget(route="decree")])
+    assert previewed.status_code == 200, previewed.text
+    body = previewed.json()
+    assert body["route"] == "decree"
+    assert body["chambers"] == [], "a decree is not put to a vote"
+    assert body["would_pass"] is True
+    assert body["affordable"] is True
+    assert body["route_capital_cost"] == 250
+
+    assert resolved.status_code == 200, resolved.text
+    turn_result = resolved.json()["turnResult"]
+    assert "enacted by decree" in turn_result["outcome_headline"].lower()
+    assert not any("supporting seats" in row["label"] for row in turn_result["trace"]), (
+        "resolution recorded no chamber vote, exactly as the preview said"
+    )
+
+
+def test_the_same_budget_by_the_legislative_route_matches_resolution_chamber_by_chamber(
+    tmp_path: Path,
+) -> None:
+    previewed, resolved = _preview_and_resolve(tmp_path, "decree_state", [_budget()])
+    body = previewed.json()
+    assert body["would_pass"] is False
+    trace = _chamber_tallies_from_trace(resolved.json()["turnResult"])
+    for chamber in body["chambers"]:
+        assert trace[f"{chamber['chamber']}: supporting seats"] == str(chamber["supporting_seats"])
+        assert trace[f"{chamber['chamber']}: required seats"] == str(chamber["required_seats"])
+    assert "blocked" in resolved.json()["turnResult"]["outcome_headline"].lower()
+
+
+def test_a_decree_with_influence_is_rejected_by_preview_and_resolve_alike(tmp_path: Path) -> None:
+    """Influence buys votes; a decree has none. Pinned as both-reject, by status and type."""
+    influence = [{"party_id": "governing_party", "bloc_id": "core", "political_capital": 10}]
+    previewed, resolved = _preview_and_resolve(
+        tmp_path, "decree_state", [_budget(route="decree", influence=influence)]
+    )
+    assert previewed.status_code == resolved.status_code == 422
+    assert previewed.json()["type"] == resolved.json()["type"] == "decision_rejected"
+    # Anti-vacuity: the same influence on the LEGISLATIVE route is accepted by both, so the
+    # rejection above is about the decree, not a malformed bloc or request.
+    accepted_preview, accepted_resolve = _preview_and_resolve(
+        tmp_path / "legislative", "decree_state", [_budget(influence=influence)]
+    )
+    assert accepted_preview.status_code == accepted_resolve.status_code == 200
+
+
+def test_an_unaffordable_decree_previews_unaffordable_and_resolution_refuses_it(
+    tmp_path: Path,
+) -> None:
+    """Decree 250 + investments 200 + 200 = 650 against 500 opening capital."""
+    decisions = [
+        {
+            "kind": "bloc_relationship_investment",
+            "investments": [
+                {"party_id": "governing_party", "bloc_id": "core", "political_capital": 200},
+                {"party_id": "opposition_party", "bloc_id": "main", "political_capital": 200},
+            ],
+        },
+        _budget(route="decree"),
+    ]
+    previewed, resolved = _preview_and_resolve(tmp_path, "decree_state", decisions)
+    assert previewed.status_code == 200, previewed.text
+    body = previewed.json()
+    assert body["committed_capital"] == 650
+    assert body["affordable"] is False, "the interface must word this as a refusal"
+    assert resolved.status_code == 422
+    assert resolved.json()["type"] == "decision_rejected"
+
+
+def test_a_bicameral_budget_failing_in_one_chamber_matches_resolution_row_for_row(
+    tmp_path: Path,
+) -> None:
+    directory = _test_only_variant(tmp_path, BICAMERAL, _rebalance_tiny_upper_chamber)
+    previewed, resolved = _preview_and_resolve(tmp_path, BICAMERAL, [_budget()], directory)
+    body = previewed.json()
+    verdicts = {row["chamber"]: row["carries"] for row in body["chambers"]}
+    assert verdicts == {"lower": True, "upper": False}, "exactly one chamber fails"
+    assert body["would_pass"] is False
+    trace = _chamber_tallies_from_trace(resolved.json()["turnResult"])
+    for chamber in body["chambers"]:
+        assert trace[f"{chamber['chamber']}: supporting seats"] == str(chamber["supporting_seats"])
+        assert trace[f"{chamber['chamber']}: required seats"] == str(chamber["required_seats"])
+    assert "blocked" in resolved.json()["turnResult"]["outcome_headline"].lower()
+
+
+def test_a_bicameral_amendment_failing_in_both_chambers_matches_resolution(
+    tmp_path: Path,
+) -> None:
+    amendment = [
+        {
+            "kind": "constitutional_amendment",
+            "targets": [{"axis": "decree_authority", "value": "none"}],
+            "route": "legislative",
+        }
+    ]
+    previewed, resolved = _preview_and_resolve(tmp_path, BICAMERAL, amendment)
+    body = previewed.json()
+    assert [row["carries"] for row in body["chambers"]] == [False, False]
+    assert body["would_pass"] is False
+    assert resolved.status_code == 200, resolved.text
+    assert "fail" in resolved.json()["turnResult"]["outcome_headline"].lower() or (
+        "blocked" in resolved.json()["turnResult"]["outcome_headline"].lower()
+    )
+
+
+def test_an_amendment_by_decree_where_a_legislature_sits_is_rejected_by_both(
+    tmp_path: Path,
+) -> None:
+    """Valdrun: unlimited decree authority AND a sitting legislature, which forbids it."""
+    amendment = [
+        {
+            "kind": "constitutional_amendment",
+            "targets": [{"axis": "decree_authority", "value": "none"}],
+            "route": "decree",
+        }
+    ]
+    previewed, resolved = _preview_and_resolve(tmp_path, "decree_state", amendment)
+    assert previewed.status_code == resolved.status_code == 422
+    assert previewed.json()["type"] == resolved.json()["type"] == "decision_rejected"
+    # Anti-vacuity: rejected for the decree rule itself, not for a malformed target.
+    assert "legislature sits" in previewed.json()["detail"]
+
+
+def test_an_amendment_by_decree_with_no_legislature_previews_no_vote_and_is_enacted(
+    tmp_path: Path,
+) -> None:
+    directory = _test_only_variant(tmp_path, "decree_state", _remove_the_legislature)
+    with _variant_client(tmp_path, directory, "options") as client:
+        _new(client, "decree_state")
+        options = client.get("/api/game/decision-options").json()
+    assert options["decree_available"] is True
+    assert options["chambers"] == [], "the variant really has no legislature"
+    amendment = [
+        {
+            "kind": "constitutional_amendment",
+            # Measured as a legal decree amendment in this variant (a monarchy with no legislature).
+            "targets": [{"axis": "executive_selection", "value": "appointed"}],
+            "route": "decree",
+        }
+    ]
+    previewed, resolved = _preview_and_resolve(tmp_path, "decree_state", amendment, directory)
+    assert previewed.status_code == 200, previewed.text
+    body = previewed.json()
+    assert body["chambers"] == []
+    assert body["would_pass"] is True
+    assert body["route_capital_cost"] == options["decree_amendment_capital_cost"]
+    assert resolved.status_code == 200, resolved.text

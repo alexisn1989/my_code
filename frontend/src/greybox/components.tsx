@@ -57,15 +57,22 @@ export function Panel({
   title,
   children,
   headingLevel = 3,
+  headingId,
 }: {
   title: string;
   children: ReactNode;
   headingLevel?: 2 | 3;
+  /** When set, the heading is a programmatic focus target (`tabIndex=-1`), e.g. after Preview. */
+  headingId?: string;
 }) {
   const Heading = headingLevel === 2 ? "h2" : "h3";
   return (
     <section className="rounded border border-navy-800 bg-navy-900 p-4">
-      <Heading className="mb-3 font-[family-name:var(--font-display)] text-lg text-parchment-100">
+      <Heading
+        id={headingId}
+        tabIndex={headingId === undefined ? undefined : -1}
+        className="mb-3 font-[family-name:var(--font-display)] text-lg text-parchment-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+      >
         {title}
       </Heading>
       {children}

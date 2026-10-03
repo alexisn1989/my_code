@@ -13,12 +13,12 @@
  * as if they did.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useDashboard, useDecisionOptions, usePreview, useResolve } from "../../api/queries";
 import type { DecisionOptionsProjection, PolicyCard } from "../../api/client";
 import { ResolutionInProgressError, StaleRevisionError } from "../../api/errors";
-import { formatAmount, formatBpsPercent } from "../../format/format";
+import { decreeAllowed, decreeCost, formatAmount, formatBpsPercent } from "../../format/format";
 import { ConsequencesPanel } from "../policy/ConsequencesPanel";
 import { PolicyCardGrid } from "../policy/PolicyCardGrid";
 import { chooseCardRoute, mapPolicyCardToDraft } from "../../state/applyPolicyCard";
@@ -144,6 +144,17 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   const [previewedSignature, setPreviewedSignature] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [routeChangeAnnouncement, setRouteChangeAnnouncement] = useState<string | null>(null);
+  // Gate 4A3 UX-1: after Preview, focus moves to the result it produced, so a keyboard or
+  // screen-reader player lands on the estimate instead of hunting for it far down the page.
+  const [focusPreviewResult, setFocusPreviewResult] = useState(false);
+  useEffect(() => {
+    if (!focusPreviewResult || !preview.isSuccess) return;
+    const heading = document.getElementById("preview-result-heading");
+    if (heading) {
+      heading.focus();
+      setFocusPreviewResult(false);
+    }
+  }, [focusPreviewResult, preview.isSuccess, preview.data]);
 
   // Selecting a card populates the draft only (mandate: never previews,
   // resolves, or spends on selection alone). R5's route-preservation rule
@@ -264,7 +275,10 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
     // against what was actually asked -- not against whatever the draft happens to be when the
     // response lands.
     setPreviewedSignature(previewRequestSignature(draft, revision, campaignId));
-    preview.mutate({ revision, campaignId, decisions: buildDecisions(draft) });
+    preview.mutate(
+      { revision, campaignId, decisions: buildDecisions(draft) },
+      { onSuccess: () => setFocusPreviewResult(true) },
+    );
   }
 
   function handleResolve() {
@@ -286,6 +300,8 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
       },
     );
   }
+
+  const activeSlot = draft.policySlot;
 
   // Recomputed every render from the CURRENT draft, so an edit invalidates the estimate the moment
   // it happens -- including an edit made while a preview request is still outstanding.
@@ -404,16 +420,6 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
                 />
               </label>
             ))}
-
-            <RouteAndInfluence
-              route={draft.budget.route}
-              decreeAvailable={data.decree_available}
-              decreeCost={data.decree_legislative_capital_cost}
-              onRoute={draft.setBudgetRoute}
-              blocs={data.blocs}
-              influence={draft.budget.influence}
-              onInfluence={draft.setBudgetInfluence}
-            />
           </div>
         ) : null}
 
@@ -466,19 +472,31 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
                 )}
               </label>
             ))}
-
-            <RouteAndInfluence
-              route={draft.amendment.route}
-              decreeAvailable={data.decree_available}
-              decreeCost={data.decree_amendment_capital_cost}
-              onRoute={draft.setAmendmentRoute}
-              blocs={data.blocs}
-              influence={draft.amendment.influence}
-              onInfluence={draft.setAmendmentInfluence}
-            />
           </div>
         ) : null}
         </details>
+
+        {/* Gate 4A3 UX-1: the route is a decision, not a customisation. It used to live only inside the
+            collapsed "Customize policy", so the decree-versus-legislature choice -- the trade-off the
+            playtest watches for -- was effectively hidden. It renders ONCE, here, for whichever
+            proposal is drafted, with that proposal's own decree rule and price. */}
+        {activeSlot !== null ? (
+          <section aria-label="How this proposal is decided" className="mt-4">
+            <RouteAndInfluence
+              route={activeSlot === "budget" ? draft.budget.route : draft.amendment.route}
+              decreeAvailable={decreeAllowed(activeSlot, data)}
+              decreeCost={decreeCost(activeSlot, data)}
+              onRoute={activeSlot === "budget" ? draft.setBudgetRoute : draft.setAmendmentRoute}
+              blocs={data.blocs}
+              influence={
+                activeSlot === "budget" ? draft.budget.influence : draft.amendment.influence
+              }
+              onInfluence={
+                activeSlot === "budget" ? draft.setBudgetInfluence : draft.setAmendmentInfluence
+              }
+            />
+          </section>
+        ) : null}
       </Panel>
 
       <Panel title="Relationship investment (separate from your proposal)">
@@ -550,7 +568,14 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
             rather than annotated: a "Would pass" left on screen beside a stale-marker is still a
             verdict a player can read, and it is a verdict about a decision they no longer have. */}
         {preview.isSuccess && previewIsCurrent ? (
-          <ConsequencesPanel preview={preview.data} />
+          <ConsequencesPanel
+            preview={preview.data}
+            decreeOption={
+              activeSlot !== null && decreeAllowed(activeSlot, data)
+                ? { cost: decreeCost(activeSlot, data) }
+                : null
+            }
+          />
         ) : null}
         {preview.isSuccess && !previewIsCurrent ? (
           <p

@@ -50,7 +50,15 @@
     "verify:fixes:commit5b": "MANDATE_VERIFY_OUT=gate-4a3-commit5b-verification playwright test --project=verify",
     "verify:icons:commit5b": "MANDATE_ICONS_OUT=gate-4a3-commit5b-icon-coverage playwright test --project=icon-coverage",
     "audit:accessibility:verify:commit5b": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit5b playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-commit5b node tools/write-accessibility-report.mjs",
-    "test:preflight": "playwright test e2e/preflight.spec.ts"
+    "test:preflight": "playwright test e2e/preflight.spec.ts",
+    "_comment:ux1": "Gate 4A3 UX-1 (route-aware preview, visible route). Every browser gate re-runs under UX-1's own artifact names; verify:ux:1 runs the cumulative UX spec up to @ux1 only. audit:stress:seated:ux1 writes beside the committed seated-cabinet evidence via MANDATE_STRESS_SEATED_OUT.",
+    "verify:ux:1": "MANDATE_UX_OUT=gate-4a3-ux1-verify-ux playwright test --project=ux --grep @ux1",
+    "verify:fixes:ux1": "MANDATE_VERIFY_OUT=gate-4a3-ux1-verification playwright test --project=verify",
+    "verify:icons:ux1": "MANDATE_ICONS_OUT=gate-4a3-ux1-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:ux1": "MANDATE_TERMINAL_OUT=gate-4a3-ux1-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:ux1": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux1-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:ux1": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux1-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:ux1": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux1 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux1 node tools/write-accessibility-report.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

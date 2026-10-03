@@ -484,6 +484,9 @@ class PreviewProjection(BaseModel):
     excludes_stochastic_channels: tuple[str, ...] = ()
     chambers: tuple[ChamberPreview, ...] = ()
     would_pass: bool = False
+    """Legislative route: every chamber carries. Decree route (Gate 4A3 UX-1): always True and
+    `chambers` is empty, because a decree is enacted without a vote; whether resolving would accept
+    it at all is `affordable` (and the structural check, which rejects the request outright)."""
     has_proposal: bool = False
     route: str | None = None
     route_capital_cost: int = 0

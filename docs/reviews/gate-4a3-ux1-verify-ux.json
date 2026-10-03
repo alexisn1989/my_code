@@ -1,0 +1,51 @@
+{
+  "gate": "4A3 UX",
+  "out": "gate-4a3-ux1-verify-ux",
+  "results": [
+    {
+      "block": "ux1",
+      "viewport": "desktop",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": "The budget was enacted by decree. The legislature was bypassed."
+    },
+    {
+      "block": "ux1",
+      "viewport": "mobile",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": null
+    },
+    {
+      "block": "ux1",
+      "viewport": "narrow",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": null
+    }
+  ]
+}

@@ -30,7 +30,13 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
-const SHOT_DIR = path.join(REVIEW_DIR, "gate-4a3-baseline");
+/** Gate 4A3 UX pass: the output names are parameters, defaulting to the committed ones, so a later
+ * commit's re-run writes BESIDE the committed evidence (JSON and screenshots) instead of over it. */
+const OUT_NAME = process.env.MANDATE_STRESS_SEATED_OUT ?? "gate-4a3-stress-seated-cabinet";
+const SHOT_DIR = path.join(
+  REVIEW_DIR,
+  process.env.MANDATE_STRESS_SEATED_OUT === undefined ? "gate-4a3-baseline" : `${OUT_NAME}-shots`,
+);
 const FIXTURE = path.join(process.cwd(), "e2e", "fixtures", "stress_long_names_seated_cabinet.yaml");
 
 /** The two posts this fixture seats, and the character each holds. Kept as data so the assertions can
@@ -213,7 +219,7 @@ test("Government under a SEATED cabinet with maximum-length holder names", async
   }
 
   writeFileSync(
-    path.join(REVIEW_DIR, "gate-4a3-stress-seated-cabinet.json"),
+    path.join(REVIEW_DIR, `${OUT_NAME}.json`),
     JSON.stringify(
       {
         fixture: "frontend/e2e/fixtures/stress_long_names_seated_cabinet.yaml",
