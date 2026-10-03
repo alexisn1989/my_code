@@ -858,6 +858,32 @@ def _rebalance_tiny_upper_chamber(document: Any) -> None:
                     row["seats"] += 6
 
 
+def _rebalance_tiny_both_chambers(document: Any) -> None:
+    """Move ten lower and six upper seats from the coalition's mainstream bloc to the opposition
+    conservatives, so the coalition carries neither chamber. Measured: eight lower seats is the
+    smallest move that fails the lower chamber (50 of 51); ten leaves a margin."""
+    legislature = _legislature_holder(document)["legislature"]
+    moved = {"lower": 10, "upper": 6}
+    for party in legislature["parties"]:
+        for bloc in party["blocs"]:
+            for row in bloc["seats"]:
+                if (party["id"], bloc["id"]) == ("civic_union", "mainstream"):
+                    row["seats"] -= moved[row["chamber"]]
+                if (party["id"], bloc["id"]) == ("national_front", "conservatives"):
+                    row["seats"] += moved[row["chamber"]]
+
+
+def _assert_budget_tallies_match(body: dict[str, Any], turn_result: dict[str, Any]) -> None:
+    """Every previewed chamber row equals the resolved trace's row for that chamber."""
+    trace = _chamber_tallies_from_trace(turn_result)
+    assert {row["chamber"] for row in body["chambers"]} == {"lower", "upper"}
+    for chamber in body["chambers"]:
+        # Anti-vacuity: the rows must EXIST in the trace, not merely fail to disagree.
+        assert f"{chamber['chamber']}: supporting seats" in trace, sorted(trace)
+        assert trace[f"{chamber['chamber']}: supporting seats"] == str(chamber["supporting_seats"])
+        assert trace[f"{chamber['chamber']}: required seats"] == str(chamber["required_seats"])
+
+
 def _remove_the_legislature(document: Any) -> None:
     del _legislature_holder(document)["legislature"]
 
@@ -988,9 +1014,34 @@ def test_a_bicameral_amendment_failing_in_both_chambers_matches_resolution(
     assert [row["carries"] for row in body["chambers"]] == [False, False]
     assert body["would_pass"] is False
     assert resolved.status_code == 200, resolved.text
-    assert "fail" in resolved.json()["turnResult"]["outcome_headline"].lower() or (
-        "blocked" in resolved.json()["turnResult"]["outcome_headline"].lower()
-    )
+    turn_result = resolved.json()["turnResult"]
+    assert turn_result["outcome_headline"].startswith("Amendment failed")
+    # Gate 4A3 UX-1a: the tallies themselves, chamber by chamber. The amendment's trace records
+    # each chamber as "Amendment {chamber}: supporting of required" = "{supporting} of {required}".
+    trace = _chamber_tallies_from_trace(turn_result)
+    assert {row["chamber"] for row in body["chambers"]} == {"lower", "upper"}
+    for chamber in body["chambers"]:
+        label = f"Amendment {chamber['chamber']}: supporting of required"
+        assert label in trace, sorted(trace)
+        assert trace[label] == f"{chamber['supporting_seats']} of {chamber['required_seats']}"
+
+
+def test_a_bicameral_budget_failing_in_both_chambers_matches_resolution_row_for_row(
+    tmp_path: Path,
+) -> None:
+    """Gate 4A3 UX-1a: the approved plan asked for a BUDGET failing in both chambers. Shipped
+    `tiny_valid` cannot produce one (measured), so this is a test-only variant."""
+    directory = _test_only_variant(tmp_path, BICAMERAL, _rebalance_tiny_both_chambers)
+    previewed, resolved = _preview_and_resolve(tmp_path, BICAMERAL, [_budget()], directory)
+    assert previewed.status_code == 200, previewed.text
+    body = previewed.json()
+    verdicts = {row["chamber"]: row["carries"] for row in body["chambers"]}
+    assert verdicts == {"lower": False, "upper": False}, "both chambers fail"
+    assert body["would_pass"] is False
+    assert resolved.status_code == 200, resolved.text
+    turn_result = resolved.json()["turnResult"]
+    _assert_budget_tallies_match(body, turn_result)
+    assert "blocked" in turn_result["outcome_headline"].lower()
 
 
 def test_an_amendment_by_decree_where_a_legislature_sits_is_rejected_by_both(
