@@ -1,0 +1,495 @@
+{
+  "conformanceOverflow": [],
+  "belowFloorObservations": [
+    {
+      "screen": "Dashboard",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Dashboard",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Dashboard",
+      "detail": "div.grid gap-6 lg:grid-cols-[2fr_1fr]"
+    },
+    {
+      "screen": "Dashboard",
+      "detail": "div.grid gap-4 md:grid-cols-3 xl:grid-cols-5"
+    },
+    {
+      "screen": "Economy",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Economy",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Economy",
+      "detail": "section."
+    },
+    {
+      "screen": "Economy",
+      "detail": "div.grid gap-4 md:grid-cols-3 xl:grid-cols-5"
+    },
+    {
+      "screen": "Constitution",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Constitution",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Constitution",
+      "detail": "section."
+    },
+    {
+      "screen": "Constitution",
+      "detail": "div.grid gap-4 md:grid-cols-3 xl:grid-cols-5"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "ul.flex flex-col gap-2"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "li."
+    },
+    {
+      "screen": "Relationships",
+      "detail": "button.flex w-full gap-3 rounded border border-"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "screen": "Relationships",
+      "detail": "ul.flex flex-col gap-2"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "div.flex flex-col gap-4"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "div.flex flex-wrap gap-2"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "div."
+    },
+    {
+      "screen": "Decisions",
+      "detail": "ul.grid grid-cols-1 gap-3 sm:grid-cols-2 lg"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "li.list-none"
+    },
+    {
+      "screen": "Decisions",
+      "detail": "div.flex h-full flex-col gap-2 rounded borde"
+    },
+    {
+      "screen": "Victory / defeat",
+      "detail": "page scrolls horizontally"
+    },
+    {
+      "screen": "Victory / defeat",
+      "detail": "div.flex flex-col gap-6"
+    },
+    {
+      "screen": "Victory / defeat",
+      "detail": "section.rounded border border-navy-800 bg-navy-9"
+    },
+    {
+      "screen": "Victory / defeat",
+      "detail": "div.flex gap-3"
+    }
+  ],
+  "coverage": [
+    "A8: 5 tabs, all carrying aria-controls; 5 unique whitespace-free ids; every aria-controls token resolves; ArrowRight moved focus policy-tab-major-budget -> policy-tab-major-constitution",
+    "A2-A7, A10-A15 + A1/A9: 11 screens plus the Glossary, each with zero region/contrast/banner violations and exactly one banner, one main and at least one navigation landmark",
+    "V1-V3: 11 screens clean at 320px (asserted); 34 observation(s) at 195px (recorded, below the floor)",
+    "F4: reduced-motion active, a 5s inline transition clamped to 1e-05s, and 0 animating elements across 4 screens",
+    "N1-N6: 198 elements that directly own painted text, measured across 5 of 5 flagged screens (from 616 candidates; 404 own no text, 14 own text but are never painted); worst ratio 5.45:1; none below 4.5:1; 0 screen(s) painted no text at all. The candidate set is WIDER than Commit 4a's, which measured 74 nodes across four screens with a tag-list selector -- see `candidateSetCorrection`. N6 REMAINS OWED: the terminal screen is measured here, but what is measured mid-campaign is its placeholder, not the outcome axe flagged",
+    "Commit 4 icons: 26 icon placements measured across 8 surfaces; 7 of 10 icons reached, 3 recorded as not reached with a reason; all three groups covered; worst ratios {\"tone\":10.18,\"direction\":8.78,\"map-legend\":8.78}; none below 3:1",
+    "Commit 4 introduction: 4 forward and 2 backward tabs traversed, dismissal-under-focus and keyboard reopening proven, header toggle clean at 320px",
+    "Commit 4 copy: 11 screens plus the Glossary scanned for 12 forbidden whole words, in text nodes AND five player-visible attributes; 0 offence(s)"
+  ],
+  "reducedMotion": {
+    "mediaQueryActive": true,
+    "inlineTransitionOverriddenTo": "1e-05s",
+    "animatedElements": 0,
+    "screensChecked": [
+      "Dashboard",
+      "Government",
+      "Relationships",
+      "Decisions"
+    ]
+  },
+  "needsReviewDisposition": {
+    "method": "Every element inside `main` that DIRECTLY OWNS at least one non-whitespace text node and is actually painted. Own text rather than `textContent`, so a wrapper is never measured for its descendants' text and no string is counted twice; painted meaning it survives the probe's visibility rule (`display:none`, `visibility:hidden`, `opacity:0`, `clip-path`, `.sr-only`, or a box of 1px or less, which also catches anything inside a hidden ancestor). For each such node the computed foreground colour -- converted from Tailwind v4's OKLab output and composited with its own alpha -- is measured against the first non-transparent ancestor background, the resolution step axe skips when elements overlap. Ratios are computed in-page with the WCAG relative-luminance formula, and the probe is calibrated against an independently computed figure for a known token before any of its numbers are trusted.",
+    "candidateSetCorrection": "COMMIT 5 WIDENED THIS, and the earlier records overstated their own coverage. Commits 3, 4 and 4a asked for `main [aria-hidden=\"true\"], main span, main text` while describing the result as 'every text-bearing element on the screens axe flagged'. That selector reaches a span, an SVG text node and an aria-hidden node, and misses every paragraph, definition term, list item, table cell and heading -- 56 spans against 54 paragraphs, 52 dt/dd, 32 list items and 16 headings in the greybox source. The candidate set is now every element, with the two rules above deciding, so the node counts here are LARGER than Commit 4a's and a screen's worst ratio may be lower: newly reached nodes can be worse than the ones the old selector happened to hit. That is a coverage increase, not a regression. Decorative marks need no exclusion rule, since an `svg[data-icon]` owns no text node and is dropped by the own-text rule; icons are measured separately against the 3:1 bar of SC 1.4.11, and this scan is text against 4.5:1 (SC 1.4.3). Aria-hidden TEXT is kept, because it is painted and a sighted reader sees it.",
+    "rejectionRulesProvenToRun": "A rule that rejects nothing is a rule that is not running, so both are asserted rather than assumed: each screen must reject at least one candidate for owning no text of its own, and the run as a whole must reject at least one painted-hidden node. The second is what `.sr-only` contributes -- every `ToneValue` pairs its icon with a visually hidden word -- and `.sr-only` nodes measuring 1.00:1 while looking like application defects is one of the three failures this probe exists to have fixed.",
+    "precision": "The OKLab -> sRGB round trip can shift a channel by a unit, so a ratio here may differ from an offline calculation by about 1%. The tolerance is fixed in the probe module BEFORE a run at +/-0.05 absolute on a ratio and +/-1 per 8-bit channel on a conversion, so it cannot be chosen after seeing a number. THE EARLIER WORDING OF THIS FIELD WAS WRONG AND IS CORRECTED HERE: it said the calibration node measured 5.65:1 and that the smallest measured ratio was 5.65:1. Both figures came from the broken alpha parser that read every transparent backdrop as painted pure black; Commit 4a fixed the parser and its own dispositions in the same artifact already recorded 5.45:1, which the stale sentence contradicted. The calibration expectation is 5.45:1, computed offline for parchment-200 at 60% over navy-900.",
+    "backdropIndependence": "Every resolved backdrop is asserted to be one of the palette's authored surfaces (navy-950, navy-900, navy-800); pure black is not among them, which is why this check alone would have failed the parser bug on its first run. It is deliberately WEAKER than the per-placement authored expectation applied to the ten icons: hand-writing an authored table for several hundred text nodes would be transcription rather than verification. The strong form is applied where it matters most, to the terminal outcome's own three nodes, in `e2e/terminal-coverage.spec.ts`. The previous claim that 'every text node measured here sits inside a Panel (bg-navy-900)' is FALSE under the widened set -- a screen's own `<h2>` title sits on the page background -- so the surface is now recorded per node instead.",
+    "surfaceDistribution": {
+      "navy-950": 7,
+      "navy-900": 191,
+      "navy-800": 0
+    },
+    "calibration": {
+      "className": "text-parchment-200/60",
+      "note": "parchment-200 #e8dcc0 at alpha 0.6, source-over onto navy-900 #0f1626, gives 5.45:1; axe independently reported 4.16:1 for the same token at 50% under the same model",
+      "tolerance": 0.05,
+      "method": "EVERY node carrying the calibration class is grouped by the surface its ancestor walk resolved, and each group's measured ratio must match the offline figure for THAT surface within the tolerance fixed in the probe module before the run. Commit 4a compared a single node against a hard-coded navy-900 figure; under the widened candidate set an earlier node is reached which sits on navy-950 and measured 5.57:1 -- correctly, so the expectation was what was wrong. Deriving it from the resolved surface is the fix Commit 4a had already applied to the icon calibration for the same reason, and grouping makes the check cover every such node rather than the first one found.",
+      "groups": [
+        {
+          "backdrop": "rgb(15,22,38)",
+          "surface": "navy-900",
+          "nodes": 36,
+          "measuredRatios": [
+            5.45
+          ],
+          "offlineExpected": 5.45
+        }
+      ]
+    },
+    "conclusion": "FIVE of the six resolve ABOVE the 4.5:1 AA bar, and one is deferred with a reason. N1 and N2 were the aria-hidden tone glyphs, which Commit 4 replaced with a stroke-only icon set; the values they decorated are measured here and the icons are measured against 3:1 in `verify:icons`, so meaning never rests on a mark alone. N3, N4 and N5 were overlap cases where axe could not find a background; resolving it by ancestor walk gives a passing ratio on every node.",
+    "deferred": [
+      {
+        "screen": "Victory / defeat",
+        "finding": "N6",
+        "reason": "the terminal OUTCOME renders only in a concluded campaign; this verification runs mid-campaign, where the screen shows its still-active placeholder instead",
+        "disposition": "NOT claimed as resolved by this run. The widened candidate set does now measure this screen mid-campaign, but what it measures is the placeholder -- so a reader must not read those figures as N6. Commit 5 measures the outcome itself in `e2e/terminal-coverage.spec.ts`, which resolves a campaign to its terminal state and requires the outcome's own three text owners to appear in the measured set; see `docs/reviews/gate-4a3-commit5-terminal.json`."
+      }
+    ],
+    "findings": [
+      {
+        "id": "N1",
+        "screen": "Dashboard",
+        "disposition": "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+      },
+      {
+        "id": "N2",
+        "screen": "Decisions",
+        "disposition": "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+      },
+      {
+        "id": "N3",
+        "screen": "Strategic map",
+        "disposition": "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+      },
+      {
+        "id": "N4",
+        "screen": "Relationships",
+        "disposition": "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+      },
+      {
+        "id": "N5",
+        "screen": "Decisions",
+        "disposition": "resolved by measurement: above the 4.5:1 AA bar once the effective background is resolved"
+      },
+      {
+        "id": "N6",
+        "screen": "Victory / defeat",
+        "disposition": "NOT resolved here. This mid-campaign run measures this screen's PLACEHOLDER text, not the terminal outcome axe flagged, which exists only in a concluded campaign -- see `deferred` below and `docs/reviews/gate-4a3-commit5-terminal.json`."
+      }
+    ],
+    "dispositions": [
+      {
+        "screen": "Dashboard",
+        "measured": 29,
+        "candidates": 66,
+        "rejectedNoOwnText": 32,
+        "rejectedHidden": 5,
+        "worstRatio": 5.45,
+        "worstOn": "p.text-sm text-parchment-200/60 \"Nothing needs your attention this turn.\"",
+        "worstSurface": "navy-900",
+        "glyphOnlyNodes": 0,
+        "belowBar": []
+      },
+      {
+        "screen": "Decisions",
+        "measured": 75,
+        "candidates": 151,
+        "rejectedNoOwnText": 69,
+        "rejectedHidden": 7,
+        "worstRatio": 5.45,
+        "worstOn": "p.text-sm text-parchment-200/60 \"No policy selected yet.\"",
+        "worstSurface": "navy-900",
+        "glyphOnlyNodes": 0,
+        "belowBar": []
+      },
+      {
+        "screen": "Relationships",
+        "measured": 46,
+        "candidates": 231,
+        "rejectedNoOwnText": 185,
+        "rejectedHidden": 0,
+        "worstRatio": 5.45,
+        "worstOn": "span.text-xs text-parchment-200/60 \"loyalty 9.00%, independence 83.00%, ambition 86.00%, trust 21.00%\"",
+        "worstSurface": "navy-900",
+        "glyphOnlyNodes": 0,
+        "belowBar": []
+      },
+      {
+        "screen": "Strategic map",
+        "measured": 41,
+        "candidates": 156,
+        "rejectedNoOwnText": 113,
+        "rejectedHidden": 2,
+        "worstRatio": 5.45,
+        "worstOn": "p.mb-4 text-xs italic text-parchment-200/6 \"Schematic — not to geographic scale\"",
+        "worstSurface": "navy-900",
+        "glyphOnlyNodes": 0,
+        "belowBar": []
+      },
+      {
+        "screen": "Victory / defeat",
+        "measured": 7,
+        "candidates": 12,
+        "rejectedNoOwnText": 5,
+        "rejectedHidden": 0,
+        "worstRatio": 5.45,
+        "worstOn": "p.text-sm text-parchment-200/60 \"No terminal outcome has been reached yet.\"",
+        "worstSurface": "navy-900",
+        "glyphOnlyNodes": 0,
+        "belowBar": []
+      }
+    ],
+    "notMeasured": []
+  },
+  "iconContrast": {
+    "bar": "3:1, WCAG 2.2 SC 1.4.11 (a 2px stroke is a graphical object)",
+    "method": "Every `svg[data-icon]` in the live DOM, measured at ITS OWN placement rather than borrowing Commit 3's tone-token figures: `stroke=\"currentColor\"` means the stroke colour is the element's computed `color`, resolved against the first non-transparent ancestor background with the same calibrated probe the N1-N6 measurement uses (`e2e/contrast-probe.ts`).",
+    "calibrationRatio": 5.57,
+    "calibrationBackdrop": "rgb(10,15,26)",
+    "calibrationSurface": "navy-950",
+    "calibrationOfflineExpected": 5.57,
+    "measured": 26,
+    "distinctIcons": [
+      "capital",
+      "down",
+      "neutral",
+      "positive",
+      "route-one-way",
+      "route-two-way",
+      "up"
+    ],
+    "worstByGroup": {
+      "tone": 10.18,
+      "direction": 8.78,
+      "map-legend": 8.78
+    },
+    "perScreen": [
+      {
+        "screen": "Dashboard",
+        "icons": 5,
+        "worst": 13.27
+      },
+      {
+        "screen": "Government",
+        "icons": 2,
+        "worst": 13.27
+      },
+      {
+        "screen": "Economy",
+        "icons": 1,
+        "worst": 13.27
+      },
+      {
+        "screen": "Legislature",
+        "icons": 1,
+        "worst": 13.27
+      },
+      {
+        "screen": "Constitution",
+        "icons": 1,
+        "worst": 13.27
+      },
+      {
+        "screen": "Decisions",
+        "icons": 6,
+        "worst": 8.78
+      },
+      {
+        "screen": "Strategic map",
+        "icons": 3,
+        "worst": 8.78
+      },
+      {
+        "screen": "Decisions (preview panel)",
+        "icons": 7,
+        "worst": 8.78
+      }
+    ],
+    "iconsMeasured": [
+      "capital",
+      "down",
+      "neutral",
+      "positive",
+      "route-one-way",
+      "route-two-way",
+      "up"
+    ],
+    "iconsNotReached": [
+      {
+        "icon": "negative",
+        "reason": "not rendered in any state this sweep enters: the sweep starts a campaign, visits every screen and opens the preview panel, but a mark only appears when the projected value it describes occurs. Its contrast here is UNMEASURED, not clean.",
+        "mitigation": "Every icon inherits its stroke from the tone token of the element it sits in (`stroke=\"currentColor\"`), and Commit 3 measured all four status tokens as TEXT at 6.24-8.86:1 -- a 4.5:1 bar, stricter than the 3:1 this test applies. That is evidence about the token, not a measurement of this placement, and it is recorded as such."
+      },
+      {
+        "icon": "caution",
+        "reason": "not rendered in any state this sweep enters: the sweep starts a campaign, visits every screen and opens the preview panel, but a mark only appears when the projected value it describes occurs. Its contrast here is UNMEASURED, not clean.",
+        "mitigation": "Every icon inherits its stroke from the tone token of the element it sits in (`stroke=\"currentColor\"`), and Commit 3 measured all four status tokens as TEXT at 6.24-8.86:1 -- a 4.5:1 bar, stricter than the 3:1 this test applies. That is evidence about the token, not a measurement of this placement, and it is recorded as such."
+      },
+      {
+        "icon": "unchanged",
+        "reason": "not rendered in any state this sweep enters: the sweep starts a campaign, visits every screen and opens the preview panel, but a mark only appears when the projected value it describes occurs. Its contrast here is UNMEASURED, not clean.",
+        "mitigation": "Every icon inherits its stroke from the tone token of the element it sits in (`stroke=\"currentColor\"`), and Commit 3 measured all four status tokens as TEXT at 6.24-8.86:1 -- a 4.5:1 bar, stricter than the 3:1 this test applies. That is evidence about the token, not a measurement of this placement, and it is recorded as such."
+      }
+    ]
+  },
+  "introductionKeyboard": {
+    "forwardTabs": [
+      {
+        "tag": "button",
+        "text": "How to govern",
+        "inNote": false
+      },
+      {
+        "tag": "button",
+        "text": "Glossary",
+        "inNote": false
+      },
+      {
+        "tag": "button",
+        "text": "Dismiss",
+        "inNote": true
+      },
+      {
+        "tag": "button",
+        "text": "Title",
+        "inNote": false
+      }
+    ],
+    "backwardTabs": [
+      {
+        "tag": "button",
+        "text": "Dismiss",
+        "inNote": true
+      },
+      {
+        "tag": "button",
+        "text": "Glossary",
+        "inNote": false
+      }
+    ],
+    "focusAfterDismissal": {
+      "tag": "body",
+      "text": "MANDATEConnected to the local MANDATE se",
+      "inNote": false
+    },
+    "focusAfterNextTab": {
+      "tag": "button",
+      "text": "Title",
+      "inNote": false
+    },
+    "narrowHeader": {
+      "pageScrolls": false,
+      "headerOverflows": false,
+      "viewportWidth": 320,
+      "buttons": [
+        {
+          "name": "How to govern",
+          "right": 152,
+          "width": 128
+        },
+        {
+          "name": "Glossary",
+          "right": 247,
+          "width": 87
+        }
+      ]
+    },
+    "conclusion": "Focus enters and leaves the introduction in BOTH directions, so it is not a trap; dismissing while the Dismiss button holds focus leaves the next Tab landing on a real control; the note reopens from the header toggle by keyboard with `aria-expanded` tracking it; Start stays operable throughout; and both header controls fit inside the 320px conformance width."
+  },
+  "renderedCopy": {
+    "claim": "No forbidden whole word appears in the rendered text nodes OR the player-visible attributes of the audited states: 11 screens plus the Glossary at the default viewport.",
+    "notClaimed": "This is NOT a claim about every state of the application. The concluded-campaign terminal screen is not entered here -- the same reason N6's contrast and the terminal screen's reflow are both owed to Commit 5 -- so an unqualified \"no build vocabulary reaches the player\" would assert coverage this run does not have.",
+    "inspected": {
+      "textNodes": "document.body.textContent",
+      "attributes": [
+        "aria-label",
+        "aria-description",
+        "title",
+        "placeholder",
+        "alt"
+      ]
+    },
+    "vocabulary": [
+      "gate",
+      "gates",
+      "projected",
+      "projection",
+      "projections",
+      "slot",
+      "slots",
+      "preflight",
+      "ruleset",
+      "fixture",
+      "fixtures",
+      "digest"
+    ],
+    "permittedByDesign": {
+      "revision": "a real player-facing concept with its own Glossary entry, so it is EXPECTED in the rendered Glossary and is therefore not in this scan's vocabulary; `tools/check-copy.mjs` is what keeps the allowance scoped to that single entry in source."
+    },
+    "screensScanned": [
+      "Dashboard",
+      "Government",
+      "Economy",
+      "Legislature",
+      "Constitution",
+      "Relationships",
+      "Decisions",
+      "Turn result",
+      "History",
+      "Strategic map",
+      "Victory / defeat"
+    ],
+    "offences": []
+  }
+}

@@ -61,6 +61,11 @@ import {
   releaseStagedAnnouncement,
   remainingCapacityLine,
   releaseCostLine,
+  assistanceStagedLine,
+  bargainStagedLine,
+  promiseMadeStagedLine,
+  promiseReleaseStagedLine,
+  proposalPhrase,
 } from "../../format/format";
 import { useSession } from "../../state/SessionContext";
 import { useDraftStore, type PolicySlotKind } from "../../state/draft";
@@ -77,9 +82,9 @@ type ActiveRow = Options["active_promises"][number];
 
 /** The player-facing name of the proposal a bargain would support. Two authored labels, chosen
  * here rather than transformed from an identifier — there is no `replace("_", " ")` anywhere. */
-function proposalLabel(policySlot: PolicySlotKind | null): string {
-  return policySlot === "amendment" ? "the constitutional amendment" : "the budget";
-}
+/** Moved to `format.ts` as `proposalPhrase` (Gate 4A3 UX-4b), so Decisions' draft list words a
+ * staged bargain identically; kept under its old name here for its other call sites. */
+const proposalLabel = proposalPhrase;
 
 /** Why the bargain cannot be staged right now, or `null` when it can.
  *
@@ -556,9 +561,11 @@ export function MeetingScreen(_props: ScreenProps) {
               {bargain === null ? null : (
                 <li data-staged-bargain={bargain.characterId}>
                   <span>
-                    {leaders.find((row) => row.character_id === bargain.characterId)
-                      ?.display_name ?? bargain.characterId}{" "}
-                    is asked to back {proposalLabel(bargain.proposalKind)}.
+                    {bargainStagedLine(
+                      leaders.find((row) => row.character_id === bargain.characterId)
+                        ?.display_name ?? bargain.characterId,
+                      bargain.proposalKind,
+                    )}
                   </span>
                   <button
                     type="button"
@@ -573,9 +580,10 @@ export function MeetingScreen(_props: ScreenProps) {
               {assistance === null ? null : (
                 <li data-staged-assistance={assistance.profileId}>
                   <span>
-                    {counterparts.find((row) => row.profile_id === assistance.profileId)
-                      ?.display_name ?? assistance.profileId}{" "}
-                    is asked for assistance.
+                    {assistanceStagedLine(
+                      counterparts.find((row) => row.profile_id === assistance.profileId)
+                        ?.display_name ?? assistance.profileId,
+                    )}
                   </span>
                   <button
                     type="button"
@@ -591,8 +599,11 @@ export function MeetingScreen(_props: ScreenProps) {
                 <li data-staged-promise={promise.action}>
                   <span>
                     {promise.action === "make"
-                      ? `A promise to ${promiseName(promiseOptions, promise.characterId)} about ${subjectName(promiseOptions, promise.subjectId)}.`
-                      : `Releasing your promise to ${activeName(activePromises, promise.promiseId)}.`}
+                      ? promiseMadeStagedLine(
+                          promiseName(promiseOptions, promise.characterId),
+                          subjectName(promiseOptions, promise.subjectId),
+                        )
+                      : promiseReleaseStagedLine(activeName(activePromises, promise.promiseId))}
                   </span>
                   <button
                     type="button"

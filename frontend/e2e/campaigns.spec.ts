@@ -184,20 +184,32 @@ async function visit(page: Page, name: string): Promise<void> {
   await page.waitForTimeout(250);
 }
 
-/** Resolve the drafted turn through the interface. The confirm sentence states how many decisions
- * the interface is about to submit, so a draft that silently lost (or gained) a decision fails here. */
+/** Resolve the drafted turn through the interface. A draft that silently lost (or gained) a decision
+ * fails here.
+ *
+ * Gate 4A3 UX-4b changed the confirmation from "Confirm resolving this turn with N decision(s)
+ * committed." (a count of WIRE decisions) to "Resolve turn T with N staged actions?" (a count of
+ * PLAYER actions -- U8). Every call below stages one action per decision, so the two numbers are the
+ * same here. The wire guard is therefore kept, and made independent of the wording: the sentence is
+ * asserted with that count, AND the resolve request itself must carry exactly that many decisions. */
 async function resolveThroughInterface(page: Page, expectedDecisions: number): Promise<Response> {
   await visit(page, "Decisions");
   await page.getByRole("button", { name: "Resolve turn" }).click();
-  await expect(
-    page.getByText(`Confirm resolving this turn with ${expectedDecisions} decision(s) committed.`),
-  ).toBeVisible();
+  const staged =
+    expectedDecisions === 0
+      ? "nothing staged"
+      : `${expectedDecisions} staged action${expectedDecisions === 1 ? "" : "s"}`;
+  await expect(page.getByText(new RegExp(`^Resolve turn \\d+ with ${staged}\\?$`))).toBeVisible();
   const pending = page.waitForResponse(
     (r) => r.url().includes("/api/game/resolve") && r.request().method() === "POST",
     { timeout: 120_000 },
   );
   await page.getByRole("button", { name: "Confirm and resolve" }).click();
   const response = await pending;
+  const sent = response.request().postDataJSON() as { decisions: unknown[] };
+  expect(sent.decisions, "the resolve request carries exactly the expected decisions").toHaveLength(
+    expectedDecisions,
+  );
   expect(response.status(), "the turn must resolve").toBe(200);
   await page.waitForTimeout(500);
   return response;

@@ -137,6 +137,25 @@ function buildCabinetDecision(orders: CabinetOrders): Decision | null {
   };
 }
 
+/** The policy proposal this draft would SUBMIT, or `null` when it would submit none.
+ *
+ * Gate 4A3 UX-4b: exported so that `stagedActions` counts a proposal by exactly the rule that
+ * decides whether one is sent, rather than restating it. An untouched budget, an amendment with no
+ * target, and "no major action" (`policySlot === null`) are all `null` here -- and so are such drafts
+ * carrying influence or a decree route, because influence and route ride on a proposal and are never
+ * sent without one. */
+export function policyProposalDecision(
+  draft: Pick<DraftState, "policySlot" | "budget" | "amendment">,
+): Decision | null {
+  if (draft.policySlot === "budget") {
+    return buildBudgetDecision(draft.budget);
+  }
+  if (draft.policySlot === "amendment") {
+    return buildAmendmentDecision(draft.amendment);
+  }
+  return null;
+}
+
 /** Builds the canonically-ordered `decisions` array for the current draft.
  * `policySlot` selects which of budget/amendment (if either) contributes --
  * the two are mutually exclusive by construction here, matching the engine's
@@ -151,23 +170,18 @@ export function buildDecisions(draft: DraftState): Decision[] {
   }
 
   const cabinet = buildCabinetDecision(draft.cabinetOrders);
+  const proposal = policyProposalDecision(draft);
 
-  if (draft.policySlot === "budget") {
-    const budget = buildBudgetDecision(draft.budget);
-    if (budget !== null) {
-      decisions.push(budget); // "budget" sorts second
-    }
+  if (proposal !== null && draft.policySlot === "budget") {
+    decisions.push(proposal); // "budget" sorts second
   }
 
   if (cabinet !== null) {
     decisions.push(cabinet); // "cabinet" sorts third, after "budget"
   }
 
-  if (draft.policySlot === "amendment") {
-    const amendment = buildAmendmentDecision(draft.amendment);
-    if (amendment !== null) {
-      decisions.push(amendment); // "constitutional_amendment" sorts fourth
-    }
+  if (proposal !== null && draft.policySlot === "amendment") {
+    decisions.push(proposal); // "constitutional_amendment" sorts fourth
   }
 
   // "foreign_assistance" sorts FIFTH, between "constitutional_amendment" and

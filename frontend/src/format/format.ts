@@ -867,3 +867,55 @@ export function tintCaption(metricLabel: string): string {
 export function tintAccessibleName(country: string, metricLabel: string, valueText: string): string {
   return `${country}: national tint by ${metricLabel.toLowerCase()}, ${valueText}.`;
 }
+
+// ---------------------------------------------------------------------------------------------------
+// Gate 4A3 UX-4b — one wording per staged action, shared by every screen that states it
+// ---------------------------------------------------------------------------------------------------
+
+/** The policy proposal as a phrase inside a sentence. Moved here from `MeetingScreen` so the
+ * bargain line reads identically there and in Decisions' draft list. */
+export function proposalPhrase(slot: "budget" | "amendment" | null): string {
+  return slot === "amendment" ? "the constitutional amendment" : "the budget";
+}
+
+export function proposalStagedLine(slot: "budget" | "amendment", route: "legislative" | "decree"): string {
+  const what = slot === "amendment" ? "The constitutional amendment" : "The budget";
+  return route === "decree" ? `${what}, by decree.` : `${what}, put to a legislative vote.`;
+}
+
+export function investmentStagedLine(politicalCapital: number, blocName: string): string {
+  return `${formatAmount(politicalCapital)} political capital invested in ${blocName}.`;
+}
+
+export function bargainStagedLine(leaderName: string, slot: "budget" | "amendment"): string {
+  return `${leaderName} is asked to back ${proposalPhrase(slot)}.`;
+}
+
+export function assistanceStagedLine(counterpartName: string): string {
+  return `${counterpartName} is asked for assistance.`;
+}
+
+export function promiseMadeStagedLine(characterName: string, subjectName: string): string {
+  return `A promise to ${characterName} about ${subjectName}.`;
+}
+
+export function promiseReleaseStagedLine(characterName: string): string {
+  return `Releasing your promise to ${characterName}.`;
+}
+
+export function movementStagedLine(formationName: string, destinationName: string): string {
+  return `${formationName} → ${destinationName}`;
+}
+
+/** The nav's count beside Decisions: "3 staged". */
+export function stagedCountText(count: number): string {
+  return `${count} staged`;
+}
+
+/** The resolve confirmation, pluralised: "Resolve turn 4 with 3 staged actions?". `turn` is the
+ * dashboard's own turn; before it has loaded the sentence says "this turn" rather than guess. */
+export function resolveConfirmSentence(turn: number | null, count: number): string {
+  const which = turn === null ? "this turn" : `turn ${turn}`;
+  if (count === 0) return `Resolve ${which} with nothing staged?`;
+  return `Resolve ${which} with ${count} staged action${count === 1 ? "" : "s"}?`;
+}

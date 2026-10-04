@@ -15,20 +15,28 @@
 
 import { useEffect, useState } from "react";
 
-import { useDashboard, useDecisionOptions, usePreview, useResolve } from "../../api/queries";
+import { useDashboard, useDecisionOptions, useMilitary, usePreview, useResolve } from "../../api/queries";
 import type { DecisionOptionsProjection, PolicyCard } from "../../api/client";
 import { ResolutionInProgressError, StaleRevisionError } from "../../api/errors";
-import { decreeAllowed, decreeCost, formatAmount, formatBpsPercent } from "../../format/format";
+import {
+  decreeAllowed,
+  decreeCost,
+  formatAmount,
+  formatBpsPercent,
+  resolveConfirmSentence,
+} from "../../format/format";
 import { ConsequencesPanel } from "../policy/ConsequencesPanel";
 import { PolicyCardGrid } from "../policy/PolicyCardGrid";
 import { chooseCardRoute, mapPolicyCardToDraft } from "../../state/applyPolicyCard";
 import { buildDecisions, previewRequestSignature } from "../../state/buildDecisionSet";
 import { useDraftStore } from "../../state/draft";
+import { stagedActions } from "../../state/stagedActions";
 import { useSession } from "../../state/SessionContext";
 import { ErrorPanel } from "../../status/ErrorPanel";
 import { LoadingPanel } from "../../status/StatusPanels";
 import { DataTable, EmptyNote, Panel, ToneValue } from "../components";
 import type { ScreenProps } from "../registry";
+import { StagedActionsList } from "../StagedActionsList";
 
 type BlocOption = DecisionOptionsProjection["blocs"][number];
 
@@ -136,6 +144,9 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   const preview = usePreview();
   const resolve = useResolve();
   const draft = useDraftStore();
+  const staged = stagedActions(draft);
+  // Only needed to name a staged movement order's formation and destination.
+  const military = useMilitary(revision, { enabled: draft.movement !== null });
   const [confirming, setConfirming] = useState(false);
   // Which request the displayed preview describes. A preview estimates ONE decision set at ONE
   // revision; when the draft moves on, the estimate stops describing anything the player is about
@@ -541,6 +552,18 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         )}
       </Panel>
 
+      <Panel title="This turn's draft">
+        <p className="mb-2 text-sm text-parchment-200/70">
+          Everything staged on any screen this turn. Resolving submits exactly this.
+        </p>
+        <StagedActionsList
+          actions={staged}
+          options={data}
+          military={military.data}
+          routes={{ budget: draft.budget.route, amendment: draft.amendment.route }}
+        />
+      </Panel>
+
       <Panel title="Preview and resolve">
         <p className="mb-2 text-sm">Opening capital: {formatAmount(data.opening_capital)}</p>
         <div className="flex flex-wrap gap-3">
@@ -591,8 +614,9 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         {confirming ? (
           <div className="mt-4 rounded border border-gold-600 p-3">
             <p className="mb-2 text-sm">
-              Confirm resolving this turn with {buildDecisions(draft).length} decision(s)
-              committed.
+              {/* Gate 4A3 UX-4b: counted by `stagedActions`, the same list the nav and "This turn's
+                  draft" read -- player actions that will be submitted, not wire decisions. */}
+              {resolveConfirmSentence(dashboard.data?.turn ?? null, staged.length)}
             </p>
             <div className="flex gap-3">
               <button

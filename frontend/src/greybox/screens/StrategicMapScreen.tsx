@@ -42,6 +42,7 @@ import {
   orderStagedAnnouncement,
   paletteIndex,
   plannedRouteAnnouncement,
+  movementStagedLine,
 } from "../../format/format";
 import { useSession } from "../../state/SessionContext";
 import { ErrorPanel } from "../../status/ErrorPanel";
@@ -1360,8 +1361,11 @@ export function StrategicMapScreen(_props: ScreenProps) {
                     className="mt-4 rounded border border-gold-600 p-3 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
                   >
                     <p>
-                      Staged: {stagedFormation?.display_name ?? stagedOrder.formationId} →{" "}
-                      {theaterName(stagedOrder.destinationTheaterId)}
+                      Staged:{" "}
+                      {movementStagedLine(
+                        stagedFormation?.display_name ?? stagedOrder.formationId,
+                        theaterName(stagedOrder.destinationTheaterId),
+                      )}
                     </p>
                     <p className="mt-1 text-xs text-parchment-200/70">
                       Nothing has moved yet. Resolve the turn on the Decisions screen to apply it.

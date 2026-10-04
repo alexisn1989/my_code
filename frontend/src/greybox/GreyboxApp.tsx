@@ -15,7 +15,9 @@
 import { useState } from "react";
 
 import { useDashboard } from "../api/queries";
+import { stagedCountText } from "../format/format";
 import { useDraftStore } from "../state/draft";
+import { stagedActions } from "../state/stagedActions";
 import { SessionProvider, useSession } from "../state/SessionContext";
 import { INITIAL_SCREEN, SCREENS, screenById, type ScreenDefinition } from "./registry";
 import { GlossaryScreen, WIN_AND_LOSS_LINE, glossaryDefinition } from "./screens/GlossaryScreen";
@@ -122,13 +124,19 @@ function GreyboxShell() {
 
   const screen = screenById(screenId);
   const ScreenComponent = screen.component;
+  const stagedCount = useDraftStore((state) => stagedActions(state).length);
 
   function navItem(entry: ScreenDefinition) {
     const disabled = (entry.requiresActiveGame ?? false) && revision === null;
+    // Gate 4A3 UX-4b: what is staged, counted by `stagedActions` -- the same list "This turn's
+    // draft" and the resolve confirmation read. A description, not part of the name, so the control
+    // is still called "Decisions" by every screen reader and every test.
+    const stagedNote = entry.id === "decisions" && stagedCount > 0 ? stagedCountText(stagedCount) : null;
     return (
       <li key={entry.id}>
         <button
           type="button"
+          aria-describedby={stagedNote === null ? undefined : "nav-staged-count"}
           aria-current={entry.id === screenId ? "page" : undefined}
           disabled={disabled}
           // Gate 4A3 UX-3: this said "…to view the strategic map." on Government and Relationships
@@ -139,6 +147,15 @@ function GreyboxShell() {
         >
           {entry.label}
         </button>
+        {stagedNote === null ? null : (
+          <span
+            id="nav-staged-count"
+            data-testid="staged-count"
+            className="mt-1 block px-1 text-xs text-parchment-200/80"
+          >
+            · {stagedNote}
+          </span>
+        )}
       </li>
     );
   }

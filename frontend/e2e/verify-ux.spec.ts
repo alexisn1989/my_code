@@ -613,3 +613,80 @@ for (const viewport of VIEWPORTS) {
     });
   });
 }
+
+for (const viewport of VIEWPORTS) {
+  test(`@ux4b one count of staged actions: nav, draft list and confirmation agree — ${viewport.name}`, async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await ensureServer(page);
+    await startValdrun(page);
+    const options = (await (await page.request.get(`${base}/api/game/decision-options`)).json()) as {
+      cabinet_posts: {
+        post: string;
+        candidates: { character_id: string; candidate_accepts_post: boolean; currently_holds_post?: string | null }[];
+      }[];
+      blocs: { bloc_name: string }[];
+    };
+    const nav = page.getByRole("navigation", { name: "Screens" });
+    await expect(nav.getByTestId("staged-count"), "nothing staged on a fresh campaign").toHaveCount(0);
+
+    // One cabinet change, staged on Government through the interface.
+    const choice = options.cabinet_posts
+      .flatMap((post) =>
+        post.candidates
+          .filter((c) => c.candidate_accepts_post && c.currently_holds_post !== post.post)
+          .map((c) => ({ post: post.post, characterId: c.character_id })),
+      )[0];
+    expect(choice, "Valdrun offers at least one willing appointee").toBeDefined();
+    await visit(page, "Government");
+    const cabinet = page.getByTestId("cabinet-panel");
+    await cabinet.locator(`[data-post-option="${choice!.post}"]`).click();
+    await cabinet.locator(`[data-candidate-option="${choice!.characterId}"]`).click();
+    await page.getByTestId("confirm-cabinet-order").click();
+    await expect(nav.getByTestId("staged-count")).toHaveText("· 1 staged");
+
+    // Two relationship investments, staged on Decisions.
+    const blocNames = [...new Set(options.blocs.map((b) => b.bloc_name))].slice(0, 2);
+    expect(blocNames).toHaveLength(2);
+    await visit(page, "Decisions");
+    await page.getByLabel(`Relationship investment for ${blocNames[0]}`).fill("20");
+    await page.getByLabel(`Relationship investment for ${blocNames[1]}`).fill("30");
+    await expect(nav.getByTestId("staged-count")).toHaveText("· 3 staged");
+    await expect(nav.getByRole("button", { name: "Decisions", exact: true })).toHaveAccessibleName("Decisions");
+
+    const list = page.getByTestId("staged-actions");
+    await expect(list.locator(":scope > li")).toHaveCount(3);
+    await expect(list).toContainText(`20 political capital invested in ${blocNames[0]}.`);
+    await expect(list).toContainText(`30 political capital invested in ${blocNames[1]}.`);
+    const listed = await list.locator(":scope > li").allInnerTexts();
+
+    // What would actually be submitted: the Preview request carries the same decision set Resolve
+    // would. Three player actions are two wire decisions here -- one investment decision holding both
+    // rows, and one cabinet decision -- which is exactly why the count is of actions, not decisions.
+    const previewRequest = page.waitForRequest(
+      (r) => r.url().includes("/api/game/preview") && r.method() === "POST",
+    );
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    const sent = (await previewRequest).postDataJSON() as {
+      decisions: { kind: string; investments?: unknown[]; orders?: unknown[] }[];
+    };
+    expect(sent.decisions.map((d) => d.kind)).toEqual(["bloc_relationship_investment", "cabinet"]);
+    expect(sent.decisions[0]!.investments).toHaveLength(2);
+    expect(sent.decisions[1]!.orders!.length).toBeGreaterThanOrEqual(1);
+
+    await page.getByRole("button", { name: "Resolve turn" }).click();
+    await expect(page.getByText(/^Resolve turn \d+ with 3 staged actions\?$/)).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
+
+    results.push({
+      block: "ux4b",
+      viewport: viewport.name,
+      staged: { navBadge: "· 3 staged", listed, confirm: "3 staged actions" },
+      submitted: sent.decisions.map((d) => d.kind),
+      cabinetChoice: choice,
+      investedIn: blocNames,
+    });
+  });
+}
