@@ -142,20 +142,32 @@ export function DataTable({
    * `tabIndex={0}` and the group role make the scroll container keyboard-operable: a scrollable region
    * that only a pointer can reach would trade a reflow failure for a keyboard one. It is labelled by
    * the same caption the table carries, so the two do not disagree.
+   *
+   * Gate 4A3 UX-4c (U7): `relative`, because containment had a hole. A `ToneValue` cell carries an
+   * `.sr-only` word, which is `position: absolute`. An absolutely positioned box is clipped by an
+   * `overflow` ancestor only if that ancestor is also its containing block -- and this wrapper was
+   * not positioned, so the word's containing block was the PAGE. Scrolled past the table's edge, it
+   * stretched the document: at 320 px a failing legislative preview made the page 380 px wide, with
+   * no visible element past the edge. Positioning the wrapper makes it the containing block, so
+   * everything inside is scrolled and clipped here, as intended.
+   *
+   * `last:pr-0` on the cells: the last column's right padding separated it from nothing, and it was
+   * what pushed the influence and investment tables 2 px past their panel at 320 px, clipping the
+   * last header.
    */
   return (
     <div
       role="group"
       aria-label={caption}
       tabIndex={0}
-      className="overflow-x-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+      className="relative overflow-x-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
     >
     <table className="w-full text-left text-sm tabular-nums">
       <caption className="sr-only">{caption}</caption>
       <thead>
         <tr>
           {columns.map((column) => (
-            <th key={column} scope="col" className="pb-2 pr-4 font-normal text-parchment-200/70">
+            <th key={column} scope="col" className="pb-2 pr-4 font-normal text-parchment-200/70 last:pr-0">
               {column}
             </th>
           ))}
@@ -166,7 +178,7 @@ export function DataTable({
           <tr key={row.key} className="border-t border-navy-800">
             {row.cells.map((cell, index) => (
               // eslint-disable-next-line react/no-array-index-key -- static fixture columns
-              <td key={index} className="py-2 pr-4">
+              <td key={index} className="py-2 pr-4 last:pr-0">
                 {cell}
               </td>
             ))}

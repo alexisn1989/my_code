@@ -1,0 +1,460 @@
+{
+  "gate": "4A3 UX",
+  "out": "gate-4a3-ux4c-verify-ux",
+  "results": [
+    {
+      "block": "ux1",
+      "viewport": "desktop",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": "The budget was enacted by decree. The legislature was bypassed."
+    },
+    {
+      "block": "ux1",
+      "viewport": "mobile",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": null
+    },
+    {
+      "block": "ux1",
+      "viewport": "narrow",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": null
+    },
+    {
+      "block": "ux2",
+      "viewport": "desktop",
+      "headline": "The budget was blocked.",
+      "ledgerEntries": 0,
+      "drivers": 12,
+      "routineFolded": 4,
+      "leaksOutsideTrace": 0,
+      "historyIdenticalToLive": true,
+      "keyboardFocus": {
+        "tag": "LI",
+        "reason": "labor_market_resolved",
+        "text": "Labour market: 540,000 employed, 10.00% unemployment, 0 unfilled jobs."
+      },
+      "axeOpenTurnResult": {
+        "live": {
+          "violations": 0,
+          "passes": 25
+        },
+        "history": {
+          "violations": 0,
+          "passes": 25
+        }
+      }
+    },
+    {
+      "block": "ux2",
+      "viewport": "mobile",
+      "headline": "The budget was blocked.",
+      "ledgerEntries": 0,
+      "drivers": 12,
+      "routineFolded": 4,
+      "leaksOutsideTrace": 0,
+      "historyIdenticalToLive": true,
+      "keyboardFocus": {
+        "tag": "LI",
+        "reason": "labor_market_resolved",
+        "text": "Labour market: 540,000 employed, 10.00% unemployment, 0 unfilled jobs."
+      },
+      "axeOpenTurnResult": {
+        "live": {
+          "violations": 0,
+          "passes": 26
+        },
+        "history": {
+          "violations": 0,
+          "passes": 26
+        }
+      }
+    },
+    {
+      "block": "ux2",
+      "viewport": "narrow",
+      "headline": "The budget was blocked.",
+      "ledgerEntries": 0,
+      "drivers": 12,
+      "routineFolded": 4,
+      "leaksOutsideTrace": 0,
+      "historyIdenticalToLive": true,
+      "keyboardFocus": {
+        "tag": "LI",
+        "reason": "labor_market_resolved",
+        "text": "Labour market: 540,000 employed, 10.00% unemployment, 0 unfilled jobs."
+      },
+      "axeOpenTurnResult": {
+        "live": {
+          "violations": 0,
+          "passes": 26
+        },
+        "history": {
+          "violations": 0,
+          "passes": 26
+        }
+      }
+    },
+    {
+      "block": "ux3",
+      "viewport": "desktop",
+      "firstViewport": {
+        "winBottom": 551,
+        "buttonBottom": 593
+      },
+      "capitalTooltip": "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.",
+      "tint": {
+        "background": "oklab(0.341267 0.00420278 0.025815)",
+        "labelBackground": "rgb(10, 15, 26)",
+        "countryNameBackdrop": "navy-950",
+        "countryNameRatio": 16.25,
+        "calibrationNodes": 1
+      },
+      "detailsLanded": {
+        "Money": "economy",
+        "Legitimacy": "government",
+        "Legislature": "legislature",
+        "Constitution": "constitution",
+        "Survival": "government"
+      },
+      "planTurn": {
+        "resultTurn": 1,
+        "headerTurn": 1,
+        "landedOn": "Decisions"
+      },
+      "tintAcrossTurn": {
+        "before": {
+          "legitimacy": "60.00%",
+          "bps": 6000,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 60.00%.",
+          "mixPercent": 42,
+          "background": "oklab(0.341267 0.00420278 0.025815)"
+        },
+        "after": {
+          "legitimacy": "61.00%",
+          "bps": 6100,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 61.00%.",
+          "mixPercent": 42.45,
+          "background": "oklab(0.34311 0.00426987 0.0263533)"
+        }
+      }
+    },
+    {
+      "block": "ux3",
+      "viewport": "mobile",
+      "firstViewport": null,
+      "capitalTooltip": "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.",
+      "tint": {
+        "background": "oklab(0.341267 0.00420278 0.025815)",
+        "labelBackground": "rgb(10, 15, 26)",
+        "countryNameBackdrop": "navy-950",
+        "countryNameRatio": 16.25,
+        "calibrationNodes": 1
+      },
+      "detailsLanded": {
+        "Money": "economy",
+        "Legitimacy": "government",
+        "Legislature": "legislature",
+        "Constitution": "constitution",
+        "Survival": "government"
+      },
+      "planTurn": {
+        "resultTurn": 1,
+        "headerTurn": 1,
+        "landedOn": "Decisions"
+      },
+      "tintAcrossTurn": {
+        "before": {
+          "legitimacy": "60.00%",
+          "bps": 6000,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 60.00%.",
+          "mixPercent": 42,
+          "background": "oklab(0.341267 0.00420278 0.025815)"
+        },
+        "after": {
+          "legitimacy": "61.00%",
+          "bps": 6100,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 61.00%.",
+          "mixPercent": 42.45,
+          "background": "oklab(0.34311 0.00426987 0.0263533)"
+        }
+      }
+    },
+    {
+      "block": "ux3",
+      "viewport": "narrow",
+      "firstViewport": null,
+      "capitalTooltip": "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.",
+      "tint": {
+        "background": "oklab(0.341267 0.00420278 0.025815)",
+        "labelBackground": "rgb(10, 15, 26)",
+        "countryNameBackdrop": "navy-950",
+        "countryNameRatio": 16.25,
+        "calibrationNodes": 1
+      },
+      "detailsLanded": {
+        "Money": "economy",
+        "Legitimacy": "government",
+        "Legislature": "legislature",
+        "Constitution": "constitution",
+        "Survival": "government"
+      },
+      "planTurn": {
+        "resultTurn": 1,
+        "headerTurn": 1,
+        "landedOn": "Decisions"
+      },
+      "tintAcrossTurn": {
+        "before": {
+          "legitimacy": "60.00%",
+          "bps": 6000,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 60.00%.",
+          "mixPercent": 42,
+          "background": "oklab(0.341267 0.00420278 0.025815)"
+        },
+        "after": {
+          "legitimacy": "61.00%",
+          "bps": 6100,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 61.00%.",
+          "mixPercent": 42.45,
+          "background": "oklab(0.34311 0.00426987 0.0263533)"
+        }
+      }
+    },
+    {
+      "block": "ux4a",
+      "viewport": "desktop",
+      "moneyHeadline": "100,000,000.00",
+      "moneyDeltaAfterTurn": "+3,150,000.00",
+      "taxBasesSentence": "Tax bases: personal income 40,000,000.00, corporate profit 20,000,000.00, consumption 30,000,000.00.",
+      "taxBasesMinorUnits": {
+        "corporate_profit": 2000000000,
+        "personal_income": 4000000000,
+        "taxable_consumption": 3000000000
+      }
+    },
+    {
+      "block": "ux4a",
+      "viewport": "mobile",
+      "moneyHeadline": "100,000,000.00",
+      "moneyDeltaAfterTurn": "+3,150,000.00",
+      "taxBasesSentence": "Tax bases: personal income 40,000,000.00, corporate profit 20,000,000.00, consumption 30,000,000.00.",
+      "taxBasesMinorUnits": {
+        "corporate_profit": 2000000000,
+        "personal_income": 4000000000,
+        "taxable_consumption": 3000000000
+      }
+    },
+    {
+      "block": "ux4a",
+      "viewport": "narrow",
+      "moneyHeadline": "100,000,000.00",
+      "moneyDeltaAfterTurn": "+3,150,000.00",
+      "taxBasesSentence": "Tax bases: personal income 40,000,000.00, corporate profit 20,000,000.00, consumption 30,000,000.00.",
+      "taxBasesMinorUnits": {
+        "corporate_profit": 2000000000,
+        "personal_income": 4000000000,
+        "taxable_consumption": 3000000000
+      }
+    },
+    {
+      "block": "ux4b",
+      "viewport": "desktop",
+      "staged": {
+        "navBadge": "· 3 staged",
+        "listed": [
+          "Edda Thorne becomes chief of staff.",
+          "20 political capital invested in Crown Party Core.",
+          "30 political capital invested in Reform Opposition Main."
+        ],
+        "confirm": "3 staged actions"
+      },
+      "submitted": [
+        "bloc_relationship_investment",
+        "cabinet"
+      ],
+      "cabinetChoice": {
+        "post": "chief_of_staff",
+        "characterId": "edda_thorne"
+      },
+      "investedIn": [
+        "Crown Party Core",
+        "Reform Opposition Main"
+      ]
+    },
+    {
+      "block": "ux4b",
+      "viewport": "mobile",
+      "staged": {
+        "navBadge": "· 3 staged",
+        "listed": [
+          "Edda Thorne becomes chief of staff.",
+          "20 political capital invested in Crown Party Core.",
+          "30 political capital invested in Reform Opposition Main."
+        ],
+        "confirm": "3 staged actions"
+      },
+      "submitted": [
+        "bloc_relationship_investment",
+        "cabinet"
+      ],
+      "cabinetChoice": {
+        "post": "chief_of_staff",
+        "characterId": "edda_thorne"
+      },
+      "investedIn": [
+        "Crown Party Core",
+        "Reform Opposition Main"
+      ]
+    },
+    {
+      "block": "ux4b",
+      "viewport": "narrow",
+      "staged": {
+        "navBadge": "· 3 staged",
+        "listed": [
+          "Edda Thorne becomes chief of staff.",
+          "20 political capital invested in Crown Party Core.",
+          "30 political capital invested in Reform Opposition Main."
+        ],
+        "confirm": "3 staged actions"
+      },
+      "submitted": [
+        "bloc_relationship_investment",
+        "cabinet"
+      ],
+      "cabinetChoice": {
+        "post": "chief_of_staff",
+        "characterId": "edda_thorne"
+      },
+      "investedIn": [
+        "Crown Party Core",
+        "Reform Opposition Main"
+      ]
+    },
+    {
+      "block": "ux4c",
+      "viewport": "desktop",
+      "firstScreen": null,
+      "navReached": 12,
+      "navContrastMeasuredInView": 0,
+      "overflow": {
+        "selected": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440
+        },
+        "legislative": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440
+        },
+        "decree": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440
+        }
+      },
+      "portraitFrame": {
+        "background": "rgb(10, 15, 26)",
+        "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(150, 116, 47) 0px 0px 0px 1px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+        "backdrop": "rgb(15,22,38)",
+        "panel": "navy-900",
+        "ringRatio": 4.16
+      }
+    },
+    {
+      "block": "ux4c",
+      "viewport": "mobile",
+      "firstScreen": {
+        "goal": {
+          "top": 547,
+          "bottom": 595
+        },
+        "stakes": {
+          "top": 603,
+          "bottom": 723
+        },
+        "build": {
+          "top": 735,
+          "bottom": 765
+        }
+      },
+      "navReached": 12,
+      "navContrastMeasuredInView": 12,
+      "overflow": {
+        "selected": {
+          "scrollWidth": 390,
+          "clientWidth": 390
+        },
+        "legislative": {
+          "scrollWidth": 390,
+          "clientWidth": 390
+        },
+        "decree": {
+          "scrollWidth": 390,
+          "clientWidth": 390
+        }
+      },
+      "portraitFrame": {
+        "background": "rgb(10, 15, 26)",
+        "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(150, 116, 47) 0px 0px 0px 1px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+        "backdrop": "rgb(15,22,38)",
+        "panel": "navy-900",
+        "ringRatio": 4.16
+      }
+    },
+    {
+      "block": "ux4c",
+      "viewport": "narrow",
+      "firstScreen": null,
+      "navReached": 12,
+      "navContrastMeasuredInView": 12,
+      "overflow": {
+        "selected": {
+          "scrollWidth": 320,
+          "clientWidth": 320
+        },
+        "legislative": {
+          "scrollWidth": 320,
+          "clientWidth": 320
+        },
+        "decree": {
+          "scrollWidth": 320,
+          "clientWidth": 320
+        }
+      },
+      "portraitFrame": {
+        "background": "rgb(10, 15, 26)",
+        "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(150, 116, 47) 0px 0px 0px 1px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+        "backdrop": "rgb(15,22,38)",
+        "panel": "navy-900",
+        "ringRatio": 4.16
+      }
+    }
+  ]
+}

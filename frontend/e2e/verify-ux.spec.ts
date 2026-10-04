@@ -422,9 +422,13 @@ for (const viewport of VIEWPORTS) {
       expect(firstViewport.winBottom, "the stakes are inside the first 1440x900 viewport").toBeLessThanOrEqual(viewport.height);
       expect(firstViewport.buttonBottom, "Build a decision is inside the first viewport").toBeLessThanOrEqual(viewport.height);
     }
-    await expect(page.getByRole("complementary", { name: "How to govern" }).getByTestId("win-and-loss")).toContainText(
-      WIN_LINE_START,
-    );
+    // UX-4c (U12): below `lg` the note starts closed on a fresh load; open it the way a player would.
+    const note = page.getByRole("complementary", { name: "How to govern" });
+    if (viewport.width < 1024) {
+      await expect(note, "the note starts closed on a narrow first load").toHaveCount(0);
+      await page.getByRole("button", { name: "How to govern" }).click();
+    }
+    await expect(note.getByTestId("win-and-loss")).toContainText(WIN_LINE_START);
     const meter = page.getByTestId("capital-meter");
     await expect(meter).toHaveAttribute("title", CAPITAL_DEFINITION);
     await expect(meter).toHaveAttribute("aria-description", CAPITAL_DEFINITION);
@@ -687,6 +691,162 @@ for (const viewport of VIEWPORTS) {
       submitted: sent.decisions.map((d) => d.kind),
       cabinetChoice: choice,
       investedIn: blocNames,
+    });
+  });
+}
+
+/** Whether the page itself scrolls sideways -- the WCAG 1.4.10 reflow failure -- as opposed to a
+ * data table scrolling inside its own contained wrapper, which the criterion permits. */
+async function pageOverflow(page: Page): Promise<{ scrollWidth: number; clientWidth: number }> {
+  return page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+}
+
+/** Fully inside the visible viewport, with the page unscrolled. */
+async function inFirstScreen(locator: ReturnType<Page["locator"]>): Promise<{ top: number; bottom: number }> {
+  await expect(locator).toBeVisible();
+  const box = (await locator.boundingBox())!;
+  return { top: Math.round(box.y), bottom: Math.round(box.y + box.height) };
+}
+
+for (const viewport of VIEWPORTS) {
+  test(`@ux4c reflow with a preview, the portrait frame, and the phone's first screen — ${viewport.name}`, async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await ensureServer(page);
+    await startValdrun(page);
+    const dashboard = await readDashboard(page) as DashboardRead & { goal: { headline: string } };
+
+    // ---- U12 (Clarification 1): the phone's first screen, with the note in its default state ----
+    let firstScreen: Record<string, unknown> | null = null;
+    if (viewport.name === "mobile") {
+      await visit(page, "Dashboard");
+      await page.evaluate(() => window.scrollTo(0, 0));
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      await expect(page.getByRole("complementary", { name: "How to govern" }), "default: closed").toHaveCount(0);
+      await expect(page.getByRole("button", { name: "How to govern" })).toHaveAttribute("aria-expanded", "false");
+      const priority = page
+        .getByRole("heading", { name: "Your current priority" })
+        .locator("xpath=ancestor::section[1]");
+      const goal = priority.getByText(dashboard.goal.headline, { exact: true });
+      const stakes = priority.getByTestId("win-and-loss");
+      const build = priority.getByRole("button", { name: "Build a decision" });
+      const boxes = {
+        goal: await inFirstScreen(goal),
+        stakes: await inFirstScreen(stakes),
+        build: await inFirstScreen(build),
+      };
+      for (const [name, box] of Object.entries(boxes)) {
+        expect(box.top, `${name} starts on screen`).toBeGreaterThanOrEqual(0);
+        expect(box.bottom, `${name} ends on screen, unscrolled, at ${viewport.width}x${viewport.height}`).toBeLessThanOrEqual(
+          viewport.height,
+        );
+      }
+      await build.click({ trial: true });
+      expect(await page.evaluate(() => window.scrollY), "reachable without scrolling").toBe(0);
+      await build.click();
+      await expect(
+        page.getByRole("navigation", { name: "Screens" }).getByRole("button", { name: "Decisions", exact: true }),
+      ).toHaveAttribute("aria-current", "page");
+      firstScreen = boxes;
+    }
+
+    // ---- U12: the nav is one row below lg, and the keyboard reaches every screen in it ----
+    const navButtons = page.getByRole("navigation", { name: "Screens" }).getByRole("button");
+    const names = await navButtons.allInnerTexts();
+    await navButtons.first().focus();
+    const reached: string[] = [];
+    for (let i = 0; i < names.length; i += 1) {
+      const focused = await page.evaluate(() => {
+        const el = document.activeElement as HTMLElement | null;
+        if (el === null || el.closest('nav[aria-label="Screens"]') === null) return null;
+        const box = el.getBoundingClientRect();
+        return {
+          name: el.innerText,
+          onScreen: box.left >= 0 && box.right <= window.innerWidth + 0.5,
+          box: `${Math.round(box.left)}..${Math.round(box.right)} of ${window.innerWidth}`,
+        };
+      });
+      if (focused === null) break;
+      expect(focused.onScreen, `${focused.name} scrolls into view when focused (${focused.box})`).toBe(true);
+      reached.push(focused.name);
+      await page.keyboard.press("Tab");
+    }
+    expect(reached, "Tab reaches every screen in the nav, in order").toEqual(names);
+
+    // The one-row nav clips the buttons scrolled past its edge, and axe returns a clipped button's
+    // contrast as "needs review" (partially obscured) rather than judging it -- 52 such items appear in
+    // the UX-4c sweep. So each button is brought fully into view by focus and measured ON ITS OWN:
+    // zero contrast violations and zero undecided results, for every screen in the nav.
+    const navContrast: { screen: string; passes: number }[] = [];
+    if (viewport.width < 1024) {
+      const ids = await page
+        .getByRole("navigation", { name: "Screens" })
+        .locator("button[data-nav-screen]")
+        .evaluateAll((els) => els.map((el) => el.getAttribute("data-nav-screen") ?? ""));
+      for (const id of ids) {
+        await page.locator(`button[data-nav-screen="${id}"]`).focus();
+        const result = await new AxeBuilder({ page })
+          .include(`button[data-nav-screen="${id}"]`)
+          .withRules(["color-contrast"])
+          .analyze();
+        expect(result.violations.map((v) => v.id), `${id}: contrast`).toEqual([]);
+        expect(result.incomplete.map((v) => v.id), `${id}: decided, not obscured`).toEqual([]);
+        expect(result.passes.length, `${id}: contrast was evaluated`).toBeGreaterThan(0);
+        navContrast.push({ screen: id, passes: result.passes.length });
+      }
+      expect(navContrast).toHaveLength(names.length);
+    }
+
+    // ---- U7: no page-level horizontal scroll with a card selected and previewed ----
+    await visit(page, "Decisions");
+    await selectCard(page, "Raise the personal income tax");
+    const overflow: Record<string, { scrollWidth: number; clientWidth: number }> = {};
+    overflow.selected = await pageOverflow(page);
+    await preview(page);
+    overflow.legislative = await pageOverflow(page);
+    await page.getByRole("radiogroup", { name: "Route" }).getByRole("radio", { name: /^Decree/ }).click();
+    await preview(page);
+    overflow.decree = await pageOverflow(page);
+    for (const [state, o] of Object.entries(overflow)) {
+      expect(o.scrollWidth, `no page overflow, ${state}, at ${viewport.width}px`).toBeLessThanOrEqual(o.clientWidth);
+    }
+
+    // ---- U11: the portrait frame -- a navy-950 tile, and a gold-600 ring visible on its panel ----
+    await visit(page, "Relationships");
+    const portrait = page.locator("svg[data-portrait-ref]").first();
+    await expect(portrait).toBeVisible();
+    const frame = await portrait.evaluate((el) => {
+      const own = getComputedStyle(el);
+      let backdrop = "";
+      for (let a = el.parentElement; a !== null; a = a.parentElement) {
+        const bg = getComputedStyle(a).backgroundColor;
+        if (bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") {
+          backdrop = bg.replace(/\s+/g, "");
+          break;
+        }
+      }
+      return { background: own.backgroundColor, boxShadow: own.boxShadow, backdrop };
+    });
+    expect(frame.background, "navy-950 tile").toBe("rgb(10, 15, 26)");
+    expect(frame.boxShadow, "gold-600 ring").toContain("rgb(150, 116, 47)");
+    const panel = surfaceNameOf(frame.backdrop);
+    expect(panel, `the portrait's panel is a palette surface (${frame.backdrop})`).not.toBeNull();
+    const ringRatio = offlineRatio({ foreground: "#96742f", backdrop: panel! });
+    expect(ringRatio, "the ring is at least 3:1 against its panel").toBeGreaterThanOrEqual(3);
+
+    results.push({
+      block: "ux4c",
+      viewport: viewport.name,
+      firstScreen,
+      navReached: reached.length,
+      navContrastMeasuredInView: navContrast.length,
+      overflow,
+      portraitFrame: { ...frame, panel, ringRatio },
     });
   });
 }

@@ -12,7 +12,7 @@
  * panel without navigating away.
  */
 
-import { useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import { useDashboard } from "../api/queries";
 import { stagedCountText } from "../format/format";
@@ -126,6 +126,20 @@ function GreyboxShell() {
   const ScreenComponent = screen.component;
   const stagedCount = useDraftStore((state) => stagedActions(state).length);
 
+  // Gate 4A3 UX-4c (U12), as ruled: on a phone the introduction was about 420 px tall at 390 px wide,
+  // and with the nav beneath it the Dashboard's priority card began near y = 1,500. So when the app
+  // FIRST LOADS below the `lg` breakpoint, the note starts closed. The header's "How to govern"
+  // toggle reopens it, the choice is not persisted (testers may share a browser), and the priority
+  // card itself carries the stakes line. Decided once, at mount: resizing later never re-closes a
+  // note the player opened. Without `matchMedia` (jsdom) the screen is treated as wide.
+  useLayoutEffect(() => {
+    if (typeof window.matchMedia === "function" && !window.matchMedia("(min-width: 1024px)").matches) {
+      setHelpDismissed(true);
+    }
+    // Mount only, by design: see above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function navItem(entry: ScreenDefinition) {
     const disabled = (entry.requiresActiveGame ?? false) && revision === null;
     // Gate 4A3 UX-4b: what is staged, counted by `stagedActions` -- the same list "This turn's
@@ -133,9 +147,11 @@ function GreyboxShell() {
     // is still called "Decisions" by every screen reader and every test.
     const stagedNote = entry.id === "decisions" && stagedCount > 0 ? stagedCountText(stagedCount) : null;
     return (
-      <li key={entry.id}>
+      <li key={entry.id} className="shrink-0">
         <button
           type="button"
+          // A stable hook for measuring one nav control on its own (Gate 4A3 UX-4c, @ux4c).
+          data-nav-screen={entry.id}
           aria-describedby={stagedNote === null ? undefined : "nav-staged-count"}
           aria-current={entry.id === screenId ? "page" : undefined}
           disabled={disabled}
@@ -143,7 +159,11 @@ function GreyboxShell() {
           // too -- every screen that needs a campaign shared the Strategic map's sentence.
           title={disabled ? `Load or start a game to view the ${entry.label.toLowerCase()}.` : undefined}
           onClick={disabled ? undefined : () => setScreenId(entry.id)}
-          className="w-full rounded border border-navy-800 px-3 py-2 text-left text-sm aria-[current=page]:border-gold-500 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+          // Gate 4A3 UX-4c (U12): in the one-row phone nav, Chrome scrolls a focused control into
+          // view only when it is wholly hidden, so Tab could land on a button half off the edge.
+          // "nearest" moves nothing that is already fully visible.
+          onFocus={(event) => event.currentTarget.scrollIntoView?.({ block: "nearest", inline: "nearest" })}
+          className="w-full whitespace-nowrap rounded border border-navy-800 px-3 py-2 text-left text-sm aria-[current=page]:border-gold-500 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
         >
           {entry.label}
         </button>
@@ -265,21 +285,24 @@ function GreyboxShell() {
 
       <div className="flex flex-col gap-6 px-6 py-6 lg:flex-row">
         <nav aria-label="Screens" className="lg:w-56 lg:shrink-0">
-          <ul className="flex flex-wrap gap-2 lg:flex-col">
+          {/* Gate 4A3 UX-4c (U12): below `lg` the nav is ONE horizontally scrollable row instead of
+              six wrapped rows, so the screen's content starts high on a phone. Every button stays
+              rendered, visible and reachable by Tab, which the browser specs rely on to navigate. */}
+          <ul className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
             {/* Gate 4A3 UX-3 (U10): Economy, Legislature and Constitution have no full screen in this
                 version; each shows the Dashboard's summary card for its topic. A visible
                 "Summaries" caption says so before the player clicks. The registry's order is
                 unchanged, and so is every control's accessible name. */}
             {navGroups(SCREENS).map((group) =>
               group.kind === "summaries" ? (
-                <li key="summaries" className="flex w-full flex-col gap-2">
+                <li key="summaries" className="flex shrink-0 items-center gap-2 lg:w-full lg:flex-col lg:items-stretch">
                   <span
                     id="nav-summaries"
                     className="px-1 pt-1 text-xs uppercase tracking-wide text-parchment-200/70"
                   >
                     Summaries
                   </span>
-                  <ul aria-labelledby="nav-summaries" className="flex flex-wrap gap-2 lg:flex-col">
+                  <ul aria-labelledby="nav-summaries" className="flex gap-2 lg:flex-col">
                     {group.entries.map(navItem)}
                   </ul>
                 </li>

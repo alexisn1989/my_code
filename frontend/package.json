@@ -99,7 +99,15 @@
     "verify:terminal:ux4b": "MANDATE_TERMINAL_OUT=gate-4a3-ux4b-terminal playwright test --project=terminal-coverage",
     "verify:campaigns:ux4b": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux4b-campaigns playwright test --project=campaigns",
     "audit:stress:seated:ux4b": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux4b-stress-seated-cabinet playwright test --project=stress-seated",
-    "audit:accessibility:verify:ux4b": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4b playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4b node tools/write-accessibility-report.mjs"
+    "audit:accessibility:verify:ux4b": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4b playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4b node tools/write-accessibility-report.mjs",
+    "_comment:ux4c": "Gate 4A3 UX-4c (U7 reflow, U11 portrait frame, U12 compact mobile chrome). Every browser gate re-runs under UX-4c's own names; verify:ux:4c runs the whole cumulative UX spec.",
+    "verify:ux:4c": "MANDATE_UX_OUT=gate-4a3-ux4c-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3|@ux4a|@ux4b|@ux4c\"",
+    "verify:fixes:ux4c": "MANDATE_VERIFY_OUT=gate-4a3-ux4c-verification playwright test --project=verify",
+    "verify:icons:ux4c": "MANDATE_ICONS_OUT=gate-4a3-ux4c-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:ux4c": "MANDATE_TERMINAL_OUT=gate-4a3-ux4c-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:ux4c": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux4c-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:ux4c": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux4c-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:ux4c": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4c playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4c node tools/write-accessibility-report.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

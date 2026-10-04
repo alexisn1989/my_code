@@ -44,13 +44,17 @@ export function Portrait({ portraitRef, displayName }: PortraitProps) {
 
   // `bg-parchment-900/40` used to be on the `<svg>` below and did NOTHING: `parchment-900` is not a
   // defined token (the parchment family is 100 and 200 only), so Tailwind emitted no rule and this
-  // frame has always been transparent. Removing the dead reference is an exact visual no-op. The
-  // intended backdrop is recorded as finding D1 in the Commit 3 review rather than invented here:
-  // choosing a real colour is a visual design decision, and this commit fixes recorded findings.
+  // frame has always been transparent -- finding D1 in the Commit 3 review.
+  //
+  // Gate 4A3 UX-4c (U11), as ruled: a `navy-950` tile with a 1px `gold-600` ring. Measured first:
+  // NO palette token reaches 3:1 against all six skin tones (the best, navy-950, is 1.77:1, because
+  // the darkest skin sits close to navy), so the frame does not claim to separate the face. What it
+  // does claim is a visible edge: gold-600 on the navy-900 panel is 4.16:1, above the 3:1 non-text
+  // bar (`format/portrait-frame.test.ts`). The portrait is decorative; the name is always text.
   return (
     <svg
       viewBox="0 0 64 68"
-      className="h-16 w-16 shrink-0 rounded-md"
+      className="h-16 w-16 shrink-0 rounded-md bg-navy-950 ring-1 ring-gold-600"
       role="img"
       aria-label={displayName}
       data-portrait-ref={portraitRef}
