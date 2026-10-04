@@ -107,7 +107,9 @@
     "verify:terminal:ux4c": "MANDATE_TERMINAL_OUT=gate-4a3-ux4c-terminal playwright test --project=terminal-coverage",
     "verify:campaigns:ux4c": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux4c-campaigns playwright test --project=campaigns",
     "audit:stress:seated:ux4c": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux4c-stress-seated-cabinet playwright test --project=stress-seated",
-    "audit:accessibility:verify:ux4c": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4c playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4c node tools/write-accessibility-report.mjs"
+    "audit:accessibility:verify:ux4c": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4c playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4c node tools/write-accessibility-report.mjs",
+    "_comment:ux4d": "Gate 4A3 UX-4d: the internal dry run against a server started from the INSTALLED release archive; pass its address as MANDATE_DRYRUN_URL. Records gate-4a3-ux4-dryrun.json and its screenshots, never overwriting.",
+    "dryrun:installed:ux4": "MANDATE_DRYRUN_OUT=gate-4a3-ux4-dryrun playwright test --project=dry-run"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

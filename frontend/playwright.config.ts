@@ -158,6 +158,12 @@ export default defineConfig({
       name: "packaged",
       testMatch: /packaged-instance\.spec\.ts$/,
     },
+    // Gate 4A3 UX-4d: the INTERNAL dry run, five turns through the interface of a server started from
+    // the installed release archive (MANDATE_DRYRUN_URL). Not one of the five playtesters.
+    {
+      name: "dry-run",
+      testMatch: /dry-run\.spec\.ts$/,
+    },
   ],
   webServer: {
     // The production entry point, with explicit paths so the run cannot accidentally read a

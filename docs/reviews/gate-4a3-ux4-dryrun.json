@@ -1,0 +1,209 @@
+{
+  "gate": "4A3 UX-4d",
+  "kind": "INTERNAL dry run -- not one of the five external playtesters",
+  "server": "http://127.0.0.1:48431",
+  "scenarios": 3,
+  "turns": [
+    {
+      "card": "Raise the personal income tax",
+      "route": "decree",
+      "preview": {
+        "route": "decree",
+        "would_pass": true,
+        "affordable": true,
+        "text": [
+          "Known before resolution",
+          "This is an estimate, not a guarantee: it reflects the drafted decision as it stands right now, and resolving can still differ from this if the draft changes first.",
+          "Route: Decree",
+          "positive",
+          "If resolved now: enacted by decree — the legislature is bypassed. Route cost 250.",
+          "Route cost",
+          "250",
+          "Total committed"
+        ]
+      },
+      "confirm": "Resolve turn 0 with 1 staged action?",
+      "resultTurn": 1,
+      "headline": "The budget was enacted by decree. The legislature was bypassed.",
+      "consequences": [
+        "A tax rate changed.",
+        "Resource extraction: 6,000 resource workers had no deposit to work.",
+        "The Construction sector produced nothing this turn.",
+        "The Public services sector produced nothing this turn.",
+        "Legitimacy was resolved.",
+        "Political capital was resolved.",
+        "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "The legislature voted.",
+        "Political capital spending was recorded.",
+        "Blocs reacted to the enacted policy.",
+        "Blocs resented being bypassed by decree.",
+        "A bloc's relationship with the government changed.",
+        "Blocs reacted to the enacted policy.",
+        "Blocs resented being bypassed by decree.",
+        "A bloc's relationship with the government changed."
+      ],
+      "routineSteps": 4,
+      "traceReasons": 19
+    },
+    {
+      "card": "Lower the personal income tax",
+      "route": "legislative",
+      "preview": {
+        "route": "legislative",
+        "would_pass": false,
+        "affordable": true,
+        "text": [
+          "Known before resolution",
+          "This is an estimate, not a guarantee: it reflects the drafted decision as it stands right now, and resolving can still differ from this if the draft changes first.",
+          "Route: Legislative vote",
+          "Expected vote, chamber by chamber",
+          "Chamber\tSupporting\tRequired\tSeats\tCarries",
+          "Lower chamber\t45\t51\t100\t ",
+          "negative",
+          "Fails"
+        ]
+      },
+      "confirm": "Resolve turn 1 with 1 staged action?",
+      "resultTurn": 2,
+      "headline": "The budget was blocked.",
+      "consequences": [
+        "Resource extraction: 6,000 resource workers had no deposit to work.",
+        "The Construction sector produced nothing this turn.",
+        "The Public services sector produced nothing this turn.",
+        "Legitimacy was resolved.",
+        "Political capital was resolved.",
+        "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "The legislature voted.",
+        "The legislature blocked the budget.",
+        "Relationships decayed toward their authored baseline.",
+        "A bloc's relationship with the government changed.",
+        "Relationships decayed toward their authored baseline.",
+        "A bloc's relationship with the government changed."
+      ],
+      "routineSteps": 4,
+      "traceReasons": 16
+    },
+    {
+      "card": "Raise the personal income tax",
+      "route": "legislative",
+      "preview": {
+        "route": "legislative",
+        "would_pass": false,
+        "affordable": true,
+        "text": [
+          "Known before resolution",
+          "This is an estimate, not a guarantee: it reflects the drafted decision as it stands right now, and resolving can still differ from this if the draft changes first.",
+          "Route: Legislative vote",
+          "Expected vote, chamber by chamber",
+          "Chamber\tSupporting\tRequired\tSeats\tCarries",
+          "Lower chamber\t45\t51\t100\t ",
+          "negative",
+          "Fails"
+        ]
+      },
+      "confirm": "Resolve turn 2 with 1 staged action?",
+      "resultTurn": 3,
+      "headline": "The budget was blocked.",
+      "consequences": [
+        "Resource extraction: 6,000 resource workers had no deposit to work.",
+        "The Construction sector produced nothing this turn.",
+        "The Public services sector produced nothing this turn.",
+        "Legitimacy was resolved.",
+        "Political capital was resolved.",
+        "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "The legislature voted.",
+        "The legislature blocked the budget.",
+        "Relationships decayed toward their authored baseline.",
+        "A bloc's relationship with the government changed.",
+        "Relationships decayed toward their authored baseline.",
+        "A bloc's relationship with the government changed."
+      ],
+      "routineSteps": 4,
+      "traceReasons": 16
+    },
+    {
+      "card": "Lower the personal income tax",
+      "route": "legislative",
+      "preview": {
+        "route": "legislative",
+        "would_pass": false,
+        "affordable": true,
+        "text": [
+          "Known before resolution",
+          "This is an estimate, not a guarantee: it reflects the drafted decision as it stands right now, and resolving can still differ from this if the draft changes first.",
+          "Route: Legislative vote",
+          "Expected vote, chamber by chamber",
+          "Chamber\tSupporting\tRequired\tSeats\tCarries",
+          "Lower chamber\t45\t51\t100\t ",
+          "negative",
+          "Fails"
+        ]
+      },
+      "confirm": "Resolve turn 3 with 1 staged action?",
+      "resultTurn": 4,
+      "headline": "The budget was blocked.",
+      "consequences": [
+        "Resource extraction: 6,000 resource workers had no deposit to work.",
+        "The Construction sector produced nothing this turn.",
+        "The Public services sector produced nothing this turn.",
+        "A war broke out between two foreign countries.",
+        "A foreign war continued.",
+        "Foreign wars raised security anxiety at home.",
+        "Legitimacy was resolved.",
+        "Political capital was resolved.",
+        "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "The legislature voted.",
+        "The legislature blocked the budget.",
+        "Relationships decayed toward their authored baseline.",
+        "A bloc's relationship with the government changed.",
+        "Relationships decayed toward their authored baseline.",
+        "A bloc's relationship with the government changed."
+      ],
+      "routineSteps": 4,
+      "traceReasons": 19
+    },
+    {
+      "card": "Raise the personal income tax",
+      "route": "legislative",
+      "preview": {
+        "route": "legislative",
+        "would_pass": false,
+        "affordable": true,
+        "text": [
+          "Known before resolution",
+          "This is an estimate, not a guarantee: it reflects the drafted decision as it stands right now, and resolving can still differ from this if the draft changes first.",
+          "Route: Legislative vote",
+          "Expected vote, chamber by chamber",
+          "Chamber\tSupporting\tRequired\tSeats\tCarries",
+          "Lower chamber\t45\t51\t100\t ",
+          "negative",
+          "Fails"
+        ]
+      },
+      "confirm": "Resolve turn 4 with 1 staged action?",
+      "resultTurn": 5,
+      "headline": "The budget was blocked.",
+      "consequences": [
+        "Resource extraction: 6,000 resource workers had no deposit to work.",
+        "The Construction sector produced nothing this turn.",
+        "The Public services sector produced nothing this turn.",
+        "A foreign war continued.",
+        "Foreign wars raised security anxiety at home.",
+        "Legitimacy was resolved.",
+        "Political capital was resolved.",
+        "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "The legislature voted.",
+        "The legislature blocked the budget.",
+        "Relationships decayed toward their authored baseline.",
+        "A bloc's relationship with the government changed.",
+        "Relationships decayed toward their authored baseline.",
+        "A bloc's relationship with the government changed."
+      ],
+      "routineSteps": 4,
+      "traceReasons": 18
+    }
+  ],
+  "historyFirstTurnHeadline": "The budget was enacted by decree. The legislature was bypassed.",
+  "consoleErrors": [],
+  "offOrigin": []
+}
