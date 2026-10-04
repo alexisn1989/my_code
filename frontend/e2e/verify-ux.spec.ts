@@ -363,7 +363,7 @@ for (const viewport of VIEWPORTS) {
 type DashboardRead = {
   turn: number;
   country_name: string;
-  concerns: Record<string, { label: string; headline: string; detail_screen: string }>;
+  concerns: Record<string, { label: string; headline: string; detail_screen: string; delta_text?: string | null }>;
   map: { tint_value_bps: number; tint_metric_label: string };
 };
 
@@ -544,6 +544,72 @@ for (const viewport of VIEWPORTS) {
         before: { legitimacy: dashboard.concerns.legitimacy.headline, ...tintBefore },
         after: { legitimacy: after.concerns.legitimacy.headline, ...tintAfter },
       },
+    });
+  });
+}
+
+/** Grouped denars from minor units, computed independently of `format.ts` (100 minor units each). */
+function denars(minor: number): string {
+  const sign = minor < 0 ? "-" : "";
+  const abs = Math.abs(minor);
+  const whole = Math.trunc(abs / 100).toLocaleString("en-US");
+  return `${sign}${whole}.${String(abs % 100).padStart(2, "0")}`;
+}
+
+for (const viewport of VIEWPORTS) {
+  test(`@ux4a money is grouped, signed when it is a change, and denars in the turn result — ${viewport.name}`, async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await ensureServer(page);
+    await startValdrun(page);
+    const opening = await readDashboard(page);
+    const money = opening.concerns.money!;
+    expect(money.headline, "the Money headline is grouped denars").toMatch(/^\d{1,3}(,\d{3})+\.\d{2}$/);
+    await visit(page, "Dashboard");
+    const card = page.getByTestId("concern-cards").getByRole("heading", { name: "Money", exact: true })
+      .locator("xpath=ancestor::section[1]");
+    await expect(card).toContainText(money.headline);
+    await expect(page.getByTestId("national-header")).toContainText(`Money: ${money.headline}`);
+
+    // One turn, so the treasury has a pre-financing balance (the delta) and the result has tax bases.
+    await visit(page, "Decisions");
+    await selectCard(page, "Raise the personal income tax");
+    await page.getByRole("button", { name: "Resolve turn" }).click();
+    const pending = page.waitForResponse(
+      (r) => r.url().includes("/api/game/resolve") && r.request().method() === "POST",
+      { timeout: 120_000 },
+    );
+    await page.getByRole("button", { name: "Confirm and resolve" }).click();
+    const body = (await (await pending).json()) as {
+      turnResult: { drivers: { reason_id: string; params?: Record<string, number | string> }[] };
+      dashboard: DashboardRead;
+    };
+    const tax = body.turnResult.drivers.find((d) => d.reason_id === "tax_bases_derived");
+    expect(tax, "the turn records its tax bases").toBeDefined();
+    const p = tax!.params as Record<string, number>;
+    const expectedTax =
+      `Tax bases: personal income ${denars(p.personal_income!)}, corporate profit ` +
+      `${denars(p.corporate_profit!)}, consumption ${denars(p.taxable_consumption!)}.`;
+    const routine = page.getByTestId("drivers-routine");
+    await routine.locator("summary").click();
+    await expect(routine.locator('li[data-reason-id="tax_bases_derived"]')).toHaveText(expectedTax);
+
+    const after = await readDashboard(page);
+    const delta = after.concerns.money!.delta_text;
+    expect(delta, "after a turn the Money card states the balance").toBeTruthy();
+    expect(delta!).toMatch(/^[+-]\d{1,3}(,\d{3})*\.\d{2}$/);
+    await visit(page, "Dashboard");
+    await expect(card).toContainText(delta!);
+
+    results.push({
+      block: "ux4a",
+      viewport: viewport.name,
+      moneyHeadline: money.headline,
+      moneyDeltaAfterTurn: delta,
+      taxBasesSentence: expectedTax,
+      taxBasesMinorUnits: p,
     });
   });
 }

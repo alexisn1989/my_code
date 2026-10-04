@@ -45,6 +45,22 @@ export function formatAmount(amount: number): string {
   return amount.toLocaleString("en-US");
 }
 
+/** Gate 4A3 UX-4a (U9): a `Money` value -- an integer count of MINOR units, 100 to the denar
+ * (`app/core/money.py`, `MINOR_UNITS_PER_DENAR`) -- as grouped denars: `10000000000` ->
+ * "100,000,000.00". Mirrors the backend's player-facing `format_money_display`, so a driver param and
+ * a projection headline state the same amount the same way. `formatAmount` is for counts, never for
+ * money: using it on a Money param shows the amount 100 times too large, which is exactly the UX-2
+ * tax-bases defect this exists to fix. */
+export const MINOR_UNITS_PER_DENAR = 100;
+
+export function formatMoney(minorUnits: number): string {
+  const sign = minorUnits < 0 ? "-" : "";
+  const magnitude = Math.abs(minorUnits);
+  const whole = Math.trunc(magnitude / MINOR_UNITS_PER_DENAR);
+  const minor = (magnitude % MINOR_UNITS_PER_DENAR).toString().padStart(2, "0");
+  return `${sign}${formatAmount(whole)}.${minor}`;
+}
+
 /** "500 / 1,000" -- the same shape `CapitalSummary.display` already uses
  * server-side, applied to fields the server returns as bare numbers instead
  * (e.g. a `ChamberPreview`'s `supporting_seats`/`total_seats`, or a
@@ -779,7 +795,9 @@ function economySentence(
       if (personal === undefined || corporate === undefined || consumption === undefined) {
         return undefined;
       }
-      return `Tax bases: personal income ${formatAmount(personal)}, corporate profit ${formatAmount(corporate)}, consumption ${formatAmount(consumption)}.`;
+      // Money params: minor units, rendered as denars (UX-4a fixed these, which UX-2 had shown 100x
+      // too large through `formatAmount`).
+      return `Tax bases: personal income ${formatMoney(personal)}, corporate profit ${formatMoney(corporate)}, consumption ${formatMoney(consumption)}.`;
     }
     case "turn_resolved": {
       const turn = num(params["turn"]);

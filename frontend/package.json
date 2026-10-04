@@ -83,7 +83,15 @@
     "verify:terminal:ux3a": "MANDATE_TERMINAL_OUT=gate-4a3-ux3a-terminal playwright test --project=terminal-coverage",
     "verify:campaigns:ux3a": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux3a-campaigns playwright test --project=campaigns",
     "audit:stress:seated:ux3a": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux3a-stress-seated-cabinet playwright test --project=stress-seated",
-    "audit:accessibility:verify:ux3a": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3a playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3a node tools/write-accessibility-report.mjs"
+    "audit:accessibility:verify:ux3a": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3a playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux3a node tools/write-accessibility-report.mjs",
+    "_comment:ux4a": "Gate 4A3 UX-4a (U9: grouped money, and denars in the turn result). Every browser gate re-runs under UX-4a's own names; verify:ux:4a runs the cumulative UX spec through @ux4a.",
+    "verify:ux:4a": "MANDATE_UX_OUT=gate-4a3-ux4a-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3|@ux4a\"",
+    "verify:fixes:ux4a": "MANDATE_VERIFY_OUT=gate-4a3-ux4a-verification playwright test --project=verify",
+    "verify:icons:ux4a": "MANDATE_ICONS_OUT=gate-4a3-ux4a-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:ux4a": "MANDATE_TERMINAL_OUT=gate-4a3-ux4a-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:ux4a": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux4a-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:ux4a": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux4a-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:ux4a": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4a playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4a node tools/write-accessibility-report.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

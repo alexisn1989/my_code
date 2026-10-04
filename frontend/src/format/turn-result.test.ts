@@ -61,7 +61,9 @@ describe("routine driver sentences", () => {
         { personal_income: 100_000_000, corporate_profit: 3_150_000, taxable_consumption: 70_000 },
         "fallback",
       ),
-    ).toBe("Tax bases: personal income 100,000,000, corporate profit 3,150,000, consumption 70,000.");
+      // Gate 4A3 UX-4a: these params are Money, in MINOR units -- the original expectation here pinned
+      // them rendered as counts, 100x too large. 100,000,000 minor units is 1,000,000.00 denars.
+    ).toBe("Tax bases: personal income 1,000,000.00, corporate profit 31,500.00, consumption 700.00.");
     expect(driverSentence("turn_resolved", { turn: 7 }, "fallback")).toBe("Turn 7 resolved.");
   });
 

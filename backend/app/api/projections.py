@@ -25,8 +25,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.api.display import format_money_display
 from app.api.outcome_labels import outcome_reason_text
-from app.core.money import BPS_DENOMINATOR, format_money
+from app.core.money import BPS_DENOMINATOR
 from app.core.politics import RELATIONSHIP_INVESTMENT_CAP
 from app.simulation.cabinet import (
     appointment_cost_capital,
@@ -1564,8 +1565,9 @@ def build_dashboard(
 
     money = ConcernCard(
         label="Money",
-        headline=format_money(country.treasury.cash_on_hand),
-        delta_text=None if balance is None else format_money(balance),
+        # Gate 4A3 UX-4a (U9): grouped for the player; the delta is a change, so it is signed.
+        headline=format_money_display(country.treasury.cash_on_hand),
+        delta_text=None if balance is None else format_money_display(balance, signed=True),
         direction="unchanged" if balance is None else ("down" if balance < 0 else "up"),
         tone="neutral" if balance is None else ("negative" if balance < 0 else "positive"),
         detail_screen="economy",
