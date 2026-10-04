@@ -13,6 +13,12 @@
  *
  * Output: `MANDATE_DRYRUN_OUT` names the JSON record and a screenshot directory beside it. REQUIRED,
  * and written with `wx` / refused if the directory exists: a record is never overwritten.
+ *
+ * Gate 4A3 UX-4e: the run ENFORCES what it records. Under the dedicated command
+ * (`MANDATE_DRYRUN_REQUIRED=1`) a missing server address FAILS instead of skipping; every turn's
+ * preview must agree with its resolution (`would_pass` against the vote driver's recorded outcome,
+ * and a decree must be affordable and enacted); and a console error fails the run. The record is
+ * written only after every assertion holds.
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -32,7 +38,10 @@ const TURNS = [
   { card: "Raise the personal income tax", route: "legislative" as const },
 ];
 
-test.skip(BASE === undefined, "the dry run needs MANDATE_DRYRUN_URL: a server started from the installed archive");
+const REQUIRED = process.env.MANDATE_DRYRUN_REQUIRED === "1";
+// Skipped only when nobody asked for a dry run (an unrelated run of every project); the dedicated
+// command sets MANDATE_DRYRUN_REQUIRED, and then a missing address is a failure, not a skip.
+test.skip(BASE === undefined && !REQUIRED, "the dry run needs MANDATE_DRYRUN_URL: a server started from the installed archive");
 
 async function visit(page: Page, name: string): Promise<void> {
   const entry = page.getByRole("navigation", { name: "Screens" }).getByRole("button", { name, exact: true });
@@ -42,6 +51,9 @@ async function visit(page: Page, name: string): Promise<void> {
 
 test("internal dry run: five turns through the interface of the installed build", async ({ page }) => {
   test.setTimeout(600_000);
+  if (BASE === undefined) {
+    throw new Error("MANDATE_DRYRUN_URL is required: start the installed archive's server and pass its address");
+  }
   if (OUT === undefined || !SAFE_NAME.test(OUT) || OUT.includes("..")) {
     throw new Error("MANDATE_DRYRUN_OUT is required and must be a safe artifact name");
   }
@@ -95,8 +107,25 @@ test("internal dry run: five turns through the interface of the installed build"
     const confirmText = await page.getByText(/^Resolve turn \d+ with /).innerText();
     const resolved = page.waitForResponse((r) => r.url().includes("/api/game/resolve") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Confirm and resolve" }).click();
-    const body = (await (await resolved).json()) as { turnResult: { turn: number; outcome_headline: string } };
+    const body = (await (await resolved).json()) as {
+      turnResult: {
+        turn: number;
+        outcome_headline: string;
+        drivers: { reason_id: string; params: Record<string, string | number> }[];
+      };
+    };
     expect((await resolved).status()).toBe(200);
+
+    // The preview must have told the truth about this turn.
+    const voteDriver = body.turnResult.drivers.find((d) => d.reason_id === "legislative_vote_resolved");
+    expect(voteDriver, "the turn records how its budget was resolved").toBeDefined();
+    const outcome = String(voteDriver!.params["outcome"]);
+    const enacted = outcome === "passed_legislative" || outcome === "enacted_by_decree";
+    expect(preview.would_pass, `turn ${index + 1}: preview would_pass vs resolved outcome ${outcome}`).toBe(enacted);
+    if (plan.route === "decree") {
+      expect(preview.affordable, "a decree the preview called affordable").toBe(true);
+      expect(outcome).toBe("enacted_by_decree");
+    }
 
     const view = page.getByTestId("turn-result-view");
     await expect(view).toHaveAttribute("data-context", "live");
@@ -114,6 +143,8 @@ test("internal dry run: five turns through the interface of the installed build"
       preview: { route: preview.route, would_pass: preview.would_pass, affordable: preview.affordable, text: previewText },
       confirm: confirmText,
       resultTurn: body.turnResult.turn,
+      resolvedOutcome: outcome,
+      previewAgreed: preview.would_pass === enacted,
       headline: body.turnResult.outcome_headline,
       consequences,
       routineSteps: routine,
@@ -138,11 +169,12 @@ test("internal dry run: five turns through the interface of the installed build"
   await page.screenshot({ path: path.join(shots, "07-economy-summary.png") });
 
   expect(offOrigin, "every request stays on the installed server's origin").toEqual([]);
+  expect(consoleErrors, "no console error anywhere in the walk").toEqual([]);
   writeFileSync(
     path.join(REVIEW_DIR, `${OUT}.json`),
     `${JSON.stringify(
       {
-        gate: "4A3 UX-4d",
+        gate: process.env.MANDATE_DRYRUN_REQUIRED === "1" ? "4A3 UX-4f (enforced)" : "4A3 UX-4d",
         kind: "INTERNAL dry run -- not one of the five external playtesters",
         server: BASE,
         scenarios: scenarios.length,

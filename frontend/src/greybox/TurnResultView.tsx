@@ -13,7 +13,7 @@
 import { useEffect, useId, useState, type MouseEvent } from "react";
 
 import type { TurnResultProjection } from "../api/client";
-import { driverSentence, isRoutineDriver } from "../format/format";
+import { driverSentence, isRoutineDriver, outcomeFirst } from "../format/format";
 import { DataTable, EmptyNote, Panel, ToneValue } from "./components";
 
 export function TurnResultView({
@@ -34,7 +34,10 @@ export function TurnResultView({
   const anchorId = (index: number) => `${scope}driver-${index}`;
 
   const drivers = result.drivers.map((driver, index) => ({ driver, index }));
-  const visible = drivers.filter(({ driver }) => !isRoutineDriver(driver));
+  // Gate 4A3 UX-4e (DR1): what the player's decisions did comes first; the rest keeps server order.
+  const visible = outcomeFirst(
+    drivers.filter(({ driver }) => !isRoutineDriver(driver)).map((row) => ({ ...row, reason_id: row.driver.reason_id })),
+  );
   const routine = drivers.filter(({ driver }) => isRoutineDriver(driver));
 
   useEffect(() => {
@@ -78,7 +81,10 @@ export function TurnResultView({
 
   return (
     <div data-testid="turn-result-view" data-context={context} className="flex flex-col gap-4">
-      <Panel title={`Turn ${result.turn} — outcome`} headingLevel={3}>
+      {/* Gate 4A3 UX-4e (DR3, ruled): "Turn {N} — outcome" named the turn the result PRODUCED, one
+          higher than the turn the player had just resolved ("Resolve turn 0…" → "Turn 1 — outcome").
+          A neutral heading removes the contradiction without a contract change (R3, narrowed). */}
+      <Panel title="Turn outcome" headingLevel={3}>
         <p className="text-lg">
           <ToneValue tone={result.outcome_tone}>{result.outcome_headline}</ToneValue>
         </p>

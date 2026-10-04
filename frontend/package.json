@@ -109,7 +109,16 @@
     "audit:stress:seated:ux4c": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux4c-stress-seated-cabinet playwright test --project=stress-seated",
     "audit:accessibility:verify:ux4c": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4c playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4c node tools/write-accessibility-report.mjs",
     "_comment:ux4d": "Gate 4A3 UX-4d: the internal dry run against a server started from the INSTALLED release archive; pass its address as MANDATE_DRYRUN_URL. Records gate-4a3-ux4-dryrun.json and its screenshots, never overwriting.",
-    "dryrun:installed:ux4": "MANDATE_DRYRUN_OUT=gate-4a3-ux4-dryrun playwright test --project=dry-run"
+    "dryrun:installed:ux4": "MANDATE_DRYRUN_OUT=gate-4a3-ux4-dryrun playwright test --project=dry-run",
+    "_comment:ux4e": "Gate 4A3 UX-4e (decree wording, outcome first, named blocs, 'Turn outcome', caption contrast, enforcing dry run). Every browser gate re-runs under UX-4e's own names; verify:ux:4e runs the whole cumulative UX spec. dryrun:installed:ux4f REQUIRES MANDATE_DRYRUN_URL and fails on a console error or a preview/resolution disagreement.",
+    "verify:ux:4e": "MANDATE_UX_OUT=gate-4a3-ux4e-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3|@ux4a|@ux4b|@ux4c|@ux4e\"",
+    "verify:fixes:ux4e": "MANDATE_VERIFY_OUT=gate-4a3-ux4e-verification playwright test --project=verify",
+    "verify:icons:ux4e": "MANDATE_ICONS_OUT=gate-4a3-ux4e-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:ux4e": "MANDATE_TERMINAL_OUT=gate-4a3-ux4e-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:ux4e": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux4e-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:ux4e": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux4e-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:ux4e": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4e playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4e node tools/write-accessibility-report.mjs",
+    "dryrun:installed:ux4f": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_OUT=gate-4a3-ux4f-dryrun playwright test --project=dry-run"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

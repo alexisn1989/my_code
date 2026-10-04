@@ -499,7 +499,7 @@ export function driverSentence(
     case "foreign_assistance_pool_exhausted":
       return profile === undefined ? label : `${profile} has no assistance left to give.`;
     default:
-      return economySentence(reasonId, params) ?? label;
+      return economySentence(reasonId, params) ?? consequenceSentence(reasonId, params) ?? label;
   }
 }
 
@@ -817,6 +817,11 @@ const ALWAYS_ROUTINE = new Set([
   "production_summary",
   "tax_bases_derived",
   "turn_resolved",
+  // Gate 4A3 UX-4e (DR1, ruled): the capital ledger repeats the capital line and the "What your
+  // decision committed" panel, and a bloc's drift toward its baseline is mechanical, not a result of
+  // this turn's choice. Both keep a named sentence inside Routine steps.
+  "political_capital_ledger_resolved",
+  "relationship_decay_resolved",
 ]);
 
 export function isRoutineDriver(driver: {
@@ -918,4 +923,196 @@ export function resolveConfirmSentence(turn: number | null, count: number): stri
   const which = turn === null ? "this turn" : `turn ${turn}`;
   if (count === 0) return `Resolve ${which} with nothing staged?`;
   return `Resolve ${which} with ${count} staged action${count === 1 ? "" : "s"}?`;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Gate 4A3 UX-4e — the turn's consequences, named and in the order a player needs them
+// ---------------------------------------------------------------------------------------------------
+
+/** Display names for the three tax-rate fields a `tax_rate_changed` driver names. A backend drift guard
+ * pins these keys to the engine's budget fields. */
+export const TAX_FIELD_LABEL: Readonly<Record<string, string>> = {
+  personal_income_rate_bps: "Personal income tax",
+  corporate_rate_bps: "Corporate tax",
+  consumption_rate_bps: "Consumption tax",
+};
+
+/** Display names for the seven `SpendingCategory` values; a backend drift guard pins the keys. */
+export const SPENDING_LABEL: Readonly<Record<string, string>> = {
+  health: "Health",
+  education: "Education",
+  welfare: "Welfare",
+  infrastructure: "Infrastructure",
+  defense: "Defence",
+  security: "Security",
+  administration: "Administration",
+};
+
+/** A signed change in percentage points from basis points: 250 -> "+2.50 points", -75 -> "-0.75 points". */
+export function formatSignedPoints(bps: number): string {
+  const sign = bps > 0 ? "+" : bps < 0 ? "-" : "±";
+  const magnitude = formatBpsPercent(Math.abs(bps)).replace("%", "");
+  return `${sign}${magnitude} points`;
+}
+
+function str(value: string | number | undefined): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+/** Sentences for the political drivers, composed ONLY from each driver's stored params (and the
+ * projection's `bloc_display_name`). `undefined` -> the generic label, the same fallback rule as
+ * every other driver; never a raw identifier. */
+function consequenceSentence(
+  reasonId: string,
+  params: Record<string, string | number>,
+): string | undefined {
+  const bloc = str(params["bloc_display_name"]);
+  switch (reasonId) {
+    case "legislative_vote_resolved": {
+      // THE contradiction this exists to remove: on a decree turn the generic label said "The
+      // legislature voted." beside "The legislature was bypassed." The driver stores how the
+      // budget was resolved; no vote is claimed unless one was held.
+      const outcome = str(params["outcome"]);
+      const passed = num(params["chambers_passed"]);
+      const total = num(params["chambers_total"]);
+      if (outcome === "enacted_by_decree") return "Enacted by decree — no vote was held.";
+      if (outcome === "no_proposal") return "No budget was put to a vote.";
+      if (passed === undefined || total === undefined) return undefined;
+      const tally = `${passed} of ${total} chamber${total === 1 ? "" : "s"} carried.`;
+      if (outcome === "passed_legislative") return `The legislature passed the budget: ${tally}`;
+      if (outcome === "failed_legislative") return `The legislature voted the budget down: ${tally}`;
+      return undefined;
+    }
+    case "budget_blocked_by_legislature": {
+      const chamber = str(params["chamber"]);
+      const supporting = num(params["supporting_seats"]);
+      const required = num(params["required_yes_seats"]);
+      const shortfall = num(params["shortfall_seats"]);
+      if (chamber === undefined || supporting === undefined || required === undefined || shortfall === undefined) {
+        return undefined;
+      }
+      return `${chamberLabel(chamber)} blocked the budget: ${formatAmount(supporting)} of ${formatAmount(required)} seats, ${formatAmount(shortfall)} short.`;
+    }
+    case "tax_rate_changed": {
+      const field = str(params["field"]);
+      const name = field === undefined ? undefined : TAX_FIELD_LABEL[field];
+      const before = num(params["old_bps"]);
+      const after = num(params["new_bps"]);
+      if (name === undefined || before === undefined || after === undefined) return undefined;
+      return `${name}: ${formatBpsPercent(before)} → ${formatBpsPercent(after)}.`;
+    }
+    case "spending_category_changed": {
+      const category = str(params["category"]);
+      const name = category === undefined ? undefined : SPENDING_LABEL[category];
+      const before = num(params["old_amount"]);
+      const after = num(params["new_amount"]);
+      if (name === undefined || before === undefined || after === undefined) return undefined;
+      return `${name} spending: ${formatMoney(before)} → ${formatMoney(after)}.`;
+    }
+    case "legitimacy_resolved": {
+      const opening = num(params["opening_legitimacy_bps"]);
+      const closing = num(params["closing_legitimacy_bps"]);
+      const change = num(params["total_legitimacy_change_bps"]);
+      if (opening === undefined || closing === undefined || change === undefined) return undefined;
+      return `Legitimacy: ${formatBpsPercent(opening)} → ${formatBpsPercent(closing)} (${formatSignedPoints(change)}).`;
+    }
+    case "political_capital_resolved": {
+      const opening = num(params["opening"]);
+      const closing = num(params["closing"]);
+      const capacity = num(params["capacity"]);
+      const spent = num(params["spent"]);
+      const regained = num(params["regeneration"]);
+      if ([opening, closing, capacity, spent, regained].some((v) => v === undefined)) return undefined;
+      return `Political capital: ${formatAmount(opening!)} → ${formatAmount(closing!)} of ${formatAmount(capacity!)} (${formatAmount(spent!)} spent, ${formatAmount(regained!)} regained).`;
+    }
+    case "political_capital_ledger_resolved": {
+      const total = num(params["total_committed"]);
+      const vote = num(params["legislative_committed"]);
+      const relationships = num(params["relationship_committed"]);
+      if (total === undefined || vote === undefined || relationships === undefined) return undefined;
+      return `Capital committed this turn: ${formatAmount(total)} (${formatAmount(vote)} to the vote or decree, ${formatAmount(relationships)} to relationships).`;
+    }
+    case "coup_risk_assessed": {
+      // An ATTEMPT risk, never an outcome -- the same distinction the CLI and the Survival card keep.
+      const coup = num(params["coup_attempt_risk_bps"]);
+      const unrest = num(params["unrest_attempt_risk_bps"]);
+      const impeachment = num(params["impeachment_attempt_risk_bps"]);
+      const eligible = params["impeachment_eligible"] as unknown;
+      if (coup === undefined || unrest === undefined) return undefined;
+      const impeachmentPart =
+        (eligible === true || eligible === 1) && impeachment !== undefined
+          ? `, impeachment risk ${formatBpsPercent(impeachment)}`
+          : "";
+      return `Risk of an attempt this turn: coup ${formatBpsPercent(coup)}, unrest ${formatBpsPercent(unrest)}${impeachmentPart}.`;
+    }
+    case "enacted_policy_relationship_reaction": {
+      const change = num(params["policy_reaction_component_bps"]);
+      return bloc === undefined || change === undefined
+        ? undefined
+        : `${bloc} reacted to the enacted policy (${formatSignedPoints(change)}).`;
+    }
+    case "decree_bypass_relationship_reaction": {
+      const change = num(params["decree_bypass_component_bps"]);
+      return bloc === undefined || change === undefined
+        ? undefined
+        : `${bloc} resented being bypassed by decree (${formatSignedPoints(change)}).`;
+    }
+    case "relationship_decay_resolved": {
+      const change = num(params["decay_component_bps"]);
+      return bloc === undefined || change === undefined
+        ? undefined
+        : `${bloc} drifted toward its usual stance (${formatSignedPoints(change)}).`;
+    }
+    case "bloc_relationship_resolved": {
+      const opening = num(params["opening_relationship_bps"]);
+      const closing = num(params["closing_relationship_bps"]);
+      const change = num(params["applied_total_change_bps"]);
+      if (bloc === undefined || opening === undefined || closing === undefined || change === undefined) {
+        return undefined;
+      }
+      return `${bloc}: relationship ${formatBpsPercent(opening)} → ${formatBpsPercent(closing)} (${formatSignedPoints(change)}).`;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** Gate 4A3 UX-4e (DR1, ruled): what the player's choice DID comes first. Rank 0 is the outcome of
+ * this turn's decisions and the events that decide the campaign; everything else keeps server order
+ * after them. Only the visible list is reordered; Routine steps and the Trace keep server order. */
+const OUTCOME_FIRST = new Set([
+  "legislative_vote_resolved",
+  "budget_blocked_by_legislature",
+  "constitutional_amendment_enacted",
+  "peaceful_liberalization_completed",
+  "tax_rate_changed",
+  "spending_category_changed",
+  "cabinet_appointed",
+  "cabinet_replaced",
+  "cabinet_dismissed",
+  "legislative_bargain_accepted",
+  "legislative_bargain_refused_will_not_deal",
+  "foreign_assistance_granted",
+  "promise_made",
+  "promise_fulfilled",
+  "promise_breached",
+  "promise_released",
+  "election_result",
+  "coup_attempt_occurred",
+  "coup_succeeded",
+  "impeachment_motion_brought",
+  "impeachment_succeeded",
+  "game_concluded",
+]);
+
+export function driverPriority(reasonId: string): number {
+  return OUTCOME_FIRST.has(reasonId) ? 0 : 1;
+}
+
+/** A stable sort by `driverPriority`: equal ranks keep the order the server recorded them in. */
+export function outcomeFirst<T extends { reason_id: string }>(items: readonly T[]): T[] {
+  return items
+    .map((item, position) => ({ item, position }))
+    .sort((a, b) => driverPriority(a.item.reason_id) - driverPriority(b.item.reason_id) || a.position - b.position)
+    .map(({ item }) => item);
 }

@@ -315,7 +315,10 @@ for (const viewport of VIEWPORTS) {
     await expect(routine).not.toHaveAttribute("open", /.*/);
     const routineCount = await routine.locator("li[data-reason-id]").count();
     expect(routineCount, "turn 1 records routine bookkeeping").toBeGreaterThan(0);
-    await expect(view.getByTestId("drivers-consequential")).toContainText("The legislature blocked the budget.");
+    // UX-4e: the blocking chamber is now named, with its tally.
+    await expect(view.getByTestId("drivers-consequential")).toContainText(
+      /chamber blocked the budget: [\d,]+ of [\d,]+ seats, [\d,]+ short\./,
+    );
     const live = await driversText(page);
 
     // T2 keyboard path, live: a routine reason opens Routine steps and lands on its sentence.
@@ -778,28 +781,54 @@ for (const viewport of VIEWPORTS) {
     }
     expect(reached, "Tab reaches every screen in the nav, in order").toEqual(names);
 
-    // The one-row nav clips the buttons scrolled past its edge, and axe returns a clipped button's
-    // contrast as "needs review" (partially obscured) rather than judging it -- 52 such items appear in
-    // the UX-4c sweep. So each button is brought fully into view by focus and measured ON ITS OWN:
-    // zero contrast violations and zero undecided results, for every screen in the nav.
-    const navContrast: { screen: string; passes: number }[] = [];
-    if (viewport.width < 1024) {
-      const ids = await page
-        .getByRole("navigation", { name: "Screens" })
-        .locator("button[data-nav-screen]")
-        .evaluateAll((els) => els.map((el) => el.getAttribute("data-nav-screen") ?? ""));
-      for (const id of ids) {
-        await page.locator(`button[data-nav-screen="${id}"]`).focus();
-        const result = await new AxeBuilder({ page })
-          .include(`button[data-nav-screen="${id}"]`)
-          .withRules(["color-contrast"])
-          .analyze();
-        expect(result.violations.map((v) => v.id), `${id}: contrast`).toEqual([]);
-        expect(result.incomplete.map((v) => v.id), `${id}: decided, not obscured`).toEqual([]);
-        expect(result.passes.length, `${id}: contrast was evaluated`).toBeGreaterThan(0);
-        navContrast.push({ screen: id, passes: result.passes.length });
+    // The one-row nav clips whatever is scrolled past its edge, and axe returns a clipped element's
+    // contrast as "needs review" (partially obscured) rather than judging it. UX-4c measured the
+    // nav BUTTONS this way at 390 and 320 only; UX-4e (correction) measures every button AND the
+    // "Summaries" caption -- which the sweep's grouped items also contain -- at EVERY below-lg width
+    // the accessibility sweep uses. Each is brought fully into view and measured ON ITS OWN: zero
+    // violations, zero undecided results, at least one rule evaluated. Run once, from the desktop
+    // test, which then restores its own viewport.
+    const navContrast: { width: number; element: string; passes: number }[] = [];
+    if (viewport.name === "desktop") {
+      const SWEEP_BELOW_LG = [
+        { width: 960, height: 540 },
+        { width: 820, height: 900 },
+        { width: 720, height: 450 },
+        { width: 390, height: 844 },
+        { width: 320, height: 512 },
+        { width: 195, height: 422 },
+      ];
+      for (const size of SWEEP_BELOW_LG) {
+        await page.setViewportSize(size);
+        const ids = await page
+          .getByRole("navigation", { name: "Screens" })
+          .locator("button[data-nav-screen]")
+          .evaluateAll((els) => els.map((el) => el.getAttribute("data-nav-screen") ?? ""));
+        const targets = [...ids.map((id) => `button[data-nav-screen="${id}"]`), "#nav-summaries"];
+        for (const selector of targets) {
+          await page.locator(selector).evaluate((el) => el.scrollIntoView({ block: "nearest", inline: "nearest" }));
+          const result = await new AxeBuilder({ page }).include(selector).withRules(["color-contrast"]).analyze();
+          expect(result.violations.map((v) => v.id), `${selector} at ${size.width}: contrast`).toEqual([]);
+          expect(result.incomplete.map((v) => v.id), `${selector} at ${size.width}: decided`).toEqual([]);
+          expect(result.passes.length, `${selector} at ${size.width}: evaluated`).toBeGreaterThan(0);
+          navContrast.push({ width: size.width, element: selector, passes: result.passes.length });
+        }
+        // The caption, also by the offline model: parchment-200 at 70% on the surface it resolves to.
+        const captionBackdrop = await page.locator("#nav-summaries").evaluate((el) => {
+          for (let a: HTMLElement | null = el; a !== null; a = a.parentElement) {
+            const bg = getComputedStyle(a).backgroundColor;
+            if (bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") return bg.replace(/\s+/g, "");
+          }
+          return getComputedStyle(document.body).backgroundColor.replace(/\s+/g, "");
+        });
+        const surface = surfaceNameOf(captionBackdrop);
+        expect(surface, `caption backdrop ${captionBackdrop} is a palette surface`).not.toBeNull();
+        expect(offlineRatio({ foreground: "parchment-200", backdrop: surface!, alpha: 0.7 })).toBeGreaterThanOrEqual(
+          TEXT_CONTRAST_MINIMUM,
+        );
       }
-      expect(navContrast).toHaveLength(names.length);
+      expect(navContrast.length, "13 targets (12 buttons and the caption) at each of 6 widths").toBe(78);
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
     }
 
     // ---- U7: no page-level horizontal scroll with a card selected and previewed ----
@@ -845,8 +874,96 @@ for (const viewport of VIEWPORTS) {
       firstScreen,
       navReached: reached.length,
       navContrastMeasuredInView: navContrast.length,
+      captionMeasuredAtWidths: navContrast.filter((n) => n.element === "#nav-summaries").map((n) => n.width),
       overflow,
       portraitFrame: { ...frame, panel, ringRatio },
+    });
+  });
+}
+
+for (const viewport of VIEWPORTS) {
+  test(`@ux4e the turn result names what happened, outcome first, and never contradicts itself — ${viewport.name}`, async ({
+    page,
+  }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await ensureServer(page);
+    await startValdrun(page);
+    const options = (await (await page.request.get(`${base}/api/game/decision-options`)).json()) as {
+      blocs: { bloc_name: string }[];
+    };
+    const blocNames = [...new Set(options.blocs.map((b) => b.bloc_name))];
+
+    async function resolveTurn(route: "decree" | "legislative") {
+      await visit(page, "Decisions");
+      await selectCard(page, "Raise the personal income tax");
+      await page
+        .getByRole("radiogroup", { name: "Route" })
+        .getByRole("radio", { name: route === "decree" ? /^Decree/ : /^Legislative/ })
+        .click();
+      await page.getByRole("button", { name: "Resolve turn" }).click();
+      const pending = page.waitForResponse(
+        (r) => r.url().includes("/api/game/resolve") && r.request().method() === "POST",
+        { timeout: 120_000 },
+      );
+      await page.getByRole("button", { name: "Confirm and resolve" }).click();
+      const body = (await (await pending).json()) as {
+        turnResult: { turn: number; drivers: { reason_id: string; params: Record<string, string | number> }[] };
+      };
+      const view = page.getByTestId("turn-result-view");
+      await expect(view).toHaveAttribute("data-context", "live");
+      const visible = await view.getByTestId("drivers-consequential").locator(":scope > li").evaluateAll((lis) =>
+        lis.map((li) => ({ reason: li.getAttribute("data-reason-id") ?? "", text: (li as HTMLElement).innerText })),
+      );
+      return { body, view, visible };
+    }
+
+    function assertOutcomeFirst(visible: { reason: string }[]) {
+      // Every outcome line comes before any other line (server order within each group).
+      const OUTCOME = new Set(["legislative_vote_resolved", "budget_blocked_by_legislature", "tax_rate_changed"]);
+      const firstOther = visible.findIndex((v) => !OUTCOME.has(v.reason));
+      const lastOutcome = visible.map((v) => OUTCOME.has(v.reason)).lastIndexOf(true);
+      expect(lastOutcome, "an outcome line is shown").toBeGreaterThanOrEqual(0);
+      if (firstOther >= 0) expect(lastOutcome, "outcome lines precede the rest").toBeLessThan(firstOther);
+    }
+
+    // ---- a decree turn ----
+    const decree = await resolveTurn("decree");
+    const decreeText = (await decree.view.innerText()).toLowerCase();
+    expect(decreeText).toContain("the legislature was bypassed");
+    expect(decreeText, "no claim that the legislature voted on a decree turn").not.toContain("voted");
+    expect(decree.visible.map((v) => v.text)).toContain("Enacted by decree — no vote was held.");
+    assertOutcomeFirst(decree.visible);
+    await expect(decree.view.getByRole("heading", { name: "Turn outcome" })).toBeVisible();
+
+    // Every bloc line is named, and no generic bloc line remains.
+    const blocLines = decree.visible.filter((v) =>
+      ["bloc_relationship_resolved", "decree_bypass_relationship_reaction", "enacted_policy_relationship_reaction"].includes(v.reason),
+    );
+    expect(blocLines.length, "the decree turn records bloc reactions").toBeGreaterThan(0);
+    for (const line of blocLines) {
+      expect(blocNames.some((name) => line.text.startsWith(name)), `named: ${line.text}`).toBe(true);
+    }
+    expect(decreeText).not.toContain("a bloc's relationship with the government changed");
+    // The projection carries the names; the stored ids never become the text.
+    const named = decree.body.turnResult.drivers.filter((d) => "bloc_id" in d.params);
+    expect(named.every((d) => typeof d.params["bloc_display_name"] === "string")).toBe(true);
+
+    // ---- a legislative turn ----
+    await page.getByRole("button", { name: /^Plan turn \d+$/ }).click();
+    const legislative = await resolveTurn("legislative");
+    const texts = legislative.visible.map((v) => v.text);
+    expect(texts.some((t) => /^The legislature voted the budget down: \d+ of \d+ chambers? carried\.$/.test(t))).toBe(true);
+    expect(texts.some((t) => /chamber blocked the budget: [\d,]+ of [\d,]+ seats, [\d,]+ short\.$/.test(t))).toBe(true);
+    assertOutcomeFirst(legislative.visible);
+    // DR2 (ruled): the worker warning stays visible.
+    expect(texts.some((t) => t.startsWith("Resource extraction:"))).toBe(true);
+
+    results.push({
+      block: "ux4e",
+      viewport: viewport.name,
+      decreeTurn: decree.visible,
+      legislativeTurn: legislative.visible,
     });
   });
 }

@@ -1983,6 +1983,35 @@ def build_military(state: GameState) -> MilitaryProjection:
     return MilitaryProjection(revision=revision_token(state), formations=tuple(rows))
 
 
+def _bloc_display_names(politics: PoliticalState | None) -> dict[tuple[str, str], str]:
+    """(party id, bloc id) -> the bloc's authored display name, from the turn's own state."""
+    legislature = None if politics is None else politics.legislature
+    if legislature is None:
+        return {}
+    return {(party.id, bloc.id): bloc.name for party in legislature.parties for bloc in party.blocs}
+
+
+def _with_bloc_display_name(
+    params: dict[str, str | int], names: dict[tuple[str, str], str]
+) -> dict[str, str | int]:
+    """Gate 4A3 UX-4e: a relationship driver stores only `party_id`/`bloc_id`, so the turn result
+    could say "A bloc's relationship with the government changed." but never WHICH bloc. The name is
+    already in the state this result is built from, so the projection adds it as
+    `bloc_display_name` -- presentation only: the stored report is untouched, `params` keeps its
+    shape (`dict[str, str | int]`), and live and history name the bloc alike because both use this
+    builder. A driver that already carries the key, or names a bloc not in the legislature, is left
+    exactly as stored."""
+    party_id, bloc_id = params.get("party_id"), params.get("bloc_id")
+    if (
+        not isinstance(party_id, str)
+        or not isinstance(bloc_id, str)
+        or "bloc_display_name" in params
+    ):
+        return params
+    name = names.get((party_id, bloc_id))
+    return params if name is None else {**params, "bloc_display_name": name}
+
+
 def build_turn_result(state: GameState, report: TurnReport) -> TurnResultProjection:
     """THE turn-result builder. Live resolution and history detail both call this.
 
@@ -1991,12 +2020,13 @@ def build_turn_result(state: GameState, report: TurnReport) -> TurnResultProject
     a historical turn renders from the report written when it happened.
     """
     politics = _politics(state)
+    bloc_names = _bloc_display_names(politics)
     drivers = tuple(
         DriverItem(
             category=entry.category,
             reason_id=entry.reason_id,
             label=label_for(entry.reason_id),
-            params=entry.params,
+            params=_with_bloc_display_name(entry.params, bloc_names),
         )
         for entry in report.entries
     )
