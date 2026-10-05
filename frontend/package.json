@@ -118,7 +118,16 @@
     "verify:campaigns:ux4e": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux4e-campaigns playwright test --project=campaigns",
     "audit:stress:seated:ux4e": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux4e-stress-seated-cabinet playwright test --project=stress-seated",
     "audit:accessibility:verify:ux4e": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4e playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4e node tools/write-accessibility-report.mjs",
-    "dryrun:installed:ux4f": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_OUT=gate-4a3-ux4f-dryrun playwright test --project=dry-run"
+    "dryrun:installed:ux4f": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_GATE=\"4A3 UX-4f (enforced)\" MANDATE_DRYRUN_OUT=gate-4a3-ux4f-dryrun playwright test --project=dry-run",
+    "_comment:ux4g": "Gate 4A3 UX-4g (negative percentages keep their sign; the blocking chamber names supporting and required votes; the dry-run record's gate label comes from MANDATE_DRYRUN_GATE). Every browser gate re-runs under UX-4g's own names; verify:ux:4g runs the whole cumulative UX spec. dryrun:installed:ux4h is UX-4h's enforcing dry run of the rebuilt release.",
+    "verify:ux:4g": "MANDATE_UX_OUT=gate-4a3-ux4g-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3|@ux4a|@ux4b|@ux4c|@ux4e\"",
+    "verify:fixes:ux4g": "MANDATE_VERIFY_OUT=gate-4a3-ux4g-verification playwright test --project=verify",
+    "verify:icons:ux4g": "MANDATE_ICONS_OUT=gate-4a3-ux4g-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:ux4g": "MANDATE_TERMINAL_OUT=gate-4a3-ux4g-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:ux4g": "MANDATE_CAMPAIGNS_OUT=gate-4a3-ux4g-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:ux4g": "MANDATE_STRESS_SEATED_OUT=gate-4a3-ux4g-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:ux4g": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4g playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4g node tools/write-accessibility-report.mjs",
+    "dryrun:installed:ux4h": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_GATE=\"4A3 UX-4h (enforced)\" MANDATE_DRYRUN_OUT=gate-4a3-ux4h-dryrun playwright test --project=dry-run"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

@@ -15,11 +15,13 @@
  * the backend did not pre-format (e.g. a decision-options bound) displays
  * identically to one it did. */
 export function formatBpsPercent(valueBps: number): string {
-  const whole = Math.trunc(valueBps / 100);
-  const fraction = Math.abs(valueBps % 100)
-    .toString()
-    .padStart(2, "0");
-  return `${whole}.${fraction}%`;
+  // The sign is taken first and the digits from the magnitude, exactly as the backend does: a
+  // truncated quotient loses the sign between -99 and -1 bps (-50 -> "-0" -> "0.50%").
+  const sign = valueBps < 0 ? "-" : "";
+  const magnitude = Math.abs(valueBps);
+  const whole = Math.trunc(magnitude / 100);
+  const fraction = (magnitude % 100).toString().padStart(2, "0");
+  return `${sign}${whole}.${fraction}%`;
 }
 
 /**
@@ -991,7 +993,7 @@ function consequenceSentence(
       if (chamber === undefined || supporting === undefined || required === undefined || shortfall === undefined) {
         return undefined;
       }
-      return `${chamberLabel(chamber)} blocked the budget: ${formatAmount(supporting)} of ${formatAmount(required)} seats, ${formatAmount(shortfall)} short.`;
+      return `${chamberLabel(chamber)} blocked the budget: ${formatAmount(supporting)} supporting votes; ${formatAmount(required)} required—${formatAmount(shortfall)} short.`;
     }
     case "tax_rate_changed": {
       const field = str(params["field"]);

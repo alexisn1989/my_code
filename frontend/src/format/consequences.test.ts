@@ -48,7 +48,17 @@ describe("the vote never claims a vote that was not held", () => {
         { chamber: "lower", supporting_seats: 45, required_yes_seats: 51, shortfall_seats: 6, opening: 500, total_committed: 0, legislative_committed: 0 },
         "x",
       ),
-    ).toBe("Lower chamber blocked the budget: 45 of 51 seats, 6 short.");
+    ).toBe("Lower chamber blocked the budget: 45 supporting votes; 51 required—6 short.");
+  });
+
+  it("no longer words the tally as seats out of seats (UX-4g)", () => {
+    const sentence = driverSentence(
+      "budget_blocked_by_legislature",
+      { chamber: "upper", supporting_seats: 20, required_yes_seats: 26, shortfall_seats: 6 },
+      "x",
+    );
+    expect(sentence).toBe("Upper chamber blocked the budget: 20 supporting votes; 26 required—6 short.");
+    expect(sentence).not.toMatch(/ of \d+ seats/);
   });
 });
 
@@ -103,6 +113,20 @@ describe("blocs are named", () => {
     ],
   ])("%s", (reason, params, shown) => {
     expect(driverSentence(reason as string, { ...named, ...(params as Record<string, number>) }, "x")).toBe(shown);
+  });
+
+  it.each([
+    [20, -50, -70, "Crown Party Core: relationship 0.20% → -0.50% (-0.70 points)."],
+    [-50, -99, -49, "Crown Party Core: relationship -0.50% → -0.99% (-0.49 points)."],
+    [-99, 1, 100, "Crown Party Core: relationship -0.99% → 0.01% (+1.00 points)."],
+  ])("a relationship below zero keeps its sign: %i -> %i (UX-4g)", (opening, closing, change, shown) => {
+    expect(
+      driverSentence(
+        "bloc_relationship_resolved",
+        { ...named, opening_relationship_bps: opening, closing_relationship_bps: closing, applied_total_change_bps: change },
+        "x",
+      ),
+    ).toBe(shown);
   });
 
   it("without a projected name, falls back to the generic label -- never an id", () => {

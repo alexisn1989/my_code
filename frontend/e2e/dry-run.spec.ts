@@ -39,6 +39,9 @@ const TURNS = [
 ];
 
 const REQUIRED = process.env.MANDATE_DRYRUN_REQUIRED === "1";
+// Gate 4A3 UX-4g: the record names the gate that ran it, from the command, not a hard-coded label
+// (UX-4f's was fixed in the spec, so a later run would have called itself UX-4f).
+const GATE = process.env.MANDATE_DRYRUN_GATE;
 // Skipped only when nobody asked for a dry run (an unrelated run of every project); the dedicated
 // command sets MANDATE_DRYRUN_REQUIRED, and then a missing address is a failure, not a skip.
 test.skip(BASE === undefined && !REQUIRED, "the dry run needs MANDATE_DRYRUN_URL: a server started from the installed archive");
@@ -53,6 +56,9 @@ test("internal dry run: five turns through the interface of the installed build"
   test.setTimeout(600_000);
   if (BASE === undefined) {
     throw new Error("MANDATE_DRYRUN_URL is required: start the installed archive's server and pass its address");
+  }
+  if (REQUIRED && (GATE === undefined || GATE.trim() === "")) {
+    throw new Error("MANDATE_DRYRUN_GATE is required under MANDATE_DRYRUN_REQUIRED: the gate this record belongs to");
   }
   if (OUT === undefined || !SAFE_NAME.test(OUT) || OUT.includes("..")) {
     throw new Error("MANDATE_DRYRUN_OUT is required and must be a safe artifact name");
@@ -174,7 +180,7 @@ test("internal dry run: five turns through the interface of the installed build"
     path.join(REVIEW_DIR, `${OUT}.json`),
     `${JSON.stringify(
       {
-        gate: process.env.MANDATE_DRYRUN_REQUIRED === "1" ? "4A3 UX-4f (enforced)" : "4A3 UX-4d",
+        gate: REQUIRED ? GATE : "4A3 UX-4d",
         kind: "INTERNAL dry run -- not one of the five external playtesters",
         server: BASE,
         scenarios: scenarios.length,

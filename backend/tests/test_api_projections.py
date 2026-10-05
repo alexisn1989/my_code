@@ -87,7 +87,22 @@ def test_unmapped_reason_id_degrades_visibly_rather_than_crashing() -> None:
 
 @pytest.mark.parametrize(
     ("value_bps", "expected"),
-    [(0, "0.00%"), (6_000, "60.00%"), (4_822, "48.22%"), (10_000, "100.00%"), (-8_000, "-80.00%")],
+    [
+        (0, "0.00%"),
+        (6_000, "60.00%"),
+        (4_822, "48.22%"),
+        (10_000, "100.00%"),
+        (-8_000, "-80.00%"),
+        # Gate 4A3 UX-4g: the same negative cases the frontend's `formatBpsPercent` is pinned to
+        # (frontend/src/format/percent.test.ts), where -50 had printed as "0.50%".
+        (-1, "-0.01%"),
+        (-50, "-0.50%"),
+        (-99, "-0.99%"),
+        (-100, "-1.00%"),
+        (-150, "-1.50%"),
+        (-10_000, "-100.00%"),
+        (50, "0.50%"),
+    ],
 )
 def test_bps_render_as_exact_percentages(value_bps: int, expected: str) -> None:
     assert format_bps_percent(value_bps) == expected

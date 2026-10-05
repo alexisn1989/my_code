@@ -315,9 +315,9 @@ for (const viewport of VIEWPORTS) {
     await expect(routine).not.toHaveAttribute("open", /.*/);
     const routineCount = await routine.locator("li[data-reason-id]").count();
     expect(routineCount, "turn 1 records routine bookkeeping").toBeGreaterThan(0);
-    // UX-4e: the blocking chamber is now named, with its tally.
+    // UX-4e: the blocking chamber is now named, with its tally (UX-4g: votes, not "seats").
     await expect(view.getByTestId("drivers-consequential")).toContainText(
-      /chamber blocked the budget: [\d,]+ of [\d,]+ seats, [\d,]+ short\./,
+      /chamber blocked the budget: [\d,]+ supporting votes; [\d,]+ required—[\d,]+ short\./,
     );
     const live = await driversText(page);
 
@@ -954,7 +954,8 @@ for (const viewport of VIEWPORTS) {
     const legislative = await resolveTurn("legislative");
     const texts = legislative.visible.map((v) => v.text);
     expect(texts.some((t) => /^The legislature voted the budget down: \d+ of \d+ chambers? carried\.$/.test(t))).toBe(true);
-    expect(texts.some((t) => /chamber blocked the budget: [\d,]+ of [\d,]+ seats, [\d,]+ short\.$/.test(t))).toBe(true);
+    expect(texts.some((t) => /chamber blocked the budget: [\d,]+ supporting votes; [\d,]+ required—[\d,]+ short\.$/.test(t))).toBe(true);
+    expect(texts.some((t) => / of [\d,]+ seats/.test(t)), "UX-4g: the tally is votes, not seats").toBe(false);
     assertOutcomeFirst(legislative.visible);
     // DR2 (ruled): the worker warning stays visible.
     expect(texts.some((t) => t.startsWith("Resource extraction:"))).toBe(true);
