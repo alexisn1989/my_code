@@ -1,0 +1,210 @@
+{
+  "gate": "4A3 UX-4h (enforced)",
+  "kind": "INTERNAL dry run -- not one of the five external playtesters",
+  "server": "http://127.0.0.1:48461",
+  "scenarios": 3,
+  "turns": [
+    {
+      "card": "Raise the personal income tax",
+      "route": "decree",
+      "preview": {
+        "route": "decree",
+        "would_pass": true,
+        "affordable": true,
+        "text": [
+          "Known before resolution",
+          "This is an estimate, not a guarantee: it reflects the drafted decision as it stands right now, and resolving can still differ from this if the draft changes first.",
+          "Route: Decree",
+          "positive",
+          "If resolved now: enacted by decree — the legislature is bypassed. Route cost 250.",
+          "Route cost",
+          "250",
+          "Total committed"
+        ]
+      },
+      "confirm": "Resolve turn 0 with 1 staged action?",
+      "resultTurn": 1,
+      "resolvedOutcome": "enacted_by_decree",
+      "previewAgreed": true,
+      "headline": "The budget was enacted by decree. The legislature was bypassed.",
+      "consequences": [
+        "Personal income tax: 20.00% → 25.00%.",
+        "Enacted by decree — no vote was held.",
+        "Resource extraction: 6,000 resource workers had no deposit to work.",
+        "The Construction sector produced nothing this turn.",
+        "The Public services sector produced nothing this turn.",
+        "Legitimacy: 60.00% → 61.00% (+1.00 points).",
+        "Political capital: 500 → 633 of 1,000 (250 spent, 383 regained).",
+        "Risk of an attempt this turn: coup 3.52%, unrest 2.40%.",
+        "Crown Party Core reacted to the enacted policy (+0.50 points).",
+        "Crown Party Core resented being bypassed by decree (-2.00 points).",
+        "Crown Party Core: relationship 60.00% → 58.50% (-1.50 points).",
+        "Reform Opposition Main reacted to the enacted policy (-1.50 points).",
+        "Reform Opposition Main resented being bypassed by decree (-2.00 points).",
+        "Reform Opposition Main: relationship -80.00% → -83.50% (-3.50 points)."
+      ],
+      "routineSteps": 5,
+      "traceReasons": 19
+    },
+    {
+      "card": "Lower the personal income tax",
+      "route": "legislative",
+      "preview": {
+        "route": "legislative",
+        "would_pass": false,
+        "affordable": true,
+        "text": [
+          "Known before resolution",
+          "This is an estimate, not a guarantee: it reflects the drafted decision as it stands right now, and resolving can still differ from this if the draft changes first.",
+          "Route: Legislative vote",
+          "Expected vote, chamber by chamber",
+          "Chamber\tSupporting\tRequired\tSeats\tCarries",
+          "Lower chamber\t45\t51\t100\t ",
+          "negative",
+          "Fails"
+        ]
+      },
+      "confirm": "Resolve turn 1 with 1 staged action?",
+      "resultTurn": 2,
+      "resolvedOutcome": "failed_legislative",
+      "previewAgreed": true,
+      "headline": "The budget was blocked.",
+      "consequences": [
+        "The legislature voted the budget down: 0 of 1 chamber carried.",
+        "Lower chamber blocked the budget: 45 supporting votes; 51 required—6 short.",
+        "Resource extraction: 6,000 resource workers had no deposit to work.",
+        "The Construction sector produced nothing this turn.",
+        "The Public services sector produced nothing this turn.",
+        "Legitimacy: 61.00% → 61.90% (+0.90 points).",
+        "Political capital: 633 → 1,000 of 1,000 (0 spent, 385 regained).",
+        "Risk of an attempt this turn: coup 3.52%, unrest 2.40%.",
+        "Crown Party Core: relationship 58.50% → 58.68% (+0.18 points).",
+        "Reform Opposition Main: relationship -83.50% → -83.07% (+0.43 points)."
+      ],
+      "routineSteps": 6,
+      "traceReasons": 16
+    },
+    {
+      "card": "Raise the personal income tax",
+      "route": "legislative",
+      "preview": {
+        "route": "legislative",
+        "would_pass": false,
+        "affordable": true,
+        "text": [
+          "Known before resolution",
+          "This is an estimate, not a guarantee: it reflects the drafted decision as it stands right now, and resolving can still differ from this if the draft changes first.",
+          "Route: Legislative vote",
+          "Expected vote, chamber by chamber",
+          "Chamber\tSupporting\tRequired\tSeats\tCarries",
+          "Lower chamber\t45\t51\t100\t ",
+          "negative",
+          "Fails"
+        ]
+      },
+      "confirm": "Resolve turn 2 with 1 staged action?",
+      "resultTurn": 3,
+      "resolvedOutcome": "failed_legislative",
+      "previewAgreed": true,
+      "headline": "The budget was blocked.",
+      "consequences": [
+        "The legislature voted the budget down: 0 of 1 chamber carried.",
+        "Lower chamber blocked the budget: 45 supporting votes; 51 required—6 short.",
+        "Resource extraction: 6,000 resource workers had no deposit to work.",
+        "The Construction sector produced nothing this turn.",
+        "The Public services sector produced nothing this turn.",
+        "Legitimacy: 61.90% → 62.71% (+0.81 points).",
+        "Political capital: 1,000 → 1,000 of 1,000 (0 spent, 388 regained).",
+        "Risk of an attempt this turn: coup 3.52%, unrest 2.40%.",
+        "Crown Party Core: relationship 58.68% → 58.84% (+0.16 points).",
+        "Reform Opposition Main: relationship -83.07% → -82.69% (+0.38 points)."
+      ],
+      "routineSteps": 6,
+      "traceReasons": 16
+    },
+    {
+      "card": "Lower the personal income tax",
+      "route": "legislative",
+      "preview": {
+        "route": "legislative",
+        "would_pass": false,
+        "affordable": true,
+        "text": [
+          "Known before resolution",
+          "This is an estimate, not a guarantee: it reflects the drafted decision as it stands right now, and resolving can still differ from this if the draft changes first.",
+          "Route: Legislative vote",
+          "Expected vote, chamber by chamber",
+          "Chamber\tSupporting\tRequired\tSeats\tCarries",
+          "Lower chamber\t45\t51\t100\t ",
+          "negative",
+          "Fails"
+        ]
+      },
+      "confirm": "Resolve turn 3 with 1 staged action?",
+      "resultTurn": 4,
+      "resolvedOutcome": "failed_legislative",
+      "previewAgreed": true,
+      "headline": "The budget was blocked.",
+      "consequences": [
+        "The legislature voted the budget down: 0 of 1 chamber carried.",
+        "Lower chamber blocked the budget: 45 supporting votes; 51 required—6 short.",
+        "Resource extraction: 6,000 resource workers had no deposit to work.",
+        "The Construction sector produced nothing this turn.",
+        "The Public services sector produced nothing this turn.",
+        "A war broke out between two foreign countries.",
+        "A foreign war continued.",
+        "Foreign wars raised security anxiety at home.",
+        "Legitimacy: 62.71% → 62.35% (-0.36 points).",
+        "Political capital: 1,000 → 1,000 of 1,000 (0 spent, 387 regained).",
+        "Risk of an attempt this turn: coup 3.52%, unrest 2.40%.",
+        "Crown Party Core: relationship 58.84% → 58.98% (+0.14 points).",
+        "Reform Opposition Main: relationship -82.69% → -82.36% (+0.33 points)."
+      ],
+      "routineSteps": 6,
+      "traceReasons": 19
+    },
+    {
+      "card": "Raise the personal income tax",
+      "route": "legislative",
+      "preview": {
+        "route": "legislative",
+        "would_pass": false,
+        "affordable": true,
+        "text": [
+          "Known before resolution",
+          "This is an estimate, not a guarantee: it reflects the drafted decision as it stands right now, and resolving can still differ from this if the draft changes first.",
+          "Route: Legislative vote",
+          "Expected vote, chamber by chamber",
+          "Chamber\tSupporting\tRequired\tSeats\tCarries",
+          "Lower chamber\t45\t51\t100\t ",
+          "negative",
+          "Fails"
+        ]
+      },
+      "confirm": "Resolve turn 4 with 1 staged action?",
+      "resultTurn": 5,
+      "resolvedOutcome": "failed_legislative",
+      "previewAgreed": true,
+      "headline": "The budget was blocked.",
+      "consequences": [
+        "The legislature voted the budget down: 0 of 1 chamber carried.",
+        "Lower chamber blocked the budget: 45 supporting votes; 51 required—6 short.",
+        "Resource extraction: 6,000 resource workers had no deposit to work.",
+        "The Construction sector produced nothing this turn.",
+        "The Public services sector produced nothing this turn.",
+        "A foreign war continued.",
+        "Foreign wars raised security anxiety at home.",
+        "Legitimacy: 62.35% → 62.01% (-0.34 points).",
+        "Political capital: 1,000 → 1,000 of 1,000 (0 spent, 386 regained).",
+        "Risk of an attempt this turn: coup 3.52%, unrest 2.40%.",
+        "Crown Party Core: relationship 58.98% → 59.10% (+0.12 points).",
+        "Reform Opposition Main: relationship -82.36% → -82.07% (+0.29 points)."
+      ],
+      "routineSteps": 6,
+      "traceReasons": 18
+    }
+  ],
+  "historyFirstTurnHeadline": "The budget was enacted by decree. The legislature was bypassed.",
+  "consoleErrors": [],
+  "offOrigin": []
+}
