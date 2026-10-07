@@ -1,0 +1,33 @@
+         1089 function calls (1081 primitive calls) in 0.189 seconds
+
+   Ordered by: cumulative time
+   List reduced from 268 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    0.189    0.189 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/starlette/testclient.py:470(get)
+        1    0.000    0.000    0.189    0.189 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/httpx/_client.py:1036(get)
+        1    0.000    0.000    0.189    0.189 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/starlette/testclient.py:429(request)
+        1    0.000    0.000    0.188    0.188 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/httpx/_client.py:771(request)
+        1    0.000    0.000    0.188    0.188 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/httpx/_client.py:879(send)
+        1    0.000    0.000    0.188    0.188 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/httpx/_client.py:930(_send_handling_auth)
+        1    0.000    0.000    0.188    0.188 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/httpx/_client.py:964(_send_handling_redirects)
+        1    0.000    0.000    0.188    0.188 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/httpx/_client.py:1001(_send_single_request)
+        1    0.000    0.000    0.188    0.188 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/starlette/testclient.py:225(handle_request)
+       17    0.187    0.011    0.187    0.011 {method 'acquire' of '_thread.lock' objects}
+        7    0.000    0.000    0.187    0.027 /usr/lib/python3.11/threading.py:295(wait)
+        7    0.000    0.000    0.186    0.027 /usr/lib/python3.11/concurrent/futures/_base.py:428(result)
+        3    0.000    0.000    0.186    0.062 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/anyio/from_thread.py:323(call)
+    14/11    0.000    0.000    0.002    0.000 {built-in method builtins.next}
+        2    0.000    0.000    0.002    0.001 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/starlette/testclient.py:421(_portal_factory)
+        2    0.000    0.000    0.002    0.001 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/anyio/from_thread.py:503(start_blocking_portal)
+        3    0.000    0.000    0.001    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/anyio/from_thread.py:356(start_task_soon)
+      6/5    0.000    0.000    0.001    0.000 /usr/lib/python3.11/contextlib.py:141(__exit__)
+        3    0.000    0.000    0.001    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/anyio/from_thread.py:282(_spawn_task_from_thread)
+        3    0.000    0.000    0.001    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/anyio/from_thread.py:95(run_sync)
+        3    0.000    0.000    0.001    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/anyio/_backends/_asyncio.py:2690(run_sync_from_thread)
+      6/5    0.000    0.000    0.001    0.000 /usr/lib/python3.11/contextlib.py:132(__enter__)
+        1    0.000    0.000    0.000    0.000 /usr/lib/python3.11/threading.py:945(start)
+        1    0.000    0.000    0.000    0.000 /usr/lib/python3.11/threading.py:1087(join)
+        1    0.000    0.000    0.000    0.000 /usr/lib/python3.11/threading.py:1125(_wait_for_tstate_lock)
+
+

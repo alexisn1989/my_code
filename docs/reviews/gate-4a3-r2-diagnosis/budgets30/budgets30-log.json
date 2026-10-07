@@ -1,0 +1,663 @@
+{
+  "runs": 30,
+  "log": [
+    {
+      "run": 0,
+      "port": 57489,
+      "exit": 1,
+      "seconds": 16.9,
+      "loadavg": [
+        0.8583984375,
+        0.9013671875,
+        0.6328125
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 228.37,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 159.85,
+        "worst": 228.37
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 1,
+      "port": 39999,
+      "exit": 1,
+      "seconds": 16.9,
+      "loadavg": [
+        0.8369140625,
+        0.89208984375,
+        0.63671875
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 245.62,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 148.0,
+        "worst": 245.62
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 2,
+      "port": 42597,
+      "exit": 1,
+      "seconds": 16.1,
+      "loadavg": [
+        0.87353515625,
+        0.89794921875,
+        0.642578125
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 235.52,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 129.57,
+        "worst": 235.52
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 3,
+      "port": 37423,
+      "exit": 0,
+      "seconds": 15.6,
+      "loadavg": [
+        0.84765625,
+        0.888671875,
+        0.64453125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 168.49,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 132.83,
+        "worst": 168.49
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 4,
+      "port": 53189,
+      "exit": 1,
+      "seconds": 15.7,
+      "loadavg": [
+        0.8818359375,
+        0.89453125,
+        0.650390625
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 211.4,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 129.37,
+        "worst": 211.4
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 5,
+      "port": 57695,
+      "exit": 0,
+      "seconds": 15.1,
+      "loadavg": [
+        0.916015625,
+        0.90234375,
+        0.658203125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 148.96,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 125.06,
+        "worst": 148.96
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 6,
+      "port": 37335,
+      "exit": 0,
+      "seconds": 14.9,
+      "loadavg": [
+        0.93505859375,
+        0.908203125,
+        0.6640625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 167.46,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 131.31,
+        "worst": 167.46
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 7,
+      "port": 60257,
+      "exit": 1,
+      "seconds": 15.4,
+      "loadavg": [
+        0.94970703125,
+        0.91357421875,
+        0.669921875
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 206.1,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 126.11,
+        "worst": 206.1
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 8,
+      "port": 37773,
+      "exit": 0,
+      "seconds": 15.4,
+      "loadavg": [
+        0.96484375,
+        0.91943359375,
+        0.677734375
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 180.13,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 136.23,
+        "worst": 180.13
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 9,
+      "port": 56199,
+      "exit": 0,
+      "seconds": 15.4,
+      "loadavg": [
+        0.97314453125,
+        0.923828125,
+        0.68359375
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 165.9,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 130.19,
+        "worst": 165.9
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 10,
+      "port": 45407,
+      "exit": 1,
+      "seconds": 14.9,
+      "loadavg": [
+        0.97998046875,
+        0.92822265625,
+        0.689453125
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 207.46,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 137.13,
+        "worst": 207.46
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 11,
+      "port": 48939,
+      "exit": 0,
+      "seconds": 14.8,
+      "loadavg": [
+        0.986328125,
+        0.93408203125,
+        0.697265625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 194.74,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 128.87,
+        "worst": 194.74
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 12,
+      "port": 42801,
+      "exit": 1,
+      "seconds": 14.9,
+      "loadavg": [
+        0.990234375,
+        0.9384765625,
+        0.703125
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 210.23,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 129.63,
+        "worst": 210.23
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 13,
+      "port": 53093,
+      "exit": 0,
+      "seconds": 15.7,
+      "loadavg": [
+        0.9931640625,
+        0.9423828125,
+        0.708984375
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 177.0,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 135.56,
+        "worst": 177.0
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 14,
+      "port": 35683,
+      "exit": 0,
+      "seconds": 15.0,
+      "loadavg": [
+        0.92626953125,
+        0.9296875,
+        0.71044921875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 152.72,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 124.64,
+        "worst": 152.72
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 15,
+      "port": 59307,
+      "exit": 0,
+      "seconds": 15.2,
+      "loadavg": [
+        0.94384765625,
+        0.93408203125,
+        0.71630859375
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 168.69,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 136.27,
+        "worst": 168.69
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 16,
+      "port": 58513,
+      "exit": 0,
+      "seconds": 15.6,
+      "loadavg": [
+        0.95703125,
+        0.9384765625,
+        0.72216796875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 169.49,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 133.88,
+        "worst": 169.49
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 17,
+      "port": 55513,
+      "exit": 1,
+      "seconds": 15.4,
+      "loadavg": [
+        0.97021484375,
+        0.943359375,
+        0.7294921875
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 211.79,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 149.48,
+        "worst": 211.79
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 18,
+      "port": 35247,
+      "exit": 1,
+      "seconds": 15.6,
+      "loadavg": [
+        0.9775390625,
+        0.9462890625,
+        0.73388671875
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 208.23,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 132.35,
+        "worst": 208.23
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 19,
+      "port": 55417,
+      "exit": 1,
+      "seconds": 15.9,
+      "loadavg": [
+        0.98486328125,
+        0.9501953125,
+        0.73974609375
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 214.48,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 136.65,
+        "worst": 214.48
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 20,
+      "port": 50115,
+      "exit": 1,
+      "seconds": 15.6,
+      "loadavg": [
+        0.9892578125,
+        0.953125,
+        0.744140625
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 215.81,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 130.04,
+        "worst": 215.81
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 21,
+      "port": 37247,
+      "exit": 0,
+      "seconds": 15.2,
+      "loadavg": [
+        1.05908203125,
+        0.9716796875,
+        0.75390625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 169.57,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 125.25,
+        "worst": 169.57
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 22,
+      "port": 48427,
+      "exit": 0,
+      "seconds": 15.4,
+      "loadavg": [
+        1.04150390625,
+        0.9736328125,
+        0.759765625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 181.45,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 129.59,
+        "worst": 181.45
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 23,
+      "port": 39793,
+      "exit": 1,
+      "seconds": 15.8,
+      "loadavg": [
+        1.03173828125,
+        0.97509765625,
+        0.76416015625
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 237.07,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 132.13,
+        "worst": 237.07
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 24,
+      "port": 35575,
+      "exit": 0,
+      "seconds": 15.7,
+      "loadavg": [
+        1.02197265625,
+        0.97705078125,
+        0.77001953125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 193.64,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 129.48,
+        "worst": 193.64
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 25,
+      "port": 35259,
+      "exit": 0,
+      "seconds": 15.4,
+      "loadavg": [
+        1.0166015625,
+        0.978515625,
+        0.7744140625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 163.79,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 128.03,
+        "worst": 163.79
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 26,
+      "port": 43667,
+      "exit": 1,
+      "seconds": 16.0,
+      "loadavg": [
+        1.0107421875,
+        0.98046875,
+        0.7802734375
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 226.85,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 148.56,
+        "worst": 226.85
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 27,
+      "port": 59525,
+      "exit": 0,
+      "seconds": 16.2,
+      "loadavg": [
+        1.0078125,
+        0.98193359375,
+        0.78466796875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 169.98,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 145.35,
+        "worst": 169.98
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 28,
+      "port": 37375,
+      "exit": 0,
+      "seconds": 15.7,
+      "loadavg": [
+        1.00537109375,
+        0.9833984375,
+        0.7890625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 188.9,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 140.55,
+        "worst": 188.9
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 29,
+      "port": 43909,
+      "exit": 1,
+      "seconds": 15.4,
+      "loadavg": [
+        0.9423828125,
+        0.9697265625,
+        0.7890625
+      ],
+      "stderrTail": "STOP: read_projection_ms past threshold\n",
+      "breaches": [
+        "read_projection_ms"
+      ],
+      "readWorst": 200.74,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 127.6,
+        "worst": 200.74
+      },
+      "serverExit": 0
+    }
+  ]
+}

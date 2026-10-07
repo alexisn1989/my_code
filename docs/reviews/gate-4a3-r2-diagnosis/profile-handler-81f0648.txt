@@ -1,0 +1,36 @@
+app: /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/81f0648/backend/app/__init__.py
+20 x handler work over ['decree_state.yaml', 'deficit_demo.yaml', 'tiny_valid.yaml']
+
+         17217661 function calls (17106441 primitive calls) in 9.894 seconds
+
+   Ordered by: cumulative time
+   List reduced from 269 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       20    0.002    0.000    9.894    0.495 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/tools/profile_handler.py:38(handler_work)
+       60    0.001    0.000    9.885    0.165 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/81f0648/backend/app/content/scenarios.py:20(load_scenario_file)
+       60    0.001    0.000    9.874    0.165 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/81f0648/backend/app/simulation/scenario.py:153(load_scenario_text)
+       60    0.001    0.000    9.851    0.164 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/81f0648/backend/app/simulation/scenario.py:91(_parse)
+       60    0.000    0.000    9.810    0.163 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/__init__.py:117(safe_load)
+       60    0.019    0.000    9.809    0.163 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/__init__.py:74(load)
+       60    0.000    0.000    9.779    0.163 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/constructor.py:47(get_single_data)
+       60    0.000    0.000    9.356    0.156 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/composer.py:29(get_single_node)
+       60    0.000    0.000    9.207    0.153 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/composer.py:50(compose_document)
+ 85880/60    0.206    0.000    9.206    0.153 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/composer.py:63(compose_node)
+  7500/60    0.076    0.000    9.204    0.153 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/composer.py:117(compose_mapping_node)
+   265200    0.201    0.000    8.565    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/parser.py:94(check_event)
+ 8080/300    0.051    0.000    7.203    0.024 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/composer.py:99(compose_sequence_node)
+   653280    0.586    0.000    7.064    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/scanner.py:113(check_token)
+   137820    0.349    0.000    5.376    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/scanner.py:156(fetch_more_tokens)
+    32440    0.067    0.000    2.831    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/parser.py:427(parse_block_mapping_key)
+    26780    0.054    0.000    2.651    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/parser.py:446(parse_block_mapping_value)
+    69220    0.083    0.000    2.238    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/scanner.py:668(fetch_plain)
+   137820    0.646    0.000    1.975    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/scanner.py:752(scan_to_next_token)
+    69220    0.569    0.000    1.957    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/scanner.py:1270(scan_plain)
+    85880    0.359    0.000    1.600    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/parser.py:273(parse_node)
+  1452060    1.425    0.000    1.552    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/reader.py:99(forward)
+     7820    0.017    0.000    1.396    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/parser.py:402(parse_indentless_sequence_entry)
+  1075580    0.714    0.000    1.337    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/scanner.py:145(need_more_tokens)
+    53560    0.032    0.000    1.064    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/yaml/parser.py:270(parse_block_node_or_indentless_sequence)
+
+

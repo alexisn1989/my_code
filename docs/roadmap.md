@@ -824,8 +824,17 @@ than assumed in advance.
   - **R1:** a fresh server's first listing of many long saves is slow (about 1.5 s for 20), and a
     fresh save root per tester keeps it small
     ([`gate-4a3-commit6c-saves.md`](reviews/gate-4a3-commit6c-saves.md) §3.2).
-  - **R2:** `/api/scenarios` read latency sits near its 200 ms STOP. **Open:** run-to-run variation
-    observed, cause unresolved, regression not ruled out
+  - **R2:** `/api/scenarios` read latency sits near its 200 ms STOP. **Open.** Diagnosed in
+    [`gate-4a3-r2-diagnosis.md`](reviews/gate-4a3-r2-diagnosis.md):
+    - **The median:** most of each request is PyYAML's pure-Python parse of the three scenario files,
+      about 125 ms. libyaml is installed but unused.
+    - **The builds:** no median or p95 difference was detected between 6c and the final build.
+    - **The release check:** its worst-of-20 rule breached in 14 of 30 matched runs (95% CI
+      28–66%), conditional on that machine and workload.
+    - **The tail:** its cause is not established.
+    - **Fix options:** these await a separate review.
+
+    It was earlier recorded as "variation observed; cause unresolved"
     ([`gate-4a3-ux4g-corrections.md`](reviews/gate-4a3-ux4g-corrections.md) §3).
   - **R3:** History's "Turn N — …" entries name the turn a result produced. The result heading itself
     is the neutral "Turn outcome" (UX-4e).

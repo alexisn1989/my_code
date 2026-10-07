@@ -1,0 +1,615 @@
+{
+  "seed": 4242,
+  "builds": [
+    "d1c09201",
+    "5a1b2eb",
+    "44fbd5a",
+    "81f0648"
+  ],
+  "warmupDiscarded": 5,
+  "samplesPerBlock": 50,
+  "order": [
+    [
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648",
+      "d1c09201"
+    ],
+    [
+      "44fbd5a",
+      "81f0648",
+      "d1c09201",
+      "5a1b2eb"
+    ],
+    [
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648"
+    ],
+    [
+      "81f0648",
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a"
+    ],
+    [
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648"
+    ],
+    [
+      "44fbd5a",
+      "81f0648",
+      "d1c09201",
+      "5a1b2eb"
+    ],
+    [
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648",
+      "d1c09201"
+    ],
+    [
+      "81f0648",
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a"
+    ],
+    [
+      "81f0648",
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a"
+    ],
+    [
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648",
+      "d1c09201"
+    ],
+    [
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648"
+    ],
+    [
+      "44fbd5a",
+      "81f0648",
+      "d1c09201",
+      "5a1b2eb"
+    ],
+    [
+      "44fbd5a",
+      "81f0648",
+      "d1c09201",
+      "5a1b2eb"
+    ],
+    [
+      "81f0648",
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a"
+    ],
+    [
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648",
+      "d1c09201"
+    ],
+    [
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648"
+    ],
+    [
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648"
+    ],
+    [
+      "81f0648",
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a"
+    ],
+    [
+      "44fbd5a",
+      "81f0648",
+      "d1c09201",
+      "5a1b2eb"
+    ],
+    [
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648",
+      "d1c09201"
+    ]
+  ],
+  "log": [
+    {
+      "round": 0,
+      "position": 0,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 0,
+      "position": 1,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 0,
+      "position": 2,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 0,
+      "position": 3,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 1,
+      "position": 0,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 1,
+      "position": 1,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 1,
+      "position": 2,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 1,
+      "position": 3,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 2,
+      "position": 0,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 2,
+      "position": 1,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 2,
+      "position": 2,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 2,
+      "position": 3,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 3,
+      "position": 0,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 3,
+      "position": 1,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 3,
+      "position": 2,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 3,
+      "position": 3,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 4,
+      "position": 0,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 4,
+      "position": 1,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 4,
+      "position": 2,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 4,
+      "position": 3,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 5,
+      "position": 0,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 5,
+      "position": 1,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 5,
+      "position": 2,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 5,
+      "position": 3,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 6,
+      "position": 0,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 6,
+      "position": 1,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 6,
+      "position": 2,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 6,
+      "position": 3,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 7,
+      "position": 0,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 7,
+      "position": 1,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 7,
+      "position": 2,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 7,
+      "position": 3,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 8,
+      "position": 0,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 8,
+      "position": 1,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 8,
+      "position": 2,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 8,
+      "position": 3,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 9,
+      "position": 0,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 9,
+      "position": 1,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 9,
+      "position": 2,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 9,
+      "position": 3,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 10,
+      "position": 0,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 10,
+      "position": 1,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 10,
+      "position": 2,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 10,
+      "position": 3,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 11,
+      "position": 0,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 11,
+      "position": 1,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 11,
+      "position": 2,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 11,
+      "position": 3,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 12,
+      "position": 0,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 12,
+      "position": 1,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 12,
+      "position": 2,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 12,
+      "position": 3,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 13,
+      "position": 0,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 13,
+      "position": 1,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 13,
+      "position": 2,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 13,
+      "position": 3,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 14,
+      "position": 0,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 14,
+      "position": 1,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 14,
+      "position": 2,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 14,
+      "position": 3,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 15,
+      "position": 0,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 15,
+      "position": 1,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 15,
+      "position": 2,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 15,
+      "position": 3,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 16,
+      "position": 0,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 16,
+      "position": 1,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 16,
+      "position": 2,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 16,
+      "position": 3,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 17,
+      "position": 0,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 17,
+      "position": 1,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 17,
+      "position": 2,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 17,
+      "position": 3,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 18,
+      "position": 0,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 18,
+      "position": 1,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 18,
+      "position": 2,
+      "build": "d1c09201",
+      "exit": 0
+    },
+    {
+      "round": 18,
+      "position": 3,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 19,
+      "position": 0,
+      "build": "5a1b2eb",
+      "exit": 0
+    },
+    {
+      "round": 19,
+      "position": 1,
+      "build": "44fbd5a",
+      "exit": 0
+    },
+    {
+      "round": 19,
+      "position": 2,
+      "build": "81f0648",
+      "exit": 0
+    },
+    {
+      "round": 19,
+      "position": 3,
+      "build": "d1c09201",
+      "exit": 0
+    }
+  ]
+}

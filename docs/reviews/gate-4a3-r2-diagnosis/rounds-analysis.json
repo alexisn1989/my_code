@@ -1,0 +1,474 @@
+{
+  "design": {
+    "seed": 4242,
+    "builds": [
+      "d1c09201",
+      "5a1b2eb",
+      "44fbd5a",
+      "81f0648"
+    ],
+    "warmupDiscarded": 5,
+    "samplesPerBlock": 50,
+    "order": [
+      [
+        "5a1b2eb",
+        "44fbd5a",
+        "81f0648",
+        "d1c09201"
+      ],
+      [
+        "44fbd5a",
+        "81f0648",
+        "d1c09201",
+        "5a1b2eb"
+      ],
+      [
+        "d1c09201",
+        "5a1b2eb",
+        "44fbd5a",
+        "81f0648"
+      ],
+      [
+        "81f0648",
+        "d1c09201",
+        "5a1b2eb",
+        "44fbd5a"
+      ],
+      [
+        "d1c09201",
+        "5a1b2eb",
+        "44fbd5a",
+        "81f0648"
+      ],
+      [
+        "44fbd5a",
+        "81f0648",
+        "d1c09201",
+        "5a1b2eb"
+      ],
+      [
+        "5a1b2eb",
+        "44fbd5a",
+        "81f0648",
+        "d1c09201"
+      ],
+      [
+        "81f0648",
+        "d1c09201",
+        "5a1b2eb",
+        "44fbd5a"
+      ],
+      [
+        "81f0648",
+        "d1c09201",
+        "5a1b2eb",
+        "44fbd5a"
+      ],
+      [
+        "5a1b2eb",
+        "44fbd5a",
+        "81f0648",
+        "d1c09201"
+      ],
+      [
+        "d1c09201",
+        "5a1b2eb",
+        "44fbd5a",
+        "81f0648"
+      ],
+      [
+        "44fbd5a",
+        "81f0648",
+        "d1c09201",
+        "5a1b2eb"
+      ],
+      [
+        "44fbd5a",
+        "81f0648",
+        "d1c09201",
+        "5a1b2eb"
+      ],
+      [
+        "81f0648",
+        "d1c09201",
+        "5a1b2eb",
+        "44fbd5a"
+      ],
+      [
+        "5a1b2eb",
+        "44fbd5a",
+        "81f0648",
+        "d1c09201"
+      ],
+      [
+        "d1c09201",
+        "5a1b2eb",
+        "44fbd5a",
+        "81f0648"
+      ],
+      [
+        "d1c09201",
+        "5a1b2eb",
+        "44fbd5a",
+        "81f0648"
+      ],
+      [
+        "81f0648",
+        "d1c09201",
+        "5a1b2eb",
+        "44fbd5a"
+      ],
+      [
+        "44fbd5a",
+        "81f0648",
+        "d1c09201",
+        "5a1b2eb"
+      ],
+      [
+        "5a1b2eb",
+        "44fbd5a",
+        "81f0648",
+        "d1c09201"
+      ]
+    ]
+  },
+  "rounds": 20,
+  "identity": {
+    "python": [
+      "3.11.15 (main, Mar  3 2026, 09:26:23) [GCC 13.3.0]"
+    ],
+    "dependencies": {
+      "fastapi": "0.141.1",
+      "httpx": "0.28.1",
+      "pydantic": "2.13.4",
+      "pydantic-core": "2.46.4",
+      "pyyaml": "6.0.3",
+      "starlette": "1.3.1"
+    }
+  },
+  "bootstrap": {
+    "seed": 7,
+    "resamples": 10000,
+    "unit": "round (paired)"
+  },
+  "perBuild": {
+    "d1c09201": {
+      "pooledSamples": 1000,
+      "pooledMedian": 141.808,
+      "pooledP95": 215.167,
+      "pooledP99": 269.59,
+      "pooledMax": 463.623,
+      "blocksOver200msMax": 20,
+      "samplesOver200ms": 76,
+      "meanOfBlockMedians": 142.445
+    },
+    "5a1b2eb": {
+      "pooledSamples": 1000,
+      "pooledMedian": 143.155,
+      "pooledP95": 206.935,
+      "pooledP99": 232.353,
+      "pooledMax": 261.477,
+      "blocksOver200msMax": 20,
+      "samplesOver200ms": 67,
+      "meanOfBlockMedians": 143.991
+    },
+    "44fbd5a": {
+      "pooledSamples": 1000,
+      "pooledMedian": 140.983,
+      "pooledP95": 207.146,
+      "pooledP99": 224.927,
+      "pooledMax": 259.888,
+      "blocksOver200msMax": 19,
+      "samplesOver200ms": 72,
+      "meanOfBlockMedians": 141.071
+    },
+    "81f0648": {
+      "pooledSamples": 1000,
+      "pooledMedian": 141.075,
+      "pooledP95": 206.95,
+      "pooledP99": 229.268,
+      "pooledMax": 274.517,
+      "blocksOver200msMax": 17,
+      "samplesOver200ms": 64,
+      "meanOfBlockMedians": 141.122
+    }
+  },
+  "differences": {
+    "5a1b2eb minus d1c09201": {
+      "median": {
+        "meanDifferenceMs": 1.546,
+        "ci95": [
+          -1.603,
+          4.523
+        ],
+        "reading": "not detected at this sample size",
+        "perRoundDifferencesMs": [
+          14.365,
+          -18.526,
+          -0.328,
+          -3.244,
+          5.828,
+          -4.203,
+          0.852,
+          1.699,
+          0.2,
+          16.883,
+          1.394,
+          2.97,
+          -2.28,
+          5.113,
+          4.607,
+          3.432,
+          5.398,
+          2.946,
+          -5.47,
+          -0.722
+        ]
+      },
+      "p95": {
+        "meanDifferenceMs": -5.389,
+        "ci95": [
+          -22.875,
+          9.028
+        ],
+        "reading": "not detected at this sample size",
+        "perRoundDifferencesMs": [
+          8.124,
+          -122.774,
+          11.793,
+          17.516,
+          -15.964,
+          -18.284,
+          22.67,
+          -15.647,
+          -63.952,
+          39.236,
+          20.11,
+          5.271,
+          26.699,
+          13.017,
+          11.213,
+          -52.113,
+          -21.862,
+          12.989,
+          -6.946,
+          21.124
+        ]
+      },
+      "max": {
+        "meanDifferenceMs": -24.478,
+        "ci95": [
+          -56.193,
+          -0.012
+        ],
+        "reading": "improvement detected in this harness",
+        "perRoundDifferencesMs": [
+          -27.967,
+          -107.535,
+          37.616,
+          1.583,
+          2.294,
+          -16.514,
+          36.304,
+          -0.501,
+          -241.982,
+          14.668,
+          -7.194,
+          -27.471,
+          -7.155,
+          -2.991,
+          -4.746,
+          -133.292,
+          1.419,
+          17.528,
+          -34.716,
+          11.097
+        ]
+      }
+    },
+    "44fbd5a minus d1c09201": {
+      "median": {
+        "meanDifferenceMs": -1.374,
+        "ci95": [
+          -4.802,
+          2.058
+        ],
+        "reading": "not detected at this sample size",
+        "perRoundDifferencesMs": [
+          7.668,
+          -18.444,
+          0.168,
+          -5.107,
+          10.502,
+          -12.127,
+          10.001,
+          1.36,
+          -5.753,
+          -1.192,
+          10.346,
+          -7.531,
+          -5.151,
+          3.417,
+          4.017,
+          -8.557,
+          6.601,
+          -5.486,
+          -7.736,
+          -4.484
+        ]
+      },
+      "p95": {
+        "meanDifferenceMs": -7.364,
+        "ci95": [
+          -24.668,
+          8.628
+        ],
+        "reading": "not detected at this sample size",
+        "perRoundDifferencesMs": [
+          46.351,
+          -107.935,
+          -22.62,
+          -0.759,
+          -24.614,
+          -38.57,
+          37.32,
+          -7.807,
+          -58.216,
+          29.465,
+          53.644,
+          -7.885,
+          19.471,
+          4.853,
+          -4.644,
+          -60.306,
+          21.764,
+          -9.749,
+          -11.9,
+          -5.142
+        ]
+      },
+      "max": {
+        "meanDifferenceMs": -29.82,
+        "ci95": [
+          -57.139,
+          -7.203
+        ],
+        "reading": "improvement detected in this harness",
+        "perRoundDifferencesMs": [
+          -13.319,
+          -126.311,
+          46.344,
+          -5.241,
+          -32.218,
+          -30.219,
+          38.89,
+          -11.714,
+          -203.735,
+          -9.156,
+          29.685,
+          -32.106,
+          -16.299,
+          -21.887,
+          -3.16,
+          -141.427,
+          -0.907,
+          -25.149,
+          -24.687,
+          -13.775
+        ]
+      }
+    },
+    "81f0648 minus d1c09201": {
+      "median": {
+        "meanDifferenceMs": -1.323,
+        "ci95": [
+          -4.976,
+          2.016
+        ],
+        "reading": "not detected at this sample size",
+        "perRoundDifferencesMs": [
+          8.406,
+          -20.555,
+          -5.224,
+          -0.966,
+          -3.37,
+          1.074,
+          5.861,
+          5.261,
+          -18.01,
+          8.875,
+          6.222,
+          -5.252,
+          -5.346,
+          -0.178,
+          8.656,
+          -6.35,
+          3.441,
+          -2.508,
+          -9.857,
+          3.358
+        ]
+      },
+      "p95": {
+        "meanDifferenceMs": -6.096,
+        "ci95": [
+          -22.984,
+          8.933
+        ],
+        "reading": "not detected at this sample size",
+        "perRoundDifferencesMs": [
+          44.776,
+          -100.73,
+          -37.571,
+          -6.477,
+          -39.362,
+          2.142,
+          37.753,
+          12.89,
+          -62.181,
+          17.067,
+          19.929,
+          -20.488,
+          22.611,
+          11.054,
+          0.616,
+          -64.015,
+          24.49,
+          -8.217,
+          6.09,
+          17.708
+        ]
+      },
+      "max": {
+        "meanDifferenceMs": -30.06,
+        "ci95": [
+          -60.689,
+          -4.846
+        ],
+        "reading": "improvement detected in this harness",
+        "perRoundDifferencesMs": [
+          -10.321,
+          -139.246,
+          -22.898,
+          -19.092,
+          -26.683,
+          -14.392,
+          7.625,
+          46.342,
+          -233.428,
+          7.508,
+          5.79,
+          -38.195,
+          -18.916,
+          -24.863,
+          -12.546,
+          -137.0,
+          30.006,
+          29.728,
+          -27.316,
+          -3.294
+        ]
+      }
+    }
+  }
+}

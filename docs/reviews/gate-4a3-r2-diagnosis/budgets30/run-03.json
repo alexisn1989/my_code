@@ -1,0 +1,122 @@
+{
+  "method": "so a second person gets the same kind of number:\n* latency is client-side wall clock over loopback (`time.perf_counter`), request sent to body read;\n* one warm-up request per endpoint is made and DISCARDED before any sample;\n* resolve latency comes from one fresh `decree_state` campaign resolved with empty decision sets to\n  turn 40 -- the scenario the frozen plan's own section 2.2 baseline used, and one measured to reach\n  turn 45 without concluding, so turn 40 is an ordinary turn and not a conclusion;\n* the save/load row saves the 40-turn campaign and loads it back ten times; loading runs\n  `validate_history`, which re-resolves every stored turn, so it is the expensive path by design;\n* the bundle row is enforced by `npm run check:bundle`, and the interaction row by the packaged\n  Playwright spec; neither is measured here.",
+  "budgets": {
+    "new_game_ms": {
+      "target": 150,
+      "stop": 300
+    },
+    "resolve_turn_le_20_ms": {
+      "target": 250,
+      "stop": 500
+    },
+    "resolve_turn_21_to_40_ms": {
+      "target": 400,
+      "stop": 800
+    },
+    "read_projection_ms": {
+      "target": 100,
+      "stop": 200
+    },
+    "load_validate_40_turn_save_ms": {
+      "target": 500,
+      "stop": 1000
+    },
+    "projection_payload_bytes": {
+      "target": 102400,
+      "stop": 204800
+    }
+  },
+  "results": {
+    "new_game_ms": {
+      "n": 20,
+      "median": 47.06,
+      "worst": 78.04
+    },
+    "resolve_turn_le_20_ms": {
+      "n": 20,
+      "median": 92.49,
+      "worst": 167.8
+    },
+    "resolve_turn_21_to_40_ms": {
+      "n": 20,
+      "median": 293.06,
+      "worst": 401.72
+    },
+    "read_projection_ms": {
+      "n": 160,
+      "median": 6.79,
+      "worst": 168.49,
+      "perEndpoint": {
+        "/api/game/state": {
+          "n": 20,
+          "median": 3.14,
+          "worst": 5.98
+        },
+        "/api/game/map/strategic": {
+          "n": 20,
+          "median": 2.29,
+          "worst": 2.67
+        },
+        "/api/game/decision-options": {
+          "n": 20,
+          "median": 9.05,
+          "worst": 10.13
+        },
+        "/api/game/military": {
+          "n": 20,
+          "median": 2.36,
+          "worst": 4.07
+        },
+        "/api/game/history": {
+          "n": 20,
+          "median": 57.61,
+          "worst": 67.64
+        },
+        "/api/game/history/40": {
+          "n": 20,
+          "median": 2.74,
+          "worst": 25.03
+        },
+        "/api/saves": {
+          "n": 20,
+          "median": 8.28,
+          "worst": 9.79
+        },
+        "/api/scenarios": {
+          "n": 20,
+          "median": 132.83,
+          "worst": 168.49
+        }
+      }
+    },
+    "load_validate_40_turn_save_ms": {
+      "n": 10,
+      "median": 159.96,
+      "worst": 191.6
+    },
+    "projection_payload_bytes": {
+      "worst": 68113,
+      "median": 2752,
+      "largest": "turn 0 /api/game/decision-options",
+      "perResponse": {
+        "turn 0 /api/game/state": 1395,
+        "turn 0 /api/game/map/strategic": 4211,
+        "turn 0 /api/game/decision-options": 68113,
+        "turn 0 /api/game/military": 877,
+        "turn 0 /api/game/history": 2,
+        "turn 0 /api/saves": 5587,
+        "turn 0 /api/scenarios": 705,
+        "turn 40 /api/game/state": 1555,
+        "turn 40 /api/game/map/strategic": 4211,
+        "turn 40 /api/game/decision-options": 68002,
+        "turn 40 /api/game/military": 879,
+        "turn 40 /api/game/history": 2752,
+        "turn 40 /api/game/history/40": 4562,
+        "turn 40 /api/saves": 5588,
+        "turn 40 /api/scenarios": 705
+      }
+    }
+  },
+  "breaches": [],
+  "runId": "r2-03"
+}
