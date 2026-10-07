@@ -792,9 +792,44 @@ than assumed in advance.
   ([`gate-4a3-commit6-budget-waiver.md`](reviews/gate-4a3-commit6-budget-waiver.md)). Commit 6c fixed
   it with a validation memo keyed by the SHA-256 of each save's exact bytes, which the user
   authorized ([`gate-4a3-commit6c-saves.md`](reviews/gate-4a3-commit6c-saves.md)): worst 10.8 ms on
-  the verified archive, and the waiver is ended. Also
-  still owed: **D1** (`Portrait`'s frame colour), **T2** (the `reason_id` shown beside each driver),
-  and the three divergences carried from the characters slice.
+  the verified archive, and the waiver is ended. Still owed: the three divergences carried from the
+  characters slice. **D1** (`Portrait`'s frame colour) is closed in UX-4c, and **T2** (the `reason_id`
+  shown beside each driver) in UX-2; both are listed below.
+
+  **UX polish pass before the external playtest.** Thirteen forward-only commits, each with its
+  record in `docs/reviews/gate-4a3-ux*`:
+  - UX-1 `bf66b8e6`: a route-aware preview and a visible decree choice.
+  - UX-1a `8923843`: preview parity with resolution, in both chambers.
+  - UX-2 `99c8f73`: the turn's cause first, bookkeeping folded, and T2 moved into the Trace.
+  - UX-3 `9c08dac`: the stakes, "Plan turn N", no dead-end screens, and a real national tint.
+  - UX-3a `c8b86d1`: the tint proved to follow legitimacy, and report provenance corrected.
+  - UX-4a `689bbb5`: money shown as grouped denars.
+  - UX-4b `132f098`: one count of staged actions.
+  - UX-4c `5a1b2eb`: 320px reflow, D1's navy tile with a gold ring, and the phone's first screen.
+  - UX-4d `13603b7`, UX-4f `7254ee5`, UX-4h `5e69c92`: release verification and an installed-build
+    internal dry run.
+  - UX-4e `44fbd5a`: decree turns never say the legislature voted, the outcome first, and blocs
+    named.
+  - UX-4g `81f0648`: negative percentages keep their sign, and the chamber tally is worded as votes.
+
+  The internal dry runs are not playtesters, and they do not count toward the playtest.
+
+  **The approved playtest build** is the release archive built from `81f0648`, sha256
+  `058d779ff5a5d09b9a78999bd21055b17c519422b51a6e2f6ff49142e1747740` (`SOURCE_DATE_EPOCH`
+  1791162475). [`gate-4a3-ux4h-release-and-dry-run.md`](reviews/gate-4a3-ux4h-release-and-dry-run.md)
+  records it as reproducible and identical from a fresh clone, and verified `PASSED` (run
+  `d9590709…`). The user approved it for the playtest after reviewing `81f0648` and `5e69c92`.
+
+  **Carried risks for the facilitator:**
+  - **R1:** a fresh server's first listing of many long saves is slow (about 1.5 s for 20), and a
+    fresh save root per tester keeps it small
+    ([`gate-4a3-commit6c-saves.md`](reviews/gate-4a3-commit6c-saves.md) §3.2).
+  - **R2:** `/api/scenarios` read latency sits near its 200 ms STOP. **Open:** run-to-run variation
+    observed, cause unresolved, regression not ruled out
+    ([`gate-4a3-ux4g-corrections.md`](reviews/gate-4a3-ux4g-corrections.md) §3).
+  - **R3:** History's "Turn N — …" entries name the turn a result produced. The result heading itself
+    is the neutral "Turn outcome" (UX-4e).
+  - **R4:** foreign-assistance amounts are shown in minor units, in the CLI and the browser alike.
 
 ## Characters, cabinet appointments and leader negotiations — **complete**
 
