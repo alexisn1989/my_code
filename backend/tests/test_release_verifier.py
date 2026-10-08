@@ -369,3 +369,35 @@ def test_a_failed_final_write_releases_all_three_reservations(
         vr.main(["a.tar.gz", "--out", "release", "--budgets-out", "budgets", "--packaged-out", "p"])
     assert sorted(p.name for p in tmp_path.iterdir()) == ["unrelated.json"]
     assert (tmp_path / "unrelated.json").read_bytes() == b"keep\n"
+
+
+# ------------------------------------------------------------------ Gate 4A3 R2 fix: the YAML loader
+
+
+def test_a_release_install_with_libyaml_passes_the_loader_check() -> None:
+    assert vr.require_c_loader("yaml.cyaml.CSafeLoader") == "yaml.cyaml.CSafeLoader"
+
+
+@pytest.mark.parametrize("selected", ["yaml.loader.SafeLoader", "", "yaml.loader.UnsafeLoader"])
+def test_a_release_install_without_the_c_loader_is_refused(selected: str) -> None:
+    with pytest.raises(vr.VerifyError, match="no libyaml"):
+        vr.require_c_loader(selected)
+
+
+def test_the_provenance_probe_reports_the_loader_this_interpreter_selects() -> None:
+    backend = Path(__file__).resolve().parents[1]
+    lines = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import sys; sys.path.insert(0, {str(backend)!r}); " + vr.PROVENANCE_PROBE,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\n")
+    import yaml
+
+    expected = "yaml.cyaml.CSafeLoader" if yaml.__with_libyaml__ else "yaml.loader.SafeLoader"
+    assert lines[2] == expected
+    assert lines[3] == str(yaml.__with_libyaml__)

@@ -285,6 +285,29 @@ def verify_checksums(top: Path) -> int:
 # ------------------------------------------------------------------ 3-5. install and launch
 
 
+#: The YAML loader a release install must select (Gate 4A3 R2 fix): libyaml's C safe loader.
+REQUIRED_YAML_LOADER = "yaml.cyaml.CSafeLoader"
+
+#: Run by the installed interpreter: where `app` came from, and which YAML loader it selected.
+PROVENANCE_PROBE = (
+    "import app, sys, yaml; from app.simulation import scenario; "
+    "print(app.__file__); print(sys.prefix); "
+    "print(scenario._SAFE_LOADER.__module__ + '.' + scenario._SAFE_LOADER.__qualname__); "
+    "print(yaml.__with_libyaml__)"
+)
+
+
+def require_c_loader(selected: str) -> str:
+    """A release install must read scenarios with libyaml's C loader; the Python fallback is the
+    slow path R2 measured, acceptable for a source install but not for a shipped archive."""
+    if selected != REQUIRED_YAML_LOADER:
+        raise VerifyError(
+            f"the installed app selected YAML loader {selected!r}, not {REQUIRED_YAML_LOADER!r}: "
+            "this install has no libyaml"
+        )
+    return selected
+
+
 def readme_commands(top: Path) -> list[str]:
     text = (top / "README.md").read_text()
     blocks = re.findall(r"```\n(.*?)```", text, flags=re.DOTALL)
@@ -422,19 +445,21 @@ def verify(archive: Path) -> tuple[dict[str, object], str, str]:
 
         python = top / ".venv" / "bin" / "python"
         origin = subprocess.run(
-            [str(python), "-c", "import app, sys; print(app.__file__); print(sys.prefix)"],
+            [str(python), "-c", PROVENANCE_PROBE],
             cwd=work,
             env=env,
             check=True,
             capture_output=True,
             text=True,
         ).stdout.split("\n")
-        app_file, prefix = origin[0], origin[1]
+        app_file, prefix, loader, with_libyaml = origin[0], origin[1], origin[2], origin[3]
         if str(REPO_ROOT) in app_file or not app_file.startswith(str(top / ".venv")):
             raise VerifyError(f"`app` imported from {app_file}, not from the new virtualenv")
         record["provenance"] = {
             "app.__file__": app_file.replace(str(work), "<work>"),
             "sys.prefix": prefix.replace(str(work), "<work>"),
+            "yamlLoader": require_c_loader(loader),
+            "yamlWithLibyaml": with_libyaml == "True",
         }
 
         port = free_port()

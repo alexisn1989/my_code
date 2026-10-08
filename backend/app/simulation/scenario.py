@@ -25,9 +25,16 @@ get to declare which simulation rules it runs under; `extra="forbid"` on
 `ScenarioDefinition` means a scenario YAML that still has a `ruleset_version:`
 key (e.g. an old one, before this changed) fails to parse rather than being
 silently accepted with a value nobody checks.
+
+YAML is read with libyaml's `CSafeLoader` when the installed PyYAML has it, and with the pure-Python
+`SafeLoader` otherwise (`select_safe_loader`). Both are SAFE loaders; the C one is about nine times
+faster on the shipped scenarios (Gate 4A3 R2), and the release verifier requires it in a release
+install. Agreement between the two is tested on this repository's YAML corpus only.
 """
 
 from __future__ import annotations
+
+from types import ModuleType
 
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -88,9 +95,25 @@ class ScenarioDefinition(BaseModel):
     two arrive together."""
 
 
+def select_safe_loader(yaml_module: ModuleType) -> type[yaml.CSafeLoader] | type[yaml.SafeLoader]:
+    """libyaml's `CSafeLoader` when this PyYAML install has it, else the pure-Python `SafeLoader`.
+
+    The two are separate classes (`CSafeLoader` is not a `SafeLoader` subclass); both construct
+    with PyYAML's `SafeConstructor`."""
+    c_loader: type[yaml.CSafeLoader] | None = getattr(yaml_module, "CSafeLoader", None)
+    if c_loader is not None:
+        return c_loader
+    python_loader: type[yaml.SafeLoader] = yaml_module.SafeLoader
+    return python_loader
+
+
+#: Chosen once, at import, from what the installed PyYAML provides.
+_SAFE_LOADER = select_safe_loader(yaml)
+
+
 def _parse(source: str, raw_text: str) -> ScenarioDefinition:
     try:
-        raw = yaml.safe_load(raw_text)
+        raw = yaml.load(raw_text, Loader=_SAFE_LOADER)  # noqa: S506 -- always a SafeLoader, C or Python
     except yaml.YAMLError as exc:
         raise ScenarioValidationError(source, [f"invalid YAML: {exc}"]) from exc
 
