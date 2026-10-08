@@ -812,33 +812,46 @@ than assumed in advance.
     named.
   - UX-4g `81f0648`: negative percentages keep their sign, and the chamber tally is worded as votes.
 
+  **R2 work after the UX pass:**
+  - `0dbab48`: diagnosis of the `/api/scenarios` latency.
+  - `a322484`: the fix, which reads scenario YAML with libyaml's C loader.
+  - `70f8226`: the candidate release, measured.
+
   The internal dry runs are not playtesters, and they do not count toward the playtest.
 
-  **The approved playtest build** is the release archive built from `81f0648`, sha256
-  `058d779ff5a5d09b9a78999bd21055b17c519422b51a6e2f6ff49142e1747740` (`SOURCE_DATE_EPOCH`
-  1791162475). [`gate-4a3-ux4h-release-and-dry-run.md`](reviews/gate-4a3-ux4h-release-and-dry-run.md)
-  records it as reproducible and identical from a fresh clone, and verified `PASSED` (run
-  `d9590709…`). The user approved it for the playtest after reviewing `81f0648` and `5e69c92`.
+  **The approved playtest build** is the release archive built from `a322484`, sha256
+  `f542cf281334a8f1aeb535864d63bb97e3b67bae617df820a2602f40cce7eae1` (`SOURCE_DATE_EPOCH`
+  1791427147).
+  [`gate-4a3-r2fix-release-and-dry-run.md`](reviews/gate-4a3-r2fix-release-and-dry-run.md) records:
+  - it is reproducible, and identical from a fresh clone;
+  - it was verified `PASSED` (run `fd3208fc…`), with the installed C YAML loader confirmed;
+  - its enforced internal dry run passed.
+
+  The user switched the playtest to this build after reviewing the R2 fix (`a322484`) and its release
+  record (`70f8226`).
+
+  It supersedes, for the playtest, the earlier approved archive built from `81f0648` (sha256
+  `058d779f…`, UX-4h, run `d9590709…`). That build's records are unchanged.
 
   **Carried risks for the facilitator:**
   - **R1:** a fresh server's first listing of many long saves is slow (about 1.5 s for 20), and a
     fresh save root per tester keeps it small
     ([`gate-4a3-commit6c-saves.md`](reviews/gate-4a3-commit6c-saves.md) §3.2).
-  - **R2:** `/api/scenarios` read latency sits near its 200 ms STOP. **Open on the approved playtest
-    archive.** Diagnosed in
+  - **R2:** `/api/scenarios` read latency, against a 200 ms STOP. Diagnosed in
     [`gate-4a3-r2-diagnosis.md`](reviews/gate-4a3-r2-diagnosis.md):
     - **The median:** most of each request is PyYAML's pure-Python parse of the three scenario files,
-      about 125 ms. libyaml is installed but unused.
+      about 125 ms. libyaml was installed but unused before the fix.
     - **The builds:** no median or p95 difference was detected between 6c and the final build.
-    - **The release check:** its worst-of-20 rule breached in 14 of 30 matched runs (95% CI
-      28–66%), conditional on that machine and workload.
+    - **The release check, on the superseded `81f0648` archive:** its worst-of-20 rule breached in
+      14 of 30 matched runs (95% CI 28–66%), conditional on that machine and workload.
     - **The tail:** its cause is not established.
-    - **A fix exists as a separate candidate build.** It reads the YAML with libyaml's C loader
-      (`a322484`), and the candidate archive is `f542cf28…`. That candidate passed `verify_release`,
-      and 0 of 30 matched runs breached (95% upper bound 11.6%) on that machine
+    - **On the playtest build (`a322484`, libyaml's C loader):** `verify_release` `PASSED`, and 0 of
+      30 matched runs breached (95% upper bound 11.6%) on that machine
       ([`gate-4a3-r2fix-release-and-dry-run.md`](reviews/gate-4a3-r2fix-release-and-dry-run.md)).
-      Whether the playtest moves to it is the user's decision. A Python-only install keeps the slow
-      path.
+      **R2 is not closed:** a nonzero failure rate is not excluded, and the tail's cause was never
+      established. It stays listed for the facilitator.
+    - **On a Python-only install,** the slow path remains, and `verify_release` refuses such an
+      install as a release.
 
     It was earlier recorded as "variation observed; cause unresolved"
     ([`gate-4a3-ux4g-corrections.md`](reviews/gate-4a3-ux4g-corrections.md) §3).
