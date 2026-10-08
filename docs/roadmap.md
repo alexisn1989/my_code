@@ -824,7 +824,8 @@ than assumed in advance.
   - **R1:** a fresh server's first listing of many long saves is slow (about 1.5 s for 20), and a
     fresh save root per tester keeps it small
     ([`gate-4a3-commit6c-saves.md`](reviews/gate-4a3-commit6c-saves.md) §3.2).
-  - **R2:** `/api/scenarios` read latency sits near its 200 ms STOP. **Open.** Diagnosed in
+  - **R2:** `/api/scenarios` read latency sits near its 200 ms STOP. **Open on the approved playtest
+    archive.** Diagnosed in
     [`gate-4a3-r2-diagnosis.md`](reviews/gate-4a3-r2-diagnosis.md):
     - **The median:** most of each request is PyYAML's pure-Python parse of the three scenario files,
       about 125 ms. libyaml is installed but unused.
@@ -832,7 +833,12 @@ than assumed in advance.
     - **The release check:** its worst-of-20 rule breached in 14 of 30 matched runs (95% CI
       28–66%), conditional on that machine and workload.
     - **The tail:** its cause is not established.
-    - **Fix options:** these await a separate review.
+    - **A fix exists as a separate candidate build.** It reads the YAML with libyaml's C loader
+      (`a322484`), and the candidate archive is `f542cf28…`. That candidate passed `verify_release`,
+      and 0 of 30 matched runs breached (95% upper bound 11.6%) on that machine
+      ([`gate-4a3-r2fix-release-and-dry-run.md`](reviews/gate-4a3-r2fix-release-and-dry-run.md)).
+      Whether the playtest moves to it is the user's decision. A Python-only install keeps the slow
+      path.
 
     It was earlier recorded as "variation observed; cause unresolved"
     ([`gate-4a3-ux4g-corrections.md`](reviews/gate-4a3-ux4g-corrections.md) §3).

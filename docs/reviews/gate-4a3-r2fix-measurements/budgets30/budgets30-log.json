@@ -1,0 +1,635 @@
+{
+  "runs": 30,
+  "log": [
+    {
+      "run": 0,
+      "port": 60601,
+      "exit": 0,
+      "seconds": 12.3,
+      "loadavg": [
+        0.89306640625,
+        0.97119140625,
+        0.822265625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 56.61,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 21.1,
+        "worst": 56.61
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 1,
+      "port": 35689,
+      "exit": 0,
+      "seconds": 12.1,
+      "loadavg": [
+        0.91748046875,
+        0.97265625,
+        0.8251953125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 61.25,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 18.88,
+        "worst": 45.1
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 2,
+      "port": 56597,
+      "exit": 0,
+      "seconds": 12.7,
+      "loadavg": [
+        0.9365234375,
+        0.97412109375,
+        0.828125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 54.86,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 19.71,
+        "worst": 54.86
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 3,
+      "port": 46863,
+      "exit": 0,
+      "seconds": 13.5,
+      "loadavg": [
+        0.951171875,
+        0.9755859375,
+        0.8310546875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 80.91,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 20.93,
+        "worst": 80.91
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 4,
+      "port": 55497,
+      "exit": 0,
+      "seconds": 12.5,
+      "loadavg": [
+        0.95947265625,
+        0.9765625,
+        0.8330078125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 69.97,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 21.21,
+        "worst": 69.97
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 5,
+      "port": 38551,
+      "exit": 0,
+      "seconds": 13.4,
+      "loadavg": [
+        0.96923828125,
+        0.97802734375,
+        0.8359375
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 59.73,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 20.94,
+        "worst": 59.73
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 6,
+      "port": 33929,
+      "exit": 0,
+      "seconds": 12.3,
+      "loadavg": [
+        0.97705078125,
+        0.9794921875,
+        0.8388671875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 58.06,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 18.95,
+        "worst": 51.76
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 7,
+      "port": 35561,
+      "exit": 0,
+      "seconds": 12.7,
+      "loadavg": [
+        0.98291015625,
+        0.98095703125,
+        0.841796875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 56.42,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 19.26,
+        "worst": 56.42
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 8,
+      "port": 46423,
+      "exit": 0,
+      "seconds": 12.6,
+      "loadavg": [
+        0.9873046875,
+        0.982421875,
+        0.8447265625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 63.01,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 22.43,
+        "worst": 54.01
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 9,
+      "port": 52555,
+      "exit": 0,
+      "seconds": 12.4,
+      "loadavg": [
+        1.06298828125,
+        1.0,
+        0.85205078125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 52.14,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 20.12,
+        "worst": 52.14
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 10,
+      "port": 35079,
+      "exit": 0,
+      "seconds": 12.2,
+      "loadavg": [
+        1.04833984375,
+        1.0,
+        0.85498046875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 67.85,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 20.06,
+        "worst": 53.4
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 11,
+      "port": 44915,
+      "exit": 0,
+      "seconds": 12.9,
+      "loadavg": [
+        1.037109375,
+        1.0,
+        0.85791015625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 59.7,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 19.92,
+        "worst": 56.52
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 12,
+      "port": 37017,
+      "exit": 0,
+      "seconds": 12.4,
+      "loadavg": [
+        1.02783203125,
+        1.0,
+        0.86083984375
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 68.92,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 20.53,
+        "worst": 57.8
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 13,
+      "port": 33139,
+      "exit": 0,
+      "seconds": 13.0,
+      "loadavg": [
+        1.02099609375,
+        1.0,
+        0.86376953125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 66.7,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 20.52,
+        "worst": 55.1
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 14,
+      "port": 47821,
+      "exit": 0,
+      "seconds": 12.7,
+      "loadavg": [
+        1.015625,
+        1.0,
+        0.86669921875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 62.12,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 21.69,
+        "worst": 61.28
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 15,
+      "port": 41775,
+      "exit": 0,
+      "seconds": 12.7,
+      "loadavg": [
+        1.0126953125,
+        1.0,
+        0.86865234375
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 72.75,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 21.03,
+        "worst": 60.09
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 16,
+      "port": 43605,
+      "exit": 0,
+      "seconds": 13.4,
+      "loadavg": [
+        1.00927734375,
+        1.0,
+        0.87158203125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 76.14,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 20.36,
+        "worst": 76.14
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 17,
+      "port": 46431,
+      "exit": 0,
+      "seconds": 13.5,
+      "loadavg": [
+        1.00634765625,
+        1.0,
+        0.87451171875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 69.7,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 21.04,
+        "worst": 67.68
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 18,
+      "port": 59597,
+      "exit": 0,
+      "seconds": 13.1,
+      "loadavg": [
+        1.00439453125,
+        1.0,
+        0.87744140625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 69.1,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 20.83,
+        "worst": 63.38
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 19,
+      "port": 47535,
+      "exit": 0,
+      "seconds": 13.2,
+      "loadavg": [
+        1.0029296875,
+        1.0,
+        0.88037109375
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 58.05,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 18.94,
+        "worst": 48.56
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 20,
+      "port": 52475,
+      "exit": 0,
+      "seconds": 13.0,
+      "loadavg": [
+        1.00146484375,
+        1.0,
+        0.88330078125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 57.63,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 20.7,
+        "worst": 57.63
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 21,
+      "port": 44827,
+      "exit": 0,
+      "seconds": 12.9,
+      "loadavg": [
+        1.0,
+        1.0,
+        0.88623046875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 67.4,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 21.06,
+        "worst": 67.4
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 22,
+      "port": 37891,
+      "exit": 0,
+      "seconds": 13.1,
+      "loadavg": [
+        1.0,
+        1.0,
+        0.88916015625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 64.31,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 22.54,
+        "worst": 64.31
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 23,
+      "port": 40489,
+      "exit": 0,
+      "seconds": 13.9,
+      "loadavg": [
+        1.0,
+        1.0,
+        0.89208984375
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 86.09,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 22.36,
+        "worst": 64.3
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 24,
+      "port": 41527,
+      "exit": 0,
+      "seconds": 13.5,
+      "loadavg": [
+        1.0,
+        1.0,
+        0.89501953125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 76.81,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 20.41,
+        "worst": 76.81
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 25,
+      "port": 47847,
+      "exit": 0,
+      "seconds": 13.1,
+      "loadavg": [
+        1.0,
+        1.0,
+        0.89794921875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 79.3,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 23.64,
+        "worst": 79.3
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 26,
+      "port": 34987,
+      "exit": 0,
+      "seconds": 14.2,
+      "loadavg": [
+        1.0,
+        1.0,
+        0.90087890625
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 63.91,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 21.68,
+        "worst": 61.64
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 27,
+      "port": 48335,
+      "exit": 0,
+      "seconds": 13.9,
+      "loadavg": [
+        1.0,
+        1.0,
+        0.90380859375
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 69.32,
+      "readWorstEndpoint": "/api/game/history",
+      "scenarios": {
+        "n": 20,
+        "median": 20.89,
+        "worst": 66.44
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 28,
+      "port": 53853,
+      "exit": 0,
+      "seconds": 13.3,
+      "loadavg": [
+        1.0,
+        1.0,
+        0.90673828125
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 71.6,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 24.23,
+        "worst": 71.6
+      },
+      "serverExit": 0
+    },
+    {
+      "run": 29,
+      "port": 41649,
+      "exit": 0,
+      "seconds": 14.5,
+      "loadavg": [
+        1.0,
+        1.0,
+        0.90966796875
+      ],
+      "stderrTail": "",
+      "breaches": [],
+      "readWorst": 75.68,
+      "readWorstEndpoint": "/api/scenarios",
+      "scenarios": {
+        "n": 20,
+        "median": 21.98,
+        "worst": 75.68
+      },
+      "serverExit": 0
+    }
+  ]
+}
