@@ -1,0 +1,36 @@
+app: /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/__init__.py
+one validate_history of a 41-entry save
+
+         148522 function calls (147282 primitive calls) in 0.161 seconds
+
+   Ordered by: cumulative time
+   List reduced from 556 to 25 due to restriction <25>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.004    0.004    0.162    0.162 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/simulation/history.py:287(validate_history)
+       41    0.001    0.000    0.104    0.003 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/simulation/history.py:479(_validate_entry_payload)
+      121    0.000    0.000    0.055    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/pydantic/main.py:693(model_validate)
+      121    0.025    0.000    0.055    0.000 {method 'validate_python' of 'pydantic_core._pydantic_core.SchemaValidator' objects}
+      482    0.000    0.000    0.038    0.000 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/core/canonical_json.py:51(canonical_dumps)
+      482    0.001    0.000    0.038    0.000 /usr/lib/python3.11/json/__init__.py:183(dumps)
+      482    0.001    0.000    0.037    0.000 /usr/lib/python3.11/json/encoder.py:183(encode)
+      482    0.036    0.000    0.036    0.000 /usr/lib/python3.11/json/encoder.py:205(iterencode)
+       40    0.004    0.000    0.026    0.001 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/simulation/reconciliation.py:481(reconcile_political_legislative_and_survival_report)
+      201    0.002    0.000    0.018    0.000 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/core/canonical_json.py:73(canonical_digest)
+       80    0.001    0.000    0.016    0.000 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/simulation/reconciliation.py:3589(reconcile_strategic_map_staticness)
+      201    0.000    0.000    0.015    0.000 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/core/canonical_json.py:68(canonical_bytes)
+      121    0.000    0.000    0.011    0.000 /usr/lib/python3.11/json/__init__.py:299(loads)
+       80    0.001    0.000    0.011    0.000 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/simulation/reconciliation.py:4639(character_registry_moved_only_by_promise_trust)
+      121    0.000    0.000    0.011    0.000 /usr/lib/python3.11/json/decoder.py:332(decode)
+      121    0.010    0.000    0.010    0.000 /usr/lib/python3.11/json/decoder.py:343(raw_decode)
+     1600    0.002    0.000    0.009    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/pydantic/main.py:393(model_copy)
+       40    0.001    0.000    0.009    0.000 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/simulation/reconciliation.py:2881(reconcile_foreign_affairs_report)
+       41    0.001    0.000    0.008    0.000 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/simulation/invariants.py:1279(check_invariants)
+       40    0.000    0.000    0.008    0.000 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/simulation/reconciliation.py:3671(reconcile_formation_movement)
+      280    0.000    0.000    0.007    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/pydantic/main.py:427(model_dump)
+      280    0.006    0.000    0.007    0.000 {method 'to_python' of 'pydantic_core._pydantic_core.SchemaSerializer' objects}
+     1600    0.003    0.000    0.007    0.000 /home/user/my_code/backend/.venv/lib/python3.11/site-packages/pydantic/main.py:971(__copy__)
+       40    0.000    0.000    0.006    0.000 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/simulation/reconciliation.py:4270(_reconcile_legislative_bargain)
+       40    0.000    0.000    0.006    0.000 /tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r2/exports/a322484/backend/app/simulation/reconciliation.py:2626(_reconcile_foreign_assistance)
+
+

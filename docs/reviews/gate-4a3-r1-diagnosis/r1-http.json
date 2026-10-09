@@ -1,0 +1,697 @@
+{
+  "install": "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r1/install/mandate-gui-0.1.0",
+  "appFile": "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/r1/install/mandate-gui-0.1.0/.venv/lib/python3.11/site-packages/app/__init__.py",
+  "python": "3.11.15 (main, Mar  3 2026, 09:26:23) [GCC 13.3.0]",
+  "dependencies": "{'pyyaml': '6.0.3', 'pydantic': '2.13.4', 'pydantic-core': '2.46.4', 'fastapi': '0.141.1', 'starlette': '1.3.1'}",
+  "pathReps": 20,
+  "worstReps": 10,
+  "partA": [
+    {
+      "rep": 0,
+      "resolve_turns_1_to_5_ms": [
+        24.781,
+        29.021,
+        34.65,
+        41.442,
+        51.955
+      ],
+      "save_as_after_5_ms": 10.648,
+      "list_after_first_save_ms": 5.913,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.317,
+      "resolve_turns_6_to_10_ms": [
+        85.629,
+        64.029,
+        66.646,
+        77.877,
+        102.775
+      ],
+      "save_as_after_10_ms": 10.232,
+      "list_after_second_save_ms": 7.692,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 79.786,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 5.876,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 1,
+      "resolve_turns_1_to_5_ms": [
+        26.553,
+        27.867,
+        34.25,
+        42.821,
+        54.486
+      ],
+      "save_as_after_5_ms": 9.718,
+      "list_after_first_save_ms": 4.952,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.331,
+      "resolve_turns_6_to_10_ms": [
+        81.911,
+        59.501,
+        80.57,
+        75.277,
+        76.232
+      ],
+      "save_as_after_10_ms": 15.572,
+      "list_after_second_save_ms": 7.217,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 62.447,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 7.53,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 2,
+      "resolve_turns_1_to_5_ms": [
+        27.974,
+        31.239,
+        38.264,
+        45.829,
+        54.491
+      ],
+      "save_as_after_5_ms": 8.499,
+      "list_after_first_save_ms": 5.769,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.639,
+      "resolve_turns_6_to_10_ms": [
+        89.598,
+        64.742,
+        79.148,
+        90.034,
+        88.231
+      ],
+      "save_as_after_10_ms": 11.885,
+      "list_after_second_save_ms": 6.142,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 95.192,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 6.124,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 3,
+      "resolve_turns_1_to_5_ms": [
+        22.65,
+        28.396,
+        35.307,
+        42.282,
+        49.167
+      ],
+      "save_as_after_5_ms": 9.996,
+      "list_after_first_save_ms": 6.011,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 5.48,
+      "resolve_turns_6_to_10_ms": [
+        108.602,
+        66.2,
+        67.823,
+        74.112,
+        83.382
+      ],
+      "save_as_after_10_ms": 9.197,
+      "list_after_second_save_ms": 6.709,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 59.97,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 6.709,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 4,
+      "resolve_turns_1_to_5_ms": [
+        25.306,
+        28.791,
+        40.149,
+        41.266,
+        49.055
+      ],
+      "save_as_after_5_ms": 9.053,
+      "list_after_first_save_ms": 4.701,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 3.972,
+      "resolve_turns_6_to_10_ms": [
+        83.884,
+        64.611,
+        71.765,
+        81.448,
+        85.696
+      ],
+      "save_as_after_10_ms": 12.076,
+      "list_after_second_save_ms": 6.445,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 67.148,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 6.713,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 5,
+      "resolve_turns_1_to_5_ms": [
+        25.557,
+        30.362,
+        37.286,
+        44.099,
+        44.538
+      ],
+      "save_as_after_5_ms": 8.355,
+      "list_after_first_save_ms": 4.547,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.267,
+      "resolve_turns_6_to_10_ms": [
+        83.699,
+        63.918,
+        78.312,
+        75.042,
+        83.364
+      ],
+      "save_as_after_10_ms": 9.763,
+      "list_after_second_save_ms": 6.018,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 59.702,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 6.738,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 6,
+      "resolve_turns_1_to_5_ms": [
+        26.239,
+        26.307,
+        39.31,
+        44.738,
+        51.838
+      ],
+      "save_as_after_5_ms": 9.781,
+      "list_after_first_save_ms": 5.701,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.692,
+      "resolve_turns_6_to_10_ms": [
+        85.259,
+        68.616,
+        73.687,
+        88.314,
+        86.339
+      ],
+      "save_as_after_10_ms": 10.475,
+      "list_after_second_save_ms": 5.951,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 61.181,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 6.575,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 7,
+      "resolve_turns_1_to_5_ms": [
+        23.379,
+        28.558,
+        36.261,
+        44.941,
+        52.2
+      ],
+      "save_as_after_5_ms": 9.651,
+      "list_after_first_save_ms": 4.641,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 3.918,
+      "resolve_turns_6_to_10_ms": [
+        82.682,
+        63.666,
+        69.16,
+        97.731,
+        84.225
+      ],
+      "save_as_after_10_ms": 11.112,
+      "list_after_second_save_ms": 6.324,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 57.21,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 5.17,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 8,
+      "resolve_turns_1_to_5_ms": [
+        21.994,
+        28.16,
+        34.698,
+        43.802,
+        48.279
+      ],
+      "save_as_after_5_ms": 7.666,
+      "list_after_first_save_ms": 4.627,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.942,
+      "resolve_turns_6_to_10_ms": [
+        92.269,
+        71.152,
+        75.656,
+        81.403,
+        83.719
+      ],
+      "save_as_after_10_ms": 11.009,
+      "list_after_second_save_ms": 7.449,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 68.209,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 6.899,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 9,
+      "resolve_turns_1_to_5_ms": [
+        22.429,
+        28.449,
+        40.812,
+        47.156,
+        56.672
+      ],
+      "save_as_after_5_ms": 7.795,
+      "list_after_first_save_ms": 5.055,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 3.764,
+      "resolve_turns_6_to_10_ms": [
+        101.789,
+        65.804,
+        100.85,
+        79.677,
+        95.564
+      ],
+      "save_as_after_10_ms": 10.722,
+      "list_after_second_save_ms": 6.358,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 95.149,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 8.189,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 10,
+      "resolve_turns_1_to_5_ms": [
+        36.164,
+        34.993,
+        43.506,
+        49.499,
+        56.969
+      ],
+      "save_as_after_5_ms": 9.92,
+      "list_after_first_save_ms": 4.993,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.687,
+      "resolve_turns_6_to_10_ms": [
+        81.529,
+        59.251,
+        74.163,
+        76.943,
+        84.953
+      ],
+      "save_as_after_10_ms": 11.019,
+      "list_after_second_save_ms": 5.886,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 67.023,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 5.711,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 11,
+      "resolve_turns_1_to_5_ms": [
+        22.342,
+        28.861,
+        34.433,
+        43.068,
+        50.171
+      ],
+      "save_as_after_5_ms": 8.699,
+      "list_after_first_save_ms": 5.201,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.038,
+      "resolve_turns_6_to_10_ms": [
+        82.801,
+        59.214,
+        71.618,
+        70.537,
+        85.495
+      ],
+      "save_as_after_10_ms": 9.579,
+      "list_after_second_save_ms": 7.002,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 69.216,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 6.309,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 12,
+      "resolve_turns_1_to_5_ms": [
+        27.793,
+        34.328,
+        42.606,
+        62.903,
+        56.166
+      ],
+      "save_as_after_5_ms": 7.799,
+      "list_after_first_save_ms": 6.358,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 5.38,
+      "resolve_turns_6_to_10_ms": [
+        106.226,
+        67.881,
+        89.737,
+        85.104,
+        92.443
+      ],
+      "save_as_after_10_ms": 10.969,
+      "list_after_second_save_ms": 6.03,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 85.427,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 6.707,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 13,
+      "resolve_turns_1_to_5_ms": [
+        23.135,
+        35.565,
+        43.561,
+        44.901,
+        48.684
+      ],
+      "save_as_after_5_ms": 8.149,
+      "list_after_first_save_ms": 5.543,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 5.018,
+      "resolve_turns_6_to_10_ms": [
+        112.345,
+        76.825,
+        112.567,
+        97.18,
+        107.668
+      ],
+      "save_as_after_10_ms": 12.504,
+      "list_after_second_save_ms": 6.182,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 71.005,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 5.538,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 14,
+      "resolve_turns_1_to_5_ms": [
+        27.963,
+        26.61,
+        37.582,
+        46.689,
+        54.283
+      ],
+      "save_as_after_5_ms": 8.19,
+      "list_after_first_save_ms": 5.02,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 3.895,
+      "resolve_turns_6_to_10_ms": [
+        95.495,
+        81.977,
+        106.484,
+        96.819,
+        108.359
+      ],
+      "save_as_after_10_ms": 12.429,
+      "list_after_second_save_ms": 6.229,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 69.78,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 5.112,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 15,
+      "resolve_turns_1_to_5_ms": [
+        22.578,
+        29.692,
+        35.719,
+        43.404,
+        48.677
+      ],
+      "save_as_after_5_ms": 10.171,
+      "list_after_first_save_ms": 5.896,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.384,
+      "resolve_turns_6_to_10_ms": [
+        88.909,
+        66.443,
+        80.383,
+        106.045,
+        90.47
+      ],
+      "save_as_after_10_ms": 9.719,
+      "list_after_second_save_ms": 7.158,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 61.83,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 5.943,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 16,
+      "resolve_turns_1_to_5_ms": [
+        41.815,
+        36.091,
+        52.392,
+        55.811,
+        71.245
+      ],
+      "save_as_after_5_ms": 8.424,
+      "list_after_first_save_ms": 7.751,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.585,
+      "resolve_turns_6_to_10_ms": [
+        89.157,
+        83.089,
+        100.952,
+        113.92,
+        116.306
+      ],
+      "save_as_after_10_ms": 13.264,
+      "list_after_second_save_ms": 6.123,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 57.255,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 5.943,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 17,
+      "resolve_turns_1_to_5_ms": [
+        28.556,
+        36.659,
+        38.156,
+        41.895,
+        53.489
+      ],
+      "save_as_after_5_ms": 9.01,
+      "list_after_first_save_ms": 6.721,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.508,
+      "resolve_turns_6_to_10_ms": [
+        81.314,
+        64.842,
+        69.433,
+        72.825,
+        81.971
+      ],
+      "save_as_after_10_ms": 10.904,
+      "list_after_second_save_ms": 6.534,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 57.368,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 7.122,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 18,
+      "resolve_turns_1_to_5_ms": [
+        27.471,
+        44.616,
+        46.537,
+        46.392,
+        59.559
+      ],
+      "save_as_after_5_ms": 10.462,
+      "list_after_first_save_ms": 5.023,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.408,
+      "resolve_turns_6_to_10_ms": [
+        85.221,
+        68.575,
+        80.516,
+        80.279,
+        91.842
+      ],
+      "save_as_after_10_ms": 12.309,
+      "list_after_second_save_ms": 5.554,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 54.058,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 5.772,
+      "server_exit_second": 0
+    },
+    {
+      "rep": 19,
+      "resolve_turns_1_to_5_ms": [
+        26.044,
+        31.965,
+        41.536,
+        56.928,
+        56.657
+      ],
+      "save_as_after_5_ms": 9.055,
+      "list_after_first_save_ms": 4.98,
+      "saves_listed_after_first_save": 2,
+      "list_warm_ms": 4.585,
+      "resolve_turns_6_to_10_ms": [
+        92.841,
+        99.49,
+        76.736,
+        99.676,
+        104.003
+      ],
+      "save_as_after_10_ms": 9.854,
+      "list_after_second_save_ms": 6.352,
+      "saves_listed_after_second_save": 3,
+      "server_exit_first": 0,
+      "list_cold_after_restart_ms": 122.639,
+      "saves_listed_after_restart": 3,
+      "all_loadable_after_restart": true,
+      "list_warm_after_restart_ms": 10.231,
+      "server_exit_second": 0
+    }
+  ],
+  "partB": {
+    "save_files": 21,
+    "note": "20 save-as checkpoints at turns 2..40 plus the campaign's own autosave file",
+    "build_server_exit": 0,
+    "runs": [
+      {
+        "rep": 0,
+        "cold_ms": 1595.026,
+        "warm_ms": 24.956,
+        "saves_listed": 21,
+        "all_loadable": true,
+        "server_exit": 0
+      },
+      {
+        "rep": 1,
+        "cold_ms": 1634.077,
+        "warm_ms": 27.609,
+        "saves_listed": 21,
+        "all_loadable": true,
+        "server_exit": 0
+      },
+      {
+        "rep": 2,
+        "cold_ms": 1708.385,
+        "warm_ms": 34.93,
+        "saves_listed": 21,
+        "all_loadable": true,
+        "server_exit": 0
+      },
+      {
+        "rep": 3,
+        "cold_ms": 1766.101,
+        "warm_ms": 26.217,
+        "saves_listed": 21,
+        "all_loadable": true,
+        "server_exit": 0
+      },
+      {
+        "rep": 4,
+        "cold_ms": 1654.279,
+        "warm_ms": 32.257,
+        "saves_listed": 21,
+        "all_loadable": true,
+        "server_exit": 0
+      },
+      {
+        "rep": 5,
+        "cold_ms": 1581.744,
+        "warm_ms": 23.731,
+        "saves_listed": 21,
+        "all_loadable": true,
+        "server_exit": 0
+      },
+      {
+        "rep": 6,
+        "cold_ms": 1682.701,
+        "warm_ms": 27.794,
+        "saves_listed": 21,
+        "all_loadable": true,
+        "server_exit": 0
+      },
+      {
+        "rep": 7,
+        "cold_ms": 1705.35,
+        "warm_ms": 21.902,
+        "saves_listed": 21,
+        "all_loadable": true,
+        "server_exit": 0
+      },
+      {
+        "rep": 8,
+        "cold_ms": 1837.73,
+        "warm_ms": 26.002,
+        "saves_listed": 21,
+        "all_loadable": true,
+        "server_exit": 0
+      },
+      {
+        "rep": 9,
+        "cold_ms": 1602.919,
+        "warm_ms": 29.29,
+        "saves_listed": 21,
+        "all_loadable": true,
+        "server_exit": 0
+      }
+    ]
+  }
+}
