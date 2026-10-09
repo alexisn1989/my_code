@@ -834,15 +834,21 @@ than assumed in advance.
   `058d779f…`, UX-4h, run `d9590709…`). That build's records are unchanged.
 
   **Carried risks for the facilitator:**
-  - **R1:** a save listing validates every save it has not seen since the server started. **Open.**
-    Diagnosed on the playtest build in
+  - **R1:** a save listing validates every save it has not seen since the server started. **Open on
+    the approved playtest archive.** Diagnosed on the playtest build in
     [`gate-4a3-r1-diagnosis.md`](reviews/gate-4a3-r1-diagnosis.md):
     - **On the protocol's path** (a fresh root per tester, five turns, save, five more, save,
       restart), the cold listing measured 67 ms median and at most 123 ms over 20 runs.
     - **A root with 21 saves of one 40-turn campaign** takes 1.6–1.8 s on its first listing.
     - **Each turn's resolve** also validates the campaign so far, at about 3.5 ms per stored turn,
       in-process.
-    - **Fix options** await a separate review. The earlier figures are in
+    - **A fix exists as a separate candidate build:** `5236ddb`, archive `083c7a98…`. It seeds the
+      listing memo when the server writes a save, and was measured in
+      [`gate-4a3-r1fix-release-and-dry-run.md`](reviews/gate-4a3-r1fix-release-and-dry-run.md):
+      - resolve turns 6–10 have a median of 48.7 ms against 82.7 ms on the approved build;
+      - the cold listing after a restart is **unchanged and still open**: 1.6–1.8 s for 21 long saves.
+
+      Whether the playtest moves to it is the user's decision. The earlier figures are in
       [`gate-4a3-commit6c-saves.md`](reviews/gate-4a3-commit6c-saves.md) §3.2.
   - **R2:** `/api/scenarios` read latency, against a 200 ms STOP. Diagnosed in
     [`gate-4a3-r2-diagnosis.md`](reviews/gate-4a3-r2-diagnosis.md):
