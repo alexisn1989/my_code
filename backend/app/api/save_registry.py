@@ -153,6 +153,20 @@ class SaveRepository:
     changed byte is a new key and a full re-validation. Only successful verdicts are memoized; a
     read, decode, parse or version failure is re-checked on every listing. Loading a save
     (`read_save`, and the load endpoint) still validates in full, every time.
+
+    SEEDING ON WRITE (Gate 4A3 R1 fix, authorized by the user's ruling "go with a"). Every resolve
+    and save-as writes a save and then lists saves in the same request, so without seeding each
+    turn paid one full `validate_history` of the campaign it had just written. `write_save` now
+    reads the file back and, if the bytes on disk are EXACTLY the bytes it serialized, stores the
+    verdict for that key itself. Its `problems=()` is asserted from provenance, not computed: the
+    bytes are this server's own serialization of a save the engine built (`advance_game` validates
+    its input; `new_game` builds a genesis; save-as writes the session's save, which was either
+    loaded with full validation or built by the engine). The cost of that trust is stated rather
+    than hidden: an engine defect producing an invalid history would be LISTED as loadable until
+    the process restarts. It would still be refused by load, which never consults this memo, and
+    the session already plays from that same in-memory save without re-validating it. A read-back
+    mismatch or read failure seeds nothing, so the next listing validates in full as before. The
+    memo stays in memory: a fresh process validates every save once, exactly as it did.
     """
 
     def __init__(self, root: Path) -> None:
@@ -206,7 +220,39 @@ class SaveRepository:
         """
         path = self.path_for(save_id)
         self._root.mkdir(parents=True, exist_ok=True)
-        write_save_atomic(path, dump_save_json(save).encode("utf-8"))
+        data = dump_save_json(save).encode("utf-8")
+        write_save_atomic(path, data)
+        self._seed_verdict(path, data, save)
+
+    def _seed_verdict(self, path: Path, data: bytes, save: GameSave) -> None:
+        """Remember the verdict for bytes this server just wrote (see the class docstring).
+
+        Seeds only when the file reads back byte-identical to `data`; derives `scenario_id`,
+        `current_turn` and `terminal_summary` exactly as `_compute_verdict` does; never replaces an
+        existing entry and never exceeds `VALIDATION_MEMO_MAX`. A read failure seeds nothing and is
+        not a write failure: the write has already succeeded atomically.
+        """
+        try:
+            on_disk = read_save_bytes(path)
+        except (OSError, MandateError):
+            return
+        if on_disk != data:
+            return
+        state = save.current_state()
+        verdict = _Verdict(
+            scenario_id=state.world.player_country_id,
+            current_turn=state.turn,
+            problems=(),
+            terminal_summary=self._terminal_summary_text(save),
+        )
+        key = hashlib.sha256(data).hexdigest()
+        with self._memo_lock:
+            if key in self._memo or key in self._in_flight:
+                return
+            admitted_in_flight = sum(1 for f in self._in_flight.values() if f.admitted)
+            if len(self._memo) + admitted_in_flight >= VALIDATION_MEMO_MAX:
+                return
+            self._memo[key] = verdict
 
     def write_index(self, records: tuple[SaveRecord, ...]) -> None:
         """Atomically replace the whole convenience index."""

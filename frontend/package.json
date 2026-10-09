@@ -129,7 +129,9 @@
     "audit:accessibility:verify:ux4g": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4g playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-ux4g node tools/write-accessibility-report.mjs",
     "dryrun:installed:ux4h": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_GATE=\"4A3 UX-4h (enforced)\" MANDATE_DRYRUN_OUT=gate-4a3-ux4h-dryrun playwright test --project=dry-run",
     "_comment:r2fix": "Gate 4A3 R2 fix (libyaml's CSafeLoader for scenario YAML). dryrun:installed:r2fix is the enforcing internal dry run of the CANDIDATE release built from the fix commit; it records gate-4a3-r2fix-dryrun.",
-    "dryrun:installed:r2fix": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_GATE=\"4A3 R2-fix (enforced)\" MANDATE_DRYRUN_OUT=gate-4a3-r2fix-dryrun playwright test --project=dry-run"
+    "dryrun:installed:r2fix": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_GATE=\"4A3 R2-fix (enforced)\" MANDATE_DRYRUN_OUT=gate-4a3-r2fix-dryrun playwright test --project=dry-run",
+    "_comment:r1fix": "Gate 4A3 R1 fix (the listing memo is seeded by write_save). dryrun:installed:r1fix is the enforcing internal dry run of the CANDIDATE release built from the fix commit; it records gate-4a3-r1fix-dryrun.",
+    "dryrun:installed:r1fix": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_GATE=\"4A3 R1-fix (enforced)\" MANDATE_DRYRUN_OUT=gate-4a3-r1fix-dryrun playwright test --project=dry-run"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

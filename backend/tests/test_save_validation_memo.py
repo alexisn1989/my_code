@@ -100,8 +100,12 @@ def test_a_second_listing_validates_nothing_and_returns_identical_records(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository = SaveRepository(tmp_path)
-    _write(repository, _advance(_fresh()))
-    _write(repository, _fresh("tiny_valid.yaml"))
+    # (Gate 4A3 R1 fix) Written through a SECOND repository on the same root, so the one under
+    # test has never seen these bytes -- as after a restart. `write_save` now seeds the memo of
+    # the repository that writes, which would otherwise pre-empt the listing this test measures.
+    writer = SaveRepository(tmp_path)
+    _write(writer, _advance(_fresh()))
+    _write(writer, _fresh("tiny_valid.yaml"))
     validations = Counter(monkeypatch, "validate_history")
     first = repository.list_saves()
     assert validations.calls == 2
@@ -162,7 +166,11 @@ def test_byte_identical_files_are_validated_once_and_listed_twice(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository = SaveRepository(tmp_path)
-    original = _write(repository, _advance(_fresh()))
+    # (Gate 4A3 R1 fix) Written through a SECOND repository on the same root, so the one under
+    # test has never seen these bytes -- as after a restart. `write_save` now seeds the memo of
+    # the repository that writes, which would otherwise pre-empt the listing this test measures.
+    writer = SaveRepository(tmp_path)
+    original = _write(writer, _advance(_fresh()))
     copy = new_save_id()
     (tmp_path / f"{copy}.json").write_bytes((tmp_path / f"{original}.json").read_bytes())
     validations = Counter(monkeypatch, "validate_history")
@@ -197,14 +205,21 @@ def test_the_listing_never_reopens_a_file_through_read_save(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository = SaveRepository(tmp_path)
-    _write(repository, _advance(_fresh()))
+    # (Gate 4A3 R1 fix) Written through a SECOND repository on the same root, so the one under
+    # test has never seen these bytes -- as after a restart. `write_save` now seeds the memo of
+    # the repository that writes, which would otherwise pre-empt the listing this test measures.
+    writer = SaveRepository(tmp_path)
+    _write(writer, _advance(_fresh()))
 
     def refuse(self: SaveRepository, save_id: str) -> GameSave:
         raise AssertionError("the listing must work from its one captured buffer")
 
     monkeypatch.setattr(SaveRepository, "read_save", refuse)
+    validations = Counter(monkeypatch, "validate_history")
     records = repository.list_saves()
     assert [r.loadable for r in records] == [True]
+    # (Gate 4A3 R1 fix) The compute path this test guards actually ran, rather than a memo hit.
+    assert validations.calls == 1
 
 
 def test_symlinks_and_directories_named_like_saves_are_still_refused(tmp_path: Path) -> None:
@@ -248,10 +263,14 @@ def test_one_file_over_the_cap_costs_one_validation_per_listing_not_a_rescan(
     next listing reads first, so every listing would revalidate everything."""
     monkeypatch.setattr(save_registry, "VALIDATION_MEMO_MAX", 3)
     repository = SaveRepository(tmp_path)
+    # (Gate 4A3 R1 fix) Written through a SECOND repository on the same root, so the one under
+    # test has never seen these bytes -- as after a restart. `write_save` now seeds the memo of
+    # the repository that writes, which would otherwise pre-empt the listing this test measures.
+    writer = SaveRepository(tmp_path)
     save = _fresh("tiny_valid.yaml")
     for _ in range(4):
         save = _advance(save)
-        _write(repository, save)
+        _write(writer, save)
     validations = Counter(monkeypatch, "validate_history")
     repository.list_saves()
     assert validations.calls == 4
@@ -314,7 +333,11 @@ def test_concurrent_misses_on_one_key_validate_once(
     in-flight object -- the case an Event alone would leave without an answer."""
     monkeypatch.setattr(save_registry, "VALIDATION_MEMO_MAX", cap)
     repository = SaveRepository(tmp_path)
-    save_id = _write(repository, _advance(_fresh()))
+    # (Gate 4A3 R1 fix) Written through a SECOND repository on the same root, so the one under
+    # test has never seen these bytes -- as after a restart. `write_save` now seeds the memo of
+    # the repository that writes, which would otherwise pre-empt the listing this test measures.
+    writer = SaveRepository(tmp_path)
+    save_id = _write(writer, _advance(_fresh()))
     key = _key(tmp_path / f"{save_id}.json")
     release = threading.Event()
     calls = _blocking_validate(monkeypatch, release)
@@ -338,7 +361,11 @@ def test_when_the_owner_fails_a_waiter_computes_for_itself(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository = SaveRepository(tmp_path)
-    save_id = _write(repository, _advance(_fresh()))
+    # (Gate 4A3 R1 fix) Written through a SECOND repository on the same root, so the one under
+    # test has never seen these bytes -- as after a restart. `write_save` now seeds the memo of
+    # the repository that writes, which would otherwise pre-empt the listing this test measures.
+    writer = SaveRepository(tmp_path)
+    save_id = _write(writer, _advance(_fresh()))
     key = _key(tmp_path / f"{save_id}.json")
     release = threading.Event()
     parses: list[int] = []
@@ -371,8 +398,12 @@ def test_admission_under_the_cap_is_atomic_across_concurrent_distinct_keys(
 ) -> None:
     monkeypatch.setattr(save_registry, "VALIDATION_MEMO_MAX", 2)
     repository = SaveRepository(tmp_path)
+    # (Gate 4A3 R1 fix) Written through a SECOND repository on the same root, so the one under
+    # test has never seen these bytes -- as after a restart. `write_save` now seeds the memo of
+    # the repository that writes, which would otherwise pre-empt the listing this test measures.
+    writer = SaveRepository(tmp_path)
     ids = [
-        _write(repository, save)
+        _write(writer, save)
         for save in (_fresh(), _fresh("tiny_valid.yaml"), _fresh("deficit_demo.yaml"))
     ]
     real = save_registry.validate_history
