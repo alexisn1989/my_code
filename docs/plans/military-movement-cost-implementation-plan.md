@@ -1,6 +1,7 @@
 # Military movement cost — implementation plan
 
-**Status: Revision 2 — DEFERRED. NOT AUTHORIZED FOR IMPLEMENTATION.** Nothing here may be executed
+**Status: Revision 2a — accepted by the user as DEFERRED PLANNING ONLY. NOT AUTHORIZED FOR
+IMPLEMENTATION.** Nothing here may be executed
 until two conditions both hold: the five-person external playtest has reported, **and** the user has
 given a separate go-ahead. The price of **150 is provisional**. The approved playtest build (the
 archive built from `a322484`, `f542cf28…`) is unchanged by this document and by anything it proposes.
@@ -258,7 +259,32 @@ gain the new member.
    names, and the release verification and enforced dry run of the resulting archive. **It does not
    replace the approved playtest build** without a ruling.
 
+**Verification checklist, restored from Revision 1 §6 and made explicit.**
+
+**How each gate is recorded:**
+- Each gate is run as **its own command**.
+- Its **real exit status is captured as that command's own `$?`**, for example
+  `pytest -q; PYTEST_EXIT=$?`. It is never a pipeline's status, and never inferred from output.
+- Every gate's status goes in the commit's record, in a gates table, with its result line.
+- **No staging or committing while any gate is running or failing.**
+
+| # | gate | command | required result |
+|---|---|---|---|
+| G1 | backend lint | `ruff check .`, `ruff format --check .` | exit 0, exit 0 |
+| G2 | backend types | `mypy` (the project's configured packages) | exit 0 |
+| G3 | the new and extended tests | `pytest` on the T1–T8 and T12 files | exit 0, with the count stated |
+| G4 | **backend full suite** | `pytest -q` | exit 0. The count is the previous suite plus the new tests, itemised |
+| G5 | mutation checks (§5) | each mutation applied, the named tests run, then restored and checked with `cmp` | each named test fails under its mutation, and the file is byte-identical afterwards |
+| G6 | frontend unit | `npm test` | exit 0, with the count delta itemised |
+| G7 | frontend static | `npm run typecheck`, `build`, `check:bundle`, `check:palette`, `check:copy`, `check:css-sources` | exit 0 each |
+| G8 | **contract** | `npm run generate:api` | exit 0. The contract **changes** (the two new fields). The regenerated files are committed, and the diff is itemised to exactly those fields |
+| G9 | browser | every browser gate (`verify:ux` with the new `@mc1` block, `verify:fixes`, `verify:icons`, `verify:terminal`, `verify:campaigns`, `audit:stress:seated`, `audit:accessibility:verify`), each under **fresh** script and artifact names | exit 0 each. Every artifact is compared with the previous gate's, and each difference is itemised |
+| G10 | fixtures | `git diff --stat` on `backend/tests/fixtures` | the existing 22 fixtures are unchanged, and only the new `0.24.0` fixture is added |
+| G11 | **release (MC-2)** | `build_release.py --check-reproducible`, a fresh-clone rebuild, `verify_release.py` **once** under fresh names, then the enforced dry run | exit 0 each. `verify_release` is not retried; a breach is recorded and reported |
+| G12 | after the push | local == remote, a clean tree, and every earlier artifact byte-identical | holds |
+
 **Stop and report on:**
+- any gate with a non-zero exit;
 - any existing fixture changing bytes;
 - a preview and resolver disagreement on an accepted turn;
 - a refused turn that writes anything;
@@ -280,7 +306,7 @@ gain the new member.
 
 **Revision 1 (`622ab8b`)** was the draft for approval.
 
-**Revision 2** (this one) applies the review of Revision 1:
+**Revision 2** (`afc7a2d`) applied the review of Revision 1:
 1. **Legal calibration examples.**
    - `deficit_demo` and `tiny_valid` have `emergency_only` decree authority, so their decree cells
      are marked **route unavailable**.
@@ -302,3 +328,9 @@ gain the new member.
 - the price is marked **provisional**;
 - the status is marked **deferred, not authorized**;
 - the loss of `0.23.0` save compatibility is made prominent.
+
+**Revision 2a** (this one) records the user's acceptance of Revision 2 as **deferred planning only**.
+- It restores Revision 1 §6's gate list, which Revision 2 had dropped, as the explicit verification
+  checklist G1–G12, with the real-`$?` recording rule.
+- 150 stays provisional.
+- Implementation still requires the playtest report **and** the user's separate authorization.
