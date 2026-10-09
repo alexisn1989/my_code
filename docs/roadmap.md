@@ -817,39 +817,53 @@ than assumed in advance.
   - `a322484`: the fix, which reads scenario YAML with libyaml's C loader.
   - `70f8226`: the candidate release, measured.
 
+  **R1 work after the UX pass:**
+  - `6fda132`: diagnosis of the cold save listing.
+  - `5236ddb`: the fix, which seeds the listing memo when the server writes a save.
+  - `d415e04`: the candidate release, measured.
+
   The internal dry runs are not playtesters, and they do not count toward the playtest.
 
-  **The approved playtest build** is the release archive built from `a322484`, sha256
-  `f542cf281334a8f1aeb535864d63bb97e3b67bae617df820a2602f40cce7eae1` (`SOURCE_DATE_EPOCH`
-  1791427147).
-  [`gate-4a3-r2fix-release-and-dry-run.md`](reviews/gate-4a3-r2fix-release-and-dry-run.md) records:
+  **The approved playtest build** is the release archive built from `5236ddb`, sha256
+  `083c7a984aedfa3823e128c2e160cd385135ac102ead60673fc3012268a8f490` (`SOURCE_DATE_EPOCH`
+  1791513998). It contains both the R2 fix (`a322484`) and the R1 fix (`5236ddb`).
+  [`gate-4a3-r1fix-release-and-dry-run.md`](reviews/gate-4a3-r1fix-release-and-dry-run.md) records:
   - it is reproducible, and identical from a fresh clone;
-  - it was verified `PASSED` (run `fd3208fc…`), with the installed C YAML loader confirmed;
+  - it was verified `PASSED` (run `5c5e355c…`), with the installed C YAML loader confirmed;
   - its enforced internal dry run passed.
 
-  The user switched the playtest to this build after reviewing the R2 fix (`a322484`) and its release
-  record (`70f8226`).
+  The user switched the playtest to this build after reviewing the R1 fix (`5236ddb`) and its release
+  record (`d415e04`). The ruleset and save format are unchanged, so saves stay compatible with the
+  previous playtest build.
 
-  It supersedes, for the playtest, the earlier approved archive built from `81f0648` (sha256
-  `058d779f…`, UX-4h, run `d9590709…`). That build's records are unchanged.
+  **Superseded, for the playtest:**
+  - the archive built from `a322484` (sha256 `f542cf28…`, run `fd3208fc…`);
+  - before it, the archive built from `81f0648` (sha256 `058d779f…`, UX-4h, run `d9590709…`).
+
+  Both builds' records are unchanged.
 
   **Carried risks for the facilitator:**
-  - **R1:** a save listing validates every save it has not seen since the server started. **Open on
-    the approved playtest archive.** Diagnosed on the playtest build in
+  - **R1:** a save listing validates every save it has not seen since the server started. **Open,
+    on the playtest build too.** Diagnosed on the `a322484` build in
     [`gate-4a3-r1-diagnosis.md`](reviews/gate-4a3-r1-diagnosis.md):
     - **On the protocol's path** (a fresh root per tester, five turns, save, five more, save,
       restart), the cold listing measured 67 ms median and at most 123 ms over 20 runs.
     - **A root with 21 saves of one 40-turn campaign** takes 1.6–1.8 s on its first listing.
     - **Each turn's resolve** also validates the campaign so far, at about 3.5 ms per stored turn,
       in-process.
-    - **A fix exists as a separate candidate build:** `5236ddb`, archive `083c7a98…`. It seeds the
-      listing memo when the server writes a save, and was measured in
-      [`gate-4a3-r1fix-release-and-dry-run.md`](reviews/gate-4a3-r1fix-release-and-dry-run.md):
-      - resolve turns 6–10 have a median of 48.7 ms against 82.7 ms on the approved build;
-      - the cold listing after a restart is **unchanged and still open**: 1.6–1.8 s for 21 long saves.
+    - **On the playtest build (`5236ddb`)**, the server seeds the listing memo when it writes a save
+      ([`gate-4a3-r1fix-release-and-dry-run.md`](reviews/gate-4a3-r1fix-release-and-dry-run.md)).
+      - **Lower observed resolve times:** for turns 6–10 on the playtester path, a median of 48.7 ms
+        against 82.7 ms on the `a322484` build.
+      - **That comparison is two samples from different container sessions.** The per-run medians do
+        not overlap, but it does not separate the build from the environment, and it covers turns
+        1–10 only.
+    - **The cold listing after a restart is unchanged:** 1.6–1.8 s for a root of 21 long saves, and
+      65 ms median on the protocol's own path. **R1 stays open for that cold path.**
+    - Persistent caching (option (b)) is **not chosen**, and awaits a separate decision.
 
-      Whether the playtest moves to it is the user's decision. The earlier figures are in
-      [`gate-4a3-commit6c-saves.md`](reviews/gate-4a3-commit6c-saves.md) §3.2.
+    The earlier figures are in
+    [`gate-4a3-commit6c-saves.md`](reviews/gate-4a3-commit6c-saves.md) §3.2.
   - **R2:** `/api/scenarios` read latency, against a 200 ms STOP. Diagnosed in
     [`gate-4a3-r2-diagnosis.md`](reviews/gate-4a3-r2-diagnosis.md):
     - **The median:** most of each request is PyYAML's pure-Python parse of the three scenario files,
@@ -858,10 +872,13 @@ than assumed in advance.
     - **The release check, on the superseded `81f0648` archive:** its worst-of-20 rule breached in
       14 of 30 matched runs (95% CI 28–66%), conditional on that machine and workload.
     - **The tail:** its cause is not established.
-    - **On the playtest build (`a322484`, libyaml's C loader):** `verify_release` `PASSED`, and 0 of
-      30 matched runs breached (95% upper bound 11.6%) on that machine
+    - **On the `a322484` build (libyaml's C loader):** `verify_release` `PASSED`, and 0 of 30
+      matched runs breached (95% upper bound 11.6%) on that machine
       ([`gate-4a3-r2fix-release-and-dry-run.md`](reviews/gate-4a3-r2fix-release-and-dry-run.md)).
-      **R2 is not closed:** a nonzero failure rate is not excluded, and the tail's cause was never
+    - **On the playtest build (`5236ddb`)**, the same loader is present.
+      - Its single `verify_release` passed, with a read-projection worst of 67.90 ms.
+      - The 30-run breach measurement was **not repeated** on it.
+    - **R2 is not closed:** a nonzero failure rate is not excluded, and the tail's cause was never
       established. It stays listed for the facilitator.
     - **On a Python-only install,** the slow path remains, and `verify_release` refuses such an
       install as a release.
