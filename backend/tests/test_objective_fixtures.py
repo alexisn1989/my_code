@@ -164,7 +164,40 @@ def test_unit_test_decision_options_are_backend_output() -> None:
     assert json.loads(OPTIONS_JSON.read_text(encoding="utf-8")) == expected
 
 
+def _invest_all(state: GameState, capital: int) -> BlocRelationshipInvestmentDecision:
+    legislature = _politics(state).legislature
+    assert legislature is not None
+    rows = sorted(
+        (
+            BlocInvestment(party_id=party.id, bloc_id=bloc.id, political_capital=capital)
+            for party in legislature.parties
+            for bloc in party.blocs
+        ),
+        key=lambda row: (row.party_id, row.bloc_id),
+    )
+    return BlocRelationshipInvestmentDecision(investments=tuple(rows))
+
+
+def _at_ceiling(state: GameState) -> GameState:
+    legislature = _politics(state).legislature
+    assert legislature is not None
+    parties = tuple(
+        party.model_copy(
+            update={
+                "blocs": tuple(
+                    bloc.model_copy(update={"government_relationship_bps": 10_000})
+                    for bloc in party.blocs
+                )
+            }
+        )
+        for party in legislature.parties
+    )
+    return _set_politics(state, legislature=legislature.model_copy(update={"parties": parties}))
+
+
 def _results_and_previews() -> dict[str, object]:
+    tiny = _load("tiny_valid")
+    ceiling = _at_ceiling(_load("decree_state"))
     valdrun = _load("decree_state")
     four_axis = _amend(*FOUR_AXIS)
     reform = _resolve(_supportive(valdrun.model_copy(deep=True)), four_axis)
@@ -190,6 +223,14 @@ def _results_and_previews() -> dict[str, object]:
         "previewFails": preview_decisions(valdrun, _set(valdrun, four_axis)).model_dump(
             mode="json"
         ),
+        # Gate 4A3 W-2: investments with a serving chief of staff (tiny_valid), and one that would
+        # change nothing (a bloc already at the ceiling).
+        "previewInvestments": preview_decisions(tiny, _set(tiny, _invest_all(tiny, 50))).model_dump(
+            mode="json"
+        ),
+        "previewInvestmentNoEffect": preview_decisions(
+            ceiling, _set(ceiling, _invest_all(ceiling, 50))
+        ).model_dump(mode="json"),
         "previewUnaffordable": preview_decisions(
             valdrun, _set(valdrun, _amend(*FOUR_AXIS, influence=400), investment)
         ).model_dump(mode="json"),

@@ -334,6 +334,10 @@ function CabinetBody(_props: ScreenProps) {
               >
                 Candidates for {post.post_display_name}
               </h3>
+              {/* Gate 4A3 W-2: the post's one mechanical effect, from the engine's maximum. */}
+              <p data-testid="post-effect" className="mt-1 text-sm text-parchment-200/80">
+                {post.post_effect_text}
+              </p>
 
               {post.can_dismiss ? (
                 <button
@@ -361,6 +365,12 @@ function CabinetBody(_props: ScreenProps) {
                           className="px-3 py-1 text-sm text-parchment-200/60"
                         >
                           {row.display_name} — already in post.
+                        </p>
+                        <p
+                          data-candidate-effect={row.character_id}
+                          className="px-3 text-xs text-parchment-200/70"
+                        >
+                          {row.effect_text}
                         </p>
                       </li>
                     );
@@ -395,6 +405,12 @@ function CabinetBody(_props: ScreenProps) {
                           {formatBpsPercent(row.independence_bps)}, ambition{" "}
                           {formatBpsPercent(row.ambition_bps)}, trust{" "}
                           {formatBpsPercent(row.personal_trust_bps)}
+                        </span>
+                        <span
+                          data-candidate-effect={row.character_id}
+                          className="block text-xs text-parchment-200/70"
+                        >
+                          {row.effect_text}
                         </span>
                         {transferFrom === null ? null : (
                           <span

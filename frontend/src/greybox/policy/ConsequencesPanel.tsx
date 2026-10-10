@@ -27,6 +27,7 @@ import {
   failingVoteAdvice,
   formatAmount,
   formatCommitted,
+  investmentEffectSentence,
   objectiveEffectCaveat,
   objectiveEffectSentence,
   routeLabel,
@@ -131,6 +132,28 @@ export function ConsequencesPanel({
                 {objectiveEffectCaveat(preview)}
               </p>
             ) : null}
+          </div>
+        ) : null}
+
+        {/* Gate 4A3 W-2: each drafted investment's own effect, from the engine's gain function. */}
+        {preview.investment_effects && preview.investment_effects.length > 0 ? (
+          <div data-testid="investment-effects" className="mt-3 text-sm">
+            <p className="text-parchment-200/80">Relationship investments (their own effect only):</p>
+            <ul className="mt-1 list-disc pl-5">
+              {preview.investment_effects.map((row) => (
+                <li
+                  key={`${row.party_id}/${row.bloc_id}`}
+                  data-investment-effect={`${row.party_id}/${row.bloc_id}`}
+                  data-no-effect={row.no_effect}
+                >
+                  {row.no_effect ? (
+                    <ToneValue tone="negative">{investmentEffectSentence(row)}</ToneValue>
+                  ) : (
+                    investmentEffectSentence(row)
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         ) : null}
 

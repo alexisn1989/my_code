@@ -304,6 +304,10 @@
             "title": "Display Name",
             "type": "string"
           },
+          "effect_text": {
+            "title": "Effect Text",
+            "type": "string"
+          },
           "independence_bps": {
             "title": "Independence Bps",
             "type": "integer"
@@ -353,6 +357,7 @@
           "personal_trust_bps",
           "appointment_cost",
           "verb",
+          "effect_text",
           "candidate_accepts_post"
         ],
         "title": "CabinetCandidateOption",
@@ -413,13 +418,18 @@
           "post_display_name": {
             "title": "Post Display Name",
             "type": "string"
+          },
+          "post_effect_text": {
+            "title": "Post Effect Text",
+            "type": "string"
           }
         },
         "required": [
           "post",
           "post_display_name",
           "can_dismiss",
-          "candidates"
+          "candidates",
+          "post_effect_text"
         ],
         "title": "CabinetPostOption",
         "type": "object"
@@ -1358,6 +1368,56 @@
         "title": "InfluenceAllocation",
         "type": "object"
       },
+      "InvestmentEffectPreview": {
+        "additionalProperties": false,
+        "description": "(Gate 4A3 W-2) One drafted relationship investment's own effect.",
+        "properties": {
+          "bloc_display_name": {
+            "title": "Bloc Display Name",
+            "type": "string"
+          },
+          "bloc_id": {
+            "title": "Bloc Id",
+            "type": "string"
+          },
+          "chief_of_staff_bonus_bps": {
+            "title": "Chief Of Staff Bonus Bps",
+            "type": "integer"
+          },
+          "gain_bps": {
+            "title": "Gain Bps",
+            "type": "integer"
+          },
+          "no_effect": {
+            "title": "No Effect",
+            "type": "boolean"
+          },
+          "opening_relationship_bps": {
+            "title": "Opening Relationship Bps",
+            "type": "integer"
+          },
+          "party_id": {
+            "title": "Party Id",
+            "type": "string"
+          },
+          "political_capital": {
+            "title": "Political Capital",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "party_id",
+          "bloc_id",
+          "bloc_display_name",
+          "political_capital",
+          "opening_relationship_bps",
+          "gain_bps",
+          "chief_of_staff_bonus_bps",
+          "no_effect"
+        ],
+        "title": "InvestmentEffectPreview",
+        "type": "object"
+      },
       "LedgerEntry": {
         "additionalProperties": false,
         "properties": {
@@ -2200,6 +2260,14 @@
             "default": 0,
             "title": "Investment Capital",
             "type": "integer"
+          },
+          "investment_effects": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InvestmentEffectPreview"
+            },
+            "title": "Investment Effects",
+            "type": "array"
           },
           "legislative_bargain_capital": {
             "default": 0,

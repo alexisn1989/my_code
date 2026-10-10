@@ -44,8 +44,10 @@ from app.simulation.cabinet import (
 from app.simulation.constitution import DecreeAuthority, ExecutiveSelection, ExecutiveSystem
 from app.simulation.decisions import BudgetDecision, ConstitutionalAmendmentDecision
 from app.simulation.foreign_assistance import (
+    FOREIGN_MINISTER_ASSISTANCE_SHARE_MAX_BPS,
     ForeignAssistanceRefusal,
     assess_foreign_assistance,
+    assistance_share_bps,
     remaining_pool,
 )
 from app.simulation.geography import outgoing_and_incoming
@@ -67,6 +69,10 @@ from app.simulation.promises import (
     earliest_legal_deadline,
     release_block_reason,
     validation_live_statuses,
+)
+from app.simulation.relationships import (
+    CHIEF_OF_STAFF_MAX_BONUS_BPS,
+    chief_of_staff_gain_bonus_bps,
 )
 from app.simulation.report import CabinetChange, TurnReport
 from app.simulation.state import (
@@ -489,6 +495,24 @@ class ChamberPreview(BaseModel):
     carries: bool
 
 
+class InvestmentEffectPreview(BaseModel):
+    """(Gate 4A3 W-2) One drafted relationship investment's own effect."""
+
+    model_config = _STRICT
+
+    party_id: str
+    bloc_id: str
+    bloc_display_name: str
+    political_capital: int
+    opening_relationship_bps: int
+    gain_bps: int
+    """The whole gain, chief-of-staff bonus included; `0` when the investment would change nothing,
+    which resolution refuses."""
+    chief_of_staff_bonus_bps: int
+    """The part of `gain_bps` the serving chief of staff adds."""
+    no_effect: bool
+
+
 class PreviewProjection(BaseModel):
     """A deterministic ESTIMATE, explicitly not an authoritative outcome.
 
@@ -535,6 +559,10 @@ class PreviewProjection(BaseModel):
     committed_capital: int = 0
     opening_capital: int = 0
     affordable: bool = True
+    investment_effects: tuple[InvestmentEffectPreview, ...] = ()
+    """(Gate 4A3 W-2) What each drafted relationship investment would add, from the engine's own
+    gain function with the OPENING cabinet's chief of staff -- the same inputs slot 1 uses. Only the
+    investment's own contribution: decay and policy reactions also move a relationship each turn."""
     objective_effect_if_enacted: ObjectiveEffectProjection | None = None
     """(Gate 4A3 victory path) The drafted amendment's effect on the campaign objective IF ENACTED.
     Conditional only: `would_pass` and `affordable` say whether resolving would enact it. `None`
@@ -934,6 +962,9 @@ class CabinetCandidateOption(BaseModel):
     requires_vacating_post: str | None = None
     """Set when this person holds a DIFFERENT post: appointing them here is legal only if the same
     decision also orders that post. An instruction, not a refusal."""
+    effect_text: str
+    """(Gate 4A3 W-2) What THIS person's competence would do in THIS post, from the engine's own
+    effect function for the post (`post_effect_for_competence`). Never a recommendation."""
     candidate_accepts_post: bool
     """Whether this person would take THIS post in THIS state -- willingness, and nothing else.
 
@@ -961,6 +992,8 @@ class CabinetPostOption(BaseModel):
     holder_competence_bps: int | None = None
     can_dismiss: bool
     candidates: tuple[CabinetCandidateOption, ...]
+    post_effect_text: str
+    """(Gate 4A3 W-2) The post's one real mechanical effect, with its engine maximum."""
 
 
 class ForeignAssistanceCounterpartyOption(BaseModel):
@@ -1410,6 +1443,7 @@ def _cabinet_post_options(state: GameState) -> tuple[CabinetPostOption, ...]:
                     ),
                     candidate_accepts_post=refusal is None,
                     refusal_code=None if refusal is None else refusal.value,
+                    effect_text=candidate_effect_text(post, character.competence),
                 )
             )
         options.append(
@@ -1421,9 +1455,68 @@ def _cabinet_post_options(state: GameState) -> tuple[CabinetPostOption, ...]:
                 holder_competence_bps=None if holder is None else holder.competence,
                 can_dismiss=holder_id is not None,
                 candidates=tuple(rows),
+                post_effect_text=POST_EFFECT_TEXT[post],
             )
         )
     return tuple(options)
+
+
+# --------------------------------------------------------------------------
+# Gate 4A3 W-2: what a cabinet post does, in the player's words
+# --------------------------------------------------------------------------
+
+
+def _points(value_bps: int) -> str:
+    whole, frac = divmod(abs(value_bps), 100)
+    return f"{whole}.{frac:02d} percentage points"
+
+
+def post_effect_for_competence(post: CabinetPost, competence_bps: int) -> int:
+    """The post's effect at `competence_bps`, from the ENGINE's own functions -- never restated.
+
+    Chief of staff: the extra gain as a share of an investment's gain (bps of the gain), read by
+    asking `chief_of_staff_gain_bonus_bps` for its bonus on a gain of exactly 10,000 bps.
+    Foreign minister: the extra share of a counterpart's remaining pool (bps), the difference
+    `assistance_share_bps` makes between this competence and none, all other terms held at zero."""
+    if post is CabinetPost.CHIEF_OF_STAFF:
+        return chief_of_staff_gain_bonus_bps(
+            base_gain_bps=BPS_DENOMINATOR, competence_bps=competence_bps
+        )
+    if post is not CabinetPost.FOREIGN_MINISTER:  # pragma: no cover - a new post must be explained
+        raise ValueError(f"no effect function for cabinet post {post.value!r}")
+    terms = {"personal_trust_bps": 0, "standing_bps": 0, "independence_bps": 0}
+    return assistance_share_bps(foreign_minister_competence_bps=competence_bps, **terms) - (
+        assistance_share_bps(foreign_minister_competence_bps=0, **terms)
+    )
+
+
+#: One sentence per post. Indexed, not `.get`: a new post fails a test rather than reaching a
+#: player unexplained. The maxima are the engine's constants, formatted, never retyped.
+POST_EFFECT_TEXT: dict[CabinetPost, str] = {
+    CabinetPost.CHIEF_OF_STAFF: (
+        "Makes relationship investments more effective: a fully competent chief of staff adds up "
+        f"to {format_bps_percent(CHIEF_OF_STAFF_MAX_BONUS_BPS)} to each investment's gain. A new "
+        "appointee starts to count from the next turn."
+    ),
+    CabinetPost.FOREIGN_MINISTER: (
+        "Improves the terms of foreign assistance: a fully competent foreign minister adds up to "
+        f"{_points(FOREIGN_MINISTER_ASSISTANCE_SHARE_MAX_BPS)} to the share of its remaining pool "
+        "a counterpart grants. A new appointee starts to count from the next turn."
+    ),
+}
+
+
+def candidate_effect_text(post: CabinetPost, competence_bps: int) -> str:
+    effect = post_effect_for_competence(post, competence_bps)
+    competence = format_bps_percent(competence_bps)
+    if post is CabinetPost.CHIEF_OF_STAFF:
+        return f"With competence {competence}: investments would gain about {format_bps_percent(effect)} more."
+    # "up to": the engine floors a counterpart's share at 1 bps, so where the other terms would
+    # take it below that, the minister's addition is smaller than this.
+    return (
+        f"With competence {competence}: a counterpart would grant up to {_points(effect)} more of "
+        "its remaining pool."
+    )
 
 
 def build_decision_options(

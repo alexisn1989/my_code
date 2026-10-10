@@ -36,6 +36,7 @@ from app.core.errors import DecisionSetError
 from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
 from app.simulation.cabinet import appointment_cost_capital, holder_competence_bps
 from app.simulation.decisions import (
+    BlocRelationshipInvestmentDecision,
     BudgetDecision,
     CabinetDecision,
     ConstitutionalAmendmentDecision,
@@ -64,6 +65,7 @@ from app.simulation.phases import (
     _compute_proposed_tax_policy,
 )
 from app.simulation.promises import PROMISE_RELEASE_COST_CAPITAL, release_block_reason
+from app.simulation.relationships import relationship_gain_bps
 from app.simulation.state import (
     CabinetPost,
     GameState,
@@ -74,7 +76,7 @@ from app.simulation.state import (
 
 from .decision_preflight import first_decision_problem
 from .objective import preview_effect
-from .projections import ChamberPreview, PreviewProjection
+from .projections import ChamberPreview, InvestmentEffectPreview, PreviewProjection
 
 #: Named once so the projection can say what it deliberately does not know.
 EXCLUDED_STOCHASTIC_CHANNELS = (
@@ -235,10 +237,60 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
         committed_capital=committed,
         opening_capital=opening_capital,
         affordable=committed <= opening_capital,
+        investment_effects=_investment_effects(state, investment),
         objective_effect_if_enacted=(
             None if amendment is None else preview_effect(state, politics, amendment)
         ),
     )
+
+
+def _investment_effects(
+    state: GameState, investment: BlocRelationshipInvestmentDecision | None
+) -> tuple[InvestmentEffectPreview, ...]:
+    """(Gate 4A3 W-2) Each drafted investment's own gain, computed with the SAME inputs slot 1 uses
+    (`phases._validate_and_reserve_actions`): the bloc's opening relationship, the capital, and the
+    OPENING cabinet's chief of staff through `holder_competence_bps` -- so an appointment in this
+    same draft contributes nothing, exactly as it will not at resolution. A gain of `0` is the case
+    resolution refuses ("would have no effect"), reported here before the player resolves."""
+    if investment is None:
+        return ()
+    player = state.world.countries[state.world.player_country_id]
+    politics = _politics(state)
+    legislature = politics.legislature
+    if legislature is None or player.cabinet is None:
+        return ()
+    chief_of_staff = holder_competence_bps(
+        cabinet=player.cabinet,
+        characters=state.world.characters,
+        post=CabinetPost.CHIEF_OF_STAFF,
+        resolving_turn=state.turn,
+    )
+    blocs = {(party.id, bloc.id): bloc for party in legislature.parties for bloc in party.blocs}
+    rows: list[InvestmentEffectPreview] = []
+    for row in investment.investments:
+        bloc = blocs[(row.party_id, row.bloc_id)]  # the structural preflight has checked the target
+        opening = bloc.government_relationship_bps
+        gain = relationship_gain_bps(
+            opening_relationship_bps=opening,
+            political_capital=row.political_capital,
+            chief_of_staff_competence_bps=chief_of_staff,
+        )
+        base = relationship_gain_bps(
+            opening_relationship_bps=opening, political_capital=row.political_capital
+        )
+        rows.append(
+            InvestmentEffectPreview(
+                party_id=row.party_id,
+                bloc_id=row.bloc_id,
+                bloc_display_name=bloc.name,
+                political_capital=row.political_capital,
+                opening_relationship_bps=opening,
+                gain_bps=gain,
+                chief_of_staff_bonus_bps=gain - base,
+                no_effect=gain == 0,
+            )
+        )
+    return tuple(rows)
 
 
 def _promise_release_cost(state: GameState, decision_set: DecisionSet) -> int:

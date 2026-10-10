@@ -168,7 +168,16 @@
     "verify:campaigns:w1": "MANDATE_CAMPAIGNS_OUT=gate-4a3-w1-campaigns playwright test --project=campaigns",
     "audit:stress:seated:w1": "MANDATE_STRESS_SEATED_OUT=gate-4a3-w1-stress-seated-cabinet playwright test --project=stress-seated",
     "audit:accessibility:verify:w1": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-w1 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-w1 node tools/write-accessibility-report.mjs",
-    "walkthrough:installed:w1": "MANDATE_WALKTHROUGH_REQUIRED=1 MANDATE_WALKTHROUGH_GATE=\"4A3 W-1 (enforced, installed archive)\" MANDATE_WALKTHROUGH_OUT=gate-4a3-w1-walkthrough playwright test --config=playwright.walkthrough.config.ts"
+    "walkthrough:installed:w1": "MANDATE_WALKTHROUGH_REQUIRED=1 MANDATE_WALKTHROUGH_GATE=\"4A3 W-1 (enforced, installed archive)\" MANDATE_WALKTHROUGH_OUT=gate-4a3-w1-walkthrough playwright test --config=playwright.walkthrough.config.ts",
+    "_comment:w2": "Gate 4A3 W-2 (what investments and cabinet posts do). verify:ux:w2 adds the @w2 block to the cumulative UX spec; every browser gate re-runs under W-2's own names.",
+    "verify:victory:w2": "MANDATE_VICTORY_OUT=gate-4a3-w2-victory playwright test --project=victory",
+    "verify:ux:w2": "MANDATE_UX_OUT=gate-4a3-w2-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3|@ux4a|@ux4b|@ux4c|@ux4e|@w2\"",
+    "verify:fixes:w2": "MANDATE_VERIFY_OUT=gate-4a3-w2-verification playwright test --project=verify",
+    "verify:icons:w2": "MANDATE_ICONS_OUT=gate-4a3-w2-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:w2": "MANDATE_TERMINAL_OUT=gate-4a3-w2-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:w2": "MANDATE_CAMPAIGNS_OUT=gate-4a3-w2-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:w2": "MANDATE_STRESS_SEATED_OUT=gate-4a3-w2-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:w2": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-w2 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-w2 node tools/write-accessibility-report.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

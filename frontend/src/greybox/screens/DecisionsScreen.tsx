@@ -593,6 +593,15 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
           Range: {data.relationship_investment_minimum}–
           {data.relationship_investment_maximum} per bloc.
         </p>
+        {/* Gate 4A3 W-2: what an investment is FOR, in engine facts only. */}
+        <p data-testid="investment-guidance" className="mb-3 text-sm text-parchment-200/80">
+          Investing political capital improves a bloc&apos;s relationship with the government.
+          Relationships shape how blocs vote on your budgets and amendments, and relationships in
+          the Lower chamber make up half of your support at a national election. Each
+          turn, relationships also drift back toward each bloc&apos;s usual stance. The closer a
+          relationship already is to its ceiling, the less the same capital adds; Preview shows
+          what each investment would add, and an investment that would change nothing is refused.
+        </p>
         {data.blocs.length === 0 ? (
           <EmptyNote>No blocs are available to invest in.</EmptyNote>
         ) : (

@@ -1252,3 +1252,31 @@ export function objectiveEffectCaveat(preview: {
   if (!preview.would_pass) return "This amendment would not pass as it stands, so it would not change the constitution.";
   return null;
 }
+
+// --------------------------------------------------------------------------
+// Gate 4A3 W-2: what a relationship investment does
+// --------------------------------------------------------------------------
+
+/** The preview's `investment_effects` row, declared structurally (this module imports nothing). */
+export interface InvestmentEffectInput {
+  bloc_display_name: string;
+  political_capital: number;
+  opening_relationship_bps: number;
+  gain_bps: number;
+  chief_of_staff_bonus_bps: number;
+  no_effect: boolean;
+}
+
+/** One drafted investment's OWN effect, as the engine would apply it. Deliberately not a closing
+ * relationship: decay toward the bloc's usual stance and reactions to policy also move it. */
+export function investmentEffectSentence(row: InvestmentEffectInput): string {
+  const before = formatBpsPercent(row.opening_relationship_bps);
+  if (row.no_effect) {
+    return `${row.bloc_display_name}: ${formatAmount(row.political_capital)} capital would change nothing here (relationship ${before}), so resolving would refuse this investment.`;
+  }
+  const bonus =
+    row.chief_of_staff_bonus_bps > 0
+      ? `, including ${formatSignedPoints(row.chief_of_staff_bonus_bps)} from your chief of staff`
+      : "";
+  return `${row.bloc_display_name}: ${formatSignedPoints(row.gain_bps)} from ${formatAmount(row.political_capital)} capital${bonus} (relationship ${before} before this turn).`;
+}

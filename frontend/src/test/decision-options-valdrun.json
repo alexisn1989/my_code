@@ -3069,6 +3069,7 @@
           "verb": "appoint",
           "currently_holds_post": null,
           "requires_vacating_post": null,
+          "effect_text": "With competence 32.00%: investments would gain about 8.00% more.",
           "candidate_accepts_post": true,
           "refusal_code": null
         },
@@ -3084,6 +3085,7 @@
           "verb": "appoint",
           "currently_holds_post": "foreign_minister",
           "requires_vacating_post": "foreign_minister",
+          "effect_text": "With competence 86.00%: investments would gain about 21.50% more.",
           "candidate_accepts_post": false,
           "refusal_code": "cabinet_candidate_refuses_low_legitimacy"
         },
@@ -3099,6 +3101,7 @@
           "verb": "appoint",
           "currently_holds_post": null,
           "requires_vacating_post": null,
+          "effect_text": "With competence 81.00%: investments would gain about 20.25% more.",
           "candidate_accepts_post": false,
           "refusal_code": "cabinet_candidate_refuses_low_legitimacy"
         },
@@ -3114,10 +3117,12 @@
           "verb": "appoint",
           "currently_holds_post": null,
           "requires_vacating_post": null,
+          "effect_text": "With competence 74.00%: investments would gain about 18.50% more.",
           "candidate_accepts_post": true,
           "refusal_code": null
         }
-      ]
+      ],
+      "post_effect_text": "Makes relationship investments more effective: a fully competent chief of staff adds up to 25.00% to each investment's gain. A new appointee starts to count from the next turn."
     },
     {
       "post": "foreign_minister",
@@ -3139,6 +3144,7 @@
           "verb": "replace",
           "currently_holds_post": null,
           "requires_vacating_post": null,
+          "effect_text": "With competence 32.00%: a counterpart would grant up to 1.92 percentage points more of its remaining pool.",
           "candidate_accepts_post": true,
           "refusal_code": null
         },
@@ -3154,6 +3160,7 @@
           "verb": "replace",
           "currently_holds_post": "foreign_minister",
           "requires_vacating_post": null,
+          "effect_text": "With competence 86.00%: a counterpart would grant up to 5.16 percentage points more of its remaining pool.",
           "candidate_accepts_post": false,
           "refusal_code": "cabinet_candidate_refuses_low_legitimacy"
         },
@@ -3169,6 +3176,7 @@
           "verb": "replace",
           "currently_holds_post": null,
           "requires_vacating_post": null,
+          "effect_text": "With competence 81.00%: a counterpart would grant up to 4.86 percentage points more of its remaining pool.",
           "candidate_accepts_post": false,
           "refusal_code": "cabinet_candidate_refuses_low_legitimacy"
         },
@@ -3184,10 +3192,12 @@
           "verb": "replace",
           "currently_holds_post": null,
           "requires_vacating_post": null,
+          "effect_text": "With competence 74.00%: a counterpart would grant up to 4.44 percentage points more of its remaining pool.",
           "candidate_accepts_post": true,
           "refusal_code": null
         }
-      ]
+      ],
+      "post_effect_text": "Improves the terms of foreign assistance: a fully competent foreign minister adds up to 6.00 percentage points to the share of its remaining pool a counterpart grants. A new appointee starts to count from the next turn."
     }
   ],
   "foreign_assistance_counterparties": [

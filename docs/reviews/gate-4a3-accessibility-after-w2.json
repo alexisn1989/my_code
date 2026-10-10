@@ -1,0 +1,2290 @@
+{
+  "axeCoreVersion": "4.13.0",
+  "findings": [],
+  "needsReview": [
+    {
+      "id": "N1",
+      "screen": "Strategic map",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "text[data-theater-label=\"marnil_border\"]",
+        "text[data-theater-label=\"sorrend_plain\"]",
+        "text[data-theater-label=\"valdrun_capital\"]",
+        "text[data-theater-label=\"valdrun_east\"]",
+        "text[data-theater-label=\"valdrun_highlands\"]",
+        "text[y=\"-330\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it is overlapped by another element",
+      "viewports": [
+        "desktop-1920x1080",
+        "laptop-1440x900"
+      ]
+    },
+    {
+      "id": "N2",
+      "screen": "Dashboard",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "narrow-820x900",
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N3",
+      "screen": "Government",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "narrow-820x900",
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N4",
+      "screen": "Economy",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "narrow-820x900",
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N5",
+      "screen": "Legislature",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "narrow-820x900",
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N6",
+      "screen": "Constitution",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "narrow-820x900",
+        "reflow-wcag-320x512",
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N7",
+      "screen": "Relationships",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "button[data-nav-screen=\"title\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "narrow-820x900"
+      ]
+    },
+    {
+      "id": "N8",
+      "screen": "Decisions",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "narrow-820x900"
+      ]
+    },
+    {
+      "id": "N9",
+      "screen": "Turn result",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "narrow-820x900"
+      ]
+    },
+    {
+      "id": "N10",
+      "screen": "History",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "narrow-820x900"
+      ]
+    },
+    {
+      "id": "N11",
+      "screen": "Strategic map",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "narrow-820x900"
+      ]
+    },
+    {
+      "id": "N12",
+      "screen": "Dashboard",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 10,
+      "selectors": [
+        "#nav-summaries",
+        "button[data-nav-screen=\"economy\"]",
+        "button[data-nav-screen=\"legislature\"]",
+        "button[data-nav-screen=\"constitution\"]",
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844",
+        "reflow-wcag-320x512"
+      ]
+    },
+    {
+      "id": "N13",
+      "screen": "Government",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 10,
+      "selectors": [
+        "#nav-summaries",
+        "button[data-nav-screen=\"economy\"]",
+        "button[data-nav-screen=\"legislature\"]",
+        "button[data-nav-screen=\"constitution\"]",
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844",
+        "reflow-wcag-320x512"
+      ]
+    },
+    {
+      "id": "N14",
+      "screen": "Economy",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 8,
+      "selectors": [
+        "button[data-nav-screen=\"government\"]",
+        "button[data-nav-screen=\"constitution\"]",
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844",
+        "reflow-wcag-320x512"
+      ]
+    },
+    {
+      "id": "N15",
+      "screen": "Legislature",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 8,
+      "selectors": [
+        "button[data-nav-screen=\"government\"]",
+        "button[data-nav-screen=\"constitution\"]",
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844"
+      ]
+    },
+    {
+      "id": "N16",
+      "screen": "Constitution",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 7,
+      "selectors": [
+        "#nav-summaries",
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844"
+      ]
+    },
+    {
+      "id": "N17",
+      "screen": "Relationships",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 5,
+      "selectors": [
+        "button[data-nav-screen=\"legislature\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844"
+      ]
+    },
+    {
+      "id": "N18",
+      "screen": "Decisions",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 5,
+      "selectors": [
+        "button[data-nav-screen=\"legislature\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844"
+      ]
+    },
+    {
+      "id": "N19",
+      "screen": "Turn result",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"constitution\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844"
+      ]
+    },
+    {
+      "id": "N20",
+      "screen": "History",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844",
+        "reflow-wcag-320x512"
+      ]
+    },
+    {
+      "id": "N21",
+      "screen": "Strategic map",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844"
+      ]
+    },
+    {
+      "id": "N22",
+      "screen": "Victory / defeat",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"result\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "mobile-390x844"
+      ]
+    },
+    {
+      "id": "N23",
+      "screen": "Legislature",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 7,
+      "selectors": [
+        "button[data-nav-screen=\"constitution\"]",
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow-wcag-320x512"
+      ]
+    },
+    {
+      "id": "N24",
+      "screen": "Relationships",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 6,
+      "selectors": [
+        "button[data-nav-screen=\"legislature\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow-wcag-320x512"
+      ]
+    },
+    {
+      "id": "N25",
+      "screen": "Decisions",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow-wcag-320x512"
+      ]
+    },
+    {
+      "id": "N26",
+      "screen": "Turn result",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow-wcag-320x512"
+      ]
+    },
+    {
+      "id": "N27",
+      "screen": "Strategic map",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow-wcag-320x512"
+      ]
+    },
+    {
+      "id": "N28",
+      "screen": "Victory / defeat",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"history\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow-wcag-320x512"
+      ]
+    },
+    {
+      "id": "N29",
+      "screen": "Dashboard",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N30",
+      "screen": "Government",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N31",
+      "screen": "Economy",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N32",
+      "screen": "Legislature",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N33",
+      "screen": "Constitution",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N34",
+      "screen": "Relationships",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N35",
+      "screen": "Decisions",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N36",
+      "screen": "Turn result",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"economy\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N37",
+      "screen": "History",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"economy\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N38",
+      "screen": "Strategic map",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 7,
+      "selectors": [
+        "button[data-nav-screen=\"economy\"]",
+        "text[data-theater-label=\"marnil_border\"]",
+        "text[data-theater-label=\"sorrend_plain\"]",
+        "text[data-theater-label=\"valdrun_capital\"]",
+        "text[data-theater-label=\"valdrun_east\"]",
+        "text[data-theater-label=\"valdrun_highlands\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N39",
+      "screen": "Victory / defeat",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"economy\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-desktop-960x540"
+      ]
+    },
+    {
+      "id": "N40",
+      "screen": "Relationships",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 3,
+      "selectors": [
+        "button[data-nav-screen=\"economy\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N41",
+      "screen": "Decisions",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 3,
+      "selectors": [
+        "button[data-nav-screen=\"economy\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N42",
+      "screen": "Turn result",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 3,
+      "selectors": [
+        "button[data-nav-screen=\"economy\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N43",
+      "screen": "History",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 3,
+      "selectors": [
+        "button[data-nav-screen=\"economy\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N44",
+      "screen": "Strategic map",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"constitution\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N45",
+      "screen": "Victory / defeat",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 1,
+      "selectors": [
+        "button[data-nav-screen=\"constitution\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-laptop-720x450"
+      ]
+    },
+    {
+      "id": "N46",
+      "screen": "Dashboard",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 12,
+      "selectors": [
+        "button[data-nav-screen=\"title\"]",
+        "button[data-nav-screen=\"government\"]",
+        "#nav-summaries",
+        "button[data-nav-screen=\"economy\"]",
+        "button[data-nav-screen=\"legislature\"]",
+        "button[data-nav-screen=\"constitution\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N47",
+      "screen": "Government",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 11,
+      "selectors": [
+        "button[data-nav-screen=\"dashboard\"]",
+        "#nav-summaries",
+        "button[data-nav-screen=\"economy\"]",
+        "button[data-nav-screen=\"legislature\"]",
+        "button[data-nav-screen=\"constitution\"]",
+        "button[data-nav-screen=\"relationships\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N48",
+      "screen": "Economy",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 9,
+      "selectors": [
+        "#nav-summaries",
+        "button[data-nav-screen=\"legislature\"]",
+        "button[data-nav-screen=\"constitution\"]",
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N49",
+      "screen": "Legislature",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 8,
+      "selectors": [
+        "button[data-nav-screen=\"economy\"]",
+        "button[data-nav-screen=\"constitution\"]",
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N50",
+      "screen": "Constitution",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 7,
+      "selectors": [
+        "button[data-nav-screen=\"legislature\"]",
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N51",
+      "screen": "Relationships",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 42,
+      "selectors": [
+        "button[data-nav-screen=\"constitution\"]",
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N52",
+      "screen": "Decisions",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 15,
+      "selectors": [
+        "button[data-nav-screen=\"relationships\"]",
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]",
+        "div[aria-label=\"Raise the personal income tax\"] > .pt-2.border-t.gap-1 > .text-parchment-200\\/80.justify-between.items-center > .tabular-nums.gap-1.items-center"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N53",
+      "screen": "Turn result",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 4,
+      "selectors": [
+        "button[data-nav-screen=\"decisions\"]",
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N54",
+      "screen": "History",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 3,
+      "selectors": [
+        "button[data-nav-screen=\"result\"]",
+        "button[data-nav-screen=\"strategic-map\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N55",
+      "screen": "Strategic map",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        "button[data-nav-screen=\"history\"]",
+        "button[data-nav-screen=\"terminal\"]"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    },
+    {
+      "id": "N56",
+      "screen": "Victory / defeat",
+      "ruleId": "color-contrast",
+      "impact": "serious",
+      "conformance": "wcag-aa",
+      "wcagTags": [
+        "wcag2aa",
+        "wcag143"
+      ],
+      "help": "Elements must meet minimum color contrast ratio thresholds",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=playwright",
+      "nodeCount": 2,
+      "selectors": [
+        "button[data-nav-screen=\"strategic-map\"]",
+        ".gap-3 > .py-1:nth-child(2)"
+      ],
+      "failureSummary": "Fix any of the following: Element's background color could not be determined because it's partially obscured by another element",
+      "viewports": [
+        "reflow200-mobile-195x422"
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "screen": "Dashboard",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 37,
+      "incomplete": 0,
+      "inapplicable": 52
+    },
+    {
+      "screen": "Government",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Economy",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 0,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 0,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 0,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 44,
+      "incomplete": 0,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 27,
+      "incomplete": 0,
+      "inapplicable": 62
+    },
+    {
+      "screen": "History",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 27,
+      "incomplete": 0,
+      "inapplicable": 62
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 34,
+      "incomplete": 1,
+      "inapplicable": 55
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "desktop-1920x1080",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 27,
+      "incomplete": 0,
+      "inapplicable": 62
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 37,
+      "incomplete": 0,
+      "inapplicable": 52
+    },
+    {
+      "screen": "Government",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Economy",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 0,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 0,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 0,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 32,
+      "incomplete": 0,
+      "inapplicable": 57
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 44,
+      "incomplete": 0,
+      "inapplicable": 45
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 27,
+      "incomplete": 0,
+      "inapplicable": 62
+    },
+    {
+      "screen": "History",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 27,
+      "incomplete": 0,
+      "inapplicable": 62
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 34,
+      "incomplete": 1,
+      "inapplicable": 55
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 27,
+      "incomplete": 0,
+      "inapplicable": 62
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 38,
+      "incomplete": 1,
+      "inapplicable": 51
+    },
+    {
+      "screen": "Government",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Economy",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 45,
+      "incomplete": 1,
+      "inapplicable": 44
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "History",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 34,
+      "incomplete": 1,
+      "inapplicable": 55
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "narrow-820x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 0,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 38,
+      "incomplete": 1,
+      "inapplicable": 51
+    },
+    {
+      "screen": "Government",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Economy",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 45,
+      "incomplete": 1,
+      "inapplicable": 44
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "History",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 34,
+      "incomplete": 1,
+      "inapplicable": 55
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "mobile-390x844",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 38,
+      "incomplete": 1,
+      "inapplicable": 51
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 45,
+      "incomplete": 1,
+      "inapplicable": 44
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 34,
+      "incomplete": 1,
+      "inapplicable": 55
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow-wcag-320x512",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 38,
+      "incomplete": 1,
+      "inapplicable": 51
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 45,
+      "incomplete": 1,
+      "inapplicable": 44
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 35,
+      "incomplete": 1,
+      "inapplicable": 54
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-desktop-960x540",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 38,
+      "incomplete": 1,
+      "inapplicable": 51
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 45,
+      "incomplete": 1,
+      "inapplicable": 44
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 34,
+      "incomplete": 1,
+      "inapplicable": 55
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-laptop-720x450",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Dashboard",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 38,
+      "incomplete": 1,
+      "inapplicable": 51
+    },
+    {
+      "screen": "Government",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Economy",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Legislature",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Constitution",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 29,
+      "incomplete": 1,
+      "inapplicable": 60
+    },
+    {
+      "screen": "Relationships",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 1,
+      "inapplicable": 56
+    },
+    {
+      "screen": "Decisions",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 45,
+      "incomplete": 1,
+      "inapplicable": 44
+    },
+    {
+      "screen": "Turn result",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "History",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Strategic map",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 34,
+      "incomplete": 1,
+      "inapplicable": 55
+    },
+    {
+      "screen": "Victory / defeat",
+      "viewport": "reflow200-mobile-195x422",
+      "rulesEvaluated": 90,
+      "violations": 0,
+      "passes": 28,
+      "incomplete": 1,
+      "inapplicable": 61
+    },
+    {
+      "screen": "Glossary",
+      "viewport": "laptop-1440x900",
+      "rulesEvaluated": 89,
+      "violations": 0,
+      "passes": 33,
+      "incomplete": 0,
+      "inapplicable": 56
+    }
+  ],
+  "unreachable": [],
+  "axeFailures": [],
+  "coverage": [
+    "89 surface(s) audited, each evaluating between 89 and 90 axe rules — so every recorded result rests on rules that demonstrably ran",
+    "Dashboard at desktop-1920x1080: 0 violations with 89 rules evaluated (37 passed, 52 inapplicable)",
+    "Government at desktop-1920x1080: 0 violations with 89 rules evaluated (32 passed, 57 inapplicable)",
+    "Economy at desktop-1920x1080: 0 violations with 89 rules evaluated (28 passed, 61 inapplicable)",
+    "Legislature at desktop-1920x1080: 0 violations with 89 rules evaluated (28 passed, 61 inapplicable)",
+    "Constitution at desktop-1920x1080: 0 violations with 89 rules evaluated (28 passed, 61 inapplicable)",
+    "Relationships at desktop-1920x1080: 0 violations with 89 rules evaluated (32 passed, 57 inapplicable)",
+    "Decisions at desktop-1920x1080: 0 violations with 89 rules evaluated (44 passed, 45 inapplicable)",
+    "Turn result at desktop-1920x1080: 0 violations with 89 rules evaluated (27 passed, 62 inapplicable)",
+    "History at desktop-1920x1080: 0 violations with 89 rules evaluated (27 passed, 62 inapplicable)",
+    "Strategic map at desktop-1920x1080: 0 violations with 90 rules evaluated (34 passed, 55 inapplicable)",
+    "Victory / defeat at desktop-1920x1080: 0 violations with 89 rules evaluated (27 passed, 62 inapplicable)",
+    "Dashboard at laptop-1440x900: 0 violations with 89 rules evaluated (37 passed, 52 inapplicable)",
+    "Government at laptop-1440x900: 0 violations with 89 rules evaluated (32 passed, 57 inapplicable)",
+    "Economy at laptop-1440x900: 0 violations with 89 rules evaluated (28 passed, 61 inapplicable)",
+    "Legislature at laptop-1440x900: 0 violations with 89 rules evaluated (28 passed, 61 inapplicable)",
+    "Constitution at laptop-1440x900: 0 violations with 89 rules evaluated (28 passed, 61 inapplicable)",
+    "Relationships at laptop-1440x900: 0 violations with 89 rules evaluated (32 passed, 57 inapplicable)",
+    "Decisions at laptop-1440x900: 0 violations with 89 rules evaluated (44 passed, 45 inapplicable)",
+    "Turn result at laptop-1440x900: 0 violations with 89 rules evaluated (27 passed, 62 inapplicable)",
+    "History at laptop-1440x900: 0 violations with 89 rules evaluated (27 passed, 62 inapplicable)",
+    "Strategic map at laptop-1440x900: 0 violations with 90 rules evaluated (34 passed, 55 inapplicable)",
+    "Victory / defeat at laptop-1440x900: 0 violations with 89 rules evaluated (27 passed, 62 inapplicable)",
+    "Dashboard at narrow-820x900: 0 violations with 90 rules evaluated (38 passed, 51 inapplicable)",
+    "Government at narrow-820x900: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Economy at narrow-820x900: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Legislature at narrow-820x900: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Constitution at narrow-820x900: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Relationships at narrow-820x900: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Decisions at narrow-820x900: 0 violations with 90 rules evaluated (45 passed, 44 inapplicable)",
+    "Turn result at narrow-820x900: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "History at narrow-820x900: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Strategic map at narrow-820x900: 0 violations with 90 rules evaluated (34 passed, 55 inapplicable)",
+    "Victory / defeat at narrow-820x900: 0 violations with 89 rules evaluated (28 passed, 61 inapplicable)",
+    "Dashboard at mobile-390x844: 0 violations with 90 rules evaluated (38 passed, 51 inapplicable)",
+    "Government at mobile-390x844: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Economy at mobile-390x844: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Legislature at mobile-390x844: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Constitution at mobile-390x844: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Relationships at mobile-390x844: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Decisions at mobile-390x844: 0 violations with 90 rules evaluated (45 passed, 44 inapplicable)",
+    "Turn result at mobile-390x844: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "History at mobile-390x844: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Strategic map at mobile-390x844: 0 violations with 90 rules evaluated (34 passed, 55 inapplicable)",
+    "Victory / defeat at mobile-390x844: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Dashboard at reflow-wcag-320x512: 0 violations with 90 rules evaluated (38 passed, 51 inapplicable)",
+    "Government at reflow-wcag-320x512: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Economy at reflow-wcag-320x512: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Legislature at reflow-wcag-320x512: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Constitution at reflow-wcag-320x512: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Relationships at reflow-wcag-320x512: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Decisions at reflow-wcag-320x512: 0 violations with 90 rules evaluated (45 passed, 44 inapplicable)",
+    "Turn result at reflow-wcag-320x512: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "History at reflow-wcag-320x512: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Strategic map at reflow-wcag-320x512: 0 violations with 90 rules evaluated (34 passed, 55 inapplicable)",
+    "Victory / defeat at reflow-wcag-320x512: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Dashboard at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (38 passed, 51 inapplicable)",
+    "Government at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Economy at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Legislature at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Constitution at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Relationships at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Decisions at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (45 passed, 44 inapplicable)",
+    "Turn result at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "History at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Strategic map at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (35 passed, 54 inapplicable)",
+    "Victory / defeat at reflow200-desktop-960x540: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Dashboard at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (38 passed, 51 inapplicable)",
+    "Government at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Economy at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Legislature at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Constitution at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Relationships at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Decisions at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (45 passed, 44 inapplicable)",
+    "Turn result at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "History at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Strategic map at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (34 passed, 55 inapplicable)",
+    "Victory / defeat at reflow200-laptop-720x450: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Dashboard at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (38 passed, 51 inapplicable)",
+    "Government at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Economy at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Legislature at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Constitution at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (29 passed, 60 inapplicable)",
+    "Relationships at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (33 passed, 56 inapplicable)",
+    "Decisions at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (45 passed, 44 inapplicable)",
+    "Turn result at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "History at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Strategic map at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (34 passed, 55 inapplicable)",
+    "Victory / defeat at reflow200-mobile-195x422: 0 violations with 90 rules evaluated (28 passed, 61 inapplicable)",
+    "Glossary at laptop-1440x900: 0 violations with 89 rules evaluated (33 passed, 56 inapplicable)"
+  ],
+  "viewports": [
+    {
+      "name": "desktop-1920x1080",
+      "conformanceWidth": true
+    },
+    {
+      "name": "laptop-1440x900",
+      "conformanceWidth": true
+    },
+    {
+      "name": "narrow-820x900",
+      "conformanceWidth": true
+    },
+    {
+      "name": "mobile-390x844",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow-wcag-320x512",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow200-desktop-960x540",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow200-laptop-720x450",
+      "conformanceWidth": true
+    },
+    {
+      "name": "reflow200-mobile-195x422",
+      "conformanceWidth": false
+    }
+  ]
+}

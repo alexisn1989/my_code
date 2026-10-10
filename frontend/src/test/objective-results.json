@@ -280,6 +280,7 @@
     "committed_capital": 300,
     "opening_capital": 300,
     "affordable": true,
+    "investment_effects": [],
     "objective_effect_if_enacted": {
       "effect": "qualifies",
       "conditions_met": 3,
@@ -318,6 +319,7 @@
     "committed_capital": 0,
     "opening_capital": 500,
     "affordable": true,
+    "investment_effects": [],
     "objective_effect_if_enacted": {
       "effect": "qualifies",
       "conditions_met": 3,
@@ -325,6 +327,128 @@
       "deciding_election_turn": 5,
       "election_this_turn_too_soon": false
     }
+  },
+  "previewInvestments": {
+    "estimate": true,
+    "excludes_stochastic_channels": [
+      "election polling swing",
+      "coup attempt and outcome",
+      "popular unrest",
+      "impeachment"
+    ],
+    "chambers": [],
+    "would_pass": false,
+    "has_proposal": false,
+    "route": null,
+    "route_capital_cost": 0,
+    "influence_capital": 0,
+    "investment_capital": 250,
+    "cabinet_capital": 0,
+    "legislative_bargain_capital": 0,
+    "foreign_assistance_estimate": 0,
+    "promise_release_capital": 0,
+    "committed_capital": 250,
+    "opening_capital": 500,
+    "affordable": true,
+    "investment_effects": [
+      {
+        "party_id": "civic_union",
+        "bloc_id": "mainstream",
+        "bloc_display_name": "Civic Union Mainstream",
+        "political_capital": 50,
+        "opening_relationship_bps": 6000,
+        "gain_bps": 392,
+        "chief_of_staff_bonus_bps": 29,
+        "no_effect": false
+      },
+      {
+        "party_id": "civic_union",
+        "bloc_id": "reform",
+        "bloc_display_name": "Civic Union Reform Caucus",
+        "political_capital": 50,
+        "opening_relationship_bps": 3000,
+        "gain_bps": 686,
+        "chief_of_staff_bonus_bps": 50,
+        "no_effect": false
+      },
+      {
+        "party_id": "national_front",
+        "bloc_id": "conservatives",
+        "bloc_display_name": "National Front Conservatives",
+        "political_capital": 50,
+        "opening_relationship_bps": -7000,
+        "gain_bps": 1668,
+        "chief_of_staff_bonus_bps": 123,
+        "no_effect": false
+      },
+      {
+        "party_id": "national_front",
+        "bloc_id": "populists",
+        "bloc_display_name": "National Front Populists",
+        "political_capital": 50,
+        "opening_relationship_bps": -3000,
+        "gain_bps": 1275,
+        "chief_of_staff_bonus_bps": 94,
+        "no_effect": false
+      },
+      {
+        "party_id": "rural_alliance",
+        "bloc_id": "farmers",
+        "bloc_display_name": "Rural Alliance Farmers",
+        "political_capital": 50,
+        "opening_relationship_bps": 2000,
+        "gain_bps": 785,
+        "chief_of_staff_bonus_bps": 58,
+        "no_effect": false
+      }
+    ],
+    "objective_effect_if_enacted": null
+  },
+  "previewInvestmentNoEffect": {
+    "estimate": true,
+    "excludes_stochastic_channels": [
+      "election polling swing",
+      "coup attempt and outcome",
+      "popular unrest",
+      "impeachment"
+    ],
+    "chambers": [],
+    "would_pass": false,
+    "has_proposal": false,
+    "route": null,
+    "route_capital_cost": 0,
+    "influence_capital": 0,
+    "investment_capital": 100,
+    "cabinet_capital": 0,
+    "legislative_bargain_capital": 0,
+    "foreign_assistance_estimate": 0,
+    "promise_release_capital": 0,
+    "committed_capital": 100,
+    "opening_capital": 500,
+    "affordable": true,
+    "investment_effects": [
+      {
+        "party_id": "governing_party",
+        "bloc_id": "core",
+        "bloc_display_name": "Crown Party Core",
+        "political_capital": 50,
+        "opening_relationship_bps": 10000,
+        "gain_bps": 0,
+        "chief_of_staff_bonus_bps": 0,
+        "no_effect": true
+      },
+      {
+        "party_id": "opposition_party",
+        "bloc_id": "main",
+        "bloc_display_name": "Reform Opposition Main",
+        "political_capital": 50,
+        "opening_relationship_bps": 10000,
+        "gain_bps": 0,
+        "chief_of_staff_bonus_bps": 0,
+        "no_effect": true
+      }
+    ],
+    "objective_effect_if_enacted": null
   },
   "previewUnaffordable": {
     "estimate": true,
@@ -356,6 +480,18 @@
     "committed_capital": 600,
     "opening_capital": 500,
     "affordable": false,
+    "investment_effects": [
+      {
+        "party_id": "opposition_party",
+        "bloc_id": "main",
+        "bloc_display_name": "Reform Opposition Main",
+        "political_capital": 200,
+        "opening_relationship_bps": -8000,
+        "gain_bps": 5142,
+        "chief_of_staff_bonus_bps": 0,
+        "no_effect": false
+      }
+    ],
     "objective_effect_if_enacted": {
       "effect": "qualifies",
       "conditions_met": 3,

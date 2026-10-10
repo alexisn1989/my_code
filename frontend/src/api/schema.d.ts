@@ -502,6 +502,8 @@ export interface components {
             currently_holds_post?: string | null;
             /** Display Name */
             display_name: string;
+            /** Effect Text */
+            effect_text: string;
             /** Independence Bps */
             independence_bps: number;
             /** Loyalty Bps */
@@ -534,6 +536,8 @@ export interface components {
             post: string;
             /** Post Display Name */
             post_display_name: string;
+            /** Post Effect Text */
+            post_effect_text: string;
         };
         /** CapitalSummary */
         CapitalSummary: {
@@ -946,6 +950,28 @@ export interface components {
             /** Political Capital */
             political_capital: number;
         };
+        /**
+         * InvestmentEffectPreview
+         * @description (Gate 4A3 W-2) One drafted relationship investment's own effect.
+         */
+        InvestmentEffectPreview: {
+            /** Bloc Display Name */
+            bloc_display_name: string;
+            /** Bloc Id */
+            bloc_id: string;
+            /** Chief Of Staff Bonus Bps */
+            chief_of_staff_bonus_bps: number;
+            /** Gain Bps */
+            gain_bps: number;
+            /** No Effect */
+            no_effect: boolean;
+            /** Opening Relationship Bps */
+            opening_relationship_bps: number;
+            /** Party Id */
+            party_id: string;
+            /** Political Capital */
+            political_capital: number;
+        };
         /** LedgerEntry */
         LedgerEntry: {
             /** Amount Text */
@@ -1306,6 +1332,11 @@ export interface components {
              * @default 0
              */
             investment_capital: number;
+            /**
+             * Investment Effects
+             * @default []
+             */
+            investment_effects: components["schemas"]["InvestmentEffectPreview"][];
             /**
              * Legislative Bargain Capital
              * @default 0

@@ -970,3 +970,50 @@ for (const viewport of VIEWPORTS) {
     });
   });
 }
+
+// ======== Gate 4A3 W-2: what investments and cabinet posts do ========
+for (const viewport of VIEWPORTS) {
+  test(`@w2 investments and cabinet posts explain their effect — ${viewport.name}`, async ({ page }) => {
+    test.setTimeout(240_000);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await ensureServer(page);
+    await startValdrun(page);
+    const options = (await (await page.request.get(`${base}/api/game/decision-options`)).json()) as {
+      blocs: { party_id: string; bloc_id: string; bloc_name: string }[];
+      cabinet_posts: { post: string; post_display_name: string; post_effect_text: string; candidates: { character_id: string; effect_text: string; candidate_accepts_post: boolean }[] }[];
+    };
+
+    // Decisions: the guidance, then one investment's own effect in the preview.
+    await visit(page, "Decisions");
+    await expect(page.getByTestId("investment-guidance")).toContainText(
+      "make up half of your support at a national election",
+    );
+    const bloc = options.blocs.find((b) => b.party_id === "opposition_party" && b.bloc_id === "main")!;
+    await page.getByLabel(`Relationship investment for ${bloc.bloc_name}`).fill("100");
+    const body = await preview(page);
+    const effect = (body.investment_effects as { party_id: string; bloc_id: string; gain_bps: number; no_effect: boolean }[])
+      .find((row) => row.party_id === "opposition_party" && row.bloc_id === "main")!;
+    expect(effect.no_effect).toBe(false);
+    const row = page.locator('[data-investment-effect="opposition_party/main"]');
+    await expect(row).toBeVisible();
+    await expect(row).toContainText(`${bloc.bloc_name}: +`);
+    await expect(row).toContainText("from 100 capital");
+    const axeEffects = await new AxeBuilder({ page }).include('[data-testid="investment-effects"]').analyze();
+    expect(axeEffects.violations.map((v) => v.id)).toEqual([]);
+
+    // Government: each post's effect, and each willing candidate's.
+    await visit(page, "Government");
+    for (const post of options.cabinet_posts) {
+      await page.locator(`[data-post-option="${post.post}"]`).click();
+      await expect(page.getByTestId("post-effect")).toHaveText(post.post_effect_text);
+      for (const candidate of post.candidates.filter((c) => c.candidate_accepts_post)) {
+        await expect(page.locator(`[data-candidate-effect="${candidate.character_id}"]`).first()).toHaveText(candidate.effect_text);
+      }
+      const axePost = await new AxeBuilder({ page }).include('[data-testid="post-effect"]').analyze();
+      expect(axePost.violations.map((v) => v.id)).toEqual([]);
+    }
+    const overflow = await pageOverflow(page);
+    expect(overflow.scrollWidth, `no page overflow at ${viewport.width}px`).toBeLessThanOrEqual(overflow.clientWidth);
+    results.push({ block: "w2", viewport: viewport.name, investmentGainBps: effect.gain_bps, posts: options.cabinet_posts.length });
+  });
+}
