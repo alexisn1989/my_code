@@ -1,0 +1,65 @@
+{
+  "scenario": "decree_state",
+  "terminal": {
+    "bucket": "victory",
+    "reason_label": "Peaceful liberalization completed",
+    "turn": 7,
+    "headline": "Victory: peaceful liberalization completed, turn 7."
+  },
+  "turnsPlayed": 7,
+  "log": [
+    {
+      "turn": 0,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 1,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 2,
+      "kinds": [
+        "constitutional_amendment"
+      ],
+      "headline": "Amendment passed, 72 of 100 seats (67 required)."
+    },
+    {
+      "turn": 3,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 4,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 5,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 6,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The election was won with 64.38%."
+    }
+  ],
+  "goalCardAtStart": "Your current priority\n\nNothing is pressing. Consider how to use your political capital.\n\nYou win by turning this into a competitive constitution and then winning the first election held under it. You lose if you are removed by coup, forced abdication, assassination, impeachment, electoral defeat or term limit exit.\n\nBuild a decision",
+  "goalCardAfterReform": "Your current priority\n\nYour priority: Coup risk 10.72%.\n\nYou win by turning this into a competitive constitution and then winning the first election held under it. You lose if you are removed by coup, forced abdication, assassination, impeachment, electoral defeat or term limit exit.\n\nBuild a decision",
+  "constitutionScreenAtEnd": "Constitution\nSummary\nConstitution\n\n \nneutral\nSupermajority\n\nNot in this version of the game\n\nThe Dashboard already has a summary card for this topic. A full constitution screen is not part of this version of the game.\n\nBack to Dashboard",
+  "consoleErrors": []
+}

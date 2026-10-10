@@ -1,0 +1,235 @@
+{
+  "scenario": "decree_state",
+  "final_turn": 7,
+  "outcome": {
+    "bucket": "victory",
+    "victory_reason": "peaceful_liberalization_completed",
+    "removal_reason": null,
+    "turn": 7
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "opening_capital": 500,
+      "pending_liberalization": false,
+      "next_election_turn": null,
+      "best_failing_preview": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 45,
+          "required_seats": 67,
+          "carries": false
+        }
+      ],
+      "previews_tried": 4,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            },
+            {
+              "party_id": "opposition_party",
+              "bloc_id": "main",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 1,
+      "opening_capital": 483,
+      "pending_liberalization": false,
+      "next_election_turn": null,
+      "best_failing_preview": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 45,
+          "required_seats": 67,
+          "carries": false
+        }
+      ],
+      "previews_tried": 4,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            },
+            {
+              "party_id": "opposition_party",
+              "bloc_id": "main",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 2,
+      "opening_capital": 468,
+      "pending_liberalization": false,
+      "next_election_turn": null,
+      "preview_chambers": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 72,
+          "required_seats": 67,
+          "carries": true
+        }
+      ],
+      "previews_tried": 3,
+      "submitted": [
+        {
+          "kind": "constitutional_amendment",
+          "targets": [
+            {
+              "axis": "decree_authority",
+              "value": "none"
+            },
+            {
+              "axis": "executive_selection",
+              "value": "direct_election"
+            },
+            {
+              "axis": "executive_system",
+              "value": "presidential"
+            },
+            {
+              "axis": "national_election_interval_turns",
+              "value": 4
+            }
+          ],
+          "route": "legislative",
+          "influence": [
+            {
+              "party_id": "opposition_party",
+              "bloc_id": "main",
+              "political_capital": 468
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "Amendment passed, 72 of 100 seats (67 required)."
+    },
+    {
+      "turn": 3,
+      "opening_capital": 388,
+      "pending_liberalization": true,
+      "next_election_turn": 7,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 188
+            },
+            {
+              "party_id": "opposition_party",
+              "bloc_id": "main",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 4,
+      "opening_capital": 387,
+      "pending_liberalization": true,
+      "next_election_turn": 7,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 187
+            },
+            {
+              "party_id": "opposition_party",
+              "bloc_id": "main",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 5,
+      "opening_capital": 386,
+      "pending_liberalization": true,
+      "next_election_turn": 7,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 186
+            },
+            {
+              "party_id": "opposition_party",
+              "bloc_id": "main",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 6,
+      "opening_capital": 385,
+      "pending_liberalization": true,
+      "next_election_turn": 7,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 185
+            },
+            {
+              "party_id": "opposition_party",
+              "bloc_id": "main",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The election was won with 64.38%."
+    }
+  ]
+}

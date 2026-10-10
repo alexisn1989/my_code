@@ -1,0 +1,543 @@
+{
+  "scenario": "deficit_demo",
+  "final_turn": 20,
+  "outcome": {
+    "bucket": "victory",
+    "victory_reason": "peaceful_liberalization_completed",
+    "removal_reason": null,
+    "turn": 20
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "opening_capital": 300,
+      "pending_liberalization": false,
+      "next_election_turn": 20,
+      "preview_chambers": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 53,
+          "required_seats": 51,
+          "carries": true
+        }
+      ],
+      "previews_tried": 2,
+      "submitted": [
+        {
+          "kind": "constitutional_amendment",
+          "targets": [
+            {
+              "axis": "decree_authority",
+              "value": "none"
+            }
+          ],
+          "route": "legislative",
+          "influence": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 300
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "Amendment passed, 53 of 100 seats (51 required)."
+    },
+    {
+      "turn": 1,
+      "opening_capital": 381,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 181
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 2,
+      "opening_capital": 382,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 182
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 3,
+      "opening_capital": 384,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 184
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 4,
+      "opening_capital": 385,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 185
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 5,
+      "opening_capital": 386,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 186
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 6,
+      "opening_capital": 384,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 184
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 7,
+      "opening_capital": 383,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 183
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 8,
+      "opening_capital": 382,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 182
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 9,
+      "opening_capital": 381,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 181
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 10,
+      "opening_capital": 380,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 180
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 11,
+      "opening_capital": 380,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 180
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 12,
+      "opening_capital": 379,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 179
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 13,
+      "opening_capital": 379,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 179
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 14,
+      "opening_capital": 379,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 179
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 15,
+      "opening_capital": 378,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 178
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 16,
+      "opening_capital": 380,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 180
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 17,
+      "opening_capital": 381,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 181
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 18,
+      "opening_capital": 383,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 183
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 19,
+      "opening_capital": 384,
+      "pending_liberalization": true,
+      "next_election_turn": 20,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "citizens_bloc",
+              "bloc_id": "hardliners",
+              "political_capital": 184
+            },
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The election was won with 65.42%."
+    }
+  ]
+}

@@ -1,0 +1,156 @@
+{
+  "scenario": "deficit_demo",
+  "terminal": {
+    "bucket": "victory",
+    "reason_label": "Peaceful liberalization completed",
+    "turn": 20,
+    "headline": "Victory: peaceful liberalization completed, turn 20."
+  },
+  "turnsPlayed": 20,
+  "log": [
+    {
+      "turn": 0,
+      "kinds": [
+        "constitutional_amendment"
+      ],
+      "headline": "Amendment passed, 53 of 100 seats (51 required)."
+    },
+    {
+      "turn": 1,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 2,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 3,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 4,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 5,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 6,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 7,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 8,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 9,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 10,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 11,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 12,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 13,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 14,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 15,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 16,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 17,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 18,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 19,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The election was won with 65.42%."
+    }
+  ],
+  "goalCardAtStart": "Your current priority\n\nYour priority: An election is scheduled for turn 20.\n\nYou win by turning this into a competitive constitution and then winning the first election held under it. You lose if you are removed by coup, forced abdication, assassination, impeachment, electoral defeat or term limit exit.\n\nBuild a decision",
+  "goalCardAfterReform": "Your current priority\n\nYour priority: Coup risk 2.18%.\n\nYou win by turning this into a competitive constitution and then winning the first election held under it. You lose if you are removed by coup, forced abdication, assassination, impeachment, electoral defeat or term limit exit.\n\nBuild a decision",
+  "constitutionScreenAtEnd": "Constitution\nSummary\nConstitution\n\n \nneutral\nSimple majority\n\nNot in this version of the game\n\nThe Dashboard already has a summary card for this topic. A full constitution screen is not part of this version of the game.\n\nBack to Dashboard",
+  "consoleErrors": []
+}

@@ -1,0 +1,526 @@
+{
+  "scenario": "tiny_valid",
+  "final_turn": 16,
+  "outcome": {
+    "bucket": "victory",
+    "victory_reason": "peaceful_liberalization_completed",
+    "removal_reason": null,
+    "turn": 16
+  },
+  "turns": [
+    {
+      "turn": 0,
+      "opening_capital": 500,
+      "pending_liberalization": false,
+      "next_election_turn": 16,
+      "preview_chambers": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 69,
+          "required_seats": 67,
+          "carries": true
+        },
+        {
+          "chamber": "upper",
+          "total_seats": 60,
+          "supporting_seats": 40,
+          "required_seats": 40,
+          "carries": true
+        }
+      ],
+      "previews_tried": 20,
+      "submitted": [
+        {
+          "kind": "constitutional_amendment",
+          "targets": [
+            {
+              "axis": "decree_authority",
+              "value": "none"
+            }
+          ],
+          "route": "legislative",
+          "influence": [
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 395
+            }
+          ]
+        },
+        {
+          "kind": "legislative_bargain",
+          "character_id": "leader_rural_alliance",
+          "proposal_kind": "constitutional_amendment"
+        }
+      ],
+      "status": 200,
+      "headline": "Amendment passed, 69 of 100 seats (67 required)."
+    },
+    {
+      "turn": 1,
+      "opening_capital": 413,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 13
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 2,
+      "opening_capital": 415,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 15
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 3,
+      "opening_capital": 418,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 18
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 4,
+      "opening_capital": 420,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 20
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 5,
+      "opening_capital": 422,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 22
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 6,
+      "opening_capital": 424,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 24
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 7,
+      "opening_capital": 425,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 25
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 8,
+      "opening_capital": 427,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 27
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 9,
+      "opening_capital": 428,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 28
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 10,
+      "opening_capital": 429,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 29
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 11,
+      "opening_capital": 430,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 30
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 12,
+      "opening_capital": 429,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 29
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 13,
+      "opening_capital": 428,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 28
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 14,
+      "opening_capital": 427,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 27
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 15,
+      "opening_capital": 426,
+      "pending_liberalization": true,
+      "next_election_turn": 16,
+      "previews_tried": 0,
+      "submitted": [
+        {
+          "kind": "bloc_relationship_investment",
+          "investments": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "political_capital": 200
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "political_capital": 26
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "political_capital": 200
+            }
+          ]
+        }
+      ],
+      "status": 200,
+      "headline": "The election was won with 66.72%."
+    }
+  ]
+}

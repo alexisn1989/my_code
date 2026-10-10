@@ -1,0 +1,129 @@
+{
+  "scenario": "tiny_valid",
+  "terminal": {
+    "bucket": "victory",
+    "reason_label": "Peaceful liberalization completed",
+    "turn": 16,
+    "headline": "Victory: peaceful liberalization completed, turn 16."
+  },
+  "turnsPlayed": 16,
+  "log": [
+    {
+      "turn": 0,
+      "kinds": [
+        "constitutional_amendment",
+        "legislative_bargain"
+      ],
+      "headline": "Amendment passed, 69 of 100 seats (67 required)."
+    },
+    {
+      "turn": 1,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 2,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 3,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 4,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 5,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 6,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 7,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 8,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 9,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 10,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 11,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 12,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 13,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 14,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The turn was resolved."
+    },
+    {
+      "turn": 15,
+      "kinds": [
+        "bloc_relationship_investment"
+      ],
+      "headline": "The election was won with 66.72%."
+    }
+  ],
+  "goalCardAtStart": "Your current priority\n\nYour priority: An election is scheduled for turn 16.\n\nYou win by turning this into a competitive constitution and then winning the first election held under it. You lose if you are removed by coup, forced abdication, assassination, impeachment, electoral defeat or term limit exit.\n\nBuild a decision",
+  "goalCardAfterReform": "Your current priority\n\nYour priority: Coup risk 2.88%.\n\nYou win by turning this into a competitive constitution and then winning the first election held under it. You lose if you are removed by coup, forced abdication, assassination, impeachment, electoral defeat or term limit exit.\n\nBuild a decision",
+  "constitutionScreenAtEnd": "Constitution\nSummary\nConstitution\n\n \nneutral\nSupermajority\n\nNot in this version of the game\n\nThe Dashboard already has a summary card for this topic. A full constitution screen is not part of this version of the game.\n\nBack to Dashboard",
+  "consoleErrors": []
+}
