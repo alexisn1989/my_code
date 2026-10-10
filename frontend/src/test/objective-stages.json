@@ -178,7 +178,7 @@
     "detail": null,
     "conditions_met": 3,
     "conditions_text": "Constitutional conditions: 3 of 3 met",
-    "transition_text": "Qualifying transition: not recorded",
+    "transition_text": "Qualifying transition: completed \u2014 the election on turn 2 was won.",
     "conditions": [
       {
         "id": "elected_executive",
@@ -296,6 +296,92 @@
     ],
     "transition_turn": null,
     "election_turn": 7,
+    "election_note": null,
+    "qualifying_card_id": null,
+    "ordering_note": null
+  },
+  "concludedElectoralDefeat": {
+    "stage": "concluded",
+    "cannot_qualify_reason": null,
+    "headline": "The campaign has ended.",
+    "detail": null,
+    "conditions_met": 3,
+    "conditions_text": "Constitutional conditions: 3 of 3 met",
+    "transition_text": "Qualifying transition: not completed \u2014 the campaign ended by electoral defeat on turn 2.",
+    "conditions": [
+      {
+        "id": "elected_executive",
+        "label": "An elected executive",
+        "current_text": "Direct election",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "no_decree_authority",
+        "label": "No decree authority",
+        "current_text": "No decree authority",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "election_interval",
+        "label": "A national election schedule",
+        "current_text": "Every 4 turns",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      }
+    ],
+    "transition_turn": null,
+    "election_turn": 2,
+    "election_note": null,
+    "qualifying_card_id": null,
+    "ordering_note": null
+  },
+  "concludedTermLimitExit": {
+    "stage": "concluded",
+    "cannot_qualify_reason": null,
+    "headline": "The campaign has ended.",
+    "detail": null,
+    "conditions_met": 3,
+    "conditions_text": "Constitutional conditions: 3 of 3 met",
+    "transition_text": "Qualifying transition: not completed \u2014 the campaign ended by term limit exit on turn 3.",
+    "conditions": [
+      {
+        "id": "elected_executive",
+        "label": "An elected executive",
+        "current_text": "Direct election",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "no_decree_authority",
+        "label": "No decree authority",
+        "current_text": "No decree authority",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "election_interval",
+        "label": "A national election schedule",
+        "current_text": "Every 4 turns",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      }
+    ],
+    "transition_turn": 1,
+    "election_turn": 3,
     "election_note": null,
     "qualifying_card_id": null,
     "ordering_note": null

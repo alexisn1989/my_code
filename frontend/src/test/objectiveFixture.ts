@@ -18,7 +18,9 @@ export const OBJECTIVE_STAGES = stages as unknown as Record<
   | "qualifyingElection"
   | "concludedVictory"
   | "cannotQualifyMissingInterval"
-  | "cannotQualifyAlreadyCompetitive",
+  | "cannotQualifyAlreadyCompetitive"
+  | "concludedElectoralDefeat"
+  | "concludedTermLimitExit",
   ObjectiveFixture
 >;
 

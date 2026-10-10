@@ -300,6 +300,10 @@ for (const scenario of ["deficit_demo", "tiny_valid", "decree_state"] as const) 
     await expect(page.getByTestId("objective-card").getByTestId("objective-headline")).toHaveText(
       "Objective complete: the qualifying election was won.",
     );
+    // Gate 4A3 W-1: the win consumes the marker; the card must report the completed transition.
+    const completed = /^Qualifying transition: completed — the election on turn \d+ was won\.$/;
+    await expect(page.getByTestId("objective-card").getByTestId("objective-transition-text")).toHaveText(completed);
+    await expect(page.getByTestId("objective-card")).not.toContainText("not recorded");
     await checkSurface(page, '[data-testid="objective-card"]', "Dashboard objective card (concluded)", surfaces);
     // Gate 4A3 victory path V-4: the concluded Constitution screen, which V-2 did not check.
     expect(await checklist(page)).toEqual(ALL_MET);
@@ -308,6 +312,7 @@ for (const scenario of ["deficit_demo", "tiny_valid", "decree_state"] as const) 
     await expect(page.getByTestId("objective-headline")).toHaveText(
       "Objective complete: the qualifying election was won.",
     );
+    await expect(page.getByTestId("objective-transition-text")).toHaveText(completed);
     await checkSurface(page, "main", "Constitution (concluded)", surfaces);
     // The coverage is asserted, not just recorded: five surfaces at every stage, six widths each.
     const entries = surfaces as { surface: string; width: number }[];
@@ -322,6 +327,53 @@ for (const scenario of ["deficit_demo", "tiny_valid", "decree_state"] as const) 
     record[scenario] = { turnsPlayed: log.length, terminal: final.terminal, log, surfaces: surfaces.length, consoleErrors };
   });
 }
+
+test("decision reliability: the selection survives navigation, and no major action clears the proposal", async ({ page }) => {
+  // Gate 4A3 W-1, from the playtest feedback.
+  test.setTimeout(300_000);
+  await ensureServer(page);
+  const consoleErrors: string[] = [];
+  page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await startScenario(page, "deficit_demo");
+  const options = await api<{ policy_cards: { card_id: string; title: string; category: string; available: boolean; clears_proposal_slot: boolean }[] }>(page, "/api/game/decision-options");
+  const tax = options.policy_cards.find((card) => card.category === "taxation" && card.available)!;
+  const restraint = options.policy_cards.find((card) => card.clears_proposal_slot)!;
+
+  await visit(page, "Decisions");
+  await page.getByRole("tab", { name: /^Budget policy/ }).click();
+  await page.getByRole("group", { name: tax.title }).getByRole("button", { name: "Select" }).click();
+  await expect(page.getByTestId("policy-selection-summary")).toContainText(tax.title);
+
+  // Away and back: the card is still shown, on its own tab, and still pressed.
+  await visit(page, "Dashboard");
+  await visit(page, "Decisions");
+  await expect(page.getByTestId("policy-selection-summary")).toContainText(tax.title);
+  await expect(page.getByRole("group", { name: tax.title }).getByRole("button", { name: "Selected" })).toHaveAttribute("aria-pressed", "true");
+
+  // A hand edit under Customize that changes the policy: the card is no longer shown as selected.
+  await page.locator("summary", { hasText: "Customize policy" }).click();
+  const rate = page.getByRole("spinbutton").first();
+  const original = await rate.inputValue();
+  await rate.fill(String(Number(original) + 1));
+  await expect(page.getByTestId("policy-selection-summary")).toContainText("No policy selected yet.");
+  await expect(page.getByTestId("policy-selection-summary")).not.toContainText(tax.title);
+  await rate.fill(original);
+  await expect(page.getByTestId("policy-selection-summary")).toContainText(tax.title);
+
+  // "Take no major action" replaces it: the preview sees no proposal.
+  await page.getByRole("tab", { name: /^Take no major action/ }).click();
+  await page.getByRole("group", { name: restraint.title }).getByRole("button", { name: "Select" }).click();
+  await expect(page.getByTestId("policy-selection-summary")).toContainText(restraint.title);
+  const previewed = page.waitForResponse((r) => r.url().includes("/api/game/preview") && r.request().method() === "POST");
+  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  const preview = await (await previewed).json();
+  expect(preview.has_proposal, "no major action submits no proposal").toBe(false);
+  const sent = (await previewed).request().postDataJSON() as { decisions: { kind: string }[] };
+  expect(sent.decisions.map((d) => d.kind)).not.toContain("budget");
+  expect(consoleErrors).toEqual([]);
+  record.decisionReliability = { selectionSurvivedNavigation: true, noMajorActionClearedProposal: true, consoleErrors };
+});
 
 test("a link replaces a staged proposal, and the stages a win cannot reach render and pass", async ({ page }) => {
   test.setTimeout(600_000);
@@ -349,6 +401,8 @@ test("a link replaces a staged proposal, and the stages a win cannot reach rende
     "objective-after-decree-none": { stage: "reform", reason: null },
     "objective-cannot-qualify-missing-interval": { stage: "cannot_qualify", reason: "missing_interval" },
     "objective-cannot-qualify-already-competitive": { stage: "cannot_qualify", reason: "already_competitive" },
+    // Gate 4A3 W-1: a lost qualifying election must not read as a completed transition.
+    "objective-concluded-electoral-defeat": { stage: "concluded", reason: null },
   };
   for (const [name, expected] of Object.entries(fixtures)) {
     const dashboard = JSON.parse(readFileSync(path.join(FIXTURES_DIR, `${name}.json`), "utf-8"));
@@ -360,6 +414,12 @@ test("a link replaces a staged proposal, and the stages a win cannot reach rende
     await visit(page, "Dashboard");
     await expect(page.getByTestId("objective-card")).toHaveAttribute("data-stage", expected.stage);
     await expect(page.getByTestId("objective-card").getByTestId("objective-headline")).toHaveText(dashboard.objective.headline);
+    if (name === "objective-concluded-electoral-defeat") {
+      await expect(page.getByTestId("objective-card").getByTestId("objective-transition-text")).toHaveText(
+        /^Qualifying transition: not completed — the campaign ended by electoral defeat on turn \d+\.$/,
+      );
+      await expect(page.getByTestId("objective-card")).not.toContainText("was won");
+    }
     await checkSurface(page, '[data-testid="objective-card"]', `Dashboard objective card (${name})`, surfaces);
     await visit(page, "Constitution");
     if (name === "objective-after-decree-none") {

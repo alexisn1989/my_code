@@ -27,7 +27,7 @@ import {
 } from "../../format/format";
 import { ConsequencesPanel } from "../policy/ConsequencesPanel";
 import { PolicyCardGrid } from "../policy/PolicyCardGrid";
-import { chooseCardRoute, mapPolicyCardToDraft } from "../../state/applyPolicyCard";
+import { cardMatchesDraft, chooseCardRoute, mapPolicyCardToDraft } from "../../state/applyPolicyCard";
 import {
   buildDecisions,
   policyProposalDecision,
@@ -157,7 +157,9 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   // to submit, and showing it anyway is how a "Would pass" verdict outlives the decision it was
   // about.
   const [previewedSignature, setPreviewedSignature] = useState<string | null>(null);
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  // Gate 4A3 W-1: the selection lives in the draft store, so it survives leaving this screen. It is
+  // only DISPLAYED while the draft still matches it (`displayedCardId` below), so it cannot drift.
+  const setSelectedCardId = draft.setSelectedCardId;
   const [routeChangeAnnouncement, setRouteChangeAnnouncement] = useState<string | null>(null);
   // Gate 4A3 UX-1: after Preview, focus moves to the result it produced, so a keyboard or
   // screen-reader player lands on the estimate instead of hunting for it far down the page.
@@ -185,6 +187,27 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         : draft.policySlot === "amendment"
           ? draft.amendment.route
           : null;
+    if (card.clears_proposal_slot) {
+      // Gate 4A3 W-1: "Take no major action" has no routes -- it is not a proposal -- so it used to
+      // fall into the no-available-route guard below and change nothing, leaving the previous
+      // proposal staged. It clears the slot -- what `mapPolicyCardToDraft` maps it to.
+      // Its scope is the policy proposal and nothing else: appointments, investments, promises,
+      // assistance and movement stay staged. A staged leader bargain is dropped with the proposal it
+      // endorsed (resolution refuses a bargain with no proposal), and the player is told so.
+      const droppedBargain = draft.bargain !== null;
+      draft.applyCard({ policySlot: null });
+      setSelectedCardId(card.card_id);
+      const parts = [
+        replacing === null
+          ? null
+          : `Replaced your drafted ${replacing === "budget" ? "budget" : "amendment"} with: ${card.title}.`,
+        droppedBargain
+          ? "Your staged leader bargain was dropped too: it endorsed the proposal you cleared."
+          : null,
+      ].filter((part) => part !== null);
+      setRouteChangeAnnouncement(parts.length > 0 ? parts.join(" ") : null);
+      return;
+    }
     const chosen = chooseCardRoute(card, priorRoute);
     if (chosen === null) {
       return; // defensive: the browser's disabled Select button prevents this
@@ -358,6 +381,15 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
 
   const activeSlot = draft.policySlot;
 
+  // The selection shown is DERIVED from the draft: the stored card id, kept only while the draft
+  // still matches that card. A hand edit that changes the policy hides it; nothing else does.
+  const storedCard =
+    draft.selectedCardId === null
+      ? undefined
+      : data.policy_cards.find((card) => card.card_id === draft.selectedCardId);
+  const displayedCardId =
+    storedCard !== undefined && cardMatchesDraft(storedCard, draft) ? storedCard.card_id : null;
+
   // Recomputed every render from the CURRENT draft, so an edit invalidates the estimate the moment
   // it happens -- including an edit made while a preview request is still outstanding.
   const previewIsCurrent =
@@ -389,7 +421,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         <PolicyCardGrid
           key={gridKey}
           cards={data.policy_cards}
-          selectedCardId={selectedCardId}
+          selectedCardId={displayedCardId}
           onSelectCard={handleSelectCard}
           onClearSelection={handleClearSelection}
         />

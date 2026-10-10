@@ -31,6 +31,7 @@ from app.simulation.decisions import (
     ConstitutionalAmendmentDecision,
     ConstitutionalAxisTarget,
     InfluenceAllocation,
+    TermLimitTarget,
 )
 from app.simulation.state import GameState
 from tests.test_campaign_objective import (
@@ -40,10 +41,12 @@ from tests.test_campaign_objective import (
     _amend,
     _election_next,
     _enact,
+    _hostile,
     _load,
     _politics,
     _resolve,
     _set,
+    _set_politics,
     _supportive,
     _valdrun_stuck,
     _valdrun_with_marker,
@@ -67,8 +70,21 @@ def _already_competitive() -> GameState:
     return _enact(_valdrun_stuck(), _amend(*INTERVAL))
 
 
+def _concluded_electoral_defeat() -> GameState:
+    """Gate 4A3 W-1: the qualifying election LOST -- the transition was not completed."""
+    marked = _election_next(_set_politics(_hostile(_valdrun_with_marker()), legitimacy_bps=0))
+    return _resolve(marked).state
+
+
+def _concluded_term_limit_exit() -> GameState:
+    """Gate 4A3 W-1: a term-limit exit with the marker still stored -- also not completed."""
+    marked = _enact(_valdrun_with_marker(), _amend(TermLimitTarget(value=1)))
+    return _resolve(_election_next(_set_politics(marked, consecutive_terms_held=1))).state
+
+
 CASES = {
     "objective-after-decree-none": _after_decree_none,
+    "objective-concluded-electoral-defeat": _concluded_electoral_defeat,
     "objective-cannot-qualify-missing-interval": _valdrun_stuck,
     "objective-cannot-qualify-already-competitive": _already_competitive,
 }
@@ -118,6 +134,8 @@ def _stage_states() -> dict[str, GameState]:
         "concludedVictory": _resolve(_election_next(_supportive(_valdrun_with_marker()))).state,
         "cannotQualifyMissingInterval": _valdrun_stuck(),
         "cannotQualifyAlreadyCompetitive": _already_competitive(),
+        "concludedElectoralDefeat": _concluded_electoral_defeat(),
+        "concludedTermLimitExit": _concluded_term_limit_exit(),
     }
 
 

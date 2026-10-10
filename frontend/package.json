@@ -158,7 +158,17 @@
     "verify:campaigns:v4": "MANDATE_CAMPAIGNS_OUT=gate-4a3-v4-campaigns playwright test --project=campaigns",
     "audit:stress:seated:v4": "MANDATE_STRESS_SEATED_OUT=gate-4a3-v4-stress-seated-cabinet playwright test --project=stress-seated",
     "audit:accessibility:verify:v4": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v4 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v4 node tools/write-accessibility-report.mjs",
-    "walkthrough:installed:v5": "MANDATE_WALKTHROUGH_REQUIRED=1 MANDATE_WALKTHROUGH_GATE=\"4A3 victory path V-5 (enforced, installed archive)\" MANDATE_WALKTHROUGH_OUT=gate-4a3-v5-walkthrough playwright test --config=playwright.walkthrough.config.ts"
+    "walkthrough:installed:v5": "MANDATE_WALKTHROUGH_REQUIRED=1 MANDATE_WALKTHROUGH_GATE=\"4A3 victory path V-5 (enforced, installed archive)\" MANDATE_WALKTHROUGH_OUT=gate-4a3-v5-walkthrough playwright test --config=playwright.walkthrough.config.ts",
+    "_comment:w1": "Gate 4A3 W-1 (playtest feedback): the selected card lives in the draft store and survives navigation; Take no major action clears the proposal; a concluded campaign reports how the transition ended. Every browser gate re-runs under W-1's own names; walkthrough:installed:w1 is the mandatory installed-archive walkthrough for the W-1 candidate.",
+    "verify:victory:w1": "MANDATE_VICTORY_OUT=gate-4a3-w1-victory playwright test --project=victory",
+    "verify:ux:w1": "MANDATE_UX_OUT=gate-4a3-w1-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3|@ux4a|@ux4b|@ux4c|@ux4e\"",
+    "verify:fixes:w1": "MANDATE_VERIFY_OUT=gate-4a3-w1-verification playwright test --project=verify",
+    "verify:icons:w1": "MANDATE_ICONS_OUT=gate-4a3-w1-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:w1": "MANDATE_TERMINAL_OUT=gate-4a3-w1-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:w1": "MANDATE_CAMPAIGNS_OUT=gate-4a3-w1-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:w1": "MANDATE_STRESS_SEATED_OUT=gate-4a3-w1-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:w1": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-w1 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-w1 node tools/write-accessibility-report.mjs",
+    "walkthrough:installed:w1": "MANDATE_WALKTHROUGH_REQUIRED=1 MANDATE_WALKTHROUGH_GATE=\"4A3 W-1 (enforced, installed archive)\" MANDATE_WALKTHROUGH_OUT=gate-4a3-w1-walkthrough playwright test --config=playwright.walkthrough.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

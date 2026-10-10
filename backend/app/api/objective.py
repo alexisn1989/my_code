@@ -60,6 +60,7 @@ from .constitution_labels import (
     EXECUTIVE_SELECTION_LABELS,
     election_interval_label,
 )
+from .outcome_labels import outcome_reason_text
 
 _STRICT = ConfigDict(extra="forbid", frozen=True)
 
@@ -484,11 +485,29 @@ def build_objective(politics: PoliticalState) -> ObjectiveProjection:
     met = _met_count(constitution)
     conditions_text = f"Constitutional conditions: {met} of 3 met"
     marker = politics.pending_liberalization
-    transition_text = (
-        f"Qualifying transition: recorded on turn {marker.set_at_turn}"
-        if marker is not None
-        else "Qualifying transition: not recorded"
-    )
+    ended = politics.terminal_outcome
+    # Gate 4A3 W-1: winning the qualifying election CONSUMES the marker, so a concluded campaign
+    # used to read "not recorded" beside its own victory. Once the campaign is over the line
+    # reports how the transition ended, not whether a marker is still stored.
+    if ended is not None:
+        # Outcome-specific: only a won qualifying election completed the transition. Every other
+        # ending says it did not, and names how the campaign ended, with the authored phrase.
+        if ended.bucket is OutcomeBucket.VICTORY:
+            transition_text = (
+                f"Qualifying transition: completed — the election on turn {ended.turn} was won."
+            )
+        else:
+            phrase = outcome_reason_text(ended.removal_reason).phrase
+            transition_text = (
+                "Qualifying transition: not completed — the campaign ended by "
+                f"{phrase} on turn {ended.turn}."
+            )
+    else:
+        transition_text = (
+            f"Qualifying transition: recorded on turn {marker.set_at_turn}"
+            if marker is not None
+            else "Qualifying transition: not recorded"
+        )
     election = politics.next_election_turn
 
     def make(

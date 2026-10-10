@@ -96,3 +96,50 @@ export function chooseCardRoute(
   }
   return { route: available[0]!, changed: false };
 }
+
+type PolicyFields = {
+  policySlot: "budget" | "amendment" | null;
+  budget: AppliedBudgetFields;
+  amendment: AppliedAmendmentFields;
+};
+
+function sameRecord(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => Object.is(a[key], b[key]));
+}
+
+/**
+ * Gate 4A3 W-1: whether the CURRENT draft still is what selecting `card` produced -- the test that
+ * keeps the displayed selection honest. A card is shown as selected only while this holds, so a
+ * hand edit under "Customize policy" (a changed rate, an added amendment axis) can never leave a
+ * card on screen that the draft no longer matches.
+ *
+ * Compared: the proposal slot, and the policy fields the card's template sets. NOT compared: the
+ * route (the same card offers both, and the player may switch) and influence (never part of a card,
+ * per R5). "Take no major action" matches exactly when no proposal is drafted.
+ */
+export function cardMatchesDraft(card: PolicyCard, draft: PolicyFields): boolean {
+  if (card.clears_proposal_slot) {
+    return draft.policySlot === null;
+  }
+  const route = card.routes.find((candidate) => candidate.available && candidate.template != null);
+  if (route === undefined) {
+    return false;
+  }
+  const applied = mapPolicyCardToDraft(card, route);
+  if (applied.policySlot !== draft.policySlot) {
+    return false;
+  }
+  if (applied.policySlot === "budget" && applied.budget) {
+    return (
+      applied.budget.personalIncomeRateBps === draft.budget.personalIncomeRateBps &&
+      applied.budget.corporateRateBps === draft.budget.corporateRateBps &&
+      applied.budget.consumptionRateBps === draft.budget.consumptionRateBps &&
+      sameRecord(applied.budget.spendingUpdates, draft.budget.spendingUpdates)
+    );
+  }
+  if (applied.policySlot === "amendment" && applied.amendment) {
+    return sameRecord(applied.amendment.targets, draft.amendment.targets);
+  }
+  return false;
+}

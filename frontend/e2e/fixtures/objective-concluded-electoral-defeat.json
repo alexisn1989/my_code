@@ -1,0 +1,131 @@
+{
+  "alerts": [
+    {
+      "detail": null,
+      "headline": "Removed from office: electoral defeat, turn 2.",
+      "id": "terminal",
+      "screen": "terminal",
+      "severity": "critical"
+    },
+    {
+      "detail": null,
+      "headline": "An election is scheduled for turn 2.",
+      "id": "election-scheduled",
+      "screen": "government",
+      "severity": "info"
+    }
+  ],
+  "campaign_id": "fixture-campaign",
+  "concerns": {
+    "constitution": {
+      "delta_text": null,
+      "detail_screen": "constitution",
+      "direction": "unchanged",
+      "headline": "Supermajority",
+      "label": "Constitution",
+      "tone": "neutral"
+    },
+    "legislature": {
+      "delta_text": null,
+      "detail_screen": "legislature",
+      "direction": "unchanged",
+      "headline": "2 parties, 100 seats",
+      "label": "Legislature",
+      "tone": "neutral"
+    },
+    "legitimacy": {
+      "delta_text": null,
+      "detail_screen": "government",
+      "direction": "unchanged",
+      "headline": "5.00%",
+      "label": "Legitimacy",
+      "tone": "caution"
+    },
+    "money": {
+      "delta_text": null,
+      "detail_screen": "economy",
+      "direction": "unchanged",
+      "headline": "106,300,000.00",
+      "label": "Money",
+      "tone": "neutral"
+    },
+    "survival": {
+      "delta_text": null,
+      "detail_screen": "government",
+      "direction": "unchanged",
+      "headline": "Not yet assessed",
+      "label": "Survival",
+      "tone": "neutral"
+    }
+  },
+  "country_name": "Kingdom of Valdrun",
+  "goal": {
+    "detail": null,
+    "headline": "Your priority: Removed from office: electoral defeat, turn 2."
+  },
+  "government_form": "Presidential republic, no decree authority",
+  "map": {
+    "note": "This is a national identity tint, not a geographic map. No province-level mechanics exist.",
+    "presentation_only": true,
+    "tint_metric_label": "Legitimacy",
+    "tint_value_bps": 500
+  },
+  "next_election_label": "Turn 2",
+  "objective": {
+    "cannot_qualify_reason": null,
+    "conditions": [
+      {
+        "current_text": "Direct election",
+        "id": "elected_executive",
+        "if_enacted_alone": null,
+        "label": "An elected executive",
+        "link_card_id": null,
+        "met": true,
+        "note": null
+      },
+      {
+        "current_text": "No decree authority",
+        "id": "no_decree_authority",
+        "if_enacted_alone": null,
+        "label": "No decree authority",
+        "link_card_id": null,
+        "met": true,
+        "note": null
+      },
+      {
+        "current_text": "Every 4 turns",
+        "id": "election_interval",
+        "if_enacted_alone": null,
+        "label": "A national election schedule",
+        "link_card_id": null,
+        "met": true,
+        "note": null
+      }
+    ],
+    "conditions_met": 3,
+    "conditions_text": "Constitutional conditions: 3 of 3 met",
+    "detail": null,
+    "election_note": null,
+    "election_turn": 2,
+    "headline": "The campaign has ended.",
+    "ordering_note": null,
+    "qualifying_card_id": null,
+    "stage": "concluded",
+    "transition_text": "Qualifying transition: not completed \u2014 the campaign ended by electoral defeat on turn 2.",
+    "transition_turn": null
+  },
+  "political_capital": {
+    "capacity": 1000,
+    "committed_this_turn": 0,
+    "current": 1000,
+    "display": "1000 / 1000"
+  },
+  "revision": "2.2",
+  "terminal": {
+    "bucket": "defeat",
+    "headline": "Removed from office: electoral defeat, turn 2.",
+    "reason_label": "Electoral defeat",
+    "turn": 2
+  },
+  "turn": 2
+}

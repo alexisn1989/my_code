@@ -189,6 +189,12 @@ export interface DraftState {
    * the same handler as its own Select button -- so the link REPLACES the drafted proposal exactly
    * as selecting that card would -- and then clears it. */
   requestedCardId: string | null;
+  /** (Gate 4A3 W-1) The policy card the drafted proposal came from, or `null`. Kept HERE, beside
+   * the draft it describes, rather than in the Decisions screen: that screen unmounts when the
+   * player navigates away, and the selection used to vanish while the draft it described stayed
+   * staged. It is display state for the draft, so it is cleared with the draft and whenever the
+   * proposal slot is changed by hand ("Customize policy"). */
+  selectedCardId: string | null;
 
   setPolicySlot: (slot: PolicySlotKind | null) => void;
   /** Selecting a policy card (Gate 4A3A): replaces the relevant slot WHOLESALE
@@ -254,6 +260,7 @@ export interface DraftState {
   setGlossaryOpen: (open: boolean) => void;
   requestCard: (cardId: string) => void;
   clearRequestedCard: () => void;
+  setSelectedCardId: (cardId: string | null) => void;
 }
 
 function influenceKey(partyId: string, blocId: string): string {
@@ -297,6 +304,7 @@ export const useDraftStore = create<DraftState>((set) => ({
   dismissedHelp: false,
   glossaryOpen: false,
   requestedCardId: null,
+  selectedCardId: null,
 
   setPolicySlot: (slot) =>
     set((state) => ({
@@ -304,6 +312,8 @@ export const useDraftStore = create<DraftState>((set) => ({
       // ATOMIC: the bargain clears in the same update that changes the slot, so no render ever
       // observes a draft whose bargain names a proposal the draft does not carry.
       bargain: bargainAfterPolicySlotChange(state.bargain, slot),
+      // A slot changed by hand no longer comes from the card that was selected.
+      selectedCardId: null,
     })),
 
   applyCard: (applied) =>
@@ -436,6 +446,7 @@ export const useDraftStore = create<DraftState>((set) => ({
       assistance: null,
       promise: null,
       requestedCardId: null,
+      selectedCardId: null,
     }),
 
   dismissHelp: () => set({ dismissedHelp: true }),
@@ -443,4 +454,5 @@ export const useDraftStore = create<DraftState>((set) => ({
   setGlossaryOpen: (open) => set({ glossaryOpen: open }),
   requestCard: (cardId) => set({ requestedCardId: cardId }),
   clearRequestedCard: () => set({ requestedCardId: null }),
+  setSelectedCardId: (cardId) => set({ selectedCardId: cardId }),
 }));

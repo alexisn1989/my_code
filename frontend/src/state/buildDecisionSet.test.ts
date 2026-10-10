@@ -26,6 +26,7 @@ function baseDraft(overrides: Partial<DraftState> = {}): DraftState {
     dismissedHelp: false,
     glossaryOpen: false,
     requestedCardId: null,
+    selectedCardId: null,
     setPolicySlot: () => {},
     applyCard: () => {},
     setBudgetRateTarget: () => {},
@@ -53,6 +54,7 @@ function baseDraft(overrides: Partial<DraftState> = {}): DraftState {
     setGlossaryOpen: () => {},
     requestCard: () => {},
     clearRequestedCard: () => {},
+    setSelectedCardId: () => {},
     ...overrides,
   };
 }

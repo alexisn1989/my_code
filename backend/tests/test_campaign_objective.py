@@ -482,6 +482,9 @@ def test_any_lost_election_is_defeat_with_or_without_a_marker() -> None:
     outcome = _politics(lost.state).terminal_outcome
     assert outcome is not None and outcome.removal_reason is RemovalReason.ELECTORAL_DEFEAT
     assert build_objective(_politics(lost.state)).stage == "concluded"
+    assert build_objective(_politics(lost.state)).transition_text == (
+        f"Qualifying transition: not completed — the campaign ended by electoral defeat on turn {outcome.turn}."
+    )
 
     marked = _election_next(_set_politics(_hostile(_valdrun_with_marker()), legitimacy_bps=0))
     lost = _resolve(marked)
@@ -492,6 +495,13 @@ def test_any_lost_election_is_defeat_with_or_without_a_marker() -> None:
     objective = build_objective(politics)
     assert objective.stage == "concluded"
     assert objective.headline == "The campaign has ended."
+    # Gate 4A3 W-1: the line reports how the transition ended, not a stored marker, and names the
+    # ending: a lost qualifying election did NOT complete a transition.
+    assert politics.terminal_outcome is not None
+    assert objective.transition_text == (
+        "Qualifying transition: not completed — the campaign ended by electoral defeat on turn "
+        f"{politics.terminal_outcome.turn}."
+    )
 
 
 def test_winning_the_qualifying_election_is_victory_and_consumes_the_marker() -> None:
@@ -503,6 +513,13 @@ def test_winning_the_qualifying_election_is_victory_and_consumes_the_marker() ->
     objective = build_objective(politics)
     assert objective.stage == "concluded"
     assert objective.headline == "Objective complete: the qualifying election was won."
+    # Gate 4A3 W-1: the marker is consumed by the win; the line must not then say "not recorded".
+    assert politics.terminal_outcome is not None
+    assert objective.transition_text == (
+        "Qualifying transition: completed — the election on turn "
+        f"{politics.terminal_outcome.turn} was won."
+    )
+    assert "not recorded" not in objective.model_dump_json()
 
 
 def test_a_term_limit_exit_concludes_even_with_the_marker_still_set() -> None:
@@ -515,6 +532,11 @@ def test_a_term_limit_exit_concludes_even_with_the_marker_still_set() -> None:
     assert politics.pending_liberalization is not None
     assert politics.terminal_outcome is not None
     assert build_objective(politics).stage == "concluded"
+    # The engine keeps the marker on a term-limit exit, but the transition was not completed.
+    assert build_objective(politics).transition_text == (
+        "Qualifying transition: not completed — the campaign ended by term limit exit on turn "
+        f"{politics.terminal_outcome.turn}."
+    )
     line = objective_line(_politics(marked), politics, ended.report)
     assert line == "The campaign ended before the objective was completed."
 
