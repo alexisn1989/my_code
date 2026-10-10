@@ -1,0 +1,65 @@
+{
+  "archive": "mandate-gui-0.1.0.tar.gz",
+  "sha256": "faeef811f084c7d0825650d043f325b5cb5c9d4f2748644deca6a18bbca5fece",
+  "runId": "31ff3ad018fb7d4f31c01cd6b9ad01bc",
+  "hostileArchivesRejected": {
+    "absolute": [
+      "absolute path: /etc/mandate-evil",
+      "expected one top-level mandate-gui-<version>/ directory, found ['/']"
+    ],
+    "traversal": [
+      "parent traversal: mandate-gui-0/../../evil"
+    ],
+    "symlink": [
+      "not a regular file or directory: mandate-gui-0/link (type b'2')"
+    ]
+  },
+  "members": 14,
+  "checksummedFiles": 9,
+  "readme": {
+    "install": "python3.11 -m venv .venv && .venv/bin/pip install --require-hashes -r requirements.txt && .venv/bin/pip install --no-deps mandate_backend-0.1.0-py3-none-any.whl",
+    "run": ".venv/bin/mandate-gui --frontend-dist dist --scenario-root scenarios",
+    "runAppended": "--port <free port> --save-root <temporary directory>"
+  },
+  "provenance": {
+    "app.__file__": "<work>/x/mandate-gui-0.1.0/.venv/lib/python3.11/site-packages/app/__init__.py",
+    "sys.prefix": "<work>/x/mandate-gui-0.1.0/.venv",
+    "yamlLoader": "yaml.cyaml.CSafeLoader",
+    "yamlWithLibyaml": true
+  },
+  "served": {
+    "/": 200,
+    "/api/scenarios": 200,
+    "scenarios": [
+      "decree_state",
+      "deficit_demo",
+      "tiny_valid"
+    ]
+  },
+  "packagedTurn": {
+    "exit": 0,
+    "tail": "\n\n\u001b[1A\u001b[2K\u001b[2m[WebServer] \u001b[22mINFO:     127.0.0.1:41902 - \"GET /api/scenarios HTTP/1.1\" 200 OK\n\n\nRunning 1 test using 1 worker\n\n\u001b[1A\u001b[2K[1/1] [packaged] \u203a e2e/packaged-instance.spec.ts:89:1 \u203a one turn against the installed archive, same-origin, within the feedback budget\n\u001b[1A\u001b[2K  1 passed (2.6s)\n"
+  },
+  "budgets": {
+    "exit": 0,
+    "report": [
+      "new_game_ms                        median      14.12 (target     150)   worst      53.89 (STOP     300)  OK",
+      "resolve_turn_le_20_ms              median      62.03 (target     250)   worst     125.16 (STOP     500)  OK",
+      "resolve_turn_21_to_40_ms           median     144.35 (target     400)   worst     214.26 (STOP     800)  OK",
+      "read_projection_ms                 median       5.69 (target     100)   worst      58.77 (STOP     200)  OK",
+      "load_validate_40_turn_save_ms      median     144.37 (target     500)   worst      179.0 (STOP    1000)  OK",
+      "projection_payload_bytes           median       2995 (target  102400)   worst      73626 (STOP  204800)  OK"
+    ],
+    "breaches": [],
+    "verdict": "PASSED"
+  },
+  "f12Collision": {
+    "exit": 1,
+    "message": "mandate-gui: port 44507 is already in use on 127.0.0.1. Stop the other process, or start with --port <a different port>."
+  },
+  "f12Shutdown": {
+    "sigintExit": 0,
+    "restartOnSamePort": "served 200",
+    "restartSigintExit": 0
+  }
+}
