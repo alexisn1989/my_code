@@ -1,0 +1,782 @@
+{
+  "gate": "4A3 UX",
+  "out": "gate-4a3-v1-verify-ux",
+  "results": [
+    {
+      "block": "ux1",
+      "viewport": "desktop",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": "The budget was enacted by decree. The legislature was bypassed."
+    },
+    {
+      "block": "ux1",
+      "viewport": "mobile",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": null
+    },
+    {
+      "block": "ux1",
+      "viewport": "narrow",
+      "legislative": {
+        "would_pass": false,
+        "failingChambers": 1
+      },
+      "decree": {
+        "chambers": 0,
+        "would_pass": true,
+        "affordable": true
+      },
+      "focusAfterPreview": "preview-result-heading",
+      "resolvedHeadline": null
+    },
+    {
+      "block": "ux2",
+      "viewport": "desktop",
+      "headline": "The budget was blocked.",
+      "ledgerEntries": 0,
+      "drivers": 12,
+      "routineFolded": 4,
+      "leaksOutsideTrace": 0,
+      "historyIdenticalToLive": true,
+      "keyboardFocus": {
+        "tag": "LI",
+        "reason": "labor_market_resolved",
+        "text": "Labour market: 540,000 employed, 10.00% unemployment, 0 unfilled jobs."
+      },
+      "axeOpenTurnResult": {
+        "live": {
+          "violations": 0,
+          "passes": 25
+        },
+        "history": {
+          "violations": 0,
+          "passes": 25
+        }
+      }
+    },
+    {
+      "block": "ux2",
+      "viewport": "mobile",
+      "headline": "The budget was blocked.",
+      "ledgerEntries": 0,
+      "drivers": 12,
+      "routineFolded": 4,
+      "leaksOutsideTrace": 0,
+      "historyIdenticalToLive": true,
+      "keyboardFocus": {
+        "tag": "LI",
+        "reason": "labor_market_resolved",
+        "text": "Labour market: 540,000 employed, 10.00% unemployment, 0 unfilled jobs."
+      },
+      "axeOpenTurnResult": {
+        "live": {
+          "violations": 0,
+          "passes": 26
+        },
+        "history": {
+          "violations": 0,
+          "passes": 26
+        }
+      }
+    },
+    {
+      "block": "ux2",
+      "viewport": "narrow",
+      "headline": "The budget was blocked.",
+      "ledgerEntries": 0,
+      "drivers": 12,
+      "routineFolded": 4,
+      "leaksOutsideTrace": 0,
+      "historyIdenticalToLive": true,
+      "keyboardFocus": {
+        "tag": "LI",
+        "reason": "labor_market_resolved",
+        "text": "Labour market: 540,000 employed, 10.00% unemployment, 0 unfilled jobs."
+      },
+      "axeOpenTurnResult": {
+        "live": {
+          "violations": 0,
+          "passes": 26
+        },
+        "history": {
+          "violations": 0,
+          "passes": 26
+        }
+      }
+    },
+    {
+      "block": "ux3",
+      "viewport": "desktop",
+      "firstViewport": {
+        "winBottom": 551,
+        "buttonBottom": 593
+      },
+      "capitalTooltip": "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.",
+      "tint": {
+        "background": "oklab(0.341267 0.00420278 0.025815)",
+        "labelBackground": "rgb(10, 15, 26)",
+        "countryNameBackdrop": "navy-950",
+        "countryNameRatio": 16.25,
+        "calibrationNodes": 1
+      },
+      "detailsLanded": {
+        "Money": "economy",
+        "Legitimacy": "government",
+        "Legislature": "legislature",
+        "Constitution": "constitution",
+        "Survival": "government"
+      },
+      "planTurn": {
+        "resultTurn": 1,
+        "headerTurn": 1,
+        "landedOn": "Decisions"
+      },
+      "tintAcrossTurn": {
+        "before": {
+          "legitimacy": "60.00%",
+          "bps": 6000,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 60.00%.",
+          "mixPercent": 42,
+          "background": "oklab(0.341267 0.00420278 0.025815)"
+        },
+        "after": {
+          "legitimacy": "61.00%",
+          "bps": 6100,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 61.00%.",
+          "mixPercent": 42.45,
+          "background": "oklab(0.34311 0.00426987 0.0263533)"
+        }
+      }
+    },
+    {
+      "block": "ux3",
+      "viewport": "mobile",
+      "firstViewport": null,
+      "capitalTooltip": "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.",
+      "tint": {
+        "background": "oklab(0.341267 0.00420278 0.025815)",
+        "labelBackground": "rgb(10, 15, 26)",
+        "countryNameBackdrop": "navy-950",
+        "countryNameRatio": 16.25,
+        "calibrationNodes": 1
+      },
+      "detailsLanded": {
+        "Money": "economy",
+        "Legitimacy": "government",
+        "Legislature": "legislature",
+        "Constitution": "constitution",
+        "Survival": "government"
+      },
+      "planTurn": {
+        "resultTurn": 1,
+        "headerTurn": 1,
+        "landedOn": "Decisions"
+      },
+      "tintAcrossTurn": {
+        "before": {
+          "legitimacy": "60.00%",
+          "bps": 6000,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 60.00%.",
+          "mixPercent": 42,
+          "background": "oklab(0.341267 0.00420278 0.025815)"
+        },
+        "after": {
+          "legitimacy": "61.00%",
+          "bps": 6100,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 61.00%.",
+          "mixPercent": 42.45,
+          "background": "oklab(0.34311 0.00426987 0.0263533)"
+        }
+      }
+    },
+    {
+      "block": "ux3",
+      "viewport": "narrow",
+      "firstViewport": null,
+      "capitalTooltip": "The government's spendable political standing. It regenerates each turn up to a capacity, and is consumed whether a proposal passes or fails.",
+      "tint": {
+        "background": "oklab(0.341267 0.00420278 0.025815)",
+        "labelBackground": "rgb(10, 15, 26)",
+        "countryNameBackdrop": "navy-950",
+        "countryNameRatio": 16.25,
+        "calibrationNodes": 1
+      },
+      "detailsLanded": {
+        "Money": "economy",
+        "Legitimacy": "government",
+        "Legislature": "legislature",
+        "Constitution": "constitution",
+        "Survival": "government"
+      },
+      "planTurn": {
+        "resultTurn": 1,
+        "headerTurn": 1,
+        "landedOn": "Decisions"
+      },
+      "tintAcrossTurn": {
+        "before": {
+          "legitimacy": "60.00%",
+          "bps": 6000,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 60.00%.",
+          "mixPercent": 42,
+          "background": "oklab(0.341267 0.00420278 0.025815)"
+        },
+        "after": {
+          "legitimacy": "61.00%",
+          "bps": 6100,
+          "name": "Kingdom of Valdrun: national tint by legitimacy, 61.00%.",
+          "mixPercent": 42.45,
+          "background": "oklab(0.34311 0.00426987 0.0263533)"
+        }
+      }
+    },
+    {
+      "block": "ux4a",
+      "viewport": "desktop",
+      "moneyHeadline": "100,000,000.00",
+      "moneyDeltaAfterTurn": "+3,150,000.00",
+      "taxBasesSentence": "Tax bases: personal income 40,000,000.00, corporate profit 20,000,000.00, consumption 30,000,000.00.",
+      "taxBasesMinorUnits": {
+        "corporate_profit": 2000000000,
+        "personal_income": 4000000000,
+        "taxable_consumption": 3000000000
+      }
+    },
+    {
+      "block": "ux4a",
+      "viewport": "mobile",
+      "moneyHeadline": "100,000,000.00",
+      "moneyDeltaAfterTurn": "+3,150,000.00",
+      "taxBasesSentence": "Tax bases: personal income 40,000,000.00, corporate profit 20,000,000.00, consumption 30,000,000.00.",
+      "taxBasesMinorUnits": {
+        "corporate_profit": 2000000000,
+        "personal_income": 4000000000,
+        "taxable_consumption": 3000000000
+      }
+    },
+    {
+      "block": "ux4a",
+      "viewport": "narrow",
+      "moneyHeadline": "100,000,000.00",
+      "moneyDeltaAfterTurn": "+3,150,000.00",
+      "taxBasesSentence": "Tax bases: personal income 40,000,000.00, corporate profit 20,000,000.00, consumption 30,000,000.00.",
+      "taxBasesMinorUnits": {
+        "corporate_profit": 2000000000,
+        "personal_income": 4000000000,
+        "taxable_consumption": 3000000000
+      }
+    },
+    {
+      "block": "ux4b",
+      "viewport": "desktop",
+      "staged": {
+        "navBadge": "· 3 staged",
+        "listed": [
+          "Edda Thorne becomes chief of staff.",
+          "20 political capital invested in Crown Party Core.",
+          "30 political capital invested in Reform Opposition Main."
+        ],
+        "confirm": "3 staged actions"
+      },
+      "submitted": [
+        "bloc_relationship_investment",
+        "cabinet"
+      ],
+      "cabinetChoice": {
+        "post": "chief_of_staff",
+        "characterId": "edda_thorne"
+      },
+      "investedIn": [
+        "Crown Party Core",
+        "Reform Opposition Main"
+      ]
+    },
+    {
+      "block": "ux4b",
+      "viewport": "mobile",
+      "staged": {
+        "navBadge": "· 3 staged",
+        "listed": [
+          "Edda Thorne becomes chief of staff.",
+          "20 political capital invested in Crown Party Core.",
+          "30 political capital invested in Reform Opposition Main."
+        ],
+        "confirm": "3 staged actions"
+      },
+      "submitted": [
+        "bloc_relationship_investment",
+        "cabinet"
+      ],
+      "cabinetChoice": {
+        "post": "chief_of_staff",
+        "characterId": "edda_thorne"
+      },
+      "investedIn": [
+        "Crown Party Core",
+        "Reform Opposition Main"
+      ]
+    },
+    {
+      "block": "ux4b",
+      "viewport": "narrow",
+      "staged": {
+        "navBadge": "· 3 staged",
+        "listed": [
+          "Edda Thorne becomes chief of staff.",
+          "20 political capital invested in Crown Party Core.",
+          "30 political capital invested in Reform Opposition Main."
+        ],
+        "confirm": "3 staged actions"
+      },
+      "submitted": [
+        "bloc_relationship_investment",
+        "cabinet"
+      ],
+      "cabinetChoice": {
+        "post": "chief_of_staff",
+        "characterId": "edda_thorne"
+      },
+      "investedIn": [
+        "Crown Party Core",
+        "Reform Opposition Main"
+      ]
+    },
+    {
+      "block": "ux4c",
+      "viewport": "desktop",
+      "firstScreen": null,
+      "navReached": 12,
+      "navContrastMeasuredInView": 78,
+      "captionMeasuredAtWidths": [
+        960,
+        820,
+        720,
+        390,
+        320,
+        195
+      ],
+      "overflow": {
+        "selected": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440
+        },
+        "legislative": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440
+        },
+        "decree": {
+          "scrollWidth": 1440,
+          "clientWidth": 1440
+        }
+      },
+      "portraitFrame": {
+        "background": "rgb(10, 15, 26)",
+        "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(150, 116, 47) 0px 0px 0px 1px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+        "backdrop": "rgb(15,22,38)",
+        "panel": "navy-900",
+        "ringRatio": 4.16
+      }
+    },
+    {
+      "block": "ux4c",
+      "viewport": "mobile",
+      "firstScreen": {
+        "goal": {
+          "top": 547,
+          "bottom": 595
+        },
+        "stakes": {
+          "top": 603,
+          "bottom": 723
+        },
+        "build": {
+          "top": 735,
+          "bottom": 765
+        }
+      },
+      "navReached": 12,
+      "navContrastMeasuredInView": 0,
+      "captionMeasuredAtWidths": [],
+      "overflow": {
+        "selected": {
+          "scrollWidth": 390,
+          "clientWidth": 390
+        },
+        "legislative": {
+          "scrollWidth": 390,
+          "clientWidth": 390
+        },
+        "decree": {
+          "scrollWidth": 390,
+          "clientWidth": 390
+        }
+      },
+      "portraitFrame": {
+        "background": "rgb(10, 15, 26)",
+        "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(150, 116, 47) 0px 0px 0px 1px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+        "backdrop": "rgb(15,22,38)",
+        "panel": "navy-900",
+        "ringRatio": 4.16
+      }
+    },
+    {
+      "block": "ux4c",
+      "viewport": "narrow",
+      "firstScreen": null,
+      "navReached": 12,
+      "navContrastMeasuredInView": 0,
+      "captionMeasuredAtWidths": [],
+      "overflow": {
+        "selected": {
+          "scrollWidth": 320,
+          "clientWidth": 320
+        },
+        "legislative": {
+          "scrollWidth": 320,
+          "clientWidth": 320
+        },
+        "decree": {
+          "scrollWidth": 320,
+          "clientWidth": 320
+        }
+      },
+      "portraitFrame": {
+        "background": "rgb(10, 15, 26)",
+        "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgb(150, 116, 47) 0px 0px 0px 1px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+        "backdrop": "rgb(15,22,38)",
+        "panel": "navy-900",
+        "ringRatio": 4.16
+      }
+    },
+    {
+      "block": "ux4e",
+      "viewport": "desktop",
+      "decreeTurn": [
+        {
+          "reason": "tax_rate_changed",
+          "text": "Personal income tax: 20.00% → 25.00%."
+        },
+        {
+          "reason": "legislative_vote_resolved",
+          "text": "Enacted by decree — no vote was held."
+        },
+        {
+          "reason": "resource_extraction_resolved",
+          "text": "Resource extraction: 6,000 resource workers had no deposit to work."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Construction sector produced nothing this turn."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Public services sector produced nothing this turn."
+        },
+        {
+          "reason": "legitimacy_resolved",
+          "text": "Legitimacy: 60.00% → 61.00% (+1.00 points)."
+        },
+        {
+          "reason": "political_capital_resolved",
+          "text": "Political capital: 500 → 633 of 1,000 (250 spent, 383 regained)."
+        },
+        {
+          "reason": "coup_risk_assessed",
+          "text": "Risk of an attempt this turn: coup 3.52%, unrest 2.40%."
+        },
+        {
+          "reason": "enacted_policy_relationship_reaction",
+          "text": "Crown Party Core reacted to the enacted policy (+0.50 points)."
+        },
+        {
+          "reason": "decree_bypass_relationship_reaction",
+          "text": "Crown Party Core resented being bypassed by decree (-2.00 points)."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Crown Party Core: relationship 60.00% → 58.50% (-1.50 points)."
+        },
+        {
+          "reason": "enacted_policy_relationship_reaction",
+          "text": "Reform Opposition Main reacted to the enacted policy (-1.50 points)."
+        },
+        {
+          "reason": "decree_bypass_relationship_reaction",
+          "text": "Reform Opposition Main resented being bypassed by decree (-2.00 points)."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Reform Opposition Main: relationship -80.00% → -83.50% (-3.50 points)."
+        }
+      ],
+      "legislativeTurn": [
+        {
+          "reason": "legislative_vote_resolved",
+          "text": "The legislature voted the budget down: 0 of 1 chamber carried."
+        },
+        {
+          "reason": "budget_blocked_by_legislature",
+          "text": "Lower chamber blocked the budget: 45 supporting votes; 51 required—6 short."
+        },
+        {
+          "reason": "resource_extraction_resolved",
+          "text": "Resource extraction: 6,000 resource workers had no deposit to work."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Construction sector produced nothing this turn."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Public services sector produced nothing this turn."
+        },
+        {
+          "reason": "legitimacy_resolved",
+          "text": "Legitimacy: 61.00% → 61.90% (+0.90 points)."
+        },
+        {
+          "reason": "political_capital_resolved",
+          "text": "Political capital: 633 → 1,000 of 1,000 (0 spent, 385 regained)."
+        },
+        {
+          "reason": "coup_risk_assessed",
+          "text": "Risk of an attempt this turn: coup 3.52%, unrest 2.40%."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Crown Party Core: relationship 58.50% → 58.68% (+0.18 points)."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Reform Opposition Main: relationship -83.50% → -83.07% (+0.43 points)."
+        }
+      ]
+    },
+    {
+      "block": "ux4e",
+      "viewport": "mobile",
+      "decreeTurn": [
+        {
+          "reason": "tax_rate_changed",
+          "text": "Personal income tax: 20.00% → 25.00%."
+        },
+        {
+          "reason": "legislative_vote_resolved",
+          "text": "Enacted by decree — no vote was held."
+        },
+        {
+          "reason": "resource_extraction_resolved",
+          "text": "Resource extraction: 6,000 resource workers had no deposit to work."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Construction sector produced nothing this turn."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Public services sector produced nothing this turn."
+        },
+        {
+          "reason": "legitimacy_resolved",
+          "text": "Legitimacy: 60.00% → 61.00% (+1.00 points)."
+        },
+        {
+          "reason": "political_capital_resolved",
+          "text": "Political capital: 500 → 633 of 1,000 (250 spent, 383 regained)."
+        },
+        {
+          "reason": "coup_risk_assessed",
+          "text": "Risk of an attempt this turn: coup 3.52%, unrest 2.40%."
+        },
+        {
+          "reason": "enacted_policy_relationship_reaction",
+          "text": "Crown Party Core reacted to the enacted policy (+0.50 points)."
+        },
+        {
+          "reason": "decree_bypass_relationship_reaction",
+          "text": "Crown Party Core resented being bypassed by decree (-2.00 points)."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Crown Party Core: relationship 60.00% → 58.50% (-1.50 points)."
+        },
+        {
+          "reason": "enacted_policy_relationship_reaction",
+          "text": "Reform Opposition Main reacted to the enacted policy (-1.50 points)."
+        },
+        {
+          "reason": "decree_bypass_relationship_reaction",
+          "text": "Reform Opposition Main resented being bypassed by decree (-2.00 points)."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Reform Opposition Main: relationship -80.00% → -83.50% (-3.50 points)."
+        }
+      ],
+      "legislativeTurn": [
+        {
+          "reason": "legislative_vote_resolved",
+          "text": "The legislature voted the budget down: 0 of 1 chamber carried."
+        },
+        {
+          "reason": "budget_blocked_by_legislature",
+          "text": "Lower chamber blocked the budget: 45 supporting votes; 51 required—6 short."
+        },
+        {
+          "reason": "resource_extraction_resolved",
+          "text": "Resource extraction: 6,000 resource workers had no deposit to work."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Construction sector produced nothing this turn."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Public services sector produced nothing this turn."
+        },
+        {
+          "reason": "legitimacy_resolved",
+          "text": "Legitimacy: 61.00% → 61.90% (+0.90 points)."
+        },
+        {
+          "reason": "political_capital_resolved",
+          "text": "Political capital: 633 → 1,000 of 1,000 (0 spent, 385 regained)."
+        },
+        {
+          "reason": "coup_risk_assessed",
+          "text": "Risk of an attempt this turn: coup 3.52%, unrest 2.40%."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Crown Party Core: relationship 58.50% → 58.68% (+0.18 points)."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Reform Opposition Main: relationship -83.50% → -83.07% (+0.43 points)."
+        }
+      ]
+    },
+    {
+      "block": "ux4e",
+      "viewport": "narrow",
+      "decreeTurn": [
+        {
+          "reason": "tax_rate_changed",
+          "text": "Personal income tax: 20.00% → 25.00%."
+        },
+        {
+          "reason": "legislative_vote_resolved",
+          "text": "Enacted by decree — no vote was held."
+        },
+        {
+          "reason": "resource_extraction_resolved",
+          "text": "Resource extraction: 6,000 resource workers had no deposit to work."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Construction sector produced nothing this turn."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Public services sector produced nothing this turn."
+        },
+        {
+          "reason": "legitimacy_resolved",
+          "text": "Legitimacy: 60.00% → 61.00% (+1.00 points)."
+        },
+        {
+          "reason": "political_capital_resolved",
+          "text": "Political capital: 500 → 633 of 1,000 (250 spent, 383 regained)."
+        },
+        {
+          "reason": "coup_risk_assessed",
+          "text": "Risk of an attempt this turn: coup 3.52%, unrest 2.40%."
+        },
+        {
+          "reason": "enacted_policy_relationship_reaction",
+          "text": "Crown Party Core reacted to the enacted policy (+0.50 points)."
+        },
+        {
+          "reason": "decree_bypass_relationship_reaction",
+          "text": "Crown Party Core resented being bypassed by decree (-2.00 points)."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Crown Party Core: relationship 60.00% → 58.50% (-1.50 points)."
+        },
+        {
+          "reason": "enacted_policy_relationship_reaction",
+          "text": "Reform Opposition Main reacted to the enacted policy (-1.50 points)."
+        },
+        {
+          "reason": "decree_bypass_relationship_reaction",
+          "text": "Reform Opposition Main resented being bypassed by decree (-2.00 points)."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Reform Opposition Main: relationship -80.00% → -83.50% (-3.50 points)."
+        }
+      ],
+      "legislativeTurn": [
+        {
+          "reason": "legislative_vote_resolved",
+          "text": "The legislature voted the budget down: 0 of 1 chamber carried."
+        },
+        {
+          "reason": "budget_blocked_by_legislature",
+          "text": "Lower chamber blocked the budget: 45 supporting votes; 51 required—6 short."
+        },
+        {
+          "reason": "resource_extraction_resolved",
+          "text": "Resource extraction: 6,000 resource workers had no deposit to work."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Construction sector produced nothing this turn."
+        },
+        {
+          "reason": "sector_inactive",
+          "text": "The Public services sector produced nothing this turn."
+        },
+        {
+          "reason": "legitimacy_resolved",
+          "text": "Legitimacy: 61.00% → 61.90% (+0.90 points)."
+        },
+        {
+          "reason": "political_capital_resolved",
+          "text": "Political capital: 633 → 1,000 of 1,000 (0 spent, 385 regained)."
+        },
+        {
+          "reason": "coup_risk_assessed",
+          "text": "Risk of an attempt this turn: coup 3.52%, unrest 2.40%."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Crown Party Core: relationship 58.50% → 58.68% (+0.18 points)."
+        },
+        {
+          "reason": "bloc_relationship_resolved",
+          "text": "Reform Opposition Main: relationship -83.50% → -83.07% (+0.43 points)."
+        }
+      ]
+    }
+  ]
+}

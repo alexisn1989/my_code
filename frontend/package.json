@@ -131,7 +131,15 @@
     "_comment:r2fix": "Gate 4A3 R2 fix (libyaml's CSafeLoader for scenario YAML). dryrun:installed:r2fix is the enforcing internal dry run of the CANDIDATE release built from the fix commit; it records gate-4a3-r2fix-dryrun.",
     "dryrun:installed:r2fix": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_GATE=\"4A3 R2-fix (enforced)\" MANDATE_DRYRUN_OUT=gate-4a3-r2fix-dryrun playwright test --project=dry-run",
     "_comment:r1fix": "Gate 4A3 R1 fix (the listing memo is seeded by write_save). dryrun:installed:r1fix is the enforcing internal dry run of the CANDIDATE release built from the fix commit; it records gate-4a3-r1fix-dryrun.",
-    "dryrun:installed:r1fix": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_GATE=\"4A3 R1-fix (enforced)\" MANDATE_DRYRUN_OUT=gate-4a3-r1fix-dryrun playwright test --project=dry-run"
+    "dryrun:installed:r1fix": "MANDATE_DRYRUN_REQUIRED=1 MANDATE_DRYRUN_GATE=\"4A3 R1-fix (enforced)\" MANDATE_DRYRUN_OUT=gate-4a3-r1fix-dryrun playwright test --project=dry-run",
+    "_comment:v1": "Gate 4A3 victory path V-1 (the campaign objective, its three contract fields and the qualifying-reform card). Every existing browser gate re-runs under V-1's own names; the victory project arrives in V-2.",
+    "verify:ux:v1": "MANDATE_UX_OUT=gate-4a3-v1-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3|@ux4a|@ux4b|@ux4c|@ux4e\"",
+    "verify:fixes:v1": "MANDATE_VERIFY_OUT=gate-4a3-v1-verification playwright test --project=verify",
+    "verify:icons:v1": "MANDATE_ICONS_OUT=gate-4a3-v1-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:v1": "MANDATE_TERMINAL_OUT=gate-4a3-v1-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:v1": "MANDATE_CAMPAIGNS_OUT=gate-4a3-v1-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:v1": "MANDATE_STRESS_SEATED_OUT=gate-4a3-v1-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:v1": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v1 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v1 node tools/write-accessibility-report.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

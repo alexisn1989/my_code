@@ -124,12 +124,61 @@ def _amendment_target_problem(
         return DecisionProblem(
             code="amendment_constitution_incoherent",
             message=(
-                "This change would leave the constitution internally inconsistent; "
-                "it needs a companion change to another part of the constitution."
+                "This change would leave the constitution internally inconsistent: "
+                f"{COMPANION_CHANGE_TEXT[code]}"
             ),
             diagnostic_code=code,
         )
     return None
+
+
+#: (Gate 4A3 victory path, D-V4) The companion change each coherence rule C1-C10 needs, in the
+#: player's words. Indexed, not `.get`: a new rule code fails a test rather than reaching a player
+#: as the old generic "needs a companion change" with no hint of which.
+COMPANION_CHANGE_TEXT: dict[str, str] = {
+    "parliamentary_requires_legislature": (
+        "a parliamentary executive needs a legislature. Keep the legislature, or change Executive "
+        "system too."
+    ),
+    "parliamentary_requires_legislative_selection": (
+        "a parliamentary executive must be selected by the legislature. Change Executive selection "
+        "to selected by the legislature too, or choose another executive system."
+    ),
+    "presidential_forbids_legislative_selection": (
+        "a presidential executive can't be selected by the legislature. Change Executive system to "
+        "parliamentary too, or choose direct election."
+    ),
+    "semi_presidential_requires_direct_election_and_legislature": (
+        "a semi-presidential executive must be directly elected and needs a legislature. Change "
+        "Executive selection to direct election too, or choose another executive system."
+    ),
+    "legislative_selection_requires_legislature": (
+        "selection by the legislature needs a legislature. Keep the legislature, or change "
+        "Executive selection too."
+    ),
+    "hereditary_requires_monarchical_system": (
+        "a hereditary executive must be monarchical. Change Executive system to monarchical too, "
+        "or choose another executive selection."
+    ),
+    "monarchical_requires_hereditary_or_appointed": (
+        "a monarch can't be directly elected or selected by the legislature. Change Executive "
+        "system too (for example, to presidential for a directly elected executive), or keep a "
+        "hereditary or appointed executive."
+    ),
+    "term_limit_requires_non_hereditary_executive": (
+        "a hereditary executive can't have a term limit. Remove the term limit too, or change "
+        "Executive selection."
+    ),
+    "national_election_requires_something_elected": (
+        "a national election schedule needs something to elect: a legislature or a directly "
+        "elected executive. Change Executive selection to direct election too, or remove the "
+        "election schedule."
+    ),
+    "legislature_absent_requires_unlimited_decree": (
+        "without a legislature, the executive must keep unlimited decree authority, or no one could "
+        "make law. Keep decree authority unlimited."
+    ),
+}
 
 
 def _route_problem(

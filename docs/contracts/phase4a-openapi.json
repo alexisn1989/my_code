@@ -726,6 +726,9 @@
             "title": "Next Election Label",
             "type": "string"
           },
+          "objective": {
+            "$ref": "#/components/schemas/ObjectiveProjection"
+          },
           "political_capital": {
             "$ref": "#/components/schemas/CapitalSummary"
           },
@@ -757,6 +760,7 @@
           "concerns",
           "political_capital",
           "goal",
+          "objective",
           "map"
         ],
         "title": "DashboardProjection",
@@ -1571,6 +1575,263 @@
         "title": "NewGameRequest",
         "type": "object"
       },
+      "ObjectiveCondition": {
+        "additionalProperties": false,
+        "properties": {
+          "current_text": {
+            "title": "Current Text",
+            "type": "string"
+          },
+          "id": {
+            "enum": [
+              "elected_executive",
+              "no_decree_authority",
+              "election_interval"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "if_enacted_alone": {
+            "anyOf": [
+              {
+                "enum": [
+                  "qualifies",
+                  "reform_continues",
+                  "reopens_route",
+                  "cannot_qualify",
+                  "keeps_transition",
+                  "ends_transition"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "If Enacted Alone"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "link_card_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link Card Id"
+          },
+          "met": {
+            "title": "Met",
+            "type": "boolean"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "current_text",
+          "met"
+        ],
+        "title": "ObjectiveCondition",
+        "type": "object"
+      },
+      "ObjectiveEffectProjection": {
+        "additionalProperties": false,
+        "description": "`PreviewProjection.objective_effect_if_enacted`: the staged amendment's effect IF ENACTED.\n\nIt never says the amendment will be enacted -- `would_pass` and `affordable` on the same\npreview say whether resolving the draft would enact it.",
+        "properties": {
+          "conditions_met": {
+            "title": "Conditions Met",
+            "type": "integer"
+          },
+          "deciding_election_turn": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deciding Election Turn"
+          },
+          "effect": {
+            "enum": [
+              "qualifies",
+              "reform_continues",
+              "reopens_route",
+              "cannot_qualify",
+              "keeps_transition",
+              "ends_transition"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "election_this_turn_too_soon": {
+            "default": false,
+            "title": "Election This Turn Too Soon",
+            "type": "boolean"
+          },
+          "still_needed": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Still Needed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "effect",
+          "conditions_met"
+        ],
+        "title": "ObjectiveEffectProjection",
+        "type": "object"
+      },
+      "ObjectiveProjection": {
+        "additionalProperties": false,
+        "description": "`DashboardProjection.objective`: the stage, from the engine's eligibility and marker.",
+        "properties": {
+          "cannot_qualify_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "missing_interval",
+                  "already_competitive"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cannot Qualify Reason"
+          },
+          "conditions": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectiveCondition"
+            },
+            "title": "Conditions",
+            "type": "array"
+          },
+          "conditions_met": {
+            "title": "Conditions Met",
+            "type": "integer"
+          },
+          "conditions_text": {
+            "title": "Conditions Text",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "election_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Election Note"
+          },
+          "election_turn": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Election Turn"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "ordering_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordering Note"
+          },
+          "qualifying_card_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Qualifying Card Id"
+          },
+          "stage": {
+            "enum": [
+              "reform",
+              "cannot_qualify",
+              "qualifying_election",
+              "concluded"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "transition_text": {
+            "title": "Transition Text",
+            "type": "string"
+          },
+          "transition_turn": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Turn"
+          }
+        },
+        "required": [
+          "stage",
+          "headline",
+          "conditions_met",
+          "conditions_text",
+          "transition_text",
+          "conditions"
+        ],
+        "title": "ObjectiveProjection",
+        "type": "object"
+      },
       "PolicyCard": {
         "additionalProperties": false,
         "properties": {
@@ -1944,6 +2205,16 @@
             "default": 0,
             "title": "Legislative Bargain Capital",
             "type": "integer"
+          },
+          "objective_effect_if_enacted": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ObjectiveEffectProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "opening_capital": {
             "default": 0,
@@ -2648,6 +2919,17 @@
             },
             "title": "Ledger",
             "type": "array"
+          },
+          "objective_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective Line"
           },
           "outcome_headline": {
             "title": "Outcome Headline",

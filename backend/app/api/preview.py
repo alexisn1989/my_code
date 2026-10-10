@@ -73,6 +73,7 @@ from app.simulation.state import (
 )
 
 from .decision_preflight import first_decision_problem
+from .objective import preview_effect
 from .projections import ChamberPreview, PreviewProjection
 
 #: Named once so the projection can say what it deliberately does not know.
@@ -234,6 +235,9 @@ def preview_decisions(state: GameState, decision_set: DecisionSet) -> PreviewPro
         committed_capital=committed,
         opening_capital=opening_capital,
         affordable=committed <= opening_capital,
+        objective_effect_if_enacted=(
+            None if amendment is None else preview_effect(state, politics, amendment)
+        ),
     )
 
 

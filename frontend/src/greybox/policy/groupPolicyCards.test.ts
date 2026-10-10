@@ -8,7 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PolicyCard } from "../../api/client";
-import { groupPolicyCards, locateCard } from "./groupPolicyCards";
+import { QUALIFYING_REFORM_CARD_ID, groupPolicyCards, locateCard } from "./groupPolicyCards";
 
 function card(id: string, category: PolicyCard["category"]): PolicyCard {
   return {
@@ -84,6 +84,23 @@ describe("groupPolicyCards", () => {
     const restraint = majors.find((major) => major.id === "restraint")!;
     expect(restraint.families).toEqual([]);
     expect(restraint.cards.map((c) => c.card_id)).toEqual(["no_proposal"]);
+  });
+
+  it("files the qualifying reform card first under Constitutional reform (Gate 4A3 victory path)", () => {
+    const withQualifying = [...SAMPLE_CARDS, card(QUALIFYING_REFORM_CARD_ID, "constitution")];
+    const majors = groupPolicyCards(withQualifying);
+    const constitution = majors.find((major) => major.id === "constitution")!;
+    expect(constitution.families[0]).toMatchObject({
+      id: "qualifying_reform",
+      label: "Qualifying reform",
+    });
+    expect(constitution.families[0]!.cards.map((c) => c.card_id)).toEqual([
+      QUALIFYING_REFORM_CARD_ID,
+    ]);
+    expect(locateCard(majors, QUALIFYING_REFORM_CARD_ID)).toEqual({
+      major: "constitution",
+      family: "qualifying_reform",
+    });
   });
 
   it("throws on an unrecognized constitutional card_id prefix rather than silently misfiling it", () => {

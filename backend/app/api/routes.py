@@ -358,7 +358,7 @@ def get_history_detail(request: Request, turn: int) -> HistoryDetailResponse:
         raise SnapshotNotFoundError(turn, [row.turn for row in save.entries if row.turn > 0])
     state = entry.state()
     return HistoryDetailResponse(
-        turnResult=build_turn_result(state, report),
+        turnResult=build_turn_result(state, report, opening_state=save.entry_at(turn - 1).state()),
         dashboardAsOfTurn=build_dashboard(state, report, campaign_id=_session(request).save_id),
     )
 
@@ -511,7 +511,7 @@ async def resolve(request: Request, body: ResolveRequest) -> ResolveResponse:
     assert report is not None, "a resolved turn always stores a report"
     state = entry.state()
     return ResolveResponse(
-        turnResult=build_turn_result(state, report),
+        turnResult=build_turn_result(state, report, opening_state=new_save.entries[-2].state()),
         dashboard=build_dashboard(state, report, campaign_id=session.save_id),
     )
 

@@ -17,6 +17,11 @@
  * `constitution_election_interval_` -- exactly the prefixes
  * `policy_cards.py`'s four constitutional generators emit). Purely a display
  * grouping; it invents no legality and computes no consequence.
+ *
+ * Gate 4A3 victory path: a fifth, `qualifying_reform`, holds the one card id
+ * `constitution_qualifying_reform` -- the single amendment completing every
+ * unmet victory condition, which the server emits only when two or more are
+ * unmet (Valdrun). It is listed first under Constitutional reform.
  */
 
 import type { PolicyCard } from "../../api/client";
@@ -26,6 +31,7 @@ export type MajorChoiceId = "budget" | "constitution" | "restraint";
 export type FamilyId =
   | "taxation"
   | "spending"
+  | "qualifying_reform"
   | "decree_authority"
   | "government_form"
   | "term_limit"
@@ -48,9 +54,13 @@ export interface PolicyCardMajorChoice {
   cards: PolicyCard[];
 }
 
+/** `backend/app/api/objective.py`'s `QUALIFYING_REFORM_CARD_ID`. */
+export const QUALIFYING_REFORM_CARD_ID = "constitution_qualifying_reform";
+
 const FAMILY_LABELS: Record<FamilyId, string> = {
   taxation: "Taxation",
   spending: "Spending",
+  qualifying_reform: "Qualifying reform",
   decree_authority: "Decree authority",
   government_form: "Government form",
   term_limit: "Term limits",
@@ -67,6 +77,7 @@ const MAJOR_LABELS: Record<MajorChoiceId, string> = {
 const FAMILY_ORDER: readonly FamilyId[] = [
   "taxation",
   "spending",
+  "qualifying_reform",
   "decree_authority",
   "government_form",
   "term_limit",
@@ -77,6 +88,7 @@ function familyOf(card: PolicyCard): FamilyId | null {
   if (card.category === "taxation") return "taxation";
   if (card.category === "spending") return "spending";
   if (card.category === "restraint") return null;
+  if (card.card_id === QUALIFYING_REFORM_CARD_ID) return "qualifying_reform";
   if (card.card_id.startsWith("constitution_decree_authority_")) return "decree_authority";
   if (card.card_id.startsWith("constitution_government_form_")) return "government_form";
   if (card.card_id.startsWith("constitution_term_limit_")) return "term_limit";

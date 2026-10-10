@@ -64,7 +64,14 @@ from app.simulation.legislative_voting import (
 from app.simulation.legislature import AmendmentThreshold, ProposalRoute
 from app.simulation.state import GameState, GovernmentFinanceState, PoliticalState, SpendingCategory
 
+from .constitution_labels import (
+    DECREE_AUTHORITY_LABELS,
+    EXECUTIVE_SELECTION_LABELS,
+    EXECUTIVE_SYSTEM_LABELS,
+    election_interval_label,
+)
 from .decision_preflight import DecisionProblem, first_decision_problem
+from .objective import QUALIFYING_REFORM_CARD_ID, qualifying_reform_targets
 from .policy_card_calibration import TAX_STEP_BPS, spending_step
 from .projections import (
     DecisionOptionsProjection,
@@ -95,23 +102,9 @@ _REASON_MAP: dict[str, PolicyCardUnavailableReason] = {
 
 _GAME_CONCLUDED_DETAIL = "The campaign has already ended; no further turn can be resolved."
 
-_EXECUTIVE_SYSTEM_LABELS: dict[ExecutiveSystem, str] = {
-    ExecutiveSystem.PRESIDENTIAL: "Presidential",
-    ExecutiveSystem.PARLIAMENTARY: "Parliamentary",
-    ExecutiveSystem.SEMI_PRESIDENTIAL: "Semi-presidential",
-    ExecutiveSystem.MONARCHICAL: "Monarchical",
-}
-_EXECUTIVE_SELECTION_LABELS: dict[ExecutiveSelection, str] = {
-    ExecutiveSelection.DIRECT_ELECTION: "Direct election",
-    ExecutiveSelection.LEGISLATIVE_SELECTION: "Selected by the legislature",
-    ExecutiveSelection.HEREDITARY: "Hereditary succession",
-    ExecutiveSelection.APPOINTED: "Appointed",
-}
-_DECREE_AUTHORITY_LABELS: dict[DecreeAuthority, str] = {
-    DecreeAuthority.NONE: "No decree authority",
-    DecreeAuthority.EMERGENCY_ONLY: "Emergency decree authority only",
-    DecreeAuthority.UNLIMITED: "Unlimited decree authority",
-}
+_EXECUTIVE_SYSTEM_LABELS = EXECUTIVE_SYSTEM_LABELS
+_EXECUTIVE_SELECTION_LABELS = EXECUTIVE_SELECTION_LABELS
+_DECREE_AUTHORITY_LABELS = DECREE_AUTHORITY_LABELS
 _SPENDING_CATEGORY_LABELS: dict[SpendingCategory, str] = {
     SpendingCategory.HEALTH: "Health",
     SpendingCategory.EDUCATION: "Education",
@@ -129,10 +122,7 @@ def _term_limit_label(terms: int | None) -> str:
     return f"{terms} term" if terms == 1 else f"{terms} terms"
 
 
-def _election_interval_label(turns: int | None) -> str:
-    if turns is None:
-        return "No scheduled national election"
-    return f"Every {turns} turn" if turns == 1 else f"Every {turns} turns"
+_election_interval_label = election_interval_label
 
 
 def _politics(state: GameState) -> PoliticalState | None:
@@ -621,6 +611,80 @@ def _government_form_cards(state: GameState, politics: PoliticalState) -> tuple[
     return tuple(cards)
 
 
+def _qualifying_effect(
+    opening: ConstitutionState, target: ConstitutionalAxisTarget
+) -> PolicyCardEffect:
+    """The same effect wording the single-axis cards use for each axis the reform changes."""
+    if isinstance(target, DecreeAuthorityTarget):
+        label, current, proposed = (
+            "Decree authority",
+            _DECREE_AUTHORITY_LABELS[opening.decree_authority],
+            _DECREE_AUTHORITY_LABELS[target.value],
+        )
+    elif isinstance(target, ExecutiveSelectionTarget):
+        label, current, proposed = (
+            "Executive selection",
+            _EXECUTIVE_SELECTION_LABELS[opening.executive_selection],
+            _EXECUTIVE_SELECTION_LABELS[target.value],
+        )
+    elif isinstance(target, ExecutiveSystemTarget):
+        label, current, proposed = (
+            "Executive system",
+            _EXECUTIVE_SYSTEM_LABELS[opening.executive_system],
+            _EXECUTIVE_SYSTEM_LABELS[target.value],
+        )
+    else:
+        assert isinstance(target, ElectionIntervalTarget)
+        return PolicyCardEffect(
+            label="National election schedule",
+            unit="turns",
+            current_value=opening.national_election_interval_turns,
+            proposed_value=target.value,
+            current_label=_election_interval_label(opening.national_election_interval_turns),
+            proposed_label=_election_interval_label(target.value),
+            direction="unchanged",
+        )
+    return PolicyCardEffect(
+        label=label,
+        unit="enum",
+        current_label=current,
+        proposed_label=proposed,
+        direction="unchanged",
+    )
+
+
+def _qualifying_reform_card(state: GameState, politics: PoliticalState) -> tuple[PolicyCard, ...]:
+    """(Gate 4A3 victory path) The ONE amendment that completes every unmet victory condition.
+
+    Generated only when two or more conditions are unmet -- with one unmet, the existing single
+    card already is that reform -- and only when `objective.qualifying_reform_targets` finds a
+    coherent combination that takes the constitution from non-competitive rule to
+    competitive-elected, which is exactly the engine's qualifying test. Availability, routes and
+    any diagnostic come from the same `_amendment_card` machinery as every other card."""
+    targets = qualifying_reform_targets(politics.constitution)
+    # One unmet condition (a lone companion `executive_system` target does not count as one) is
+    # already an existing card; only two or more get the combined one.
+    if targets is None or len({t.axis for t in targets} - {"executive_system"}) < 2:
+        return ()
+    opening = politics.constitution
+    effects = tuple(_qualifying_effect(opening, target) for target in targets)
+    return (
+        _amendment_card(
+            state,
+            politics,
+            card_id=QUALIFYING_REFORM_CARD_ID,
+            title="Complete the constitutional conditions in one reform",
+            description=(
+                "One amendment giving the country an elected executive, no decree authority and a "
+                "national election schedule. Enacting it records the qualifying transition; "
+                "winning a later national election then completes it."
+            ),
+            effects=effects,
+            targets=targets,
+        ),
+    )
+
+
 _TERM_LIMIT_PRESETS: tuple[int | None, ...] = (None, 1, 2, 3)
 _ELECTION_INTERVAL_PRESETS: tuple[int | None, ...] = (None, 4, 8, 16)
 
@@ -752,6 +816,7 @@ def build_policy_cards(state: GameState) -> tuple[PolicyCard, ...]:
     if finance is not None:
         cards.extend(_taxation_cards(state, politics, finance))
         cards.extend(_spending_cards(state, politics, finance))
+    cards.extend(_qualifying_reform_card(state, politics))
     cards.extend(_decree_authority_cards(state, politics))
     cards.extend(_government_form_cards(state, politics))
     cards.extend(_term_limit_cards(state, politics))

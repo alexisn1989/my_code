@@ -647,6 +647,7 @@ export interface components {
             map: components["schemas"]["MapProjection"];
             /** Next Election Label */
             next_election_label: string;
+            objective: components["schemas"]["ObjectiveProjection"];
             political_capital: components["schemas"]["CapitalSummary"];
             /** Revision */
             revision: string;
@@ -1054,6 +1055,89 @@ export interface components {
             /** Seed */
             seed?: number | null;
         };
+        /** ObjectiveCondition */
+        ObjectiveCondition: {
+            /** Current Text */
+            current_text: string;
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "elected_executive" | "no_decree_authority" | "election_interval";
+            /** If Enacted Alone */
+            if_enacted_alone?: ("qualifies" | "reform_continues" | "reopens_route" | "cannot_qualify" | "keeps_transition" | "ends_transition") | null;
+            /** Label */
+            label: string;
+            /** Link Card Id */
+            link_card_id?: string | null;
+            /** Met */
+            met: boolean;
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * ObjectiveEffectProjection
+         * @description `PreviewProjection.objective_effect_if_enacted`: the staged amendment's effect IF ENACTED.
+         *
+         *     It never says the amendment will be enacted -- `would_pass` and `affordable` on the same
+         *     preview say whether resolving the draft would enact it.
+         */
+        ObjectiveEffectProjection: {
+            /** Conditions Met */
+            conditions_met: number;
+            /** Deciding Election Turn */
+            deciding_election_turn?: number | null;
+            /**
+             * Effect
+             * @enum {string}
+             */
+            effect: "qualifies" | "reform_continues" | "reopens_route" | "cannot_qualify" | "keeps_transition" | "ends_transition";
+            /**
+             * Election This Turn Too Soon
+             * @default false
+             */
+            election_this_turn_too_soon: boolean;
+            /**
+             * Still Needed
+             * @default []
+             */
+            still_needed: string[];
+        };
+        /**
+         * ObjectiveProjection
+         * @description `DashboardProjection.objective`: the stage, from the engine's eligibility and marker.
+         */
+        ObjectiveProjection: {
+            /** Cannot Qualify Reason */
+            cannot_qualify_reason?: ("missing_interval" | "already_competitive") | null;
+            /** Conditions */
+            conditions: components["schemas"]["ObjectiveCondition"][];
+            /** Conditions Met */
+            conditions_met: number;
+            /** Conditions Text */
+            conditions_text: string;
+            /** Detail */
+            detail?: string | null;
+            /** Election Note */
+            election_note?: string | null;
+            /** Election Turn */
+            election_turn?: number | null;
+            /** Headline */
+            headline: string;
+            /** Ordering Note */
+            ordering_note?: string | null;
+            /** Qualifying Card Id */
+            qualifying_card_id?: string | null;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "reform" | "cannot_qualify" | "qualifying_election" | "concluded";
+            /** Transition Text */
+            transition_text: string;
+            /** Transition Turn */
+            transition_turn?: number | null;
+        };
         /** PolicyCard */
         PolicyCard: {
             /** Available */
@@ -1227,6 +1311,7 @@ export interface components {
              * @default 0
              */
             legislative_bargain_capital: number;
+            objective_effect_if_enacted?: components["schemas"]["ObjectiveEffectProjection"] | null;
             /**
              * Opening Capital
              * @default 0
@@ -1564,6 +1649,8 @@ export interface components {
              * @default []
              */
             ledger: components["schemas"]["LedgerEntry"][];
+            /** Objective Line */
+            objective_line?: string | null;
             /** Outcome Headline */
             outcome_headline: string;
             /**

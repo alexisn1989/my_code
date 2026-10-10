@@ -26,6 +26,12 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.api.display import format_money_display
+from app.api.objective import (
+    ObjectiveEffectProjection,
+    ObjectiveProjection,
+    build_objective,
+    objective_line,
+)
 from app.api.outcome_labels import outcome_reason_text
 from app.core.money import BPS_DENOMINATOR
 from app.core.politics import RELATIONSHIP_INVESTMENT_CAP
@@ -404,6 +410,10 @@ class DashboardProjection(BaseModel):
     political_capital: CapitalSummary
     alerts: tuple[Alert, ...] = ()
     goal: GoalCard
+    objective: ObjectiveProjection
+    """(Gate 4A3 victory path) The campaign objective's stage, derived from the engine's own
+    eligibility predicates and its recorded transition marker (`objective.py`). Separate from
+    `goal`, which stays the most urgent problem."""
     map: MapProjection
     terminal: TerminalSummary | None = None
 
@@ -457,6 +467,9 @@ class TurnResultProjection(BaseModel):
     unchanged: tuple[str, ...] = ()
     trace: tuple[TraceField, ...] = ()
     terminal: TerminalSummary | None = None
+    objective_line: str | None = None
+    """(Gate 4A3 victory path) What this turn did to the campaign objective, from the stored report,
+    the closing state and the opening state's marker (`objective.objective_line`)."""
 
 
 # --------------------------------------------------------------------------
@@ -522,6 +535,10 @@ class PreviewProjection(BaseModel):
     committed_capital: int = 0
     opening_capital: int = 0
     affordable: bool = True
+    objective_effect_if_enacted: ObjectiveEffectProjection | None = None
+    """(Gate 4A3 victory path) The drafted amendment's effect on the campaign objective IF ENACTED.
+    Conditional only: `would_pass` and `affordable` say whether resolving would enact it. `None`
+    when the draft carries no amendment."""
 
 
 class ScenarioSummary(BaseModel):
@@ -1650,6 +1667,7 @@ def build_dashboard(
         ),
         alerts=_build_alerts(politics, report),
         goal=_build_goal(politics, report),
+        objective=build_objective(politics),
         map=MapProjection(
             tint_metric_label="Legitimacy",
             tint_value_bps=politics.legitimacy_bps,
@@ -2012,12 +2030,18 @@ def _with_bloc_display_name(
     return params if name is None else {**params, "bloc_display_name": name}
 
 
-def build_turn_result(state: GameState, report: TurnReport) -> TurnResultProjection:
+def build_turn_result(
+    state: GameState, report: TurnReport, *, opening_state: GameState | None = None
+) -> TurnResultProjection:
     """THE turn-result builder. Live resolution and history detail both call this.
 
     `state` is the state the turn produced; `report` is that turn's stored,
     already-validated `TurnReport`. Nothing is recomputed from current state --
     a historical turn renders from the report written when it happened.
+
+    `opening_state` (Gate 4A3 victory path) is the state the turn was resolved FROM, read from the
+    same stored history by both callers. Only `objective_line` reads it (for the opening marker);
+    without it that line is omitted rather than guessed.
     """
     politics = _politics(state)
     bloc_names = _bloc_display_names(politics)
@@ -2035,8 +2059,10 @@ def build_turn_result(state: GameState, report: TurnReport) -> TurnResultProject
     capital = report.political_capital
     if capital is not None:
         for row in capital.expenditures:
+            # Gate 4A3 victory path, D-V2: the bloc's display name from the turn's own state, as
+            # the relationship drivers already use, never the raw `party/bloc` identifier.
             target = (
-                f"{row.party_id}/{row.bloc_id}"
+                bloc_names.get((row.party_id, row.bloc_id), f"{row.party_id}/{row.bloc_id}")
                 if row.party_id is not None and row.bloc_id is not None
                 else None
             )
@@ -2108,6 +2134,13 @@ def build_turn_result(state: GameState, report: TurnReport) -> TurnResultProject
         unchanged=_unchanged_statements(report),
         trace=tuple(trace),
         terminal=None if politics is None else _terminal_summary(politics),
+        objective_line=(
+            None
+            if politics is None
+            else objective_line(
+                None if opening_state is None else _politics(opening_state), politics, report
+            )
+        ),
     )
 
 
@@ -2178,7 +2211,13 @@ def _unchanged_statements(report: TurnReport) -> tuple[str, ...]:
     lines: list[str] = []
     legislative = report.legislative
     if legislative is not None and legislative.outcome is LegislativeOutcome.NO_PROPOSAL:
-        lines.append("No policy proposal was submitted.")
+        # Gate 4A3 victory path, D-V3: on an amendment turn the empty slot is the BUDGET's, so
+        # "no policy proposal" would contradict the amendment the same result reports.
+        amendment = report.constitutional_amendment
+        if amendment is not None and amendment.proposed:
+            lines.append("No budget was proposed.")
+        else:
+            lines.append("No policy proposal was submitted.")
     if legislative is not None and legislative.outcome is LegislativeOutcome.FAILED_LEGISLATIVE:
         lines.append("Tax rates and spending are unchanged.")
     if report.election is None:

@@ -83,7 +83,8 @@ def test_catalog_generates_for_every_shipped_scenario(scenario: str) -> None:
 _KNOWN_CARD_COUNTS: dict[str, tuple[int, int]] = {
     "tiny_valid.yaml": (44, 33),
     "deficit_demo.yaml": (45, 35),
-    "decree_state.yaml": (44, 31),
+    # Gate 4A3 victory path: +1 total, +1 available -- `constitution_qualifying_reform`.
+    "decree_state.yaml": (45, 32),
 }
 
 
