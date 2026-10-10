@@ -1,0 +1,435 @@
+{
+  "gate": "4A3 victory path",
+  "commit": "V-2",
+  "deficit_demo": {
+    "turnsPlayed": 20,
+    "terminal": {
+      "bucket": "victory",
+      "reason_label": "Peaceful liberalization completed",
+      "turn": 20,
+      "headline": "Victory: peaceful liberalization completed, turn 20."
+    },
+    "log": [
+      {
+        "turn": 0,
+        "kinds": [
+          "constitutional_amendment"
+        ],
+        "headline": "Amendment passed, 53 of 100 seats (51 required).",
+        "objectiveLine": "The constitution now qualifies, and the transition is recorded. Win the election on turn 20 to complete it.",
+        "previewEffect": "If enacted, this reform would record the qualifying transition; the election on turn 20 would decide."
+      },
+      {
+        "turn": 1,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 2,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 3,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 4,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 5,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 6,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 7,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 8,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 9,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 10,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 11,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 12,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 13,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 14,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 15,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 16,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 17,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 18,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 19,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The election was won with 65.42%.",
+        "objectiveLine": "Objective complete: you won the qualifying election.",
+        "previewEffect": null
+      }
+    ],
+    "surfaces": 30,
+    "consoleErrors": []
+  },
+  "tiny_valid": {
+    "turnsPlayed": 16,
+    "terminal": {
+      "bucket": "victory",
+      "reason_label": "Peaceful liberalization completed",
+      "turn": 16,
+      "headline": "Victory: peaceful liberalization completed, turn 16."
+    },
+    "log": [
+      {
+        "turn": 0,
+        "kinds": [
+          "constitutional_amendment",
+          "legislative_bargain"
+        ],
+        "headline": "Amendment passed, 69 of 100 seats (67 required).",
+        "objectiveLine": "The constitution now qualifies, and the transition is recorded. Win the election on turn 16 to complete it.",
+        "previewEffect": "If enacted, this reform would record the qualifying transition; the election on turn 16 would decide."
+      },
+      {
+        "turn": 1,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 2,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 3,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 4,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 5,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 6,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 7,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 8,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 9,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 10,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 11,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 12,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 13,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 14,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 15,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The election was won with 66.72%.",
+        "objectiveLine": "Objective complete: you won the qualifying election.",
+        "previewEffect": null
+      }
+    ],
+    "surfaces": 30,
+    "consoleErrors": []
+  },
+  "decree_state": {
+    "turnsPlayed": 7,
+    "terminal": {
+      "bucket": "victory",
+      "reason_label": "Peaceful liberalization completed",
+      "turn": 7,
+      "headline": "Victory: peaceful liberalization completed, turn 7."
+    },
+    "log": [
+      {
+        "turn": 0,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 1,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 2,
+        "kinds": [
+          "constitutional_amendment"
+        ],
+        "headline": "Amendment passed, 72 of 100 seats (67 required).",
+        "objectiveLine": "The constitution now qualifies, and the transition is recorded. Win the election on turn 7 to complete it.",
+        "previewEffect": "If enacted, this reform would record the qualifying transition; the election on turn 7 would decide."
+      },
+      {
+        "turn": 3,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 4,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 5,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 6,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The election was won with 64.38%.",
+        "objectiveLine": "Objective complete: you won the qualifying election.",
+        "previewEffect": null
+      }
+    ],
+    "surfaces": 30,
+    "consoleErrors": []
+  },
+  "fixtures": {
+    "surfaces": 36,
+    "consoleErrors": []
+  }
+}

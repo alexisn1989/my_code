@@ -164,7 +164,14 @@ export function PolicyCardGrid({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-gold-600 bg-navy-900 p-3">
+      {/* Gate 4A3 victory path: a programmatic focus target, so a player arriving from a
+          Constitution link lands on what the link selected. */}
+      <div
+        id="policy-selection-summary"
+        data-testid="policy-selection-summary"
+        tabIndex={-1}
+        className="flex flex-wrap items-center justify-between gap-3 rounded border border-gold-600 bg-navy-900 p-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+      >
         {selectedCard ? (
           <div className="text-sm">
             <p className="text-parchment-200/60">

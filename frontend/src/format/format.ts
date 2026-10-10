@@ -970,6 +970,10 @@ function consequenceSentence(
 ): string | undefined {
   const bloc = str(params["bloc_display_name"]);
   switch (reasonId) {
+    case "constitutional_amendment_enacted":
+      // Gate 4A3 victory path, D-V1: one named line per changed axis, not "The constitution was
+      // amended." repeated once per axis.
+      return amendmentEnactedSentence(params);
     case "legislative_vote_resolved": {
       // THE contradiction this exists to remove: on a decree turn the generic label said "The
       // legislature voted." beside "The legislature was bypassed." The driver stores how the
@@ -1117,4 +1121,134 @@ export function outcomeFirst<T extends { reason_id: string }>(items: readonly T[
     .map((item, position) => ({ item, position }))
     .sort((a, b) => driverPriority(a.item.reason_id) - driverPriority(b.item.reason_id) || a.position - b.position)
     .map(({ item }) => item);
+}
+
+// --------------------------------------------------------------------------
+// Gate 4A3 victory path
+// --------------------------------------------------------------------------
+
+/** A condition's status, in words: colour is never the only carrier. */
+export function metText(met: boolean): string {
+  return met ? "Met" : "Not yet";
+}
+
+export const VICTORY_NOTE = "Meeting every condition is not victory: you must then win the election.";
+
+/** D-V1: the amendable axes, named the way the reform cards name them. A drift guard
+ * (`backend/tests/test_campaign_objective.py`) holds the keys to the engine's amendable axes. */
+export const CONSTITUTION_AXIS_LABEL: Record<string, string> = {
+  decree_authority: "Decree authority",
+  executive_selection: "Executive selection",
+  executive_system: "Executive system",
+  national_election_interval_turns: "Election schedule",
+  executive_term_limit_terms: "Term limit",
+};
+
+/** D-V1: enum values as they read inside a sentence. Keys are the engine's enum values (drift-guarded). */
+export const CONSTITUTION_VALUE_LABEL: Record<string, string> = {
+  none: "none",
+  emergency_only: "emergency only",
+  unlimited: "unlimited",
+  presidential: "presidential",
+  parliamentary: "parliamentary",
+  semi_presidential: "semi-presidential",
+  monarchical: "monarchical",
+  direct_election: "direct election",
+  legislative_selection: "selected by the legislature",
+  hereditary: "hereditary succession",
+  appointed: "appointed",
+};
+
+function constitutionValueText(axis: string, value: string): string | undefined {
+  if (axis === "national_election_interval_turns") {
+    if (value === "null") return "none";
+    const turns = Number(value);
+    if (!Number.isInteger(turns)) return undefined;
+    return `every ${formatAmount(turns)} turn${turns === 1 ? "" : "s"}`;
+  }
+  if (axis === "executive_term_limit_terms") {
+    if (value === "null") return "none";
+    const terms = Number(value);
+    if (!Number.isInteger(terms)) return undefined;
+    return `${formatAmount(terms)} term${terms === 1 ? "" : "s"}`;
+  }
+  return CONSTITUTION_VALUE_LABEL[value];
+}
+
+/** D-V1: "Decree authority: unlimited → none." from the stored `constitutional_amendment_enacted`
+ * params, so a reform's turn result names each changed axis instead of repeating "The constitution
+ * was amended." once per axis. `undefined` (-> the generic label) for anything unrecognised. */
+export function amendmentEnactedSentence(params: Record<string, string | number>): string | undefined {
+  const axis = str(params["axis"]);
+  const opening = params["opening_value"];
+  const closing = params["closing_value"];
+  if (axis === undefined || opening === undefined || closing === undefined) return undefined;
+  const label = CONSTITUTION_AXIS_LABEL[axis];
+  const from = constitutionValueText(axis, String(opening));
+  const to = constitutionValueText(axis, String(closing));
+  if (label === undefined || from === undefined || to === undefined) return undefined;
+  return `${label}: ${from} → ${to}.`;
+}
+
+/** The preview's `objective_effect_if_enacted`, declared structurally (this module imports
+ * nothing). */
+export interface ObjectiveEffectInput {
+  effect:
+    | "qualifies"
+    | "reform_continues"
+    | "reopens_route"
+    | "cannot_qualify"
+    | "keeps_transition"
+    | "ends_transition";
+  conditions_met: number;
+  still_needed?: readonly string[];
+  deciding_election_turn?: number | null;
+  election_this_turn_too_soon?: boolean;
+}
+
+function lowerFirst(text: string): string {
+  return text.length === 0 ? text : text[0]!.toLowerCase() + text.slice(1);
+}
+
+function joinNames(names: readonly string[]): string {
+  const words = names.map(lowerFirst);
+  if (words.length <= 1) return words.join("");
+  return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+/** The drafted amendment's effect on the objective IF ENACTED -- always said conditionally. Whether
+ * resolving would enact it is a separate sentence (`objectiveEffectCaveat`). */
+export function objectiveEffectSentence(effect: ObjectiveEffectInput): string {
+  const election =
+    effect.deciding_election_turn === null || effect.deciding_election_turn === undefined
+      ? "the next national election would decide"
+      : `the election on turn ${effect.deciding_election_turn} would decide`;
+  switch (effect.effect) {
+    case "qualifies":
+      return effect.election_this_turn_too_soon
+        ? `If enacted, this reform would record the qualifying transition. This turn's election would come too soon to count; ${election}.`
+        : `If enacted, this reform would record the qualifying transition; ${election}.`;
+    case "keeps_transition":
+      return `If enacted, the qualifying transition would stand; ${election}.`;
+    case "ends_transition":
+      return "If enacted, this would end the qualifying transition, and the constitution would have to be reformed again.";
+    case "reopens_route":
+      return "If enacted, the constitution would return to non-competitive rule, so a later reform could qualify.";
+    case "reform_continues":
+      return `If enacted, ${effect.conditions_met} of 3 constitutional conditions would be met. Still needed: ${joinNames(effect.still_needed ?? [])}.`;
+    case "cannot_qualify":
+      return effect.conditions_met === 3
+        ? "If enacted, all three conditions would be met, but this would not count as the qualifying reform: the constitution is not under non-competitive rule."
+        : "If enacted, the constitution could no longer qualify: it would leave non-competitive rule without meeting all three conditions in the same reform.";
+  }
+}
+
+/** The second sentence, only when resolving this draft would NOT enact the amendment. */
+export function objectiveEffectCaveat(preview: {
+  would_pass: boolean;
+  affordable: boolean;
+}): string | null {
+  if (!preview.affordable) return "This draft is not affordable, so resolving it would be refused.";
+  if (!preview.would_pass) return "This draft would not pass as it stands, so nothing would change.";
+  return null;
 }

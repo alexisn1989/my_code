@@ -27,6 +27,8 @@ import {
   failingVoteAdvice,
   formatAmount,
   formatCommitted,
+  objectiveEffectCaveat,
+  objectiveEffectSentence,
   routeLabel,
 } from "../../format/format";
 import { DataTable, EmptyNote, Panel, ToneValue } from "../components";
@@ -115,6 +117,22 @@ export function ConsequencesPanel({
             )}
           </>
         )}
+
+        {/* Gate 4A3 victory path: what the drafted amendment would do to the campaign objective IF
+            ENACTED -- never stated as what resolving will do. When resolving would not enact it, a
+            second sentence says so. */}
+        {preview.objective_effect_if_enacted ? (
+          <div data-testid="objective-effect-panel" className="mt-3 text-sm">
+            <p data-testid="objective-effect">
+              {objectiveEffectSentence(preview.objective_effect_if_enacted)}
+            </p>
+            {objectiveEffectCaveat(preview) ? (
+              <p data-testid="objective-effect-caveat" className="mt-1 text-parchment-200/80">
+                {objectiveEffectCaveat(preview)}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Gate 4A3 UX-1: only the terms this draft actually spends are listed -- seven zeros read as
             noise -- and the total is always shown. */}

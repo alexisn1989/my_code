@@ -28,8 +28,12 @@ import {
 import { ConsequencesPanel } from "../policy/ConsequencesPanel";
 import { PolicyCardGrid } from "../policy/PolicyCardGrid";
 import { chooseCardRoute, mapPolicyCardToDraft } from "../../state/applyPolicyCard";
-import { buildDecisions, previewRequestSignature } from "../../state/buildDecisionSet";
-import { useDraftStore } from "../../state/draft";
+import {
+  buildDecisions,
+  policyProposalDecision,
+  previewRequestSignature,
+} from "../../state/buildDecisionSet";
+import { type PolicySlotKind, useDraftStore } from "../../state/draft";
 import { stagedActions } from "../../state/stagedActions";
 import { useSession } from "../../state/SessionContext";
 import { ErrorPanel } from "../../status/ErrorPanel";
@@ -172,7 +176,9 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   // needs the PRIOR route, which only this screen -- not the browser, not
   // the mapping module -- knows, since it is whatever the currently active
   // slot's own route already is.
-  function handleSelectCard(card: PolicyCard) {
+  /** `replacing` (Gate 4A3 victory path) is passed only for a Constitution link: the slot whose
+   * real drafted proposal the link is about to replace, so the player is told what was replaced. */
+  function handleSelectCard(card: PolicyCard, replacing: PolicySlotKind | null = null) {
     const priorRoute =
       draft.policySlot === "budget"
         ? draft.budget.route
@@ -186,10 +192,15 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
     draft.applyCard(mapPolicyCardToDraft(card, chosen.route));
     setSelectedCardId(card.card_id);
     const newRouteLabel = chosen.route.route === "decree" ? "decree" : "legislative vote";
+    const routeChange = chosen.changed
+      ? `Route changed to ${newRouteLabel}: ${priorRoute} is not available for this policy.`
+      : null;
+    const replaced =
+      replacing === null
+        ? null
+        : `Replaced your drafted ${replacing === "budget" ? "budget" : "amendment"} with: ${card.title}.`;
     setRouteChangeAnnouncement(
-      chosen.changed
-        ? `Route changed to ${newRouteLabel}: ${priorRoute} is not available for this policy.`
-        : null,
+      [replaced, routeChange].filter((part) => part !== null).join(" ") || null,
     );
   }
 
@@ -198,6 +209,39 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
     setSelectedCardId(null);
     setRouteChangeAnnouncement(null);
   }
+
+  // Gate 4A3 victory path: a Constitution link's card, selected once the options have loaded,
+  // through `handleSelectCard` -- the same path as the card's own Select button, so the link
+  // REPLACES the drafted proposal exactly as selecting the card would. The grid is remounted so it
+  // opens on the selected card's tab, and focus moves to the selection.
+  const requestedCardId = draft.requestedCardId;
+  // The grid remounts on a new key; a string naming the linked card, so no counter arithmetic.
+  const [gridKey, setGridKey] = useState("initial");
+  const [focusSelection, setFocusSelection] = useState(false);
+  useEffect(() => {
+    if (requestedCardId === null || !options.data) return;
+    const card = options.data.policy_cards.find((candidate) => candidate.card_id === requestedCardId);
+    draft.clearRequestedCard();
+    if (card === undefined || !card.available) {
+      setRouteChangeAnnouncement(
+        `That reform can't be drafted now${card?.unavailable_detail ? `: ${card.unavailable_detail}` : "."}`,
+      );
+      return;
+    }
+    const replacing = policyProposalDecision(draft) !== null ? draft.policySlot : null;
+    handleSelectCard(card, replacing);
+    setGridKey(`link:${card.card_id}`);
+    setFocusSelection(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per request, on its own data
+  }, [requestedCardId, options.data]);
+  useEffect(() => {
+    if (!focusSelection) return;
+    const summary = document.getElementById("policy-selection-summary");
+    if (summary) {
+      summary.focus();
+      setFocusSelection(false);
+    }
+  }, [focusSelection, gridKey]);
 
   // Found while proving the two-tab stale-revision RECOVERY experience
   // (not just the error mapping) through the actual browser UI: a
@@ -343,6 +387,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         </div>
 
         <PolicyCardGrid
+          key={gridKey}
           cards={data.policy_cards}
           selectedCardId={selectedCardId}
           onSelectCard={handleSelectCard}

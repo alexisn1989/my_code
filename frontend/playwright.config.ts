@@ -152,6 +152,14 @@ export default defineConfig({
       testMatch: /verify-ux\.spec\.ts$/,
       dependencies: ["preflight"],
     },
+    // Gate 4A3 victory path (V-2): a winning campaign in every scenario through the Constitution
+    // links, plus the objective surfaces' reflow and accessibility. Its own server: it resolves
+    // whole campaigns.
+    {
+      name: "victory",
+      testMatch: /victory\.spec\.ts$/,
+      dependencies: ["preflight"],
+    },
     // Gate 4A3 Commit 6: one turn against the INSTALLED release archive. Run by
     // scripts/verify_release.py, which sets MANDATE_PACKAGED_BASE_URL; skipped otherwise.
     {

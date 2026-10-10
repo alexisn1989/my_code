@@ -21,6 +21,7 @@ import { DashboardScreen } from "./screens/DashboardScreen";
 import { GLOSSARY_ENTRIES, WIN_AND_LOSS_LINE, glossaryDefinition } from "./screens/GlossaryScreen";
 import { ResultScreen } from "./screens/ResultScreen";
 import type { ScreenId } from "./types";
+import { OBJECTIVE_FIXTURE } from "../test/objectiveFixture";
 
 function card(label: string, headline: string, detail_screen: string, delta_text: string | null = null) {
   return { label, headline, delta_text, direction: "unchanged", tone: "neutral", detail_screen };
@@ -43,6 +44,7 @@ const DASHBOARD = {
   political_capital: { current: 500, capacity: 1000, committed_this_turn: 0, display: "500 / 1,000" },
   alerts: [],
   goal: { headline: "Nothing is pressing.", detail: null },
+  objective: OBJECTIVE_FIXTURE,
   map: {
     presentation_only: true,
     tint_metric_label: "Legitimacy",
@@ -197,15 +199,17 @@ describe("U10: every Details link lands on what it was linked for", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("groups the three summary screens under a visible caption, keeping every control's name", () => {
+  it("groups the summary screens under a visible caption, keeping every control's name", () => {
     renderApp();
     const nav = screen.getByRole("navigation", { name: "Screens" });
     const group = within(nav).getByRole("list", { name: "Summaries" });
+    // Gate 4A3 victory path: Constitution is a full screen now, so it left the "Summaries" group;
+    // its control keeps its name and stays in the nav.
     expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual([
       "Economy",
       "Legislature",
-      "Constitution",
     ]);
+    expect(within(nav).getByRole("button", { name: "Constitution" })).toBeInTheDocument();
     // The disabled controls name their own screen, not the strategic map.
     expect(within(nav).getByRole("button", { name: "Government" })).toHaveAttribute(
       "title",

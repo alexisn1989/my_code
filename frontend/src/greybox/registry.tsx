@@ -14,8 +14,11 @@
  * navigation tab. `GlossaryScreen` stays outside this list and is rendered by
  * `GreyboxApp`'s persistent header.
  *
- * THREE of the twelve (Economy, Legislature, Constitution) render
- * `UnavailableScreen`. Government no longer does: the characters slice projects
+ * TWO of the twelve (Economy, Legislature) render `UnavailableScreen`. Constitution no longer
+ * does (Gate 4A3 victory path): it shows the campaign objective the server derives from the
+ * engine's own victory rule, the checklist of its three conditions, and links into the existing
+ * reform cards -- real projected data, not a breakdown built client-side. The text below
+ * predates that and still describes the other two. Government no longer does: the characters slice projects
  * `cabinet_posts`, which is real per-office detail from the server, so the cabinet is live and
  * that screen says plainly that the REST of the government breakdown still is not. Relationships
  * no longer does either, for the same reason and on the same terms: the slice projects party
@@ -38,6 +41,7 @@
 import type { ComponentType } from "react";
 
 import { CabinetScreen } from "./screens/CabinetScreen";
+import { ConstitutionScreen } from "./screens/ConstitutionScreen";
 import { DashboardScreen } from "./screens/DashboardScreen";
 import { DecisionsScreen } from "./screens/DecisionsScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
@@ -119,8 +123,12 @@ export const SCREENS: readonly ScreenDefinition[] = [
     id: "constitution",
     label: "Constitution",
     heading: "Constitution",
-    component: unavailable("Constitution", "constitution"),
+    // Gate 4A3 victory path: the campaign objective, the checklist of the engine's three
+    // conditions, and links into the existing reform cards. It reads the campaign's dashboard and
+    // decision options, so like Government it needs one.
+    component: ConstitutionScreen,
     showsGameplayChrome: true,
+    requiresActiveGame: true,
   },
   {
     id: "relationships",

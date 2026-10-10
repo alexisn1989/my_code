@@ -22,6 +22,7 @@ import { useSession } from "../../state/SessionContext";
 import { ErrorPanel } from "../../status/ErrorPanel";
 import { LoadingPanel } from "../../status/StatusPanels";
 import { ConcernCardGrid, concernsOf } from "../ConcernCards";
+import { ObjectiveCard } from "../ObjectivePanels";
 import { EmptyNote, Panel, ToneValue } from "../components";
 import type { ScreenProps } from "../registry";
 import { WIN_AND_LOSS_LINE } from "./GlossaryScreen";
@@ -128,6 +129,11 @@ export function DashboardScreen({ navigate }: ScreenProps) {
           Build a decision
         </button>
       </Panel>
+
+      {/* Gate 4A3 victory path: the campaign objective, separate from the current priority (which
+          stays the most urgent problem). Its stage comes from the server, which derives it from the
+          engine's own victory rule and transition marker. */}
+      <ObjectiveCard dashboard={data} navigate={navigate} />
 
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         {/* Gate 4A3 UX-3 (U10): this box used to say "map placeholder" under a caption about

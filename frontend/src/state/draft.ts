@@ -184,6 +184,11 @@ export interface DraftState {
    * honest negation: the note being open IS this flag being false. */
   dismissedHelp: boolean;
   glossaryOpen: boolean;
+  /** (Gate 4A3 victory path) A policy card a Constitution link asked Decisions to select. It is NOT
+   * draft content: `DecisionsScreen` consumes it once its options load, selecting the card through
+   * the same handler as its own Select button -- so the link REPLACES the drafted proposal exactly
+   * as selecting that card would -- and then clears it. */
+  requestedCardId: string | null;
 
   setPolicySlot: (slot: PolicySlotKind | null) => void;
   /** Selecting a policy card (Gate 4A3A): replaces the relevant slot WHOLESALE
@@ -247,6 +252,8 @@ export interface DraftState {
    * it reads as what that button means, and three test modules already call it. */
   setHelpDismissed: (dismissed: boolean) => void;
   setGlossaryOpen: (open: boolean) => void;
+  requestCard: (cardId: string) => void;
+  clearRequestedCard: () => void;
 }
 
 function influenceKey(partyId: string, blocId: string): string {
@@ -289,6 +296,7 @@ export const useDraftStore = create<DraftState>((set) => ({
   promise: null,
   dismissedHelp: false,
   glossaryOpen: false,
+  requestedCardId: null,
 
   setPolicySlot: (slot) =>
     set((state) => ({
@@ -427,9 +435,12 @@ export const useDraftStore = create<DraftState>((set) => ({
       bargain: null,
       assistance: null,
       promise: null,
+      requestedCardId: null,
     }),
 
   dismissHelp: () => set({ dismissedHelp: true }),
   setHelpDismissed: (dismissed) => set({ dismissedHelp: dismissed }),
   setGlossaryOpen: (open) => set({ glossaryOpen: open }),
+  requestCard: (cardId) => set({ requestedCardId: cardId }),
+  clearRequestedCard: () => set({ requestedCardId: null }),
 }));

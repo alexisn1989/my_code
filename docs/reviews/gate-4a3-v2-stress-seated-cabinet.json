@@ -1,0 +1,29 @@
+{
+  "fixture": "frontend/e2e/fixtures/stress_long_names_seated_cabinet.yaml",
+  "seated": [
+    {
+      "post": "chief_of_staff",
+      "characterId": "bela_ronsard",
+      "name": "Bela Ronsard von Featherstonehaugh-Oduya of the Northern Marches"
+    },
+    {
+      "post": "foreign_minister",
+      "characterId": "clara_venn",
+      "name": "Clara Venn von Featherstonehaugh-Oduya of the Northern Marchesxx"
+    }
+  ],
+  "viewports": [
+    "stress-laptop-1440x900",
+    "stress-mobile-390x844"
+  ],
+  "findings": [],
+  "coverage": [
+    "server projection confirms both posts seated: chief_of_staff=bela_ronsard, foreign_minister=clara_venn",
+    "Government at stress-laptop-1440x900: no horizontal page scroll and no overflowing node, with both maximum-length holder names proven present",
+    "Government at stress-mobile-390x844: no horizontal page scroll and no overflowing node, with both maximum-length holder names proven present"
+  ],
+  "proofs": [
+    "Government at stress-laptop-1440x900: 2 exact authored 64-character holder name(s) rendered (Bela Ronsard von F..., Clara Venn von Fea...)",
+    "Government at stress-mobile-390x844: 2 exact authored 64-character holder name(s) rendered (Bela Ronsard von F..., Clara Venn von Fea...)"
+  ]
+}

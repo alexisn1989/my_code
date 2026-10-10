@@ -1,0 +1,3310 @@
+{
+  "revision": "0.0",
+  "campaign_id": "campaign-1",
+  "opening_capital": 500,
+  "tax_rate_bps_minimum": 0,
+  "tax_rate_bps_maximum": 10000,
+  "spending_categories": [
+    {
+      "category": "health",
+      "current_amount": 200000000
+    },
+    {
+      "category": "education",
+      "current_amount": 150000000
+    },
+    {
+      "category": "welfare",
+      "current_amount": 250000000
+    },
+    {
+      "category": "infrastructure",
+      "current_amount": 120000000
+    },
+    {
+      "category": "defense",
+      "current_amount": 180000000
+    },
+    {
+      "category": "security",
+      "current_amount": 90000000
+    },
+    {
+      "category": "administration",
+      "current_amount": 60000000
+    }
+  ],
+  "relationship_investment_minimum": 1,
+  "relationship_investment_maximum": 200,
+  "decree_available": true,
+  "decree_legislative_capital_cost": 250,
+  "decree_amendment_capital_cost": 400,
+  "policy_cards": [
+    {
+      "card_id": "tax_personal_income_increase",
+      "category": "taxation",
+      "category_label": "Taxation",
+      "title": "Raise the personal income tax",
+      "description": "Raise the personal income tax rate.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Personal income tax",
+          "unit": "bps",
+          "current_value": 2000,
+          "proposed_value": 2500,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "up"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": 2500,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": 2500,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "tax_personal_income_decrease",
+      "category": "taxation",
+      "category_label": "Taxation",
+      "title": "Lower the personal income tax",
+      "description": "Lower the personal income tax rate.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Personal income tax",
+          "unit": "bps",
+          "current_value": 2000,
+          "proposed_value": 1500,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "down"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": 1500,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": 1500,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "tax_corporate_increase",
+      "category": "taxation",
+      "category_label": "Taxation",
+      "title": "Raise the corporate tax",
+      "description": "Raise the corporate tax rate.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Corporate tax",
+          "unit": "bps",
+          "current_value": 2500,
+          "proposed_value": 3000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "up"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": 3000,
+            "consumption_rate_bps": null,
+            "spending_updates": [],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": 3000,
+            "consumption_rate_bps": null,
+            "spending_updates": [],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "tax_corporate_decrease",
+      "category": "taxation",
+      "category_label": "Taxation",
+      "title": "Lower the corporate tax",
+      "description": "Lower the corporate tax rate.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Corporate tax",
+          "unit": "bps",
+          "current_value": 2500,
+          "proposed_value": 2000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "down"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": 2000,
+            "consumption_rate_bps": null,
+            "spending_updates": [],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": 2000,
+            "consumption_rate_bps": null,
+            "spending_updates": [],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "tax_consumption_increase",
+      "category": "taxation",
+      "category_label": "Taxation",
+      "title": "Raise the consumption tax",
+      "description": "Raise the consumption tax rate.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Consumption tax",
+          "unit": "bps",
+          "current_value": 1000,
+          "proposed_value": 1500,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "up"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": 1500,
+            "spending_updates": [],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": 1500,
+            "spending_updates": [],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "tax_consumption_decrease",
+      "category": "taxation",
+      "category_label": "Taxation",
+      "title": "Lower the consumption tax",
+      "description": "Lower the consumption tax rate.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Consumption tax",
+          "unit": "bps",
+          "current_value": 1000,
+          "proposed_value": 500,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "down"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": 500,
+            "spending_updates": [],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": 500,
+            "spending_updates": [],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_health_increase",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Increase health spending",
+      "description": "Increase the health spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Health",
+          "unit": "money",
+          "current_value": 200000000,
+          "proposed_value": 220000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "up"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "health",
+                "amount": 220000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "health",
+                "amount": 220000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_health_decrease",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Reduce health spending",
+      "description": "Reduce the health spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Health",
+          "unit": "money",
+          "current_value": 200000000,
+          "proposed_value": 180000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "down"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "health",
+                "amount": 180000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "health",
+                "amount": 180000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_education_increase",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Increase education spending",
+      "description": "Increase the education spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Education",
+          "unit": "money",
+          "current_value": 150000000,
+          "proposed_value": 165000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "up"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "education",
+                "amount": 165000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "education",
+                "amount": 165000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_education_decrease",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Reduce education spending",
+      "description": "Reduce the education spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Education",
+          "unit": "money",
+          "current_value": 150000000,
+          "proposed_value": 135000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "down"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "education",
+                "amount": 135000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "education",
+                "amount": 135000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_welfare_increase",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Increase welfare spending",
+      "description": "Increase the welfare spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Welfare",
+          "unit": "money",
+          "current_value": 250000000,
+          "proposed_value": 275000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "up"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "welfare",
+                "amount": 275000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "welfare",
+                "amount": 275000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_welfare_decrease",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Reduce welfare spending",
+      "description": "Reduce the welfare spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Welfare",
+          "unit": "money",
+          "current_value": 250000000,
+          "proposed_value": 225000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "down"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "welfare",
+                "amount": 225000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "welfare",
+                "amount": 225000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_infrastructure_increase",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Increase infrastructure spending",
+      "description": "Increase the infrastructure spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Infrastructure",
+          "unit": "money",
+          "current_value": 120000000,
+          "proposed_value": 132000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "up"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "infrastructure",
+                "amount": 132000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "infrastructure",
+                "amount": 132000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_infrastructure_decrease",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Reduce infrastructure spending",
+      "description": "Reduce the infrastructure spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Infrastructure",
+          "unit": "money",
+          "current_value": 120000000,
+          "proposed_value": 108000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "down"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "infrastructure",
+                "amount": 108000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "infrastructure",
+                "amount": 108000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_defense_increase",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Increase defense spending",
+      "description": "Increase the defense spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Defense",
+          "unit": "money",
+          "current_value": 180000000,
+          "proposed_value": 198000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "up"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "defense",
+                "amount": 198000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "defense",
+                "amount": 198000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_defense_decrease",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Reduce defense spending",
+      "description": "Reduce the defense spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Defense",
+          "unit": "money",
+          "current_value": 180000000,
+          "proposed_value": 162000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "down"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "defense",
+                "amount": 162000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "defense",
+                "amount": 162000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_security_increase",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Increase security spending",
+      "description": "Increase the security spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Security",
+          "unit": "money",
+          "current_value": 90000000,
+          "proposed_value": 99000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "up"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "security",
+                "amount": 99000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "security",
+                "amount": 99000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_security_decrease",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Reduce security spending",
+      "description": "Reduce the security spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Security",
+          "unit": "money",
+          "current_value": 90000000,
+          "proposed_value": 81000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "down"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "security",
+                "amount": 81000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "security",
+                "amount": 81000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_administration_increase",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Increase administration spending",
+      "description": "Increase the administration spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Administration",
+          "unit": "money",
+          "current_value": 60000000,
+          "proposed_value": 66000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "up"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "administration",
+                "amount": 66000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "administration",
+                "amount": 66000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "spending_administration_decrease",
+      "category": "spending",
+      "category_label": "Spending",
+      "title": "Reduce administration spending",
+      "description": "Reduce the administration spending category.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Administration",
+          "unit": "money",
+          "current_value": 60000000,
+          "proposed_value": 54000000,
+          "current_label": null,
+          "proposed_label": null,
+          "direction": "down"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 51
+            }
+          ],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "administration",
+                "amount": 54000000
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 250,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": {
+            "kind": "budget",
+            "personal_income_rate_bps": null,
+            "corporate_rate_bps": null,
+            "consumption_rate_bps": null,
+            "spending_updates": [
+              {
+                "category": "administration",
+                "amount": 54000000
+              }
+            ],
+            "route": "decree",
+            "influence": []
+          }
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_qualifying_reform",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Complete the constitutional conditions in one reform",
+      "description": "One amendment giving the country an elected executive, no decree authority and a national election schedule. Enacting it records the qualifying transition; winning a later national election then completes it.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Decree authority",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Unlimited decree authority",
+          "proposed_label": "No decree authority",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Direct election",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Presidential",
+          "direction": "unchanged"
+        },
+        {
+          "label": "National election schedule",
+          "unit": "turns",
+          "current_value": null,
+          "proposed_value": 4,
+          "current_label": "No scheduled national election",
+          "proposed_label": "Every 4 turns",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "decree_authority",
+                "value": "none"
+              },
+              {
+                "axis": "executive_selection",
+                "value": "direct_election"
+              },
+              {
+                "axis": "executive_system",
+                "value": "presidential"
+              },
+              {
+                "axis": "national_election_interval_turns",
+                "value": 4
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_decree_authority_to_none",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Set decree authority to no decree authority",
+      "description": "Change the executive's authority to legislate by decree.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Decree authority",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Unlimited decree authority",
+          "proposed_label": "No decree authority",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "decree_authority",
+                "value": "none"
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_decree_authority_to_emergency_only",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Set decree authority to emergency decree authority only",
+      "description": "Change the executive's authority to legislate by decree.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Decree authority",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Unlimited decree authority",
+          "proposed_label": "Emergency decree authority only",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "decree_authority",
+                "value": "emergency_only"
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_presidential_direct_election",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to presidential, direct election",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Presidential",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Direct election",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "executive_selection",
+                "value": "direct_election"
+              },
+              {
+                "axis": "executive_system",
+                "value": "presidential"
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_presidential_legislative_selection",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to presidential, selected by the legislature",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a presidential executive can't be selected by the legislature. Change Executive system to parliamentary too, or choose direct election.",
+      "diagnostic_code": "presidential_forbids_legislative_selection",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Presidential",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Selected by the legislature",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a presidential executive can't be selected by the legislature. Change Executive system to parliamentary too, or choose direct election.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a presidential executive can't be selected by the legislature. Change Executive system to parliamentary too, or choose direct election.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_presidential_hereditary",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to presidential, hereditary succession",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive must be monarchical. Change Executive system to monarchical too, or choose another executive selection.",
+      "diagnostic_code": "hereditary_requires_monarchical_system",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Presidential",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Hereditary succession",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive must be monarchical. Change Executive system to monarchical too, or choose another executive selection.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive must be monarchical. Change Executive system to monarchical too, or choose another executive selection.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_presidential_appointed",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to presidential, appointed",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Presidential",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Appointed",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "executive_selection",
+                "value": "appointed"
+              },
+              {
+                "axis": "executive_system",
+                "value": "presidential"
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_parliamentary_direct_election",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to parliamentary, direct election",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a parliamentary executive must be selected by the legislature. Change Executive selection to selected by the legislature too, or choose another executive system.",
+      "diagnostic_code": "parliamentary_requires_legislative_selection",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Parliamentary",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Direct election",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a parliamentary executive must be selected by the legislature. Change Executive selection to selected by the legislature too, or choose another executive system.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a parliamentary executive must be selected by the legislature. Change Executive selection to selected by the legislature too, or choose another executive system.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_parliamentary_legislative_selection",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to parliamentary, selected by the legislature",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Parliamentary",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Selected by the legislature",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "executive_selection",
+                "value": "legislative_selection"
+              },
+              {
+                "axis": "executive_system",
+                "value": "parliamentary"
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_parliamentary_hereditary",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to parliamentary, hereditary succession",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a parliamentary executive must be selected by the legislature. Change Executive selection to selected by the legislature too, or choose another executive system.",
+      "diagnostic_code": "parliamentary_requires_legislative_selection",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Parliamentary",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Hereditary succession",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a parliamentary executive must be selected by the legislature. Change Executive selection to selected by the legislature too, or choose another executive system.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a parliamentary executive must be selected by the legislature. Change Executive selection to selected by the legislature too, or choose another executive system.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_parliamentary_appointed",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to parliamentary, appointed",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a parliamentary executive must be selected by the legislature. Change Executive selection to selected by the legislature too, or choose another executive system.",
+      "diagnostic_code": "parliamentary_requires_legislative_selection",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Parliamentary",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Appointed",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a parliamentary executive must be selected by the legislature. Change Executive selection to selected by the legislature too, or choose another executive system.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a parliamentary executive must be selected by the legislature. Change Executive selection to selected by the legislature too, or choose another executive system.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_semi_presidential_direct_election",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to semi-presidential, direct election",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Semi-presidential",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Direct election",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "executive_selection",
+                "value": "direct_election"
+              },
+              {
+                "axis": "executive_system",
+                "value": "semi_presidential"
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_semi_presidential_legislative_selection",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to semi-presidential, selected by the legislature",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a semi-presidential executive must be directly elected and needs a legislature. Change Executive selection to direct election too, or choose another executive system.",
+      "diagnostic_code": "semi_presidential_requires_direct_election_and_legislature",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Semi-presidential",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Selected by the legislature",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a semi-presidential executive must be directly elected and needs a legislature. Change Executive selection to direct election too, or choose another executive system.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a semi-presidential executive must be directly elected and needs a legislature. Change Executive selection to direct election too, or choose another executive system.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_semi_presidential_hereditary",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to semi-presidential, hereditary succession",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a semi-presidential executive must be directly elected and needs a legislature. Change Executive selection to direct election too, or choose another executive system.",
+      "diagnostic_code": "semi_presidential_requires_direct_election_and_legislature",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Semi-presidential",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Hereditary succession",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a semi-presidential executive must be directly elected and needs a legislature. Change Executive selection to direct election too, or choose another executive system.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a semi-presidential executive must be directly elected and needs a legislature. Change Executive selection to direct election too, or choose another executive system.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_semi_presidential_appointed",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to semi-presidential, appointed",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a semi-presidential executive must be directly elected and needs a legislature. Change Executive selection to direct election too, or choose another executive system.",
+      "diagnostic_code": "semi_presidential_requires_direct_election_and_legislature",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Semi-presidential",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Appointed",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a semi-presidential executive must be directly elected and needs a legislature. Change Executive selection to direct election too, or choose another executive system.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a semi-presidential executive must be directly elected and needs a legislature. Change Executive selection to direct election too, or choose another executive system.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_monarchical_direct_election",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to monarchical, direct election",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a monarch can't be directly elected or selected by the legislature. Change Executive system too (for example, to presidential for a directly elected executive), or keep a hereditary or appointed executive.",
+      "diagnostic_code": "monarchical_requires_hereditary_or_appointed",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Monarchical",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Direct election",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a monarch can't be directly elected or selected by the legislature. Change Executive system too (for example, to presidential for a directly elected executive), or keep a hereditary or appointed executive.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a monarch can't be directly elected or selected by the legislature. Change Executive system too (for example, to presidential for a directly elected executive), or keep a hereditary or appointed executive.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_monarchical_legislative_selection",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to monarchical, selected by the legislature",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a monarch can't be directly elected or selected by the legislature. Change Executive system too (for example, to presidential for a directly elected executive), or keep a hereditary or appointed executive.",
+      "diagnostic_code": "monarchical_requires_hereditary_or_appointed",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Monarchical",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Selected by the legislature",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a monarch can't be directly elected or selected by the legislature. Change Executive system too (for example, to presidential for a directly elected executive), or keep a hereditary or appointed executive.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a monarch can't be directly elected or selected by the legislature. Change Executive system too (for example, to presidential for a directly elected executive), or keep a hereditary or appointed executive.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_government_form_monarchical_appointed",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Reform to monarchical, appointed",
+      "description": "Change the executive's system of government and how it is selected.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive system",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Monarchical",
+          "proposed_label": "Monarchical",
+          "direction": "unchanged"
+        },
+        {
+          "label": "Executive selection",
+          "unit": "enum",
+          "current_value": null,
+          "proposed_value": null,
+          "current_label": "Hereditary succession",
+          "proposed_label": "Appointed",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "executive_selection",
+                "value": "appointed"
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_term_limit_to_1",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Set the executive term limit to 1 term",
+      "description": "Change how many terms the executive may serve.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive can't have a term limit. Remove the term limit too, or change Executive selection.",
+      "diagnostic_code": "term_limit_requires_non_hereditary_executive",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive term limit",
+          "unit": "terms",
+          "current_value": null,
+          "proposed_value": 1,
+          "current_label": "No term limit",
+          "proposed_label": "1 term",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive can't have a term limit. Remove the term limit too, or change Executive selection.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive can't have a term limit. Remove the term limit too, or change Executive selection.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_term_limit_to_2",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Set the executive term limit to 2 terms",
+      "description": "Change how many terms the executive may serve.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive can't have a term limit. Remove the term limit too, or change Executive selection.",
+      "diagnostic_code": "term_limit_requires_non_hereditary_executive",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive term limit",
+          "unit": "terms",
+          "current_value": null,
+          "proposed_value": 2,
+          "current_label": "No term limit",
+          "proposed_label": "2 terms",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive can't have a term limit. Remove the term limit too, or change Executive selection.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive can't have a term limit. Remove the term limit too, or change Executive selection.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_term_limit_to_3",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Set the executive term limit to 3 terms",
+      "description": "Change how many terms the executive may serve.",
+      "available": false,
+      "unavailable_reason": "requires_companion_constitutional_change",
+      "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive can't have a term limit. Remove the term limit too, or change Executive selection.",
+      "diagnostic_code": "term_limit_requires_non_hereditary_executive",
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "Executive term limit",
+          "unit": "terms",
+          "current_value": null,
+          "proposed_value": 3,
+          "current_label": "No term limit",
+          "proposed_label": "3 terms",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive can't have a term limit. Remove the term limit too, or change Executive selection.",
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [],
+          "template": null
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "requires_companion_constitutional_change",
+          "unavailable_detail": "This change would leave the constitution internally inconsistent: a hereditary executive can't have a term limit. Remove the term limit too, or change Executive selection.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_election_interval_to_4",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Set the national election schedule to every 4 turns",
+      "description": "Change how often a national election is constitutionally required.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "National election schedule",
+          "unit": "turns",
+          "current_value": null,
+          "proposed_value": 4,
+          "current_label": "No scheduled national election",
+          "proposed_label": "Every 4 turns",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "national_election_interval_turns",
+                "value": 4
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_election_interval_to_8",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Set the national election schedule to every 8 turns",
+      "description": "Change how often a national election is constitutionally required.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "National election schedule",
+          "unit": "turns",
+          "current_value": null,
+          "proposed_value": 8,
+          "current_label": "No scheduled national election",
+          "proposed_label": "Every 8 turns",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "national_election_interval_turns",
+                "value": 8
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "constitution_election_interval_to_16",
+      "category": "constitution",
+      "category_label": "Constitutional reform",
+      "title": "Set the national election schedule to every 16 turns",
+      "description": "Change how often a national election is constitutionally required.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": false,
+      "effects": [
+        {
+          "label": "National election schedule",
+          "unit": "turns",
+          "current_value": null,
+          "proposed_value": 16,
+          "current_label": "No scheduled national election",
+          "proposed_label": "Every 16 turns",
+          "direction": "unchanged"
+        }
+      ],
+      "routes": [
+        {
+          "route": "legislative",
+          "available": true,
+          "unavailable_reason": null,
+          "unavailable_detail": null,
+          "base_route_cost": 0,
+          "bargaining_available": true,
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "required_seats": 67
+            }
+          ],
+          "template": {
+            "kind": "constitutional_amendment",
+            "targets": [
+              {
+                "axis": "national_election_interval_turns",
+                "value": 16
+              }
+            ],
+            "route": "legislative",
+            "influence": []
+          }
+        },
+        {
+          "route": "decree",
+          "available": false,
+          "unavailable_reason": "decree_cannot_amend_with_legislature",
+          "unavailable_detail": "A decree cannot amend the constitution while a legislature sits; this reform must go to a vote.",
+          "base_route_cost": 400,
+          "bargaining_available": false,
+          "chambers": [],
+          "template": null
+        }
+      ]
+    },
+    {
+      "card_id": "no_proposal",
+      "category": "restraint",
+      "category_label": "Take no major action",
+      "title": "Take no major policy action",
+      "description": "Submit no budget or constitutional proposal this turn. Automatic economic and political processes still advance.",
+      "available": true,
+      "unavailable_reason": null,
+      "unavailable_detail": null,
+      "diagnostic_code": null,
+      "clears_proposal_slot": true,
+      "effects": [],
+      "routes": []
+    }
+  ],
+  "chambers": [
+    "lower"
+  ],
+  "blocs": [
+    {
+      "party_id": "governing_party",
+      "party_name": "Crown Party",
+      "bloc_id": "core",
+      "bloc_name": "Crown Party Core",
+      "chamber": "lower",
+      "seats": 45
+    },
+    {
+      "party_id": "opposition_party",
+      "party_name": "Reform Opposition",
+      "bloc_id": "main",
+      "bloc_name": "Reform Opposition Main",
+      "chamber": "lower",
+      "seats": 55
+    }
+  ],
+  "constitutional_axes": [
+    {
+      "axis": "decree_authority",
+      "current_value": "unlimited",
+      "allowed_values": [
+        "none",
+        "emergency_only",
+        "unlimited"
+      ],
+      "nullable": false
+    },
+    {
+      "axis": "executive_system",
+      "current_value": "monarchical",
+      "allowed_values": [
+        "presidential",
+        "parliamentary",
+        "semi_presidential",
+        "monarchical"
+      ],
+      "nullable": false
+    },
+    {
+      "axis": "executive_selection",
+      "current_value": "hereditary",
+      "allowed_values": [
+        "direct_election",
+        "legislative_selection",
+        "hereditary",
+        "appointed"
+      ],
+      "nullable": false
+    },
+    {
+      "axis": "national_election_interval_turns",
+      "current_value": null,
+      "allowed_values": null,
+      "nullable": true
+    },
+    {
+      "axis": "executive_term_limit_terms",
+      "current_value": null,
+      "allowed_values": null,
+      "nullable": true
+    }
+  ],
+  "cabinet_posts": [
+    {
+      "post": "chief_of_staff",
+      "post_display_name": "chief of staff",
+      "holder_character_id": null,
+      "holder_display_name": null,
+      "holder_competence_bps": null,
+      "can_dismiss": false,
+      "candidates": [
+        {
+          "character_id": "edda_thorne",
+          "display_name": "Edda Thorne",
+          "competence_bps": 3200,
+          "loyalty_bps": 8800,
+          "independence_bps": 1500,
+          "ambition_bps": 2000,
+          "personal_trust_bps": 6500,
+          "appointment_cost": 147,
+          "verb": "appoint",
+          "currently_holds_post": null,
+          "requires_vacating_post": null,
+          "candidate_accepts_post": true,
+          "refusal_code": null
+        },
+        {
+          "character_id": "raul_kesten",
+          "display_name": "Raul Kesten",
+          "competence_bps": 8600,
+          "loyalty_bps": 3400,
+          "independence_bps": 8700,
+          "ambition_bps": 5200,
+          "personal_trust_bps": 4200,
+          "appointment_cost": 276,
+          "verb": "appoint",
+          "currently_holds_post": "foreign_minister",
+          "requires_vacating_post": "foreign_minister",
+          "candidate_accepts_post": false,
+          "refusal_code": "cabinet_candidate_refuses_low_legitimacy"
+        },
+        {
+          "character_id": "sabine_ord",
+          "display_name": "Sabine Ord",
+          "competence_bps": 8100,
+          "loyalty_bps": 4100,
+          "independence_bps": 6200,
+          "ambition_bps": 9100,
+          "personal_trust_bps": 3800,
+          "appointment_cost": 231,
+          "verb": "appoint",
+          "currently_holds_post": null,
+          "requires_vacating_post": null,
+          "candidate_accepts_post": false,
+          "refusal_code": "cabinet_candidate_refuses_low_legitimacy"
+        },
+        {
+          "character_id": "yannic_pell",
+          "display_name": "Yannic Pell",
+          "competence_bps": 7400,
+          "loyalty_bps": 7900,
+          "independence_bps": 4300,
+          "ambition_bps": 3600,
+          "personal_trust_bps": 6800,
+          "appointment_cost": 197,
+          "verb": "appoint",
+          "currently_holds_post": null,
+          "requires_vacating_post": null,
+          "candidate_accepts_post": true,
+          "refusal_code": null
+        }
+      ]
+    },
+    {
+      "post": "foreign_minister",
+      "post_display_name": "foreign minister",
+      "holder_character_id": "raul_kesten",
+      "holder_display_name": "Raul Kesten",
+      "holder_competence_bps": 8600,
+      "can_dismiss": true,
+      "candidates": [
+        {
+          "character_id": "edda_thorne",
+          "display_name": "Edda Thorne",
+          "competence_bps": 3200,
+          "loyalty_bps": 8800,
+          "independence_bps": 1500,
+          "ambition_bps": 2000,
+          "personal_trust_bps": 6500,
+          "appointment_cost": 147,
+          "verb": "replace",
+          "currently_holds_post": null,
+          "requires_vacating_post": null,
+          "candidate_accepts_post": true,
+          "refusal_code": null
+        },
+        {
+          "character_id": "raul_kesten",
+          "display_name": "Raul Kesten",
+          "competence_bps": 8600,
+          "loyalty_bps": 3400,
+          "independence_bps": 8700,
+          "ambition_bps": 5200,
+          "personal_trust_bps": 4200,
+          "appointment_cost": 276,
+          "verb": "replace",
+          "currently_holds_post": "foreign_minister",
+          "requires_vacating_post": null,
+          "candidate_accepts_post": false,
+          "refusal_code": "cabinet_candidate_refuses_low_legitimacy"
+        },
+        {
+          "character_id": "sabine_ord",
+          "display_name": "Sabine Ord",
+          "competence_bps": 8100,
+          "loyalty_bps": 4100,
+          "independence_bps": 6200,
+          "ambition_bps": 9100,
+          "personal_trust_bps": 3800,
+          "appointment_cost": 231,
+          "verb": "replace",
+          "currently_holds_post": null,
+          "requires_vacating_post": null,
+          "candidate_accepts_post": false,
+          "refusal_code": "cabinet_candidate_refuses_low_legitimacy"
+        },
+        {
+          "character_id": "yannic_pell",
+          "display_name": "Yannic Pell",
+          "competence_bps": 7400,
+          "loyalty_bps": 7900,
+          "independence_bps": 4300,
+          "ambition_bps": 3600,
+          "personal_trust_bps": 6800,
+          "appointment_cost": 197,
+          "verb": "replace",
+          "currently_holds_post": null,
+          "requires_vacating_post": null,
+          "candidate_accepts_post": true,
+          "refusal_code": null
+        }
+      ]
+    }
+  ],
+  "foreign_assistance_counterparties": [
+    {
+      "profile_id": "marnil",
+      "display_name": "Marnil",
+      "counterpart_character_id": "leader_marnil",
+      "counterpart_display_name": "Chancellor Otto Falk",
+      "counterpart_portrait_ref": "portrait_leader_marnil",
+      "standing_bps": -1000,
+      "remaining_capacity": 200000000,
+      "will_assist": true,
+      "estimated_grant": 24620000,
+      "refusal_reason": null
+    },
+    {
+      "profile_id": "sorrend",
+      "display_name": "Sorrend",
+      "counterpart_character_id": "leader_sorrend",
+      "counterpart_display_name": "President Iva Sorel",
+      "counterpart_portrait_ref": "portrait_leader_sorrend",
+      "standing_bps": 1500,
+      "remaining_capacity": 180000000,
+      "will_assist": true,
+      "estimated_grant": 27864000,
+      "refusal_reason": null
+    }
+  ],
+  "promise_options": [
+    {
+      "character_id": "leader_governing_party",
+      "character_display_name": "Lord Aldric Vane",
+      "character_portrait_ref": "portrait_leader_governing_party",
+      "term_kind": "legislative_support",
+      "subject_id": "budget",
+      "subject_display_name": "the budget",
+      "earliest_legal_deadline": 4
+    },
+    {
+      "character_id": "leader_governing_party",
+      "character_display_name": "Lord Aldric Vane",
+      "character_portrait_ref": "portrait_leader_governing_party",
+      "term_kind": "legislative_support",
+      "subject_id": "constitutional_amendment",
+      "subject_display_name": "the constitutional amendment",
+      "earliest_legal_deadline": 4
+    },
+    {
+      "character_id": "leader_marnil",
+      "character_display_name": "Chancellor Otto Falk",
+      "character_portrait_ref": "portrait_leader_marnil",
+      "term_kind": "assistance_restraint",
+      "subject_id": "marnil",
+      "subject_display_name": "Marnil",
+      "earliest_legal_deadline": 4
+    },
+    {
+      "character_id": "leader_opposition_party",
+      "character_display_name": "Nadia Brekke",
+      "character_portrait_ref": "portrait_leader_opposition_party",
+      "term_kind": "legislative_support",
+      "subject_id": "budget",
+      "subject_display_name": "the budget",
+      "earliest_legal_deadline": 4
+    },
+    {
+      "character_id": "leader_opposition_party",
+      "character_display_name": "Nadia Brekke",
+      "character_portrait_ref": "portrait_leader_opposition_party",
+      "term_kind": "legislative_support",
+      "subject_id": "constitutional_amendment",
+      "subject_display_name": "the constitutional amendment",
+      "earliest_legal_deadline": 4
+    },
+    {
+      "character_id": "leader_sorrend",
+      "character_display_name": "President Iva Sorel",
+      "character_portrait_ref": "portrait_leader_sorrend",
+      "term_kind": "assistance_restraint",
+      "subject_id": "sorrend",
+      "subject_display_name": "Sorrend",
+      "earliest_legal_deadline": 4
+    },
+    {
+      "character_id": "raul_kesten",
+      "character_display_name": "Raul Kesten",
+      "character_portrait_ref": "portrait_raul_kesten",
+      "term_kind": "cabinet_tenure",
+      "subject_id": "chief_of_staff",
+      "subject_display_name": "chief of staff",
+      "earliest_legal_deadline": 4
+    },
+    {
+      "character_id": "raul_kesten",
+      "character_display_name": "Raul Kesten",
+      "character_portrait_ref": "portrait_raul_kesten",
+      "term_kind": "cabinet_tenure",
+      "subject_id": "foreign_minister",
+      "subject_display_name": "foreign minister",
+      "earliest_legal_deadline": 4
+    }
+  ],
+  "active_promises": [],
+  "legislative_bargain_counterparties": [
+    {
+      "character_id": "leader_opposition_party",
+      "display_name": "Nadia Brekke",
+      "portrait_ref": "portrait_leader_opposition_party",
+      "party_id": "opposition_party",
+      "party_display_name": "Reform Opposition",
+      "loyalty_bps": 900,
+      "independence_bps": 8300,
+      "ambition_bps": 8600,
+      "personal_trust_bps": 2100,
+      "will_deal": false,
+      "asking_price": null,
+      "refusal_reason": "refused_will_not_deal"
+    }
+  ]
+}

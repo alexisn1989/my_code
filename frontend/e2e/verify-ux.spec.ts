@@ -483,11 +483,13 @@ for (const viewport of VIEWPORTS) {
     }
     expect(Object.keys(landed)).toHaveLength(5);
     const nav = page.getByRole("navigation", { name: "Screens" });
+    // Gate 4A3 victory path: Constitution is a full screen now, so it left the "Summaries" group. It
+    // stays in the nav under its own name; the Details link above still lands on its card.
     await expect(nav.getByRole("list", { name: "Summaries" }).getByRole("button")).toHaveText([
       "Economy",
       "Legislature",
-      "Constitution",
     ]);
+    await expect(nav.getByRole("button", { name: "Constitution", exact: true })).toBeVisible();
 
     // ---- U5: after a turn, the next action is the next turn ----
     await visit(page, "Decisions");

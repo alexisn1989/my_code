@@ -29,6 +29,7 @@ import { GreyboxApp } from "./GreyboxApp";
 import { SCREENS } from "./registry";
 import { SessionProvider, useSession } from "../state/SessionContext";
 import { useDraftStore } from "../state/draft";
+import { OBJECTIVE_FIXTURE } from "../test/objectiveFixture";
 
 /** `revision` starts `null` in a fresh `SessionProvider`, and both
  * `useDecisionOptions`/`handlePreview` need a non-null one to behave like a
@@ -64,6 +65,7 @@ const ACTIVE_DASHBOARD = {
   political_capital: { display: "120", current: 120, capacity: 200, committed_this_turn: 0 },
   alerts: [],
   goal: { headline: "Hold the coalition together", detail: null },
+  objective: OBJECTIVE_FIXTURE,
   map: { note: "No spatial state.", presentation_only: true, tint_metric_label: "Legitimacy", tint_value_bps: 6200 },
   concerns: {
     money: { label: "Money", headline: "Stable", direction: "unchanged", tone: "neutral", delta_text: null, detail_screen: "economy" },

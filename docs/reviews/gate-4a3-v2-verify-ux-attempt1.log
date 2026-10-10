@@ -1,0 +1,77 @@
+
+> mandate-frontend@0.1.0 verify:ux:v2
+> MANDATE_UX_OUT=gate-4a3-v2-verify-ux playwright test --project=ux --grep "@ux1|@ux2|@ux3|@ux4a|@ux4b|@ux4c|@ux4e"
+
+[WebServer] INFO:     Started server process [17939]
+[WebServer] INFO:     Waiting for application startup.
+[WebServer] INFO:     Application startup complete.
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:44665 (Press CTRL+C to quit)
+[WebServer] INFO:     127.0.0.1:36766 - "GET /api/scenarios HTTP/1.1" 200 OK
+
+Running 26 tests using 1 worker
+
+  ✓   1 [preflight] › e2e/preflight.spec.ts:25:3 › §9.2 browser provenance › the environment exposes a browser CACHE ROOT, not an executable (9ms)
+  ✓   2 [preflight] › e2e/preflight.spec.ts:33:3 › §9.2 browser provenance › the pinned Playwright expects exactly the cached revision (6ms)
+  ✓   3 [preflight] › e2e/preflight.spec.ts:48:3 › §9.2 browser provenance › Chromium launches from the cache, and the cache is unchanged by doing so (93ms)
+  ✓   4 [preflight] › e2e/preflight.spec.ts:67:3 › §9.2 browser provenance › the resolved executable lives under the cache root (8ms)
+[WebServer] INFO:     127.0.0.1:36768 - "GET /api/scenarios HTTP/1.1" 200 OK
+  ✓   5 [preflight] › e2e/preflight.spec.ts:73:3 › §9.2 browser provenance › the live server the baseline runs against is the real one (51ms)
+  ✓   6 [ux] › e2e/verify-ux.spec.ts:141:3 › @ux1 route visible, preview route-aware and actionable — desktop (2.3s)
+  ✓   7 [ux] › e2e/verify-ux.spec.ts:141:3 › @ux1 route visible, preview route-aware and actionable — mobile (818ms)
+  ✓   8 [ux] › e2e/verify-ux.spec.ts:141:3 › @ux1 route visible, preview route-aware and actionable — narrow (725ms)
+  ✓   9 [ux] › e2e/verify-ux.spec.ts:279:3 › @ux2 turn result: cause first, routine folded, reasons in Trace — desktop (2.1s)
+  ✓  10 [ux] › e2e/verify-ux.spec.ts:279:3 › @ux2 turn result: cause first, routine folded, reasons in Trace — mobile (2.1s)
+  ✓  11 [ux] › e2e/verify-ux.spec.ts:279:3 › @ux2 turn result: cause first, routine folded, reasons in Trace — narrow (2.3s)
+  ✘  12 [ux] › e2e/verify-ux.spec.ts:404:3 › @ux3 orientation, next action, no dead ends — desktop (11.0s)
+  -  13 [ux] › e2e/verify-ux.spec.ts:404:3 › @ux3 orientation, next action, no dead ends — mobile
+  -  14 [ux] › e2e/verify-ux.spec.ts:404:3 › @ux3 orientation, next action, no dead ends — narrow
+  -  15 [ux] › e2e/verify-ux.spec.ts:567:3 › @ux4a money is grouped, signed when it is a change, and denars in the turn result — desktop
+  -  16 [ux] › e2e/verify-ux.spec.ts:567:3 › @ux4a money is grouped, signed when it is a change, and denars in the turn result — mobile
+  -  17 [ux] › e2e/verify-ux.spec.ts:567:3 › @ux4a money is grouped, signed when it is a change, and denars in the turn result — narrow
+  -  18 [ux] › e2e/verify-ux.spec.ts:625:3 › @ux4b one count of staged actions: nav, draft list and confirmation agree — desktop
+  -  19 [ux] › e2e/verify-ux.spec.ts:625:3 › @ux4b one count of staged actions: nav, draft list and confirmation agree — mobile
+  -  20 [ux] › e2e/verify-ux.spec.ts:625:3 › @ux4b one count of staged actions: nav, draft list and confirmation agree — narrow
+  -  21 [ux] › e2e/verify-ux.spec.ts:718:3 › @ux4c reflow with a preview, the portrait frame, and the phone's first screen — desktop
+  -  22 [ux] › e2e/verify-ux.spec.ts:718:3 › @ux4c reflow with a preview, the portrait frame, and the phone's first screen — mobile
+  -  23 [ux] › e2e/verify-ux.spec.ts:718:3 › @ux4c reflow with a preview, the portrait frame, and the phone's first screen — narrow
+  -  24 [ux] › e2e/verify-ux.spec.ts:885:3 › @ux4e the turn result names what happened, outcome first, and never contradicts itself — desktop
+  -  25 [ux] › e2e/verify-ux.spec.ts:885:3 › @ux4e the turn result names what happened, outcome first, and never contradicts itself — mobile
+  -  26 [ux] › e2e/verify-ux.spec.ts:885:3 › @ux4e the turn result names what happened, outcome first, and never contradicts itself — narrow
+
+
+  1) [ux] › e2e/verify-ux.spec.ts:404:3 › @ux3 orientation, next action, no dead ends — desktop ────
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator: getByRole('navigation', { name: 'Screens' }).getByRole('list', { name: 'Summaries' }).getByRole('button')
+    Timeout: 10000ms
+    - Expected  - 1
+    + Received  + 0
+
+      Array [
+        "Economy",
+        "Legislature",
+    -   "Constitution",
+      ]
+
+    Call log:
+      - Expect "toHaveText" with timeout 10000ms
+      - waiting for getByRole('navigation', { name: 'Screens' }).getByRole('list', { name: 'Summaries' }).getByRole('button')
+        14 × locator resolved to 2 elements
+
+
+      484 |     expect(Object.keys(landed)).toHaveLength(5);
+      485 |     const nav = page.getByRole("navigation", { name: "Screens" });
+    > 486 |     await expect(nav.getByRole("list", { name: "Summaries" }).getByRole("button")).toHaveText([
+          |                                                                                    ^
+      487 |       "Economy",
+      488 |       "Legislature",
+      489 |       "Constitution",
+        at /home/user/my_code/frontend/e2e/verify-ux.spec.ts:486:84
+
+    Error Context: test-results/verify-ux--ux3-orientation-332fb-tion-no-dead-ends-—-desktop-ux/error-context.md
+
+  1 failed
+    [ux] › e2e/verify-ux.spec.ts:404:3 › @ux3 orientation, next action, no dead ends — desktop ─────
+  14 did not run
+  11 passed (24.8s)

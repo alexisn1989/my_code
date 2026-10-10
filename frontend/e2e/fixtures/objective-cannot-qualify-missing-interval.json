@@ -1,0 +1,111 @@
+{
+  "alerts": [],
+  "campaign_id": "fixture-campaign",
+  "concerns": {
+    "constitution": {
+      "delta_text": null,
+      "detail_screen": "constitution",
+      "direction": "unchanged",
+      "headline": "Supermajority",
+      "label": "Constitution",
+      "tone": "neutral"
+    },
+    "legislature": {
+      "delta_text": null,
+      "detail_screen": "legislature",
+      "direction": "unchanged",
+      "headline": "2 parties, 100 seats",
+      "label": "Legislature",
+      "tone": "neutral"
+    },
+    "legitimacy": {
+      "delta_text": null,
+      "detail_screen": "government",
+      "direction": "unchanged",
+      "headline": "61.90%",
+      "label": "Legitimacy",
+      "tone": "neutral"
+    },
+    "money": {
+      "delta_text": null,
+      "detail_screen": "economy",
+      "direction": "unchanged",
+      "headline": "106,300,000.00",
+      "label": "Money",
+      "tone": "neutral"
+    },
+    "survival": {
+      "delta_text": null,
+      "detail_screen": "government",
+      "direction": "unchanged",
+      "headline": "Not yet assessed",
+      "label": "Survival",
+      "tone": "neutral"
+    }
+  },
+  "country_name": "Kingdom of Valdrun",
+  "goal": {
+    "detail": null,
+    "headline": "Nothing is pressing. Consider how to use your political capital."
+  },
+  "government_form": "Presidential republic, no decree authority",
+  "map": {
+    "note": "This is a national identity tint, not a geographic map. No province-level mechanics exist.",
+    "presentation_only": true,
+    "tint_metric_label": "Legitimacy",
+    "tint_value_bps": 6190
+  },
+  "next_election_label": "None scheduled",
+  "objective": {
+    "cannot_qualify_reason": "missing_interval",
+    "conditions": [
+      {
+        "current_text": "Direct election",
+        "id": "elected_executive",
+        "if_enacted_alone": null,
+        "label": "An elected executive",
+        "link_card_id": null,
+        "met": true,
+        "note": null
+      },
+      {
+        "current_text": "No decree authority",
+        "id": "no_decree_authority",
+        "if_enacted_alone": null,
+        "label": "No decree authority",
+        "link_card_id": null,
+        "met": true,
+        "note": null
+      },
+      {
+        "current_text": "No scheduled national election",
+        "id": "election_interval",
+        "if_enacted_alone": null,
+        "label": "A national election schedule",
+        "link_card_id": null,
+        "met": false,
+        "note": null
+      }
+    ],
+    "conditions_met": 2,
+    "conditions_text": "Constitutional conditions: 2 of 3 met",
+    "detail": "It has an elected executive and no decree authority, but no election schedule, so it is no longer under non-competitive rule, and only a reform from non-competitive rule counts. To qualify, the constitution must first return to non-competitive rule (for example, by restoring emergency decree authority) and then be reformed in one amendment that meets all three conditions. Until then, no election can complete the objective.",
+    "election_note": null,
+    "election_turn": null,
+    "headline": "Your constitution can't qualify as it stands.",
+    "ordering_note": null,
+    "qualifying_card_id": null,
+    "stage": "cannot_qualify",
+    "transition_text": "Qualifying transition: not recorded",
+    "transition_turn": null
+  },
+  "political_capital": {
+    "capacity": 1000,
+    "committed_this_turn": 0,
+    "current": 1000,
+    "display": "1000 / 1000"
+  },
+  "revision": "2.2",
+  "terminal": null,
+  "turn": 2
+}

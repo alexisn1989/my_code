@@ -23,7 +23,7 @@ import { INITIAL_SCREEN, SCREENS, screenById, type ScreenDefinition } from "./re
 import { GlossaryScreen, WIN_AND_LOSS_LINE, glossaryDefinition } from "./screens/GlossaryScreen";
 import type { ScreenId } from "./types";
 
-function NationalHeader() {
+function NationalHeader({ screenId }: { screenId: ScreenId }) {
   const { revision } = useSession();
   const dashboard = useDashboard(revision);
 
@@ -80,7 +80,13 @@ function NationalHeader() {
           </span>
         </div>
       </div>
-      <ul className="mt-2 flex flex-wrap gap-4 text-xs text-parchment-200/80">
+      {/* Gate 4A3 victory path: on the Dashboard below `lg` this one-line summary repeats the five
+          concern cards on the same screen, and its four wrapped rows pushed the campaign objective
+          below a phone's first screen. It is hidden there only; every other screen, and the
+          Dashboard at `lg` and wider, keep it. The text stays in the DOM. */}
+      <ul
+        className={`mt-2 ${screenId === "dashboard" ? "hidden lg:flex" : "flex"} flex-wrap gap-4 text-xs text-parchment-200/80`}
+      >
         {concerns.map((concern) => (
           <li key={concern.label}>
             <span className="text-parchment-200/60">{concern.label}:</span> {concern.headline}
@@ -91,8 +97,9 @@ function NationalHeader() {
   );
 }
 
-/** Economy, Legislature and Constitution: the screens that show a summary card and nothing more. */
-const SUMMARY_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>(["economy", "legislature", "constitution"]);
+/** Economy and Legislature: the screens that show a summary card and nothing more. (Constitution
+ * left this group in the Gate 4A3 victory path: it is a full screen now.) */
+const SUMMARY_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>(["economy", "legislature"]);
 
 type NavGroup =
   | { kind: "screen"; entry: ScreenDefinition }
@@ -237,7 +244,7 @@ function GreyboxShell() {
         </div>
       ) : null}
 
-      {screen.showsGameplayChrome ? <NationalHeader /> : null}
+      {screen.showsGameplayChrome ? <NationalHeader screenId={screen.id} /> : null}
 
       {dismissedHelp ? null : (
         // The SECOND node axe reported outside a landmark on every surface, and the cause is subtle:
@@ -265,8 +272,10 @@ function GreyboxShell() {
             and read what happened.
           </p>
           <p className="mt-2">
-            Dashboard shows the country&apos;s condition. Government, Relationships and Strategic
-            map are where you appoint people, deal with them, and move formations. Decisions is
+            Dashboard shows the country&apos;s condition and your campaign objective; Constitution
+            shows what must change to win, with links to the reforms that change it. Government,
+            Relationships and Strategic map are where you appoint people, deal with them, and move
+            formations. Decisions is
             where you assemble the turn and resolve it, and Turn result and History are where you
             read what your choices did.
           </p>

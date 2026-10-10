@@ -23,6 +23,7 @@ import { labelOffsetPosition } from "../../format/format";
 import { StrategicMapScreen } from "./StrategicMapScreen";
 import { SessionProvider, useSession } from "../../state/SessionContext";
 import { useDraftStore } from "../../state/draft";
+import { OBJECTIVE_FIXTURE } from "../../test/objectiveFixture";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -187,6 +188,7 @@ function dashboard(revision: string, overrides: Record<string, unknown> = {}) {
     political_capital: { display: "120", current: 120, capacity: 200, committed_this_turn: 0 },
     alerts: [],
     goal: { headline: "Hold the coalition together", detail: null },
+    objective: OBJECTIVE_FIXTURE,
     map: { note: "No spatial state.", presentation_only: true, tint_metric_label: "Legitimacy", tint_value_bps: 6200 },
     concerns: {
       money: { label: "Money", headline: "Stable", direction: "unchanged", tone: "neutral", delta_text: null, detail_screen: "economy" },

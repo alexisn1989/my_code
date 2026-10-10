@@ -139,7 +139,16 @@
     "verify:terminal:v1": "MANDATE_TERMINAL_OUT=gate-4a3-v1-terminal playwright test --project=terminal-coverage",
     "verify:campaigns:v1": "MANDATE_CAMPAIGNS_OUT=gate-4a3-v1-campaigns playwright test --project=campaigns",
     "audit:stress:seated:v1": "MANDATE_STRESS_SEATED_OUT=gate-4a3-v1-stress-seated-cabinet playwright test --project=stress-seated",
-    "audit:accessibility:verify:v1": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v1 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v1 node tools/write-accessibility-report.mjs"
+    "audit:accessibility:verify:v1": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v1 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v1 node tools/write-accessibility-report.mjs",
+    "_comment:v2": "Gate 4A3 victory path V-2 (the objective card, the Constitution screen and its links, the preview sentence, the result line). verify:victory:v2 is the new victory project: a winning campaign per scenario through the links, plus reflow and axe on the new surfaces. Every existing browser gate re-runs under V-2's own names.",
+    "verify:victory:v2": "MANDATE_VICTORY_OUT=gate-4a3-v2-victory playwright test --project=victory",
+    "verify:ux:v2": "MANDATE_UX_OUT=gate-4a3-v2-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3|@ux4a|@ux4b|@ux4c|@ux4e\"",
+    "verify:fixes:v2": "MANDATE_VERIFY_OUT=gate-4a3-v2-verification playwright test --project=verify",
+    "verify:icons:v2": "MANDATE_ICONS_OUT=gate-4a3-v2-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:v2": "MANDATE_TERMINAL_OUT=gate-4a3-v2-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:v2": "MANDATE_CAMPAIGNS_OUT=gate-4a3-v2-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:v2": "MANDATE_STRESS_SEATED_OUT=gate-4a3-v2-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:v2": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v2 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v2 node tools/write-accessibility-report.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

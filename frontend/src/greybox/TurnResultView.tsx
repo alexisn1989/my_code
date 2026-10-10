@@ -88,6 +88,13 @@ export function TurnResultView({
         <p className="text-lg">
           <ToneValue tone={result.outcome_tone}>{result.outcome_headline}</ToneValue>
         </p>
+        {/* Gate 4A3 victory path: what this turn did to the campaign objective, from the server
+            (closing stage, opening marker). The same line live and in History. */}
+        {result.objective_line ? (
+          <p data-testid="objective-line" className="mt-2 text-sm text-parchment-100">
+            {result.objective_line}
+          </p>
+        ) : null}
         {context === "history" ? (
           <p className="mt-2 text-xs text-parchment-200/60">
             Reviewing a past turn. Rendered by the same component as the live result.

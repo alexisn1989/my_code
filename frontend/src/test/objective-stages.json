@@ -1,0 +1,303 @@
+{
+  "reform": {
+    "stage": "reform",
+    "cannot_qualify_reason": null,
+    "headline": "Reform the constitution: 0 of 3 conditions met.",
+    "detail": "Still needed: an elected executive, no decree authority and a national election schedule.",
+    "conditions_met": 0,
+    "conditions_text": "Constitutional conditions: 0 of 3 met",
+    "transition_text": "Qualifying transition: not recorded",
+    "conditions": [
+      {
+        "id": "elected_executive",
+        "label": "An elected executive",
+        "current_text": "Hereditary succession",
+        "met": false,
+        "link_card_id": "constitution_government_form_presidential_direct_election",
+        "if_enacted_alone": "reform_continues",
+        "note": null
+      },
+      {
+        "id": "no_decree_authority",
+        "label": "No decree authority",
+        "current_text": "Unlimited decree authority",
+        "met": false,
+        "link_card_id": "constitution_decree_authority_to_none",
+        "if_enacted_alone": "reform_continues",
+        "note": null
+      },
+      {
+        "id": "election_interval",
+        "label": "A national election schedule",
+        "current_text": "No scheduled national election",
+        "met": false,
+        "link_card_id": "constitution_election_interval_to_4",
+        "if_enacted_alone": "reform_continues",
+        "note": null
+      }
+    ],
+    "transition_turn": null,
+    "election_turn": null,
+    "election_note": null,
+    "qualifying_card_id": "constitution_qualifying_reform",
+    "ordering_note": "Only a reform that takes the constitution from non-competitive rule to meeting all three conditions counts. Set the election schedule before, or together with, the last of the other changes. The simplest way is to make every change in one amendment."
+  },
+  "reformDeficitDemo": {
+    "stage": "reform",
+    "cannot_qualify_reason": null,
+    "headline": "Reform the constitution: 2 of 3 conditions met.",
+    "detail": "Still needed: no decree authority.",
+    "conditions_met": 2,
+    "conditions_text": "Constitutional conditions: 2 of 3 met",
+    "transition_text": "Qualifying transition: not recorded",
+    "conditions": [
+      {
+        "id": "elected_executive",
+        "label": "An elected executive",
+        "current_text": "Direct election",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "no_decree_authority",
+        "label": "No decree authority",
+        "current_text": "Emergency decree authority only",
+        "met": false,
+        "link_card_id": "constitution_decree_authority_to_none",
+        "if_enacted_alone": "qualifies",
+        "note": null
+      },
+      {
+        "id": "election_interval",
+        "label": "A national election schedule",
+        "current_text": "Every 20 turns",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      }
+    ],
+    "transition_turn": null,
+    "election_turn": 20,
+    "election_note": "An election on turn 20 before a qualifying reform won't complete the objective, and losing any election ends the campaign.",
+    "qualifying_card_id": "constitution_decree_authority_to_none",
+    "ordering_note": "Only a reform that takes the constitution from non-competitive rule to meeting all three conditions counts. Set the election schedule before, or together with, the last of the other changes. The simplest way is to make every change in one amendment."
+  },
+  "afterDecreeNone": {
+    "stage": "reform",
+    "cannot_qualify_reason": null,
+    "headline": "Reform the constitution: 1 of 3 conditions met.",
+    "detail": "Still needed: an elected executive and a national election schedule.",
+    "conditions_met": 1,
+    "conditions_text": "Constitutional conditions: 1 of 3 met",
+    "transition_text": "Qualifying transition: not recorded",
+    "conditions": [
+      {
+        "id": "elected_executive",
+        "label": "An elected executive",
+        "current_text": "Hereditary succession",
+        "met": false,
+        "link_card_id": null,
+        "if_enacted_alone": "cannot_qualify",
+        "note": "Not on its own: with an elected executive and no decree authority, but no election schedule, the constitution could no longer qualify. Set the election schedule first, or use Draft the qualifying reform."
+      },
+      {
+        "id": "no_decree_authority",
+        "label": "No decree authority",
+        "current_text": "No decree authority",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "election_interval",
+        "label": "A national election schedule",
+        "current_text": "No scheduled national election",
+        "met": false,
+        "link_card_id": "constitution_election_interval_to_4",
+        "if_enacted_alone": "reform_continues",
+        "note": null
+      }
+    ],
+    "transition_turn": null,
+    "election_turn": null,
+    "election_note": null,
+    "qualifying_card_id": "constitution_qualifying_reform",
+    "ordering_note": "Only a reform that takes the constitution from non-competitive rule to meeting all three conditions counts. Set the election schedule before, or together with, the last of the other changes. The simplest way is to make every change in one amendment."
+  },
+  "qualifyingElection": {
+    "stage": "qualifying_election",
+    "cannot_qualify_reason": null,
+    "headline": "Win the qualifying election: turn 5.",
+    "detail": "Transition recorded on turn 1. Losing it ends the campaign.",
+    "conditions_met": 3,
+    "conditions_text": "Constitutional conditions: 3 of 3 met",
+    "transition_text": "Qualifying transition: recorded on turn 1",
+    "conditions": [
+      {
+        "id": "elected_executive",
+        "label": "An elected executive",
+        "current_text": "Direct election",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "no_decree_authority",
+        "label": "No decree authority",
+        "current_text": "No decree authority",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "election_interval",
+        "label": "A national election schedule",
+        "current_text": "Every 4 turns",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      }
+    ],
+    "transition_turn": 1,
+    "election_turn": 5,
+    "election_note": null,
+    "qualifying_card_id": null,
+    "ordering_note": null
+  },
+  "concludedVictory": {
+    "stage": "concluded",
+    "cannot_qualify_reason": null,
+    "headline": "Objective complete: the qualifying election was won.",
+    "detail": null,
+    "conditions_met": 3,
+    "conditions_text": "Constitutional conditions: 3 of 3 met",
+    "transition_text": "Qualifying transition: not recorded",
+    "conditions": [
+      {
+        "id": "elected_executive",
+        "label": "An elected executive",
+        "current_text": "Direct election",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "no_decree_authority",
+        "label": "No decree authority",
+        "current_text": "No decree authority",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "election_interval",
+        "label": "A national election schedule",
+        "current_text": "Every 4 turns",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      }
+    ],
+    "transition_turn": null,
+    "election_turn": 2,
+    "election_note": null,
+    "qualifying_card_id": null,
+    "ordering_note": null
+  },
+  "cannotQualifyMissingInterval": {
+    "stage": "cannot_qualify",
+    "cannot_qualify_reason": "missing_interval",
+    "headline": "Your constitution can't qualify as it stands.",
+    "detail": "It has an elected executive and no decree authority, but no election schedule, so it is no longer under non-competitive rule, and only a reform from non-competitive rule counts. To qualify, the constitution must first return to non-competitive rule (for example, by restoring emergency decree authority) and then be reformed in one amendment that meets all three conditions. Until then, no election can complete the objective.",
+    "conditions_met": 2,
+    "conditions_text": "Constitutional conditions: 2 of 3 met",
+    "transition_text": "Qualifying transition: not recorded",
+    "conditions": [
+      {
+        "id": "elected_executive",
+        "label": "An elected executive",
+        "current_text": "Direct election",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "no_decree_authority",
+        "label": "No decree authority",
+        "current_text": "No decree authority",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "election_interval",
+        "label": "A national election schedule",
+        "current_text": "No scheduled national election",
+        "met": false,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      }
+    ],
+    "transition_turn": null,
+    "election_turn": null,
+    "election_note": null,
+    "qualifying_card_id": null,
+    "ordering_note": null
+  },
+  "cannotQualifyAlreadyCompetitive": {
+    "stage": "cannot_qualify",
+    "cannot_qualify_reason": "already_competitive",
+    "headline": "All three conditions are met, but no qualifying transition is recorded.",
+    "detail": "Only a reform from non-competitive rule counts, and this constitution reached its present form without one. To qualify, the constitution must first return to non-competitive rule (for example, by restoring emergency decree authority) and then be reformed in one amendment that meets all three conditions. Until then, no election can complete the objective.",
+    "conditions_met": 3,
+    "conditions_text": "Constitutional conditions: 3 of 3 met",
+    "transition_text": "Qualifying transition: not recorded",
+    "conditions": [
+      {
+        "id": "elected_executive",
+        "label": "An elected executive",
+        "current_text": "Direct election",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "no_decree_authority",
+        "label": "No decree authority",
+        "current_text": "No decree authority",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      },
+      {
+        "id": "election_interval",
+        "label": "A national election schedule",
+        "current_text": "Every 4 turns",
+        "met": true,
+        "link_card_id": null,
+        "if_enacted_alone": null,
+        "note": null
+      }
+    ],
+    "transition_turn": null,
+    "election_turn": 7,
+    "election_note": null,
+    "qualifying_card_id": null,
+    "ordering_note": null
+  }
+}

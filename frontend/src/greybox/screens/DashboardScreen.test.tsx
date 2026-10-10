@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DashboardScreen } from "./DashboardScreen";
 import { SessionProvider, useSession } from "../../state/SessionContext";
+import { OBJECTIVE_FIXTURE } from "../../test/objectiveFixture";
 
 function concern(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -41,6 +42,7 @@ const DASHBOARD_NO_TERMINAL_NO_DELTA = {
     survival: concern({ label: "Survival", headline: "Not yet assessed", delta_text: null }),
   },
   goal: { headline: "Nothing is pressing.", detail: null },
+  objective: OBJECTIVE_FIXTURE,
   map: { note: "presentation only", tint_metric_label: "Legitimacy", tint_value_bps: 6000 },
   political_capital: { display: "500 / 1000" },
   alerts: [],
