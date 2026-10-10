@@ -280,7 +280,7 @@ describe("a link selects its card in Decisions, REPLACING the drafted proposal",
 describe("the preview's sentence and the result's line", () => {
   it.each([
     ["previewPasses", null],
-    ["previewFails", "This draft would not pass as it stands, so nothing would change."],
+    ["previewFails", "This amendment would not pass as it stands, so it would not change the constitution."],
     ["previewUnaffordable", "This draft is not affordable, so resolving it would be refused."],
   ] as const)("%s: says what enactment would do, and when resolving would not enact it", (name, caveat) => {
     render(<ConsequencesPanel preview={results[name] as unknown as PreviewProjection} />);

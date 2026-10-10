@@ -1249,6 +1249,6 @@ export function objectiveEffectCaveat(preview: {
   affordable: boolean;
 }): string | null {
   if (!preview.affordable) return "This draft is not affordable, so resolving it would be refused.";
-  if (!preview.would_pass) return "This draft would not pass as it stands, so nothing would change.";
+  if (!preview.would_pass) return "This amendment would not pass as it stands, so it would not change the constitution.";
   return null;
 }

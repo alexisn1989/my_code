@@ -142,7 +142,7 @@ describe("the caveat when resolving would not enact it", () => {
   it("says so for a failing vote and an unaffordable draft, and nothing when it would pass", () => {
     expect(objectiveEffectCaveat(results.previewPasses)).toBeNull();
     expect(objectiveEffectCaveat(results.previewFails)).toBe(
-      "This draft would not pass as it stands, so nothing would change.",
+      "This amendment would not pass as it stands, so it would not change the constitution.",
     );
     expect(objectiveEffectCaveat(results.previewUnaffordable)).toBe(
       "This draft is not affordable, so resolving it would be refused.",

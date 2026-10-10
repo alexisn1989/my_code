@@ -301,6 +301,21 @@ for (const scenario of ["deficit_demo", "tiny_valid", "decree_state"] as const) 
       "Objective complete: the qualifying election was won.",
     );
     await checkSurface(page, '[data-testid="objective-card"]', "Dashboard objective card (concluded)", surfaces);
+    // Gate 4A3 victory path V-4: the concluded Constitution screen, which V-2 did not check.
+    expect(await checklist(page)).toEqual(ALL_MET);
+    await expect(page.getByTestId("constitution-checklist").getByRole("button")).toHaveCount(0);
+    await expect(page.getByTestId("draft-qualifying-reform")).toHaveCount(0);
+    await expect(page.getByTestId("objective-headline")).toHaveText(
+      "Objective complete: the qualifying election was won.",
+    );
+    await checkSurface(page, "main", "Constitution (concluded)", surfaces);
+    // The coverage is asserted, not just recorded: five surfaces at every stage, six widths each.
+    const entries = surfaces as { surface: string; width: number }[];
+    expect(entries, `${scenario}: surface checks`).toHaveLength(36);
+    expect(
+      entries.filter((entry) => entry.surface === "Constitution (concluded)").map((entry) => entry.width),
+      `${scenario}: the concluded Constitution screen at every width`,
+    ).toEqual(WIDTHS.map((size) => size.width));
     await visit(page, "Victory / defeat");
     await expect(page.locator("main")).toContainText(final.terminal!.headline);
     expect(consoleErrors).toEqual([]);

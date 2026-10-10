@@ -148,7 +148,17 @@
     "verify:terminal:v2": "MANDATE_TERMINAL_OUT=gate-4a3-v2-terminal playwright test --project=terminal-coverage",
     "verify:campaigns:v2": "MANDATE_CAMPAIGNS_OUT=gate-4a3-v2-campaigns playwright test --project=campaigns",
     "audit:stress:seated:v2": "MANDATE_STRESS_SEATED_OUT=gate-4a3-v2-stress-seated-cabinet playwright test --project=stress-seated",
-    "audit:accessibility:verify:v2": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v2 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v2 node tools/write-accessibility-report.mjs"
+    "audit:accessibility:verify:v2": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v2 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v2 node tools/write-accessibility-report.mjs",
+    "_comment:v4": "Gate 4A3 victory path V-4 (the failed-vote caveat scoped to the amendment; the concluded Constitution screen checked in every winning replay, with the coverage count asserted). Every browser gate re-runs under V-4's own names. walkthrough:installed:v5 is V-5's MANDATORY installed-archive walkthrough: its own config has no webServer, and a missing URL or binding variable fails.",
+    "verify:victory:v4": "MANDATE_VICTORY_OUT=gate-4a3-v4-victory playwright test --project=victory",
+    "verify:ux:v4": "MANDATE_UX_OUT=gate-4a3-v4-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3|@ux4a|@ux4b|@ux4c|@ux4e\"",
+    "verify:fixes:v4": "MANDATE_VERIFY_OUT=gate-4a3-v4-verification playwright test --project=verify",
+    "verify:icons:v4": "MANDATE_ICONS_OUT=gate-4a3-v4-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:v4": "MANDATE_TERMINAL_OUT=gate-4a3-v4-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:v4": "MANDATE_CAMPAIGNS_OUT=gate-4a3-v4-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:v4": "MANDATE_STRESS_SEATED_OUT=gate-4a3-v4-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:v4": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v4 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-v4 node tools/write-accessibility-report.mjs",
+    "walkthrough:installed:v5": "MANDATE_WALKTHROUGH_REQUIRED=1 MANDATE_WALKTHROUGH_GATE=\"4A3 victory path V-5 (enforced, installed archive)\" MANDATE_WALKTHROUGH_OUT=gate-4a3-v5-walkthrough playwright test --config=playwright.walkthrough.config.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",
