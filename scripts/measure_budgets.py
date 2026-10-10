@@ -12,7 +12,8 @@ Method, stated so a second person gets the same kind of number:
   turn 40 -- the scenario the frozen plan's own section 2.2 baseline used, and one measured to reach
   turn 45 without concluding, so turn 40 is an ordinary turn and not a conclusion;
 * the save/load row saves the 40-turn campaign and loads it back ten times; loading runs
-  `validate_history`, which re-resolves every stored turn, so it is the expensive path by design;
+  `validate_history`, which re-validates, re-serialises and re-hashes every stored turn and reconciles
+  it (it does not re-resolve turns), so it is the expensive path by design;
 * the bundle row is enforced by `npm run check:bundle`, and the interaction row by the packaged
   Playwright spec; neither is measured here.
 
