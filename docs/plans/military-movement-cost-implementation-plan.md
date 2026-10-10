@@ -6,6 +6,10 @@ until two conditions both hold: the five-person external playtest has reported, 
 given a separate go-ahead. The price of **150 is provisional**. The approved playtest build (the
 archive built from `a322484`, `f542cf28…`) is unchanged by this document and by anything it proposes.
 
+**Records note (2026-10-10).** By the user's ruling in `956cb05`, the approved playtest build is now
+the archive built from `5236ddb` (`083c7a98…`). The build named above is historical. Nothing else in
+this plan has changed.
+
 > **Deliberate loss of save compatibility.** Implementing this plan bumps the ruleset from
 > `0.23.0` to `0.24.0`. The engine supports only the current ruleset
 > (`SUPPORTED_RULESET_VERSIONS`, `backend/app/simulation/save_format.py:50`), so **every `0.23.0`
