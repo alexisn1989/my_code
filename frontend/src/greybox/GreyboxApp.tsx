@@ -147,9 +147,9 @@ function StatusItem({ icon, children }: { icon: StatusIconId; children: ReactNod
   );
 }
 
-/** Economy and Legislature: the screens that show a summary card and nothing more. (Constitution
- * left this group in the Gate 4A3 victory path: it is a full screen now.) */
-const SUMMARY_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>(["economy", "legislature"]);
+/** Economy: the screen that shows a summary card and nothing more. (Constitution left this group in
+ * the Gate 4A3 victory path, and Legislature in M-2: both are full screens now.) */
+const SUMMARY_SCREENS: ReadonlySet<ScreenId> = new Set<ScreenId>(["economy"]);
 
 type NavGroup =
   | { kind: "screen"; entry: ScreenDefinition }

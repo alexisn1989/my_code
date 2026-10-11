@@ -81,6 +81,9 @@ const DECISION_OPTIONS = {
   revision: "rev-1",
   blocs: [],
   chambers: [],
+  // Gate 4A3 M-2: required since M-0, and read by the Parliament screen; empty rather than absent,
+  // for the reason given below.
+  chamber_details: [],
   constitutional_axes: [],
   cabinet_posts: [],
   // The four counterparty collections Relationships reads. Empty rather than absent: the screen

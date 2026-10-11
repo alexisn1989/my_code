@@ -1,0 +1,597 @@
+{
+  "gate": "4A3 map-led redesign",
+  "out": "gate-4a3-m2-redesign",
+  "results": [
+    {
+      "block": "m1",
+      "width": 1440,
+      "layout": "wide",
+      "css": [
+        200
+      ],
+      "tracks": 4,
+      "minPinGapPx": 57.7,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 960,
+      "layout": "wide",
+      "css": [
+        200
+      ],
+      "tracks": 2,
+      "minPinGapPx": 24.4,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 820,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 2,
+      "minPinGapPx": 92.8,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 720,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 2,
+      "minPinGapPx": 71,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 390,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 1,
+      "minPinGapPx": 16.4,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 320,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 1,
+      "minPinGapPx": 2.6,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m2",
+      "width": 1440,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 27.22
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2",
+      "width": 960,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 27.22
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2",
+      "width": 820,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 27.22
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2",
+      "width": 720,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 19.4
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 25.85
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 19.4
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2",
+      "width": 390,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 13.65
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 18.18
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 13.65
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2",
+      "width": 320,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 10.55
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 14.05
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 10.55
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2-journeys",
+      "width": 1440,
+      "journal": {
+        "editedAfterPreview": "estimate hidden",
+        "heldResponseAfterEdit": "not shown",
+        "heldAcrossResolve": "not shown",
+        "decree": "no tallies",
+        "recordedVote": {
+          "turn": 1,
+          "lower": {
+            "chamber": "lower",
+            "total_seats": 100,
+            "supporting_seats": 45,
+            "required_seats": 51,
+            "passed": false,
+            "blocs": [
+              {
+                "party_id": "governing_party",
+                "bloc_id": "core",
+                "bloc_display_name": "Crown Party Core",
+                "seats": 45,
+                "supporting_seats": 45
+              },
+              {
+                "party_id": "opposition_party",
+                "bloc_id": "main",
+                "bloc_display_name": "Reform Opposition Main",
+                "seats": 55,
+                "supporting_seats": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "block": "m2-journeys",
+      "width": 390,
+      "journal": {
+        "editedAfterPreview": "estimate hidden",
+        "heldResponseAfterEdit": "not shown",
+        "heldAcrossResolve": "not shown",
+        "decree": "no tallies",
+        "recordedVote": {
+          "turn": 1,
+          "lower": {
+            "chamber": "lower",
+            "total_seats": 100,
+            "supporting_seats": 45,
+            "required_seats": 51,
+            "passed": false,
+            "blocs": [
+              {
+                "party_id": "governing_party",
+                "bloc_id": "core",
+                "bloc_display_name": "Crown Party Core",
+                "seats": 45,
+                "supporting_seats": 45
+              },
+              {
+                "party_id": "opposition_party",
+                "bloc_id": "main",
+                "bloc_display_name": "Reform Opposition Main",
+                "seats": 55,
+                "supporting_seats": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "block": "m2-keyboard",
+      "focus": "unchanged after late responses, both directions"
+    }
+  ]
+}

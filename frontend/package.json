@@ -196,7 +196,17 @@
     "verify:terminal:m1": "MANDATE_TERMINAL_OUT=gate-4a3-m1-terminal playwright test --project=terminal-coverage",
     "verify:campaigns:m1": "MANDATE_CAMPAIGNS_OUT=gate-4a3-m1-campaigns playwright test --project=campaigns",
     "audit:stress:seated:m1": "MANDATE_STRESS_SEATED_OUT=gate-4a3-m1-stress-seated-cabinet playwright test --project=stress-seated",
-    "audit:accessibility:verify:m1": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-m1 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-m1 node tools/write-accessibility-report.mjs"
+    "audit:accessibility:verify:m1": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-m1 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-m1 node tools/write-accessibility-report.mjs",
+    "_comment:m2": "Gate 4A3 M-2 (Parliament and the shared preview). verify:redesign:m2 runs @m1 and @m2; every other browser gate re-runs under M-2's own names.",
+    "verify:redesign:m2": "MANDATE_REDESIGN_OUT=gate-4a3-m2-redesign playwright test --project=redesign --grep \"@m1|@m2\"",
+    "verify:victory:m2": "MANDATE_VICTORY_OUT=gate-4a3-m2-victory playwright test --project=victory",
+    "verify:ux:m2": "MANDATE_UX_OUT=gate-4a3-m2-verify-ux playwright test --project=ux --grep \"@ux1|@ux2|@ux3|@ux4a|@ux4b|@ux4c|@ux4e|@w2\"",
+    "verify:fixes:m2": "MANDATE_VERIFY_OUT=gate-4a3-m2-verification playwright test --project=verify",
+    "verify:icons:m2": "MANDATE_ICONS_OUT=gate-4a3-m2-icon-coverage playwright test --project=icon-coverage",
+    "verify:terminal:m2": "MANDATE_TERMINAL_OUT=gate-4a3-m2-terminal playwright test --project=terminal-coverage",
+    "verify:campaigns:m2": "MANDATE_CAMPAIGNS_OUT=gate-4a3-m2-campaigns playwright test --project=campaigns",
+    "audit:stress:seated:m2": "MANDATE_STRESS_SEATED_OUT=gate-4a3-m2-stress-seated-cabinet playwright test --project=stress-seated",
+    "audit:accessibility:verify:m2": "MANDATE_A11Y_OUT=gate-4a3-accessibility-after-m2 playwright test --project=accessibility && MANDATE_A11Y_OUT=gate-4a3-accessibility-after-m2 node tools/write-accessibility-report.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.101.4",

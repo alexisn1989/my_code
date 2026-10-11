@@ -213,11 +213,10 @@ describe("U10: every Details link lands on what it was linked for", () => {
     const nav = screen.getByRole("navigation", { name: "Screens" });
     const group = within(nav).getByRole("list", { name: "Summaries" });
     // Gate 4A3 victory path: Constitution is a full screen now, so it left the "Summaries" group;
-    // its control keeps its name and stays in the nav.
-    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual([
-      "Economy",
-      "Legislature",
-    ]);
+    // its control keeps its name and stays in the nav. Gate 4A3 M-2: Legislature (Parliament) left
+    // it too, for the same reason.
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["Economy"]);
+    expect(within(nav).getByRole("button", { name: "Legislature" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Constitution" })).toBeInTheDocument();
     // The disabled controls name their own screen, not the strategic map.
     expect(within(nav).getByRole("button", { name: "Government" })).toHaveAttribute(

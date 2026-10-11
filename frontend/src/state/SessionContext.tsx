@@ -13,7 +13,9 @@
  * nothing without the campaign it counts turns within.
  */
 
-import { createContext, type ReactNode, useContext, useState } from "react";
+import { createContext, type ReactNode, useContext, useRef, useState } from "react";
+
+import { usePreviewStore } from "./previewStore";
 
 interface SessionContextValue {
   revision: string | null;
@@ -37,10 +39,23 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [revision, setRevisionState] = useState<string | null>(null);
   const [campaignId, setCampaignId] = useState<string | null>(null);
+  // Gate 4A3 M-2: the shared preview belongs to one view of one campaign. When the view actually
+  // CHANGES, the preview's lifecycle token advances, so a response requested before the change is
+  // dropped whenever it lands. Re-adopting the SAME view (a refresh that finds nothing new) keeps a
+  // still-valid preview. A ref, not the rendered values: two calls in one tick must compare against
+  // each other, not against a stale render.
+  const view = useRef<{ revision: string | null; campaignId: string | null }>({ revision: null, campaignId: null });
+  function adoptView(nextRevision: string | null, nextCampaignId: string | null): void {
+    if (view.current.revision !== nextRevision || view.current.campaignId !== nextCampaignId) {
+      usePreviewStore.getState().invalidate();
+    }
+    view.current = { revision: nextRevision, campaignId: nextCampaignId };
+  }
   const value: SessionContextValue = {
     revision,
     campaignId,
     setCampaignView: (nextRevision, nextCampaignId) => {
+      adoptView(nextRevision, nextCampaignId ?? null);
       setRevisionState(nextRevision);
       // `campaign_id` is optional in the generated type -- the projection declares it nullable
       // because `/scenarios` builds one campaign-less dashboard that never leaves the server.
@@ -48,6 +63,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setCampaignId(nextCampaignId ?? null);
     },
     clearRevision: () => {
+      adoptView(null, null);
       setRevisionState(null);
       setCampaignId(null);
     },

@@ -15,7 +15,8 @@
 
 import { useEffect, useState } from "react";
 
-import { useDashboard, useDecisionOptions, useMilitary, usePreview, useResolve } from "../../api/queries";
+import { useDashboard, useDecisionOptions, useMilitary, useResolve } from "../../api/queries";
+import { useDraftPreview } from "../../state/useDraftPreview";
 import type { DecisionOptionsProjection, PolicyCard } from "../../api/client";
 import { ResolutionInProgressError, StaleRevisionError } from "../../api/errors";
 import {
@@ -28,11 +29,7 @@ import {
 import { ConsequencesPanel } from "../policy/ConsequencesPanel";
 import { PolicyCardGrid } from "../policy/PolicyCardGrid";
 import { cardMatchesDraft, chooseCardRoute, mapPolicyCardToDraft } from "../../state/applyPolicyCard";
-import {
-  buildDecisions,
-  policyProposalDecision,
-  previewRequestSignature,
-} from "../../state/buildDecisionSet";
+import { buildDecisions, policyProposalDecision } from "../../state/buildDecisionSet";
 import { type PolicySlotKind, useDraftStore } from "../../state/draft";
 import { stagedActions } from "../../state/stagedActions";
 import { useSession } from "../../state/SessionContext";
@@ -145,33 +142,33 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
   const { revision, campaignId, setCampaignView } = useSession();
   const dashboard = useDashboard(revision);
   const options = useDecisionOptions(revision);
-  const preview = usePreview();
+  // Gate 4A3 M-2: the SHARED preview (`state/previewStore.ts`), which Parliament reads too. Its
+  // result, error and loading state are each shown only while the current draft is the one they
+  // were requested for.
+  const preview = useDraftPreview();
   const resolve = useResolve();
   const draft = useDraftStore();
   const staged = stagedActions(draft);
   // Only needed to name a staged movement order's formation and destination.
   const military = useMilitary(revision, { enabled: draft.movement !== null });
   const [confirming, setConfirming] = useState(false);
-  // Which request the displayed preview describes. A preview estimates ONE decision set at ONE
-  // revision; when the draft moves on, the estimate stops describing anything the player is about
-  // to submit, and showing it anyway is how a "Would pass" verdict outlives the decision it was
-  // about.
-  const [previewedSignature, setPreviewedSignature] = useState<string | null>(null);
   // Gate 4A3 W-1: the selection lives in the draft store, so it survives leaving this screen. It is
   // only DISPLAYED while the draft still matches it (`displayedCardId` below), so it cannot drift.
   const setSelectedCardId = draft.setSelectedCardId;
   const [routeChangeAnnouncement, setRouteChangeAnnouncement] = useState<string | null>(null);
   // Gate 4A3 UX-1: after Preview, focus moves to the result it produced, so a keyboard or
   // screen-reader player lands on the estimate instead of hunting for it far down the page.
-  const [focusPreviewResult, setFocusPreviewResult] = useState(false);
+  // Gate 4A3 M-2: only for a request THIS mounted screen issued. The id lives in local state, so a
+  // response landing after the player has left (or after a remount) moves no focus.
+  const [issuedRequestId, setIssuedRequestId] = useState<number | null>(null);
   useEffect(() => {
-    if (!focusPreviewResult || !preview.isSuccess) return;
+    if (issuedRequestId === null || preview.currentRequestId !== issuedRequestId) return;
     const heading = document.getElementById("preview-result-heading");
     if (heading) {
       heading.focus();
-      setFocusPreviewResult(false);
+      setIssuedRequestId(null);
     }
-  }, [focusPreviewResult, preview.isSuccess, preview.data]);
+  }, [issuedRequestId, preview.currentRequestId]);
 
   // Selecting a card populates the draft only (mandate: never previews,
   // resolves, or spends on selection alone). R5's route-preservation rule
@@ -349,14 +346,10 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
     if (revision === null || campaignId === null) {
       return;
     }
-    // Remembered BEFORE the request goes out, so a draft edited while it is in flight is compared
-    // against what was actually asked -- not against whatever the draft happens to be when the
-    // response lands.
-    setPreviewedSignature(previewRequestSignature(draft, revision, campaignId));
-    preview.mutate(
-      { revision, campaignId, decisions: buildDecisions(draft) },
-      { onSuccess: () => setFocusPreviewResult(true) },
-    );
+    // The shared store records the request under the draft's signature BEFORE it goes out, so a
+    // draft edited while it is in flight is compared against what was actually asked.
+    const token = preview.run();
+    if (token !== null) setIssuedRequestId(token.requestId);
   }
 
   function handleResolve() {
@@ -392,10 +385,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
 
   // Recomputed every render from the CURRENT draft, so an edit invalidates the estimate the moment
   // it happens -- including an edit made while a preview request is still outstanding.
-  const previewIsCurrent =
-    !preview.isPending &&
-    previewedSignature !== null &&
-    previewedSignature === previewRequestSignature(draft, revision, campaignId);
+  const previewIsCurrent = preview.current !== null;
 
   const resolveError = resolve.error;
   const isStale = resolveError instanceof StaleRevisionError;
@@ -655,11 +645,11 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
-            disabled={preview.isPending}
+            disabled={preview.pendingForDraft}
             onClick={handlePreview}
             className="rounded border border-navy-800 px-3 py-1 text-sm disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
           >
-            {preview.isPending ? "Previewing…" : "Preview"}
+            {preview.pendingForDraft ? "Previewing…" : "Preview"}
           </button>
           <button
             type="button"
@@ -671,14 +661,14 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
           </button>
         </div>
 
-        {preview.isError ? <ErrorPanel error={preview.error} /> : null}
+        {preview.errorForDraft !== null ? <ErrorPanel error={preview.errorForDraft} /> : null}
         {/* The estimate is shown ONLY while it still describes the decision set the player would
             submit. Once the draft, the revision or the campaign moves on, the verdict is REPLACED
             rather than annotated: a "Would pass" left on screen beside a stale-marker is still a
             verdict a player can read, and it is a verdict about a decision they no longer have. */}
-        {preview.isSuccess && previewIsCurrent ? (
+        {preview.current !== null ? (
           <ConsequencesPanel
-            preview={preview.data}
+            preview={preview.current}
             decreeOption={
               activeSlot !== null && decreeAllowed(activeSlot, data)
                 ? { cost: decreeCost(activeSlot, data) }
@@ -686,7 +676,7 @@ export function DecisionsScreen({ navigate }: ScreenProps) {
             }
           />
         ) : null}
-        {preview.isSuccess && !previewIsCurrent ? (
+        {preview.stale && !previewIsCurrent ? (
           <p
             data-testid="preview-outdated"
             role="status"

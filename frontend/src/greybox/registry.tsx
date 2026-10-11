@@ -14,7 +14,9 @@
  * navigation tab. `GlossaryScreen` stays outside this list and is rendered by
  * `GreyboxApp`'s persistent header.
  *
- * TWO of the twelve (Economy, Legislature) render `UnavailableScreen`. Constitution no longer
+ * ONE of the twelve (Economy) renders `UnavailableScreen`. Legislature no longer does (Gate 4A3 M-2):
+ * it is the Parliament screen, built from M-0's chamber, bloc, preview and recorded-vote data.
+ * Constitution no longer
  * does (Gate 4A3 victory path): it shows the campaign objective the server derives from the
  * engine's own victory rule, the checklist of its three conditions, and links into the existing
  * reform cards -- real projected data, not a breakdown built client-side. The text below
@@ -46,6 +48,7 @@ import { DashboardScreen } from "./screens/DashboardScreen";
 import { DecisionsScreen } from "./screens/DecisionsScreen";
 import { HistoryScreen } from "./screens/HistoryScreen";
 import { MeetingScreen } from "./screens/MeetingScreen";
+import { ParliamentScreen } from "./screens/ParliamentScreen";
 import { ResultScreen } from "./screens/ResultScreen";
 import { StrategicMapScreen } from "./screens/StrategicMapScreen";
 import { TerminalScreen } from "./screens/TerminalScreen";
@@ -122,8 +125,11 @@ export const SCREENS: readonly ScreenDefinition[] = [
     id: "legislature",
     label: "Legislature",
     heading: "Legislature",
-    component: unavailable("Legislature", "legislature"),
+    // Gate 4A3 M-2: the Parliament screen. It reads the campaign's decision options, so like
+    // Constitution it needs a campaign.
+    component: ParliamentScreen,
     showsGameplayChrome: true,
+    requiresActiveGame: true,
   },
   {
     id: "constitution",

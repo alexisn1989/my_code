@@ -15,6 +15,15 @@
  *   - on narrow maps the title plate sits above the picture, not over the country;
  *   - keyboard (Enter) on every pin and every place, and touch (`tap`) on phones: the destination
  *     opens, the nav marks it current, and focus lands on its heading.
+ *
+ * @m2 -- Parliament and the shared preview:
+ *   - at every width, on Arken (two chambers) and Valdrun: the engine's thresholds, every seat drawn,
+ *     seats at least 6 px and never overlapping, the stylesheet applied, no overflow, axe clean, then
+ *     a preview FROM Parliament whose numbers equal the response, with bloc rows that sum;
+ *   - journeys at 1440 and 390 (touch): an edit after Preview, a held response edited away, a
+ *     response held across a resolve, a decree (no tallies), a failed vote that appears only under
+ *     "Last recorded vote";
+ *   - keyboard: a late response never steals focus, from Decisions or from Parliament.
  */
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -81,6 +90,16 @@ test.afterAll(() => {
   );
 });
 
+/**
+ * The spec's OWN API calls (not the page's). `Connection: close`, so each call uses a fresh connection:
+ * the server (uvicorn) closes an idle keep-alive connection after 5 seconds, and a pooled connection
+ * reused at that moment can be closed under the request ("socket hang up", seen once in the M-2 gate
+ * run `final5`, 5.02 s after the previous call on the same connection).
+ */
+function apiGet(page: Page, url: string) {
+  return page.request.get(url, { headers: { Connection: "close" } });
+}
+
 async function ensureServer(page: Page): Promise<void> {
   if (server !== null) return;
   const saveRoot = mkdtempSync(path.join(tmpdir(), "mandate-redesign-"));
@@ -98,7 +117,7 @@ async function ensureServer(page: Page): Promise<void> {
   );
   base = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 60; i += 1) {
-    const ok = await page.request.get(`${base}/api/scenarios`).then((r) => r.ok()).catch(() => false);
+    const ok = await apiGet(page, `${base}/api/scenarios`).then((r) => r.ok()).catch(() => false);
     if (ok) return;
     await page.waitForTimeout(500);
   }
@@ -177,7 +196,7 @@ for (const viewport of WIDTHS) {
     await openDashboard(page);
     expect(cssLoads.length, "the stylesheet was requested").toBeGreaterThan(0);
     expect(cssLoads.every((c) => c.status === 200 || c.status === 304)).toBe(true);
-    const css = await (await page.request.get(cssLoads[0]!.url)).text();
+    const css = await (await apiGet(page, cssLoads[0]!.url)).text();
     expect(css).toContain("--color-navy-950");
     const applied = await page.evaluate(() => {
       const grid = document.querySelector('[data-testid="places-grid"]')!;
@@ -334,3 +353,369 @@ for (const viewport of WIDTHS) {
     await page.context().close();
   });
 }
+
+// ---- @m2: Parliament and the shared preview ---------------------------------------------------
+
+const SCENARIOS = [
+  { id: "arken", start: "Start Republic of Arken" },
+  { id: "valdrun", start: "Start Kingdom of Valdrun" },
+] as const;
+
+async function startScenario(page: Page, start: string): Promise<void> {
+  await page.goto(`${base}/`);
+  const button = page.getByRole("button", { name: start });
+  await button.waitFor({ state: "visible", timeout: 30_000 });
+  const pending = page.waitForResponse(
+    (r) => r.url().includes("/api/game/new") && r.request().method() === "POST",
+    { timeout: 60_000 },
+  );
+  await button.click();
+  expect((await pending).status()).toBe(200);
+  await page.getByRole("navigation", { name: "Screens" }).waitFor();
+}
+
+function navEntry(page: Page, name: string) {
+  return page.getByRole("navigation", { name: "Screens" }).getByRole("button", { name, exact: true });
+}
+
+async function visitScreen(page: Page, name: string, how: "click" | "tap" = "click"): Promise<void> {
+  const entry = navEntry(page, name);
+  if (how === "tap") await entry.tap();
+  else await entry.click();
+  await expect(entry).toHaveAttribute("aria-current", "page");
+}
+
+async function openParliament(page: Page, how: "click" | "tap" = "click"): Promise<void> {
+  await visitScreen(page, "Legislature", how);
+  await page.getByTestId("parliament-draft").waitFor();
+}
+
+async function selectPolicyCard(page: Page, title: string, how: "click" | "tap" = "click"): Promise<void> {
+  const select = page.getByRole("group", { name: title }).getByRole("button", { name: "Select" });
+  if (how === "tap") await select.tap();
+  else await select.click();
+}
+
+/** Holds every preview response until `release`; returns the release and a wait for the response. */
+async function holdPreviews(page: Page): Promise<{ release: () => void }> {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/game/preview", async (route) => {
+    await gate;
+    await route.continue();
+  });
+  return { release: () => release() };
+}
+
+/** The seats of every chamber: their diameters and whether any two overlap. */
+async function seatGeometry(page: Page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('[data-testid="chamber-card"]')].map((card) => {
+      const seats = [...card.querySelectorAll("[data-seat]")].map((s) => s.getBoundingClientRect());
+      let overlaps = 0;
+      for (let i = 0; i < seats.length; i += 1) {
+        for (let j = i + 1; j < seats.length; j += 1) {
+          const a = seats[i]!;
+          const b = seats[j]!;
+          const d = Math.hypot(a.x + a.width / 2 - (b.x + b.width / 2), a.y + a.height / 2 - (b.y + b.height / 2));
+          if (d < (a.width + b.width) / 2 - 0.01) overlaps += 1;
+        }
+      }
+      return {
+        chamber: card.dataset.chamber ?? "",
+        seats: seats.length,
+        minDiameter: Math.min(...seats.map((s) => Math.min(s.width, s.height))),
+        overlaps,
+        budget: card.querySelector('[data-testid="budget-threshold"]')?.textContent ?? "",
+        amendment: card.querySelector('[data-testid="amendment-threshold"]')?.textContent ?? "",
+        background: getComputedStyle(card).backgroundColor,
+      };
+    }),
+  );
+}
+
+async function clippedNodes(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    for (const el of Array.from(document.querySelectorAll("main *"))) {
+      const node = el as HTMLElement;
+      const style = getComputedStyle(node);
+      if (style.overflow !== "visible" && style.overflow !== "") continue;
+      if (node.scrollWidth > node.clientWidth + 2 && node.clientWidth > 0) {
+        out.push(`${node.tagName.toLowerCase()}.${node.className.toString().slice(0, 40)}`);
+      }
+    }
+    return out.slice(0, 8);
+  });
+}
+
+/** Each chamber card's shown tally, and the sum of its bloc rows. */
+async function shownTallies(page: Page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll<HTMLElement>('[data-testid="chamber-card"]')].map((card) => ({
+      chamber: card.dataset.chamber ?? "",
+      mode: card.dataset.mode ?? "",
+      supporting: card.querySelector('[data-testid="chamber-supporting"]')?.textContent ?? null,
+      rowSum: [...card.querySelectorAll('[data-testid="bloc-supporting"]')]
+        .map((n) => Number(n.textContent))
+        .reduce((a, b) => a + (Number.isNaN(b) ? 0 : b), 0),
+      filled: card.querySelectorAll('[data-seat][data-filled="false"]').length,
+    })),
+  );
+}
+
+for (const viewport of WIDTHS) {
+  test(`@m2 Parliament -- ${viewport.width}px`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newPage(browser, viewport.width, viewport.height);
+    await ensureServer(page);
+    const how = viewport.width < 1024 ? "tap" : "click";
+    const perScenario: Record<string, unknown>[] = [];
+    for (const scenario of SCENARIOS) {
+      await startScenario(page, scenario.start);
+      const options = await (await apiGet(page, `${base}/api/game/decision-options`)).json();
+      await openParliament(page, how);
+
+      // The engine's thresholds, every seat drawn and readable, nothing overflowing.
+      const seats = await seatGeometry(page);
+      expect(seats.map((s) => s.chamber)).toEqual(options.chamber_details.map((d: { chamber: string }) => d.chamber));
+      for (const detail of options.chamber_details as {
+        chamber: string;
+        total_seats: number;
+        budget_required_seats: number;
+        amendment_required_seats: number;
+      }[]) {
+        const shown = seats.find((s) => s.chamber === detail.chamber)!;
+        expect(shown.budget).toBe(`A budget needs ${detail.budget_required_seats}`);
+        expect(shown.amendment).toBe(`An amendment needs ${detail.amendment_required_seats}`);
+        expect(shown.seats, "every seat is drawn").toBe(detail.total_seats);
+        expect(shown.minDiameter, `seats at least 6 px at ${viewport.width}`).toBeGreaterThanOrEqual(6);
+        expect(shown.overlaps, "no two seats overlap").toBe(0);
+        expect(shown.background, "the stylesheet applies").toBe("rgb(15, 22, 38)");
+      }
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+        "no page overflow",
+      ).toBe(true);
+      expect(await clippedNodes(page), "no clipped node").toEqual([]);
+      const axe = await new AxeBuilder({ page }).include("main").analyze();
+      expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
+      await page.screenshot({
+        path: path.join(REVIEW_DIR, `${OUT_NAME}-shots`, `parliament-${scenario.id}-${viewport.width}.png`),
+        fullPage: true,
+      });
+
+      // A legislative draft, previewed FROM Parliament: each chamber shows the preview's own tally.
+      await visitScreen(page, "Decisions", how);
+      await selectPolicyCard(page, "Lower the personal income tax", how);
+      await openParliament(page, how);
+      const pending = page.waitForResponse((r) => r.url().includes("/api/game/preview") && r.request().method() === "POST");
+      const previewButton = page.getByTestId("parliament-draft").getByRole("button", { name: "Preview" });
+      if (how === "tap") await previewButton.tap();
+      else await previewButton.click();
+      const preview = await (await pending).json();
+      await expect(page.getByTestId("draft-status")).toHaveText("Preview is current for this draft");
+      const tallies = await shownTallies(page);
+      for (const chamber of preview.chambers as { chamber: string; supporting_seats: number }[]) {
+        const shown = tallies.find((t) => t.chamber === chamber.chamber)!;
+        expect(shown.mode).toBe("current");
+        expect(shown.supporting).toBe(`${chamber.supporting_seats} supporting if resolved now`);
+        expect(shown.rowSum, "bloc rows sum to the chamber's tally").toBe(chamber.supporting_seats);
+      }
+      expect(await clippedNodes(page), "no clipped node after Preview").toEqual([]);
+      const axeAfter = await new AxeBuilder({ page }).include("main").analyze();
+      expect(axeAfter.violations.map((v) => v.id)).toEqual([]);
+      await page.screenshot({
+        path: path.join(REVIEW_DIR, `${OUT_NAME}-shots`, `parliament-${scenario.id}-preview-${viewport.width}.png`),
+        fullPage: true,
+      });
+      perScenario.push({
+        scenario: scenario.id,
+        seats: seats.map((s) => ({ chamber: s.chamber, seats: s.seats, minDiameterPx: Math.round(s.minDiameter * 100) / 100 })),
+        preview: preview.chambers.map((c: { chamber: string; supporting_seats: number; required_seats: number; carries: boolean }) => ({
+          chamber: c.chamber,
+          supporting: c.supporting_seats,
+          required: c.required_seats,
+          carries: c.carries,
+        })),
+      });
+    }
+    results.push({ block: "m2", width: viewport.width, scenarios: perScenario });
+    await page.context().close();
+  });
+}
+
+for (const viewport of [WIDTHS[0], WIDTHS[4]]) {
+  const how = viewport.width < 1024 ? "tap" : "click";
+
+  test(`@m2 freshness journeys -- ${viewport.width}px`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newPage(browser, viewport.width, viewport.height);
+    await ensureServer(page);
+    const journal: Record<string, unknown> = {};
+
+    // 1. Arken: preview from Parliament, then change the draft in Decisions: the estimate is gone.
+    await startScenario(page, "Start Republic of Arken");
+    await visitScreen(page, "Decisions", how);
+    await selectPolicyCard(page, "Lower the personal income tax", how);
+    await openParliament(page, how);
+    const first = page.waitForResponse((r) => r.url().includes("/api/game/preview"));
+    await page.getByTestId("parliament-draft").getByRole("button", { name: "Preview" }).click();
+    await first;
+    await expect(page.getByTestId("chamber-supporting").first()).toBeVisible();
+    await visitScreen(page, "Decisions", how);
+    await selectPolicyCard(page, "Raise the personal income tax", how);
+    await openParliament(page, how);
+    await expect(page.getByTestId("draft-status")).toContainText("Your draft has changed since the last preview");
+    await expect(page.getByTestId("chamber-supporting")).toHaveCount(0);
+    journal.editedAfterPreview = "estimate hidden";
+
+    // 2. A held response: Preview, change the draft before it lands, then release it.
+    const hold = await holdPreviews(page);
+    await page.getByTestId("parliament-draft").getByRole("button", { name: "Preview" }).click();
+    await visitScreen(page, "Decisions", how);
+    await selectPolicyCard(page, "Lower the personal income tax", how);
+    await openParliament(page, how);
+    const held = page.waitForResponse((r) => r.url().includes("/api/game/preview"));
+    hold.release();
+    await held;
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId("chamber-supporting")).toHaveCount(0);
+    journal.heldResponseAfterEdit = "not shown";
+    await page.unroute("**/api/game/preview");
+
+    // 3. Held across a resolve: Preview on Decisions, resolve, then release.
+    const hold2 = await holdPreviews(page);
+    await visitScreen(page, "Decisions", how);
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await page.getByRole("button", { name: "Resolve turn" }).click();
+    const resolved = page.waitForResponse((r) => r.url().includes("/api/game/resolve"));
+    await page.getByRole("button", { name: "Confirm and resolve" }).click();
+    expect((await resolved).status()).toBe(200);
+    const late = page.waitForResponse((r) => r.url().includes("/api/game/preview"));
+    hold2.release();
+    await late;
+    await openParliament(page, how);
+    await page.waitForTimeout(300);
+    await expect(page.getByTestId("chamber-supporting")).toHaveCount(0);
+    journal.heldAcrossResolve = "not shown";
+    await page.unroute("**/api/game/preview");
+
+    // 4. Valdrun, decree: no vote is held, so no tallies, even after Preview.
+    await startScenario(page, "Start Kingdom of Valdrun");
+    await visitScreen(page, "Decisions", how);
+    await selectPolicyCard(page, "Raise the personal income tax", how);
+    await page.getByRole("radiogroup", { name: "Route" }).getByRole("radio", { name: /^Decree/ }).click();
+    await openParliament(page, how);
+    await expect(page.getByText("No vote is held on a decree, so the legislature is bypassed.")).toBeVisible();
+    const decree = page.waitForResponse((r) => r.url().includes("/api/game/preview"));
+    await page.getByTestId("parliament-draft").getByRole("button", { name: "Preview" }).click();
+    expect((await (await decree).json()).chambers).toEqual([]);
+    await expect(page.getByTestId("draft-status")).toHaveText("Preview is current for this draft");
+    await expect(page.getByTestId("chamber-supporting")).toHaveCount(0);
+    await expect(page.getByTestId("chamber-tally").first()).toContainText("No vote is held on a decree.");
+    journal.decree = "no tallies";
+
+    // 5. Valdrun, legislative: the vote fails, and afterwards it appears ONLY under Last recorded vote.
+    await visitScreen(page, "Decisions", how);
+    await page.getByRole("radiogroup", { name: "Route" }).getByRole("radio", { name: /^Legislative/ }).click();
+    await openParliament(page, how);
+    const legislative = page.waitForResponse((r) => r.url().includes("/api/game/preview"));
+    await page.getByTestId("parliament-draft").getByRole("button", { name: "Preview" }).click();
+    const failing = await (await legislative).json();
+    expect(failing.chambers.some((c: { carries: boolean }) => !c.carries)).toBe(true);
+    await expect(page.getByTestId("chamber-verdict").first()).toHaveText("Would not carry");
+    await visitScreen(page, "Decisions", how);
+    await page.getByRole("button", { name: "Resolve turn" }).click();
+    const resolve = page.waitForResponse((r) => r.url().includes("/api/game/resolve"));
+    await page.getByRole("button", { name: "Confirm and resolve" }).click();
+    expect((await resolve).status()).toBe(200);
+    const after = await (await apiGet(page, `${base}/api/game/decision-options`)).json();
+    const last = after.last_recorded_vote as {
+      turn: number;
+      vote: { chambers: { chamber: string; supporting_seats: number; required_seats: number; passed: boolean }[] };
+    };
+    expect(last).not.toBeNull();
+    await openParliament(page, how);
+    await expect(page.getByRole("heading", { name: `Last recorded vote · turn ${last.turn}` })).toBeVisible();
+    const lower = last.vote.chambers[0]!;
+    await expect(page.getByTestId("recorded-chamber").first()).toHaveText(
+      `Lower chamber: ${lower.supporting_seats} supporting; ${lower.required_seats} required — ${lower.passed ? "carried" : "did not carry"}`,
+    );
+    await expect(page.getByTestId("chamber-supporting")).toHaveCount(0);
+    for (const t of await shownTallies(page)) {
+      expect(t.mode, "today's chamber shows no recorded support").toBe("seats");
+      expect(t.filled, "no hollow seats").toBe(0);
+    }
+    await page.screenshot({
+      path: path.join(REVIEW_DIR, `${OUT_NAME}-shots`, `parliament-valdrun-recorded-${viewport.width}.png`),
+      fullPage: true,
+    });
+    journal.recordedVote = { turn: last.turn, lower };
+
+    results.push({ block: "m2-journeys", width: viewport.width, journal });
+    await page.context().close();
+  });
+}
+
+test("@m2 a late preview never steals focus (keyboard)", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const page = await newPage(browser, 1440, 900);
+  await ensureServer(page);
+  await startScenario(page, "Start Republic of Arken");
+  await visitScreen(page, "Decisions");
+  await selectPolicyCard(page, "Lower the personal income tax");
+
+  // Decisions -> Preview (held) -> keyboard to Legislature -> release.
+  const hold = await holdPreviews(page);
+  await page.getByRole("button", { name: "Preview", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await navEntry(page, "Legislature").focus();
+  await page.keyboard.press("Enter");
+  await expect(navEntry(page, "Legislature")).toHaveAttribute("aria-current", "page");
+  await page.getByTestId("parliament-draft").waitFor();
+  const focusedBefore = await page.evaluate(() => document.activeElement?.textContent?.trim() ?? "");
+  const landed = page.waitForResponse((r) => r.url().includes("/api/game/preview"));
+  hold.release();
+  await landed;
+  await expect(page.getByTestId("chamber-supporting").first()).toBeVisible();
+  const focusedAfter = await page.evaluate(() => ({
+    text: document.activeElement?.textContent?.trim() ?? "",
+    inNav: document.activeElement?.closest('nav[aria-label="Screens"]') !== null,
+  }));
+  expect(focusedAfter.text).toBe(focusedBefore);
+  expect(focusedAfter.inNav, "focus stays on the nav entry the player used").toBe(true);
+  await expect(page.getByTestId("parliament-announcement")).toHaveText("");
+
+  // Back to Decisions by keyboard: the preview heading does not take focus.
+  await navEntry(page, "Decisions").focus();
+  await page.keyboard.press("Enter");
+  await expect(navEntry(page, "Decisions")).toHaveAttribute("aria-current", "page");
+  await page.getByTestId("consequences-panel").waitFor();
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => document.activeElement?.id ?? "")).not.toBe("preview-result-heading");
+  await page.unroute("**/api/game/preview");
+
+  // The reverse: Parliament -> Preview (held) -> keyboard to Dashboard -> release.
+  await visitScreen(page, "Decisions");
+  await selectPolicyCard(page, "Raise the personal income tax");
+  await openParliament(page);
+  const hold2 = await holdPreviews(page);
+  await page.getByTestId("parliament-draft").getByRole("button", { name: "Preview" }).focus();
+  await page.keyboard.press("Enter");
+  await navEntry(page, "Dashboard").focus();
+  await page.keyboard.press("Enter");
+  await expect(navEntry(page, "Dashboard")).toHaveAttribute("aria-current", "page");
+  const landed2 = page.waitForResponse((r) => r.url().includes("/api/game/preview"));
+  hold2.release();
+  await landed2;
+  await page.waitForTimeout(300);
+  expect(
+    await page.evaluate(() => document.activeElement?.closest('nav[aria-label="Screens"]') !== null && document.activeElement?.textContent?.trim()),
+  ).toBe("Dashboard");
+  await page.unroute("**/api/game/preview");
+  results.push({ block: "m2-keyboard", focus: "unchanged after late responses, both directions" });
+  await page.context().close();
+});

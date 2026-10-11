@@ -30,6 +30,7 @@ import {
 } from "./client";
 import { nextGeneration } from "../format/format";
 import { useDraftStore } from "../state/draft";
+import { usePreviewStore } from "../state/previewStore";
 
 /** No game loaded yet -- distinct from "loading" or "errored". Callers branch
  * on this via `NoActiveSessionError`, not on a magic revision value. */
@@ -244,6 +245,9 @@ export function useResolve(): UseMutationResult<
     mutationFn: ({ revision, campaignId, decisions }) =>
       api.resolve(revision, campaignId, decisions),
     onSuccess: (response) => {
+      // Gate 4A3 M-2: the resolved turn ends the shared preview's lifecycle; an estimate requested
+      // for the turn just resolved is dropped whenever it lands.
+      usePreviewStore.getState().invalidate();
       const newRevision = response.dashboard.revision;
       queryClient.setQueryData(dashboardQueryKey(newRevision), response.dashboard);
       queryClient.setQueryData(liveTurnResultQueryKey(), response.turnResult);
@@ -280,6 +284,9 @@ export function useResolve(): UseMutationResult<
  */
 function clearCampaignScopedState(queryClient: QueryClient): void {
   useDraftStore.getState().clearDraft();
+  // Gate 4A3 M-2: a new game or a load ALWAYS ends the shared preview's lifecycle -- even a load of
+  // the same campaign at the same turn -- so a response requested before it is dropped.
+  usePreviewStore.getState().invalidate();
   queryClient.removeQueries({ queryKey: liveTurnResultQueryKey() });
   // Formation positions belong to the campaign that had them. `removeQueries` on the whole
   // `["military", ...]` prefix, not `invalidateQueries` on one revision: the replacement campaign

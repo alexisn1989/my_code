@@ -24,6 +24,11 @@ export type HistoryListEntry = Schemas["HistoryListEntry"];
 export type HistoryDetailResponse = Schemas["HistoryDetailResponse"];
 export type TurnResultProjection = Schemas["TurnResultProjection"];
 export type ChamberPreview = Schemas["ChamberPreview"];
+// Gate 4A3 M-2: the M-0 shapes the Parliament screen reads.
+export type BlocOption = Schemas["BlocOption"];
+export type ChamberDetail = Schemas["ChamberDetail"];
+export type LastRecordedVote = Schemas["LastRecordedVote"];
+export type RecordedVote = Schemas["RecordedVote"];
 export type CabinetPostOption = Schemas["CabinetPostOption"];
 export type CabinetCandidateOption = Schemas["CabinetCandidateOption"];
 export type ConcernCard = Schemas["ConcernCard"];
