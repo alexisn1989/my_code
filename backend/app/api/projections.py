@@ -33,6 +33,13 @@ from app.api.objective import (
     objective_line,
 )
 from app.api.outcome_labels import outcome_reason_text
+from app.api.votes import (
+    LastRecordedVote,
+    NoVoteReason,
+    RecordedVote,
+    no_vote_reason,
+    recorded_vote,
+)
 from app.core.money import BPS_DENOMINATOR
 from app.core.politics import RELATIONSHIP_INVESTMENT_CAP
 from app.simulation.cabinet import (
@@ -55,8 +62,11 @@ from app.simulation.legislative_bargaining import assess_legislative_bargain
 from app.simulation.legislative_voting import (
     CONSTITUTIONAL_AMENDMENT_DECREE_COST,
     DECREE_POLITICAL_CAPITAL_COST,
+    required_amendment_yes_seats,
+    required_yes_seats,
 )
 from app.simulation.legislature import (
+    AmendmentThreshold,
     CapitalExpenditureCategory,
     GovernmentRole,
     LegislativeOutcome,
@@ -476,11 +486,35 @@ class TurnResultProjection(BaseModel):
     objective_line: str | None = None
     """(Gate 4A3 victory path) What this turn did to the campaign objective, from the stored report,
     the closing state and the opening state's marker (`objective.objective_line`)."""
+    recorded_vote: RecordedVote | None = None
+    """(Gate 4A3 M-0) The chamber vote this turn held, from the stored report (`app.api.votes`)."""
+    no_vote_reason: NoVoteReason | None = None
+    """(Gate 4A3 M-0) Why this turn held no chamber vote, from the stored outcomes. Exactly one of
+    this and `recorded_vote` is set."""
+
+    @model_validator(mode="after")
+    def _a_vote_or_its_absence_is_explained(self) -> TurnResultProjection:
+        if (self.recorded_vote is None) == (self.no_vote_reason is None):
+            raise ValueError("exactly one of recorded_vote and no_vote_reason must be set")
+        return self
 
 
 # --------------------------------------------------------------------------
 # Summaries and envelopes
 # --------------------------------------------------------------------------
+
+
+class PreviewBlocSupport(BaseModel):
+    """(Gate 4A3 M-0) One bloc's projected supporting seats in one chamber: the preview's own
+    apportionment row, the same `apportion_supporting_seats` resolution uses. The rows of a chamber
+    sum to its `supporting_seats` by construction."""
+
+    model_config = _STRICT
+
+    party_id: str
+    bloc_id: str
+    seats: int
+    supporting_seats: int
 
 
 class ChamberPreview(BaseModel):
@@ -493,6 +527,7 @@ class ChamberPreview(BaseModel):
     supporting_seats: int
     required_seats: int
     carries: bool
+    blocs: tuple[PreviewBlocSupport, ...] = ()
 
 
 class InvestmentEffectPreview(BaseModel):
@@ -642,6 +677,29 @@ class BlocOption(BaseModel):
     bloc_name: str
     chamber: str
     seats: int
+    government_relationship_bps: int
+    """(Gate 4A3 M-0) The bloc's current relationship with the government, from state."""
+    government_role: str
+    """(Gate 4A3 M-0) The bloc's party's role (`GovernmentRole`), from state."""
+    tax_preference_bps: int
+    """(Gate 4A3 M-0) The bloc's tax preference, from state: positive favours rises, negative cuts
+    (`legislative_voting.policy_compatibility_bps`)."""
+    spending_preference_bps: int
+    """(Gate 4A3 M-0) The bloc's spending preference, from state, signed the same way."""
+
+
+class ChamberDetail(BaseModel):
+    """(Gate 4A3 M-0) One chamber's size and the engine's own thresholds for it."""
+
+    model_config = _STRICT
+
+    chamber: str
+    total_seats: int
+    budget_required_seats: int
+    """`legislative_voting.required_yes_seats`: what a budget needs to carry this chamber."""
+    amendment_required_seats: int
+    """`legislative_voting.required_amendment_yes_seats` at the constitution's current amendment
+    difficulty."""
 
 
 class ConstitutionalAxisOption(BaseModel):
@@ -885,7 +943,13 @@ class DecisionOptionsProjection(BaseModel):
     decree_amendment_capital_cost: int
     policy_cards: tuple[PolicyCard, ...] = ()
     chambers: tuple[str, ...]
+    chamber_details: tuple[ChamberDetail, ...] = ()
+    """(Gate 4A3 M-0) Each chamber's size and engine thresholds, in `chambers` order."""
     blocs: tuple[BlocOption, ...]
+    last_recorded_vote: LastRecordedVote | None = None
+    """(Gate 4A3 M-0) The most recent turn that held a chamber vote, from the session's stored
+    history (`app.api.votes.last_recorded_vote`). Set by `/game/decision-options` from the save;
+    `None` there means no chamber vote has been held yet."""
     constitutional_axes: tuple[ConstitutionalAxisOption, ...]
     cabinet_posts: tuple[CabinetPostOption, ...] = ()
     """(Characters slice) Every cabinet post, canonical by post, each with every candidate this
@@ -1542,9 +1606,22 @@ def build_decision_options(
 
     legislature = politics.legislature
     chambers: tuple[str, ...] = ()
+    chamber_details: tuple[ChamberDetail, ...] = ()
     blocs: list[BlocOption] = []
     if legislature is not None:
         chambers = tuple(chamber.chamber.value for chamber in legislature.chambers)
+        difficulty = AmendmentThreshold(constitution.amendment_difficulty.value)
+        chamber_details = tuple(
+            ChamberDetail(
+                chamber=chamber.chamber.value,
+                total_seats=chamber.total_seats,
+                budget_required_seats=required_yes_seats(total_seats=chamber.total_seats),
+                amendment_required_seats=required_amendment_yes_seats(
+                    total_seats=chamber.total_seats, difficulty=difficulty
+                ),
+            )
+            for chamber in legislature.chambers
+        )
         for party in legislature.parties:
             for bloc in party.blocs:
                 for seat_entry in bloc.seats:
@@ -1556,6 +1633,10 @@ def build_decision_options(
                             bloc_name=bloc.name,
                             chamber=seat_entry.chamber.value,
                             seats=seat_entry.seats,
+                            government_relationship_bps=bloc.government_relationship_bps,
+                            government_role=party.government_role.value,
+                            tax_preference_bps=bloc.tax_preference_bps,
+                            spending_preference_bps=bloc.spending_preference_bps,
                         )
                     )
 
@@ -1600,6 +1681,7 @@ def build_decision_options(
         decree_legislative_capital_cost=DECREE_POLITICAL_CAPITAL_COST,
         decree_amendment_capital_cost=CONSTITUTIONAL_AMENDMENT_DECREE_COST,
         chambers=chambers,
+        chamber_details=chamber_details,
         blocs=tuple(blocs),
         constitutional_axes=constitutional_axes,
         cabinet_posts=_cabinet_post_options(state),
@@ -2227,6 +2309,8 @@ def build_turn_result(
         unchanged=_unchanged_statements(report),
         trace=tuple(trace),
         terminal=None if politics is None else _terminal_summary(politics),
+        recorded_vote=(vote := recorded_vote(state, report)),
+        no_vote_reason=None if vote is not None else no_vote_reason(report),
         objective_line=(
             None
             if politics is None

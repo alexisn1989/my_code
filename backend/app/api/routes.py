@@ -67,6 +67,7 @@ from .save_registry import (
     validate_save_id,
 )
 from .session import GameSession, PersistenceError, StaleRevisionError
+from .votes import last_recorded_vote
 
 #: A scenario id is a bare lowercase identifier -- the same reject-by-shape
 #: discipline as save IDs, so no request can walk out of the scenario root.
@@ -298,9 +299,11 @@ def get_decision_options(request: Request) -> DecisionOptionsProjection:
     """
     session = _session(request)
     save = session.current_save
-    return build_decision_options_with_policy_cards(
+    options = build_decision_options_with_policy_cards(
         save.current_state(), campaign_id=session.save_id
     )
+    # Gate 4A3 M-0: the last turn that actually held a chamber vote, from the stored history.
+    return options.model_copy(update={"last_recorded_vote": last_recorded_vote(save)})
 
 
 @router.get("/game/military", response_model=MilitaryProjection)

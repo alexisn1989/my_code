@@ -170,6 +170,14 @@
             "title": "Chamber",
             "type": "string"
           },
+          "government_relationship_bps": {
+            "title": "Government Relationship Bps",
+            "type": "integer"
+          },
+          "government_role": {
+            "title": "Government Role",
+            "type": "string"
+          },
           "party_id": {
             "title": "Party Id",
             "type": "string"
@@ -181,6 +189,14 @@
           "seats": {
             "title": "Seats",
             "type": "integer"
+          },
+          "spending_preference_bps": {
+            "title": "Spending Preference Bps",
+            "type": "integer"
+          },
+          "tax_preference_bps": {
+            "title": "Tax Preference Bps",
+            "type": "integer"
           }
         },
         "required": [
@@ -189,7 +205,11 @@
           "bloc_id",
           "bloc_name",
           "chamber",
-          "seats"
+          "seats",
+          "government_relationship_bps",
+          "government_role",
+          "tax_preference_bps",
+          "spending_preference_bps"
         ],
         "title": "BlocOption",
         "type": "object"
@@ -463,10 +483,48 @@
         "title": "CapitalSummary",
         "type": "object"
       },
+      "ChamberDetail": {
+        "additionalProperties": false,
+        "description": "(Gate 4A3 M-0) One chamber's size and the engine's own thresholds for it.",
+        "properties": {
+          "amendment_required_seats": {
+            "title": "Amendment Required Seats",
+            "type": "integer"
+          },
+          "budget_required_seats": {
+            "title": "Budget Required Seats",
+            "type": "integer"
+          },
+          "chamber": {
+            "title": "Chamber",
+            "type": "string"
+          },
+          "total_seats": {
+            "title": "Total Seats",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chamber",
+          "total_seats",
+          "budget_required_seats",
+          "amendment_required_seats"
+        ],
+        "title": "ChamberDetail",
+        "type": "object"
+      },
       "ChamberPreview": {
         "additionalProperties": false,
         "description": "One chamber's projected tally. Chambers are never pooled.",
         "properties": {
+          "blocs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PreviewBlocSupport"
+            },
+            "title": "Blocs",
+            "type": "array"
+          },
           "carries": {
             "title": "Carries",
             "type": "boolean"
@@ -814,6 +872,14 @@
             ],
             "title": "Campaign Id"
           },
+          "chamber_details": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ChamberDetail"
+            },
+            "title": "Chamber Details",
+            "type": "array"
+          },
           "chambers": {
             "items": {
               "type": "string"
@@ -847,6 +913,16 @@
             },
             "title": "Foreign Assistance Counterparties",
             "type": "array"
+          },
+          "last_recorded_vote": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastRecordedVote"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "legislative_bargain_counterparties": {
             "default": [],
@@ -1416,6 +1492,25 @@
           "no_effect"
         ],
         "title": "InvestmentEffectPreview",
+        "type": "object"
+      },
+      "LastRecordedVote": {
+        "additionalProperties": false,
+        "description": "The most recent turn that held a chamber vote.",
+        "properties": {
+          "turn": {
+            "title": "Turn",
+            "type": "integer"
+          },
+          "vote": {
+            "$ref": "#/components/schemas/RecordedVote"
+          }
+        },
+        "required": [
+          "turn",
+          "vote"
+        ],
+        "title": "LastRecordedVote",
         "type": "object"
       },
       "LedgerEntry": {
@@ -2200,6 +2295,36 @@
         "title": "PolicyCardRoute",
         "type": "object"
       },
+      "PreviewBlocSupport": {
+        "additionalProperties": false,
+        "description": "(Gate 4A3 M-0) One bloc's projected supporting seats in one chamber: the preview's own\napportionment row, the same `apportion_supporting_seats` resolution uses. The rows of a chamber\nsum to its `supporting_seats` by construction.",
+        "properties": {
+          "bloc_id": {
+            "title": "Bloc Id",
+            "type": "string"
+          },
+          "party_id": {
+            "title": "Party Id",
+            "type": "string"
+          },
+          "seats": {
+            "title": "Seats",
+            "type": "integer"
+          },
+          "supporting_seats": {
+            "title": "Supporting Seats",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "party_id",
+          "bloc_id",
+          "seats",
+          "supporting_seats"
+        ],
+        "title": "PreviewBlocSupport",
+        "type": "object"
+      },
       "PreviewProjection": {
         "additionalProperties": false,
         "description": "A deterministic ESTIMATE, explicitly not an authoritative outcome.\n\n`estimate` is always True and `excludes_stochastic_channels` names what the\npreview deliberately does not know, so no caller can mistake this for a\nresolved result.",
@@ -2405,6 +2530,203 @@
         ],
         "title": "ProposalRoute",
         "type": "string"
+      },
+      "RecordedAmendmentTarget": {
+        "additionalProperties": false,
+        "description": "One axis the voted amendment proposed to change, from the stored report.",
+        "properties": {
+          "axis": {
+            "title": "Axis",
+            "type": "string"
+          },
+          "opening_value": {
+            "title": "Opening Value",
+            "type": "string"
+          },
+          "proposed_value": {
+            "title": "Proposed Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "axis",
+          "opening_value",
+          "proposed_value"
+        ],
+        "title": "RecordedAmendmentTarget",
+        "type": "object"
+      },
+      "RecordedBlocVote": {
+        "additionalProperties": false,
+        "description": "One bloc's recorded support in one chamber (budgets only).",
+        "properties": {
+          "bloc_display_name": {
+            "title": "Bloc Display Name",
+            "type": "string"
+          },
+          "bloc_id": {
+            "title": "Bloc Id",
+            "type": "string"
+          },
+          "party_id": {
+            "title": "Party Id",
+            "type": "string"
+          },
+          "seats": {
+            "title": "Seats",
+            "type": "integer"
+          },
+          "supporting_seats": {
+            "title": "Supporting Seats",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "party_id",
+          "bloc_id",
+          "bloc_display_name",
+          "seats",
+          "supporting_seats"
+        ],
+        "title": "RecordedBlocVote",
+        "type": "object"
+      },
+      "RecordedBudgetChange": {
+        "additionalProperties": false,
+        "description": "What the voted budget proposed, from the stored report (directions and totals; the stored\nreport keeps no per-rate targets for a budget that failed).",
+        "properties": {
+          "opening_total_program_spending": {
+            "title": "Opening Total Program Spending",
+            "type": "integer"
+          },
+          "proposed_total_program_spending": {
+            "title": "Proposed Total Program Spending",
+            "type": "integer"
+          },
+          "spending_direction": {
+            "title": "Spending Direction",
+            "type": "string"
+          },
+          "tax_delta_bps": {
+            "title": "Tax Delta Bps",
+            "type": "integer"
+          },
+          "tax_direction": {
+            "title": "Tax Direction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tax_direction",
+          "tax_delta_bps",
+          "spending_direction",
+          "opening_total_program_spending",
+          "proposed_total_program_spending"
+        ],
+        "title": "RecordedBudgetChange",
+        "type": "object"
+      },
+      "RecordedChamberVote": {
+        "additionalProperties": false,
+        "description": "One chamber's recorded tally, exactly as stored.",
+        "properties": {
+          "blocs": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RecordedBlocVote"
+            },
+            "title": "Blocs",
+            "type": "array"
+          },
+          "chamber": {
+            "title": "Chamber",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "required_seats": {
+            "title": "Required Seats",
+            "type": "integer"
+          },
+          "supporting_seats": {
+            "title": "Supporting Seats",
+            "type": "integer"
+          },
+          "total_seats": {
+            "title": "Total Seats",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chamber",
+          "total_seats",
+          "supporting_seats",
+          "required_seats",
+          "passed"
+        ],
+        "title": "RecordedChamberVote",
+        "type": "object"
+      },
+      "RecordedVote": {
+        "additionalProperties": false,
+        "description": "A chamber vote that was actually held on one turn.",
+        "properties": {
+          "amendment_targets": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/RecordedAmendmentTarget"
+            },
+            "title": "Amendment Targets",
+            "type": "array"
+          },
+          "blocs_recorded": {
+            "title": "Blocs Recorded",
+            "type": "boolean"
+          },
+          "budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordedBudgetChange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "chambers": {
+            "items": {
+              "$ref": "#/components/schemas/RecordedChamberVote"
+            },
+            "title": "Chambers",
+            "type": "array"
+          },
+          "outcome": {
+            "enum": [
+              "passed_legislative",
+              "failed_legislative"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "proposal_kind": {
+            "enum": [
+              "budget",
+              "constitutional_amendment"
+            ],
+            "title": "Proposal Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposal_kind",
+          "outcome",
+          "chambers",
+          "blocs_recorded"
+        ],
+        "title": "RecordedVote",
+        "type": "object"
       },
       "ResolveRequest": {
         "additionalProperties": false,
@@ -2988,6 +3310,21 @@
             "title": "Ledger",
             "type": "array"
           },
+          "no_vote_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "no_proposal",
+                  "enacted_by_decree"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Vote Reason"
+          },
           "objective_line": {
             "anyOf": [
               {
@@ -3012,6 +3349,16 @@
             ],
             "title": "Outcome Tone",
             "type": "string"
+          },
+          "recorded_vote": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordedVote"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "revision": {
             "title": "Revision",

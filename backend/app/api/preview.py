@@ -33,7 +33,11 @@ would be exactly the formula duplication this design exists to avoid. Nothing in
 from __future__ import annotations
 
 from app.core.errors import DecisionSetError
-from app.simulation.apportionment import SeatSupport, apportion_supporting_seats
+from app.simulation.apportionment import (
+    ChamberApportionment,
+    SeatSupport,
+    apportion_supporting_seats,
+)
 from app.simulation.cabinet import appointment_cost_capital, holder_competence_bps
 from app.simulation.decisions import (
     BlocRelationshipInvestmentDecision,
@@ -76,7 +80,12 @@ from app.simulation.state import (
 
 from .decision_preflight import first_decision_problem
 from .objective import preview_effect
-from .projections import ChamberPreview, InvestmentEffectPreview, PreviewProjection
+from .projections import (
+    ChamberPreview,
+    InvestmentEffectPreview,
+    PreviewBlocSupport,
+    PreviewProjection,
+)
 
 #: Named once so the projection can say what it deliberately does not know.
 EXCLUDED_STOCHASTIC_CHANNELS = (
@@ -488,9 +497,26 @@ def _preview_budget(
                     supporting_seats=apportionment.supporting_seats,
                     total_seats=chamber_state.total_seats,
                 ),
+                blocs=_bloc_support_rows(supports, apportionment),
             )
         )
     return tuple(previews)
+
+
+def _bloc_support_rows(
+    supports: list[SeatSupport], apportionment: ChamberApportionment
+) -> tuple[PreviewBlocSupport, ...]:
+    """(Gate 4A3 M-0) The apportionment's own per-bloc rows, in the order they entered it."""
+    assert len(supports) == len(apportionment.rows)
+    return tuple(
+        PreviewBlocSupport(
+            party_id=row.party_id,
+            bloc_id=row.bloc_id,
+            seats=support.seats,
+            supporting_seats=row.supporting_seats,
+        )
+        for support, row in zip(supports, apportionment.rows, strict=True)
+    )
 
 
 def _preview_amendment(
@@ -541,6 +567,7 @@ def _preview_amendment(
                 # The amendment path compares directly rather than calling
                 # `chamber_carries`, exactly as phases.py:661 does.
                 carries=apportionment.supporting_seats >= required,
+                blocs=_bloc_support_rows(supports, apportionment),
             )
         )
     return tuple(previews)

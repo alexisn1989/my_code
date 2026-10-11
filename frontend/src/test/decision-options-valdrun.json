@@ -2984,6 +2984,14 @@
   "chambers": [
     "lower"
   ],
+  "chamber_details": [
+    {
+      "chamber": "lower",
+      "total_seats": 100,
+      "budget_required_seats": 51,
+      "amendment_required_seats": 67
+    }
+  ],
   "blocs": [
     {
       "party_id": "governing_party",
@@ -2991,7 +2999,11 @@
       "bloc_id": "core",
       "bloc_name": "Crown Party Core",
       "chamber": "lower",
-      "seats": 45
+      "seats": 45,
+      "government_relationship_bps": 6000,
+      "government_role": "coalition",
+      "tax_preference_bps": 2000,
+      "spending_preference_bps": 0
     },
     {
       "party_id": "opposition_party",
@@ -2999,9 +3011,14 @@
       "bloc_id": "main",
       "bloc_name": "Reform Opposition Main",
       "chamber": "lower",
-      "seats": 55
+      "seats": 55,
+      "government_relationship_bps": -8000,
+      "government_role": "opposition",
+      "tax_preference_bps": -6000,
+      "spending_preference_bps": 0
     }
   ],
+  "last_recorded_vote": null,
   "constitutional_axes": [
     {
       "axis": "decree_authority",

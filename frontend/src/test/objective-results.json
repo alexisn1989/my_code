@@ -248,7 +248,46 @@
       }
     ],
     "terminal": null,
-    "objective_line": "The constitution now qualifies, and the transition is recorded. Win the election on turn 5 to complete it."
+    "objective_line": "The constitution now qualifies, and the transition is recorded. Win the election on turn 5 to complete it.",
+    "recorded_vote": {
+      "proposal_kind": "constitutional_amendment",
+      "outcome": "passed_legislative",
+      "chambers": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 100,
+          "required_seats": 67,
+          "passed": true,
+          "blocs": []
+        }
+      ],
+      "blocs_recorded": false,
+      "budget": null,
+      "amendment_targets": [
+        {
+          "axis": "decree_authority",
+          "opening_value": "unlimited",
+          "proposed_value": "none"
+        },
+        {
+          "axis": "executive_selection",
+          "opening_value": "hereditary",
+          "proposed_value": "direct_election"
+        },
+        {
+          "axis": "executive_system",
+          "opening_value": "monarchical",
+          "proposed_value": "presidential"
+        },
+        {
+          "axis": "national_election_interval_turns",
+          "opening_value": "null",
+          "proposed_value": "4"
+        }
+      ]
+    },
+    "no_vote_reason": null
   },
   "previewPasses": {
     "estimate": true,
@@ -264,7 +303,39 @@
         "total_seats": 100,
         "supporting_seats": 53,
         "required_seats": 51,
-        "carries": true
+        "carries": true,
+        "blocs": [
+          {
+            "party_id": "citizens_bloc",
+            "bloc_id": "hardliners",
+            "seats": 30,
+            "supporting_seats": 6
+          },
+          {
+            "party_id": "citizens_bloc",
+            "bloc_id": "moderates",
+            "seats": 20,
+            "supporting_seats": 2
+          },
+          {
+            "party_id": "governing_party",
+            "bloc_id": "core",
+            "seats": 34,
+            "supporting_seats": 34
+          },
+          {
+            "party_id": "governing_party",
+            "bloc_id": "left",
+            "seats": 6,
+            "supporting_seats": 5
+          },
+          {
+            "party_id": "independents",
+            "bloc_id": "regional",
+            "seats": 10,
+            "supporting_seats": 6
+          }
+        ]
       }
     ],
     "would_pass": true,
@@ -303,7 +374,21 @@
         "total_seats": 100,
         "supporting_seats": 45,
         "required_seats": 67,
-        "carries": false
+        "carries": false,
+        "blocs": [
+          {
+            "party_id": "governing_party",
+            "bloc_id": "core",
+            "seats": 45,
+            "supporting_seats": 45
+          },
+          {
+            "party_id": "opposition_party",
+            "bloc_id": "main",
+            "seats": 55,
+            "supporting_seats": 0
+          }
+        ]
       }
     ],
     "would_pass": false,
@@ -464,7 +549,21 @@
         "total_seats": 100,
         "supporting_seats": 56,
         "required_seats": 67,
-        "carries": false
+        "carries": false,
+        "blocs": [
+          {
+            "party_id": "governing_party",
+            "bloc_id": "core",
+            "seats": 45,
+            "supporting_seats": 45
+          },
+          {
+            "party_id": "opposition_party",
+            "bloc_id": "main",
+            "seats": 55,
+            "supporting_seats": 11
+          }
+        ]
       }
     ],
     "would_pass": false,

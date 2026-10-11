@@ -408,12 +408,20 @@ export interface components {
             bloc_name: string;
             /** Chamber */
             chamber: string;
+            /** Government Relationship Bps */
+            government_relationship_bps: number;
+            /** Government Role */
+            government_role: string;
             /** Party Id */
             party_id: string;
             /** Party Name */
             party_name: string;
             /** Seats */
             seats: number;
+            /** Spending Preference Bps */
+            spending_preference_bps: number;
+            /** Tax Preference Bps */
+            tax_preference_bps: number;
         };
         /**
          * BudgetDecision
@@ -551,10 +559,29 @@ export interface components {
             display: string;
         };
         /**
+         * ChamberDetail
+         * @description (Gate 4A3 M-0) One chamber's size and the engine's own thresholds for it.
+         */
+        ChamberDetail: {
+            /** Amendment Required Seats */
+            amendment_required_seats: number;
+            /** Budget Required Seats */
+            budget_required_seats: number;
+            /** Chamber */
+            chamber: string;
+            /** Total Seats */
+            total_seats: number;
+        };
+        /**
          * ChamberPreview
          * @description One chamber's projected tally. Chambers are never pooled.
          */
         ChamberPreview: {
+            /**
+             * Blocs
+             * @default []
+             */
+            blocs: components["schemas"]["PreviewBlocSupport"][];
             /** Carries */
             carries: boolean;
             /** Chamber */
@@ -691,6 +718,11 @@ export interface components {
             cabinet_posts: components["schemas"]["CabinetPostOption"][];
             /** Campaign Id */
             campaign_id?: string | null;
+            /**
+             * Chamber Details
+             * @default []
+             */
+            chamber_details: components["schemas"]["ChamberDetail"][];
             /** Chambers */
             chambers: string[];
             /** Constitutional Axes */
@@ -706,6 +738,7 @@ export interface components {
              * @default []
              */
             foreign_assistance_counterparties: components["schemas"]["ForeignAssistanceCounterpartyOption"][];
+            last_recorded_vote?: components["schemas"]["LastRecordedVote"] | null;
             /**
              * Legislative Bargain Counterparties
              * @default []
@@ -971,6 +1004,15 @@ export interface components {
             party_id: string;
             /** Political Capital */
             political_capital: number;
+        };
+        /**
+         * LastRecordedVote
+         * @description The most recent turn that held a chamber vote.
+         */
+        LastRecordedVote: {
+            /** Turn */
+            turn: number;
+            vote: components["schemas"]["RecordedVote"];
         };
         /** LedgerEntry */
         LedgerEntry: {
@@ -1273,6 +1315,22 @@ export interface components {
             unavailable_reason?: ("route_constitutionally_unavailable" | "no_legislature" | "decree_cannot_amend_with_legislature" | "requires_companion_constitutional_change" | "outside_legal_bounds" | "no_baseline_to_scale" | "no_change_from_current" | "game_concluded") | null;
         };
         /**
+         * PreviewBlocSupport
+         * @description (Gate 4A3 M-0) One bloc's projected supporting seats in one chamber: the preview's own
+         *     apportionment row, the same `apportion_supporting_seats` resolution uses. The rows of a chamber
+         *     sum to its `supporting_seats` by construction.
+         */
+        PreviewBlocSupport: {
+            /** Bloc Id */
+            bloc_id: string;
+            /** Party Id */
+            party_id: string;
+            /** Seats */
+            seats: number;
+            /** Supporting Seats */
+            supporting_seats: number;
+        };
+        /**
          * PreviewProjection
          * @description A deterministic ESTIMATE, explicitly not an authoritative outcome.
          *
@@ -1427,6 +1485,98 @@ export interface components {
          * @enum {string}
          */
         ProposalRoute: "legislative" | "decree";
+        /**
+         * RecordedAmendmentTarget
+         * @description One axis the voted amendment proposed to change, from the stored report.
+         */
+        RecordedAmendmentTarget: {
+            /** Axis */
+            axis: string;
+            /** Opening Value */
+            opening_value: string;
+            /** Proposed Value */
+            proposed_value: string;
+        };
+        /**
+         * RecordedBlocVote
+         * @description One bloc's recorded support in one chamber (budgets only).
+         */
+        RecordedBlocVote: {
+            /** Bloc Display Name */
+            bloc_display_name: string;
+            /** Bloc Id */
+            bloc_id: string;
+            /** Party Id */
+            party_id: string;
+            /** Seats */
+            seats: number;
+            /** Supporting Seats */
+            supporting_seats: number;
+        };
+        /**
+         * RecordedBudgetChange
+         * @description What the voted budget proposed, from the stored report (directions and totals; the stored
+         *     report keeps no per-rate targets for a budget that failed).
+         */
+        RecordedBudgetChange: {
+            /** Opening Total Program Spending */
+            opening_total_program_spending: number;
+            /** Proposed Total Program Spending */
+            proposed_total_program_spending: number;
+            /** Spending Direction */
+            spending_direction: string;
+            /** Tax Delta Bps */
+            tax_delta_bps: number;
+            /** Tax Direction */
+            tax_direction: string;
+        };
+        /**
+         * RecordedChamberVote
+         * @description One chamber's recorded tally, exactly as stored.
+         */
+        RecordedChamberVote: {
+            /**
+             * Blocs
+             * @default []
+             */
+            blocs: components["schemas"]["RecordedBlocVote"][];
+            /** Chamber */
+            chamber: string;
+            /** Passed */
+            passed: boolean;
+            /** Required Seats */
+            required_seats: number;
+            /** Supporting Seats */
+            supporting_seats: number;
+            /** Total Seats */
+            total_seats: number;
+        };
+        /**
+         * RecordedVote
+         * @description A chamber vote that was actually held on one turn.
+         */
+        RecordedVote: {
+            /**
+             * Amendment Targets
+             * @default []
+             */
+            amendment_targets: components["schemas"]["RecordedAmendmentTarget"][];
+            /** Blocs Recorded */
+            blocs_recorded: boolean;
+            budget?: components["schemas"]["RecordedBudgetChange"] | null;
+            /** Chambers */
+            chambers: components["schemas"]["RecordedChamberVote"][];
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "passed_legislative" | "failed_legislative";
+            /**
+             * Proposal Kind
+             * @enum {string}
+             */
+            proposal_kind: "budget" | "constitutional_amendment";
+        };
         /** ResolveRequest */
         ResolveRequest: {
             /** Campaign Id */
@@ -1680,6 +1830,8 @@ export interface components {
              * @default []
              */
             ledger: components["schemas"]["LedgerEntry"][];
+            /** No Vote Reason */
+            no_vote_reason?: ("no_proposal" | "enacted_by_decree") | null;
             /** Objective Line */
             objective_line?: string | null;
             /** Outcome Headline */
@@ -1689,6 +1841,7 @@ export interface components {
              * @enum {string}
              */
             outcome_tone: "positive" | "negative" | "caution" | "neutral";
+            recorded_vote?: components["schemas"]["RecordedVote"] | null;
             /** Revision */
             revision: string;
             terminal?: components["schemas"]["TerminalSummary"] | null;
