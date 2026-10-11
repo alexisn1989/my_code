@@ -14,6 +14,7 @@
 import type { DashboardProjection } from "../api/client";
 import { metText } from "../format/format";
 import { Panel } from "./components";
+import { WIN_AND_LOSS_LINE } from "./screens/GlossaryScreen";
 import type { ScreenId } from "./types";
 
 export type Objective = DashboardProjection["objective"];
@@ -56,7 +57,13 @@ export function ConditionWords({ objective }: { objective: Objective }) {
 }
 
 /** The Dashboard card: persistent, separate from "Your current priority" (which stays the most
- * urgent problem), with one action -- "Review reforms" -- that opens the Constitution screen. */
+ * urgent problem), with one action -- "Review reforms" -- that opens the Constitution screen.
+ *
+ * Gate 4A3 M-1: compact, so the country can come forward. The headline and the win-and-loss stakes
+ * (stated once on the Dashboard, here, not repeated in the priority card) stay visible; the
+ * conditions, the transition line and the election note fold into "Conditions and transition".
+ * A concluded campaign shows its transition line openly, and the qualifying election keeps its
+ * Survival and Legitimacy risks in view. Every figure is still the server's. */
 export function ObjectiveCard({
   dashboard,
   navigate,
@@ -65,13 +72,46 @@ export function ObjectiveCard({
   navigate: (screen: ScreenId) => void;
 }) {
   const objective = dashboard.objective;
+  const concluded = objective.stage === "concluded";
   return (
     <Panel title="Your campaign objective">
-      <div data-testid="objective-card" data-stage={objective.stage} className="flex flex-col gap-3">
-        <ObjectiveSummary objective={objective} />
-        {objective.stage === "concluded" ? null : <ConditionWords objective={objective} />}
+      <div data-testid="objective-card" data-stage={objective.stage} className="flex flex-col gap-2">
+        <div data-testid="objective-summary" data-stage={objective.stage} className="flex flex-col gap-2">
+          <p data-testid="objective-headline" className="text-parchment-100">
+            {objective.headline}
+          </p>
+          {concluded ? (
+            <ul className="flex flex-col gap-0.5 text-sm text-parchment-200/80">
+              <li data-testid="objective-conditions-text">{objective.conditions_text}</li>
+              <li data-testid="objective-transition-text">{objective.transition_text}</li>
+            </ul>
+          ) : (
+            <>
+              <p data-testid="win-and-loss" className="text-xs text-parchment-200/80 sm:text-sm">
+                {WIN_AND_LOSS_LINE}
+              </p>
+              <details data-testid="objective-details" className="text-sm">
+                <summary className="cursor-pointer text-parchment-200/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500">
+                  Conditions and transition
+                </summary>
+                <div className="mt-2 flex flex-col gap-2">
+                  {objective.detail ? <p className="text-parchment-200/80">{objective.detail}</p> : null}
+                  <ul className="flex flex-col gap-0.5 text-parchment-200/80">
+                    <li data-testid="objective-conditions-text">{objective.conditions_text}</li>
+                    <li data-testid="objective-transition-text">{objective.transition_text}</li>
+                  </ul>
+                  {objective.election_note ? (
+                    <p data-testid="objective-election-note" className="text-parchment-200/70">
+                      {objective.election_note}
+                    </p>
+                  ) : null}
+                  <ConditionWords objective={objective} />
+                </div>
+              </details>
+            </>
+          )}
+        </div>
         {objective.stage === "qualifying_election" ? (
-          // The existing survival and legitimacy headlines, reused as they are: no new estimate.
           <ul data-testid="objective-risks" className="flex flex-col gap-0.5 text-sm">
             {[dashboard.concerns.survival, dashboard.concerns.legitimacy].map((concern) => (
               <li key={concern.label}>
@@ -80,7 +120,7 @@ export function ObjectiveCard({
             ))}
           </ul>
         ) : null}
-        {objective.stage === "concluded" ? null : (
+        {concluded ? null : (
           <div>
             <button
               type="button"

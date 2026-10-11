@@ -131,21 +131,30 @@ describe("U1: the stakes and the first action", () => {
     );
   });
 
-  it("puts the stakes and Build a decision inside the priority card", async () => {
+  // Gate 4A3 M-1: the stakes moved from the priority card into the objective card, so the Dashboard
+  // states them once; the first action stays in the priority card.
+  it("puts the stakes in the objective card and Build a decision in the priority card", async () => {
     const navigate = vi.fn();
     withCampaign(<DashboardScreen navigate={navigate} />);
     const heading = await screen.findByRole("heading", { name: "Your current priority" });
     const priority = heading.closest("section") as HTMLElement;
-    expect(within(priority).getByTestId("win-and-loss")).toHaveTextContent(WIN_AND_LOSS_LINE);
+    expect(within(priority).queryByTestId("win-and-loss")).toBeNull();
+    expect(within(screen.getByTestId("objective-card")).getByTestId("win-and-loss")).toHaveTextContent(
+      WIN_AND_LOSS_LINE,
+    );
+    expect(screen.getAllByTestId("win-and-loss")).toHaveLength(1);
     fireEvent.click(within(priority).getByRole("button", { name: "Build a decision" }));
     expect(navigate).toHaveBeenCalledWith("decisions");
     expect(screen.getAllByRole("button", { name: "Build a decision" })).toHaveLength(1);
   });
 
-  it("states the stakes in How to govern, and explains Capital with the Glossary's definition", async () => {
+  // Gate 4A3 M-1: the stakes are stated once, in the Dashboard's objective card (and the Glossary);
+  // the shortened How to govern note no longer repeats them.
+  it("keeps the stakes out of How to govern, and explains Capital with the Glossary's definition", async () => {
     renderApp();
     const aside = screen.getByRole("complementary", { name: "How to govern" });
-    expect(within(aside).getByTestId("win-and-loss")).toHaveTextContent(WIN_AND_LOSS_LINE);
+    expect(within(aside).queryByTestId("win-and-loss")).toBeNull();
+    expect(aside.textContent ?? "").not.toContain(WIN_AND_LOSS_LINE);
 
     fireEvent.click(screen.getByRole("button", { name: "Dashboard" }));
     const meter = await screen.findByTestId("capital-meter");

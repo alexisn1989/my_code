@@ -138,6 +138,16 @@ test.afterAll(() => {
 });
 
 /** Measure every visible `svg[data-icon]` on the current screen, tagging each with its PLACEMENT. */
+
+/** Gate 4A3 M-1: the Dashboard folds its summary cards into "National summaries". Open it, as a
+ * player would, so the measurement is about painted pixels (the same reason the legend is opened). */
+async function openDashboardSummaries(page: Page): Promise<void> {
+  const details = page.getByTestId("national-summaries");
+  if ((await details.count()) === 0) return;
+  if ((await details.getAttribute("open")) === null) await details.locator("summary").click();
+  await page.waitForTimeout(200);
+}
+
 async function measureIcons(page: Page, screen: string): Promise<Measurement[]> {
   return page.evaluate((screenName: string) => {
     const { normalise, ratio, effectiveBg, composite, isVisuallyHidden } = (
@@ -342,6 +352,7 @@ test.describe("Gate 4A3 Commit 4a — ten-icon coverage", () => {
           await page.waitForTimeout(200);
         }
       }
+      if (screen === "Dashboard") await openDashboardSummaries(page);
       const found = await measureIcons(page, screen);
       all.push(...found);
       coverage.push(`${screen}: ${found.length} icon(s)`);
@@ -476,6 +487,7 @@ test.describe("Gate 4A3 Commit 4a — ten-icon coverage", () => {
 
     for (const screen of ["Turn result", "Dashboard"]) {
       if (!(await visit(page, screen))) continue;
+      if (screen === "Dashboard") await openDashboardSummaries(page);
       const found = await measureIcons(page, `${screen} (turn 1)`);
       all.push(...found);
       coverage.push(`${screen} after the resolve: ${found.length} icon(s)`);

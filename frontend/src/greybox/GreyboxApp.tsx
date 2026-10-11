@@ -12,15 +12,22 @@
  * panel without navigating away.
  */
 
-import { useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { useDashboard } from "../api/queries";
+import { revealScrollLeft, scrollRoom, scrollStep } from "../format/countryMap";
 import { stagedCountText } from "../format/format";
 import { useDraftStore } from "../state/draft";
 import { stagedActions } from "../state/stagedActions";
 import { SessionProvider, useSession } from "../state/SessionContext";
-import { INITIAL_SCREEN, SCREENS, screenById, type ScreenDefinition } from "./registry";
-import { GlossaryScreen, WIN_AND_LOSS_LINE, glossaryDefinition } from "./screens/GlossaryScreen";
+import {
+  INITIAL_SCREEN,
+  SCREENS,
+  screenById,
+  type NavigateOptions,
+  type ScreenDefinition,
+} from "./registry";
+import { GlossaryScreen, glossaryDefinition } from "./screens/GlossaryScreen";
 import type { ScreenId } from "./types";
 
 function NationalHeader({ screenId }: { screenId: ScreenId }) {
@@ -66,26 +73,47 @@ function NationalHeader({ screenId }: { screenId: ScreenId }) {
           </span>
           <span className="ml-3 text-sm text-parchment-200/70">{data.government_form}</span>
         </div>
-        <div className="flex flex-wrap gap-4 text-sm tabular-nums">
-          <span>Turn {data.turn}</span>
-          <span>Election: {data.next_election_label}</span>
+        {/* Gate 4A3 M-1: the status bar. Turn, treasury, capital, legitimacy and the next election,
+            each with a small icon; the texts are the same server figures the header always showed. */}
+        <div data-testid="status-bar" className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm tabular-nums sm:flex sm:flex-wrap sm:gap-x-4">
+          <StatusItem icon="turn">
+            <span>Turn {data.turn}</span>
+          </StatusItem>
+          <StatusItem icon="treasury">
+            <span>
+              <span className="sr-only sm:not-sr-only">Treasury </span>
+              {data.concerns.money.headline}
+            </span>
+          </StatusItem>
           {/* Gate 4A3 UX-3 (U1): "Capital 500 / 1,000" meant nothing to a new player. The Glossary's
               own definition is the tooltip and the accessible description, quoted, not restated. */}
-          <span
-            data-testid="capital-meter"
-            title={glossaryDefinition("Political capital")}
-            aria-description={glossaryDefinition("Political capital")}
-          >
-            Capital {data.political_capital.display}
-          </span>
+          <StatusItem icon="capital">
+            <span
+              data-testid="capital-meter"
+              title={glossaryDefinition("Political capital")}
+              aria-description={glossaryDefinition("Political capital")}
+            >
+              Capital {data.political_capital.display}
+            </span>
+          </StatusItem>
+          <StatusItem icon="legitimacy">
+            <span>
+              <span className="sr-only sm:not-sr-only">Legitimacy </span>
+              {data.concerns.legitimacy.headline}
+            </span>
+          </StatusItem>
+          <StatusItem icon="election">
+            <span>Election: {data.next_election_label}</span>
+          </StatusItem>
         </div>
       </div>
-      {/* Gate 4A3 victory path: on the Dashboard below `lg` this one-line summary repeats the five
-          concern cards on the same screen, and its four wrapped rows pushed the campaign objective
-          below a phone's first screen. It is hidden there only; every other screen, and the
-          Dashboard at `lg` and wider, keep it. The text stays in the DOM. */}
+      {/* Gate 4A3 victory path: on the Dashboard this one-line summary repeats the five concern
+          cards on the same screen (and its wrapped rows pushed the campaign objective below a phone's
+          first screen). Gate 4A3 M-1: with the status bar now carrying treasury and legitimacy, it is
+          hidden on the Dashboard at every width; every other screen keeps it. The text stays in the
+          DOM. */}
       <ul
-        className={`mt-2 ${screenId === "dashboard" ? "hidden lg:flex" : "flex"} flex-wrap gap-4 text-xs text-parchment-200/80`}
+        className={`mt-2 ${screenId === "dashboard" ? "hidden" : "flex"} flex-wrap gap-4 text-xs text-parchment-200/80`}
       >
         {concerns.map((concern) => (
           <li key={concern.label}>
@@ -94,6 +122,28 @@ function NationalHeader({ screenId }: { screenId: ScreenId }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+type StatusIconId = "turn" | "treasury" | "capital" | "legitimacy" | "election";
+
+/** Gate 4A3 M-1: the status bar's small gold icons (original drawings; decorative). */
+const STATUS_ICON: Record<StatusIconId, string> = {
+  turn: "M5 2h10M5 18h10M6 2c0 5 8 5 8 8s-8 3-8 8M14 2c0 5-8 5-8 8",
+  treasury: "M3 6c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3zM3 6v8c0 1.7 3.1 3 7 3s7-1.3 7-3V6M3 10c0 1.7 3.1 3 7 3s7-1.3 7-3",
+  capital: "M10 3a7 7 0 1 0 0 14a7 7 0 1 0 0-14zM10 6l1.2 2.6 2.8.3-2.1 1.9.6 2.8L10 12.2 7.5 13.6l.6-2.8L6 8.9l2.8-.3z",
+  legitimacy: "M10 17c-4-2-6-6-6-11M10 17c4-2 6-6 6-11M5 8 3 7M4.6 11H2.5M6.5 14l-1.8 1M15 8l2-1M15.4 11h2.1M13.5 14l1.8 1",
+  election: "M3 8h14v9H3zM7 8V3h6v5M8 11h4",
+};
+
+function StatusItem({ icon, children }: { icon: StatusIconId; children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false" className="h-4 w-4 shrink-0">
+        <path d={STATUS_ICON[icon]} fill="none" stroke="var(--color-gold-500)" strokeWidth={1.4} strokeLinecap="round" />
+      </svg>
+      {children}
+    </span>
   );
 }
 
@@ -120,8 +170,75 @@ function navGroups(screens: readonly ScreenDefinition[]): NavGroup[] {
   return groups;
 }
 
+/** Gate 4A3 M-1: move focus to the main heading of the screen just opened. A screen may render a
+ * loading panel first, so this waits (briefly) for the heading to appear. */
+function focusMainHeading(main: HTMLElement | null): void {
+  if (main === null) return;
+  const tryFocus = (): boolean => {
+    const heading = main.querySelector<HTMLElement>("h2");
+    if (heading === null) return false;
+    if (!heading.hasAttribute("tabindex")) heading.setAttribute("tabindex", "-1");
+    heading.focus();
+    return true;
+  };
+  if (tryFocus()) return;
+  const observer = new MutationObserver(() => {
+    if (tryFocus()) observer.disconnect();
+  });
+  observer.observe(main, { childList: true, subtree: true });
+  window.setTimeout(() => observer.disconnect(), 5000);
+}
+
 function GreyboxShell() {
   const [screenId, setScreenId] = useState<ScreenId>(INITIAL_SCREEN);
+  const mainRef = useRef<HTMLElement | null>(null);
+  const focusPending = useRef(false);
+  const navigate = useCallback((id: ScreenId, options?: NavigateOptions) => {
+    focusPending.current = options?.focusHeading === true;
+    setScreenId(id);
+  }, []);
+  // Gate 4A3 M-1: the phone nav row's scroll affordances.
+  const navRowRef = useRef<HTMLUListElement | null>(null);
+  const [navRoom, setNavRoom] = useState({ left: false, right: false });
+  const updateNavRoom = useCallback(() => {
+    const row = navRowRef.current;
+    if (row === null) return;
+    const next = scrollRoom(row.scrollLeft, row.clientWidth, row.scrollWidth);
+    setNavRoom((prev) => (prev.left === next.left && prev.right === next.right ? prev : next));
+  }, []);
+  const scrollNav = useCallback((direction: "left" | "right") => {
+    const row = navRowRef.current;
+    if (row === null) return;
+    const step = scrollStep(row.clientWidth);
+    row.scrollBy({ left: direction === "left" ? -step : step, behavior: "smooth" });
+  }, []);
+  useEffect(() => {
+    const row = navRowRef.current;
+    if (row === null) return;
+    updateNavRoom();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateNavRoom);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, [updateNavRoom]);
+  useEffect(() => {
+    // Keep the current screen's button in view in the phone row. The row's own scrollLeft is set, not
+    // `scrollIntoView`: in Chromium that also moves the Tab starting point to the button, so the next
+    // Tab after loading skipped the header and the introduction (Commit 4's traversal test).
+    const row = navRowRef.current;
+    const current = row?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (row !== null && row !== undefined && current !== null && current !== undefined) {
+      const item = current.getBoundingClientRect();
+      row.scrollLeft = revealScrollLeft(row.scrollLeft, row.clientWidth, row.getBoundingClientRect().left, item.left, item.right);
+    }
+    updateNavRoom();
+  }, [screenId, updateNavRoom]);
+
+  useEffect(() => {
+    if (!focusPending.current) return;
+    focusPending.current = false;
+    focusMainHeading(mainRef.current);
+  }, [screenId]);
   const { revision } = useSession();
   const dismissedHelp = useDraftStore((state) => state.dismissedHelp);
   const dismissHelp = useDraftStore((state) => state.dismissHelp);
@@ -271,16 +388,12 @@ function GreyboxShell() {
             Review your country, prepare your actions, preview their consequences, resolve the turn,
             and read what happened.
           </p>
+          {/* Gate 4A3 M-1: shortened. The map now shows where each kind of work is done, and the
+              win-and-loss stakes are stated once, in the Dashboard's objective card (and in the
+              Glossary), not repeated here. */}
           <p className="mt-2">
-            Dashboard shows the country&apos;s condition and your campaign objective; Constitution
-            shows what must change to win, with links to the reforms that change it. Government,
-            Relationships and Strategic map are where you appoint people, deal with them, and move
-            formations. Decisions is
-            where you assemble the turn and resolve it, and Turn result and History are where you
-            read what your choices did.
-          </p>
-          <p data-testid="win-and-loss" className="mt-2">
-            {WIN_AND_LOSS_LINE}
+            On the Dashboard, each building in the capital opens the place where that work is done;
+            Decisions is where you assemble the turn and resolve it.
           </p>
           <button
             type="button"
@@ -294,10 +407,34 @@ function GreyboxShell() {
 
       <div className="flex flex-col gap-6 px-6 py-6 lg:flex-row">
         <nav aria-label="Screens" className="lg:w-56 lg:shrink-0">
-          {/* Gate 4A3 UX-4c (U12): below `lg` the nav is ONE horizontally scrollable row instead of
-              six wrapped rows, so the screen's content starts high on a phone. Every button stays
-              rendered, visible and reachable by Tab, which the browser specs rely on to navigate. */}
-          <ul className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+          {/* Gate 4A3 UX-4c (U12): on a phone the nav is ONE horizontally scrollable row instead of
+              six wrapped rows, so the screen's content starts high. Every button stays rendered,
+              visible and reachable by Tab, which the browser specs rely on to navigate.
+              Gate 4A3 M-1: players should not have to guess that more destinations exist. From `md`
+              the buttons wrap, so all of them show; below `md` arrow buttons beside the row show whenever
+              there is more to scroll to. (No fade is drawn over the row: it would sit on button text.) The arrows are a pointer aid only (hidden
+              from assistive technology and out of the Tab order): keyboard users already reach every
+              button by Tab, which scrolls it into view. */}
+          <div className="flex items-center gap-1 md:block">
+            {navRoom.left ? (
+              <button
+                type="button"
+                aria-hidden="true"
+                tabIndex={-1}
+                data-nav-scroll="left"
+                onClick={() => scrollNav("left")}
+                className="grid h-11 w-11 shrink-0 place-items-center rounded border border-gold-600 bg-navy-900 text-lg text-parchment-100 md:hidden"
+              >
+                ‹
+              </button>
+            ) : null}
+            <div className="relative min-w-0 flex-1">
+          <ul
+            ref={navRowRef}
+            onScroll={updateNavRoom}
+            data-testid="nav-row"
+            className="flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible lg:flex-col lg:pb-0"
+          >
             {/* Gate 4A3 UX-3 (U10): Economy, Legislature and Constitution have no full screen in this
                 version; each shows the Dashboard's summary card for its topic. A visible
                 "Summaries" caption says so before the player clicks. The registry's order is
@@ -320,10 +457,24 @@ function GreyboxShell() {
               ),
             )}
           </ul>
+            </div>
+            {navRoom.right ? (
+              <button
+                type="button"
+                aria-hidden="true"
+                tabIndex={-1}
+                data-nav-scroll="right"
+                onClick={() => scrollNav("right")}
+                className="grid h-11 w-11 shrink-0 place-items-center rounded border border-gold-600 bg-navy-900 text-lg text-parchment-100 md:hidden"
+              >
+                ›
+              </button>
+            ) : null}
+          </div>
         </nav>
 
-        <main className="min-w-0 flex-1">
-          <ScreenComponent navigate={setScreenId} />
+        <main ref={mainRef} className="min-w-0 flex-1">
+          <ScreenComponent navigate={navigate} />
         </main>
       </div>
     </div>

@@ -53,8 +53,14 @@ import { TitleScreen } from "./screens/TitleScreen";
 import { UnavailableScreen } from "./screens/UnavailableScreen";
 import type { ScreenId } from "./types";
 
+/** Gate 4A3 M-1: a navigation may ask the shell to move focus to the destination's heading, which
+ * the country map's places do, so a keyboard or screen-reader user lands on what they opened. */
+export interface NavigateOptions {
+  focusHeading?: boolean;
+}
+
 export interface ScreenProps {
-  navigate: (screen: ScreenId) => void;
+  navigate: (screen: ScreenId, options?: NavigateOptions) => void;
 }
 
 export interface ScreenDefinition {

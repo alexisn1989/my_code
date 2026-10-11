@@ -170,6 +170,8 @@ test("internal dry run: five turns through the interface of the installed build"
 
   // A Details link lands on its own card.
   await visit(page, "Dashboard");
+  // Gate 4A3 M-1: the summary cards are folded into "National summaries" on the Dashboard.
+  await page.getByTestId("national-summaries").locator("summary").click();
   await page.getByRole("button", { name: "Details: Money" }).click();
   await expect(page.getByTestId("concern-summaries").getByRole("heading", { name: "Money", exact: true })).toBeVisible();
   await page.screenshot({ path: path.join(shots, "07-economy-summary.png") });

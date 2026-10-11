@@ -121,6 +121,16 @@ async function visit(page: Page, name: string): Promise<void> {
   await expect(entry).toHaveAttribute("aria-current", "page");
 }
 
+/** Gate 4A3 M-1: on the Dashboard the five summary cards are folded into "National summaries".
+ * Open it (once) before reading or following a card. */
+async function openNationalSummaries(page: Page): Promise<void> {
+  const details = page.getByTestId("national-summaries");
+  if ((await details.getAttribute("open")) === null) {
+    await details.locator("summary").click();
+  }
+  await expect(details).toHaveAttribute("open", "");
+}
+
 async function selectCard(page: Page, title: string): Promise<void> {
   await page.getByRole("group", { name: title }).getByRole("button", { name: "Select" }).click();
 }
@@ -412,7 +422,8 @@ for (const viewport of VIEWPORTS) {
     // ---- U1: the stakes and the first action, where a new player first looks ----
     await visit(page, "Dashboard");
     const priority = page.getByRole("heading", { name: "Your current priority" }).locator("xpath=ancestor::section[1]");
-    const winLine = priority.getByTestId("win-and-loss");
+    // Gate 4A3 M-1: the stakes are stated once, in the objective card; Build a decision stays here.
+    const winLine = page.getByTestId("objective-card").getByTestId("win-and-loss");
     await expect(winLine).toContainText(WIN_LINE_START);
     const build = priority.getByRole("button", { name: "Build a decision" });
     await expect(build).toBeVisible();
@@ -431,7 +442,9 @@ for (const viewport of VIEWPORTS) {
       await expect(note, "the note starts closed on a narrow first load").toHaveCount(0);
       await page.getByRole("button", { name: "How to govern" }).click();
     }
-    await expect(note.getByTestId("win-and-loss")).toContainText(WIN_LINE_START);
+    // Gate 4A3 M-1: the shortened note no longer repeats the stakes; the objective card states them.
+    await expect(note.getByTestId("win-and-loss")).toHaveCount(0);
+    await expect(page.getByTestId("objective-card").getByTestId("win-and-loss")).toContainText(WIN_LINE_START);
     const meter = page.getByTestId("capital-meter");
     await expect(meter).toHaveAttribute("title", CAPITAL_DEFINITION);
     await expect(meter).toHaveAttribute("aria-description", CAPITAL_DEFINITION);
@@ -475,6 +488,7 @@ for (const viewport of VIEWPORTS) {
     const landed: Record<string, string> = {};
     for (const concern of Object.values(dashboard.concerns)) {
       await visit(page, "Dashboard");
+      await openNationalSummaries(page);
       await page.getByRole("button", { name: `Details: ${concern.label}` }).click();
       const summaries = page.getByTestId("concern-summaries");
       await expect(summaries.getByRole("heading", { name: concern.label, exact: true })).toBeVisible();
@@ -577,6 +591,7 @@ for (const viewport of VIEWPORTS) {
     const money = opening.concerns.money!;
     expect(money.headline, "the Money headline is grouped denars").toMatch(/^\d{1,3}(,\d{3})+\.\d{2}$/);
     await visit(page, "Dashboard");
+    await openNationalSummaries(page);
     const card = page.getByTestId("concern-cards").getByRole("heading", { name: "Money", exact: true })
       .locator("xpath=ancestor::section[1]");
     await expect(card).toContainText(money.headline);
@@ -610,6 +625,7 @@ for (const viewport of VIEWPORTS) {
     expect(delta, "after a turn the Money card states the balance").toBeTruthy();
     expect(delta!).toMatch(/^[+-]\d{1,3}(,\d{3})*\.\d{2}$/);
     await visit(page, "Dashboard");
+    await openNationalSummaries(page);
     await expect(card).toContainText(delta!);
 
     results.push({
@@ -738,7 +754,8 @@ for (const viewport of VIEWPORTS) {
         .getByRole("heading", { name: "Your current priority" })
         .locator("xpath=ancestor::section[1]");
       const goal = priority.getByText(dashboard.goal.headline, { exact: true });
-      const stakes = priority.getByTestId("win-and-loss");
+      // Gate 4A3 M-1: the stakes moved into the objective card (stated once on the Dashboard).
+      const stakes = page.getByTestId("objective-card").getByTestId("win-and-loss");
       const build = priority.getByRole("button", { name: "Build a decision" });
       const boxes = {
         goal: await inFirstScreen(goal),

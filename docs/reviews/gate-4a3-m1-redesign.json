@@ -1,0 +1,203 @@
+{
+  "gate": "4A3 map-led redesign",
+  "out": "gate-4a3-m1-redesign",
+  "results": [
+    {
+      "block": "m1",
+      "width": 1440,
+      "layout": "wide",
+      "css": [
+        200
+      ],
+      "tracks": 4,
+      "minPinGapPx": 57.7,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 960,
+      "layout": "wide",
+      "css": [
+        200
+      ],
+      "tracks": 2,
+      "minPinGapPx": 24.4,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 820,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 2,
+      "minPinGapPx": 92.8,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 720,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 2,
+      "minPinGapPx": 71,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 390,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 1,
+      "minPinGapPx": 16.4,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 320,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 1,
+      "minPinGapPx": 2.6,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    }
+  ]
+}
