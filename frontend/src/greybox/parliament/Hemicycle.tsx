@@ -34,7 +34,7 @@ export interface HemicycleBloc {
   /** The short name shown on the arc (the bloc name without its party). */
   shortName: string;
   seats: number;
-  /** Supporting seats in `current` mode; ignored in `seats` mode. */
+  /** Supporting seats in `current` and `recorded` mode; ignored in `seats` mode. */
   supporting: number;
 }
 
@@ -65,18 +65,24 @@ export function Hemicycle({
   colours,
   mode,
   label,
+  arcLabels = true,
 }: {
   chamber: string;
   blocs: readonly HemicycleBloc[];
   colours: Readonly<Record<string, string>>;
-  mode: "current" | "seats";
+  /** `current`: filled = supporting if resolved now. `recorded` (Gate 4A3 M-4): filled = the
+   * supporting seats a past vote RECORDED -- drawn the same way, named differently so a reader of
+   * the DOM can never mistake one for the other. `seats`: every seat in its party colour. */
+  mode: "current" | "recorded" | "seats";
   /** The accessible description, in words. */
   label: string;
+  /** The result card's small diagrams leave naming to the bloc table, as the mockup does. */
+  arcLabels?: boolean;
 }) {
   const [ref, drawnWidth] = useDrawnWidth();
   const total = sumSeats(blocs);
   const layout = hemicycleLayout(total);
-  const showLabels = drawnWidth !== null && drawnWidth >= LABELS_FROM_PX;
+  const showLabels = arcLabels && drawnWidth !== null && drawnWidth >= LABELS_FROM_PX;
   const view = showLabels ? VIEW_WITH_LABELS : VIEW_PLAIN;
   const tooSmall = drawnWidth !== null && seatsTooSmall(layout, drawnWidth, view.width);
   const starts = blocStarts(blocs.map((b) => b.seats));

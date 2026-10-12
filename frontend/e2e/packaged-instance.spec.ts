@@ -156,7 +156,10 @@ test("one turn against the installed archive, same-origin, within the feedback b
   );
   expect((await resolved).status(), "the turn must resolve").toBe(200);
   await expect(page.getByTestId("turn-result-view")).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole("heading", { name: "Why this happened" })).toBeVisible();
+  // Gate 4A3 M-4 (forward-only): the result's sections are the proposal card, people and
+  // reactions, and "What else happened" (formerly one "Why this happened" list).
+  await expect(page.getByTestId("proposal-card")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "What else happened" })).toBeVisible();
 
   const offOrigin = requests.filter((url) => !url.startsWith(`${BASE}/`));
   const feedback = { navigationMs: navMs, previewMs, confirmMs };

@@ -73,15 +73,25 @@ describe.each(["live", "history"] as const)("a decree turn's result (%s)", (cont
 
   it("puts the outcome first, and names the bloc", async () => {
     const view = await renderIn(context);
-    const visible = within(view).getByTestId("drivers-consequential").querySelectorAll(":scope > li");
-    expect(Array.from(visible).map((li) => li.textContent)).toEqual([
+    // Gate 4A3 M-4 (forward-only): the same six lines, in the same order, now placed by section --
+    // the outcome in the proposal card (first on the page), the rest in "What else happened", and
+    // the bloc's move with its decree reaction under "How the blocs took it".
+    const lines = (testId: string) =>
+      Array.from(within(view).getByTestId(testId).querySelectorAll(":scope > li")).map((li) => li.textContent);
+    expect(lines("result-card-drivers")).toEqual([
       "Personal income tax: 20.00% → 25.00%.",
       "Enacted by decree — no vote was held.",
+    ]);
+    expect(lines("drivers-consequential")).toEqual([
       "The Construction sector produced nothing this turn.",
       "Legitimacy: 60.00% → 61.00% (+1.00 points).",
-      "Crown Party Core resented being bypassed by decree (-3.00 points).",
-      "Crown Party Core: relationship 60.00% → 57.00% (-3.00 points).",
     ]);
+    const blocRow = within(view).getByTestId("result-bloc");
+    expect(blocRow).toHaveTextContent("Crown Party Core · relationship 60.00% → 57.00%");
+    expect(blocRow).toHaveTextContent("▼ cooler -3.00 points");
+    expect(blocRow).toHaveTextContent("Crown Party Core resented being bypassed by decree (-3.00 points).");
+    const order = Array.from(view.querySelectorAll("[data-reason-id]")).map((n) => n.getAttribute("data-reason-id"));
+    expect(order.indexOf("legislative_vote_resolved")).toBeLessThan(order.indexOf("legitimacy_resolved"));
     expect(within(view).getByTestId("drivers-routine")).toHaveTextContent(
       "Capital committed this turn: 250 (250 to the vote or decree, 0 to relationships).",
     );

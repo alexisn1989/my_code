@@ -2205,6 +2205,43 @@ def _with_bloc_display_name(
     return params if name is None else {**params, "bloc_display_name": name}
 
 
+# Gate 4A3 M-4: the character-id params a report entry may carry, and the portrait key each gains.
+_PORTRAIT_KEYS: tuple[tuple[str, str], ...] = (
+    ("character_id", "character_portrait_ref"),
+    ("outgoing_character_id", "outgoing_character_portrait_ref"),
+    ("counterpart_character_id", "counterpart_portrait_ref"),
+)
+
+
+def _portrait_refs(state: GameState) -> dict[str, str]:
+    """Character id -> authored `portrait_ref`, read ONLY from `state` -- the state the recorded turn
+    produced. Never today's state, and no fallback: History must depict a turn as it was."""
+    return {
+        character_id: character.portrait_ref
+        for character_id, character in state.world.characters.items()
+    }
+
+
+def _with_portrait_refs(
+    params: dict[str, str | int], portraits: dict[str, str]
+) -> dict[str, str | int]:
+    """Gate 4A3 M-4: the people entries (bargain, cabinet, assistance, promises) store a character
+    id and display name but no likeness. The result adds `*_portrait_ref` from the same `state` the
+    result is built from, exactly as `_with_bloc_display_name` adds a bloc name: presentation only,
+    the stored report untouched, `params` keeping its shape, and live and History alike because
+    both call this one builder. A character absent from that state gets no key -- the name stands
+    alone rather than borrowing a face from another time."""
+    added: dict[str, str | int] = {}
+    for id_key, ref_key in _PORTRAIT_KEYS:
+        character_id = params.get(id_key)
+        if not isinstance(character_id, str) or ref_key in params:
+            continue
+        ref = portraits.get(character_id)
+        if ref is not None:
+            added[ref_key] = ref
+    return params if not added else {**params, **added}
+
+
 def build_turn_result(
     state: GameState, report: TurnReport, *, opening_state: GameState | None = None
 ) -> TurnResultProjection:
@@ -2220,12 +2257,15 @@ def build_turn_result(
     """
     politics = _politics(state)
     bloc_names = _bloc_display_names(politics)
+    portraits = _portrait_refs(state)
     drivers = tuple(
         DriverItem(
             category=entry.category,
             reason_id=entry.reason_id,
             label=label_for(entry.reason_id),
-            params=_with_bloc_display_name(entry.params, bloc_names),
+            params=_with_portrait_refs(
+                _with_bloc_display_name(entry.params, bloc_names), portraits
+            ),
         )
         for entry in report.entries
     )

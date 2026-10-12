@@ -78,7 +78,9 @@ describe("TurnResultView drivers", () => {
     );
     errors.mockRestore();
     expect(duplicateKeyWarnings).toEqual([]);
-    const list = screen.getByRole("heading", { name: "Why this happened" }).closest("section");
+    // Gate 4A3 M-4 (forward-only): "Why this happened" became "What else happened" for drivers that
+    // are not the proposal, a person or a named bloc -- these two carry no bloc ids, so they land here.
+    const list = screen.getByRole("heading", { name: "What else happened" }).closest("section");
     expect(list?.querySelectorAll("li")).toHaveLength(2);
   });
 });

@@ -36,6 +36,16 @@
  *   - replacement, on a LABELLED ALTERED decision-options response (a second willing leader), never
  *     previewed or resolved;
  *   - parity: the server refuses a decree-route bargain, and the panel gives the decree reason.
+ *
+ * @m4 -- the result restructure (and, per Revision 2a, the proposal card and reactions in journeys A
+ * and B above):
+ *   - at every width, on Arken's bargain turn: the proposal card's recorded tallies equal the resolve
+ *     response, rows sum, filled seats equal the recorded support, no overflow or clipped node, 44 px
+ *     controls, axe clean on main, every bloc reaction grouped, a screenshot;
+ *   - one palette per vote: each party's colour in the result equals its colour on Parliament;
+ *   - History after a LATER turn: the card, the people and the portrait equal what live showed;
+ *   - Valdrun: a decree turn ("Enacted by decree", no tallies) and a no-proposal turn;
+ *   - keyboard: Trace to a line in the card and to a reaction under a bloc.
  */
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -765,6 +775,122 @@ async function resolveFromDecisions(page: Page, how: "click" | "tap") {
   return body;
 }
 
+// ---- @m4 helpers: the restructured result ----------------------------------------------------------
+
+type ResultBody = {
+  turnResult: {
+    turn: number;
+    outcome_headline: string;
+    no_vote_reason?: string | null;
+    recorded_vote?: {
+      outcome: string;
+      proposal_kind: string;
+      blocs_recorded: boolean;
+      chambers: {
+        chamber: string;
+        supporting_seats: number;
+        required_seats: number;
+        total_seats: number;
+        passed: boolean;
+        blocs?: { party_id: string; supporting_seats: number }[];
+      }[];
+    } | null;
+    drivers: { reason_id: string; params: Record<string, string | number> }[];
+  };
+};
+
+const VERDICT_WORD: Record<string, string> = {
+  passed_legislative: "Enacted",
+  failed_legislative: "Did not carry",
+  enacted_by_decree: "Enacted by decree",
+  no_proposal: "No proposal",
+};
+
+/** The proposal card and the reactions agree with the resolve response, and nothing is ungrouped. */
+async function checkResultCard(page: Page, body: ResultBody) {
+  const result = body.turnResult;
+  const view = page.getByTestId("turn-result-view");
+  const card = view.getByTestId("proposal-card");
+  await expect(view).toHaveAttribute("data-unmatched-components", "0");
+  const word = VERDICT_WORD[result.recorded_vote?.outcome ?? result.no_vote_reason ?? ""]!;
+  await expect(card.getByTestId("result-verdict")).toHaveText(word);
+  const vote = result.recorded_vote ?? null;
+  if (vote === null) {
+    await expect(card.getByTestId("result-chamber")).toHaveCount(0);
+    await expect(card.locator('[data-testid="hemicycle"], [data-testid="hemicycle-bars"]')).toHaveCount(0);
+    return;
+  }
+  const chambers = card.getByTestId("result-chamber");
+  await expect(chambers).toHaveCount(vote.chambers.length);
+  for (const [i, c] of vote.chambers.entries()) {
+    const node = chambers.nth(i);
+    await expect(node.getByTestId("result-chamber-line")).toContainText(
+      `${c.supporting_seats} supporting; ${c.required_seats} required — ${c.passed ? "carried" : "did not carry"}`,
+    );
+    if (vote.blocs_recorded) {
+      const rows = c.blocs ?? [];
+      expect(rows.reduce((n, r) => n + r.supporting_seats, 0), `${c.chamber}: rows sum`).toBe(c.supporting_seats);
+      const svg = node.getByTestId("hemicycle");
+      await expect(svg).toHaveAttribute("data-mode", "recorded");
+      await expect(svg.locator('[data-seat][data-filled="true"]')).toHaveCount(c.supporting_seats);
+    } else {
+      await expect(node.locator('[data-testid="hemicycle"], [data-testid="hemicycle-bars"]')).toHaveCount(0);
+    }
+  }
+  if (!vote.blocs_recorded) {
+    await expect(card.getByTestId("amendment-blocs-note")).toHaveText("Per-bloc votes are not recorded for amendments.");
+    await expect(card.getByTestId("result-bloc-votes")).toHaveCount(0);
+  }
+}
+
+/** What a reader sees of the card and the reactions -- compared live against History. */
+async function resultReading(page: Page) {
+  return page.getByTestId("turn-result-view").evaluate((root) => {
+    const text = (sel: string) =>
+      Array.from(root.querySelectorAll<HTMLElement>(sel))
+        .map((n) => n.innerText)
+        .join("\n")
+        .replace(/\s*Reviewing a past turn\. Rendered by the same component as the live result\./, "")
+        .trimEnd();
+    return {
+      card: text('[data-testid="proposal-card"]'),
+      people: text('[data-testid="result-person"]'),
+      blocs: text('[data-testid="result-bloc"]'),
+      portraits: Array.from(root.querySelectorAll("[data-portrait-ref]")).map((n) => n.getAttribute("data-portrait-ref")),
+      filled: Array.from(root.querySelectorAll('[data-seat][data-filled="true"]')).map((n) => n.getAttribute("data-party")),
+    };
+  });
+}
+
+async function openHistoryTurn(page: Page, turn: number, how: "click" | "tap") {
+  await visitScreen(page, "History", how);
+  const button = page.getByRole("button", { name: new RegExp(`^Turn ${turn} — `) });
+  if (how === "tap") await button.tap();
+  else await button.click();
+  await expect(page.getByTestId("turn-result-view")).toHaveAttribute("data-context", "history");
+}
+
+/** Plan the next turn from the result and resolve it with nothing staged. */
+async function resolveEmptyTurn(page: Page, how: "click" | "tap") {
+  const plan = page.getByRole("button", { name: /^Plan turn \d+$/ });
+  if (how === "tap") await plan.tap();
+  else await plan.click();
+  return resolveFromDecisions(page, how);
+}
+
+/** party id -> the fill its seats are drawn in, read from every seat matching `selector`. */
+async function seatColours(page: Page, selector: string) {
+  return page.evaluate((sel) => {
+    const out: Record<string, string[]> = {};
+    for (const seat of Array.from(document.querySelectorAll(sel))) {
+      const party = seat.getAttribute("data-party") ?? "";
+      const fill = getComputedStyle(seat).fill;
+      (out[party] ??= []).includes(fill) || out[party]!.push(fill);
+    }
+    return out;
+  }, selector);
+}
+
 for (const viewport of WIDTHS) {
   test(`@m3 the bloc panel -- ${viewport.width}px`, async ({ browser }) => {
     test.setTimeout(300_000);
@@ -845,7 +971,22 @@ for (const viewport of [WIDTHS[0], WIDTHS[4]]) {
       expect(shown.mode).toBe("current");
       expect(shown.rowSum).toBe(chamber.supporting_seats);
     }
-    await resolveFromDecisions(page, how);
+    const resolved = (await resolveFromDecisions(page, how)) as ResultBody;
+    // Gate 4A3 M-4 (Revision 2a): the proposal card and the reactions.
+    await checkResultCard(page, resolved);
+    const bargain = resolved.turnResult.drivers.find((d) => d.reason_id === "legislative_bargain_accepted")!;
+    const leader = page.locator('[data-testid="result-person"][data-reason-id="legislative_bargain_accepted"]');
+    await expect(leader).toContainText("Maret Kuusk");
+    await expect(leader).toContainText("backed the budget, for 105 political capital.");
+    await expect(leader.locator("[data-portrait-ref]")).toHaveAttribute("data-portrait-ref", String(bargain.params["character_portrait_ref"]));
+    const blocRows = page.getByTestId("result-bloc-move");
+    expect(await blocRows.count()).toBeGreaterThan(0);
+    for (const move of await blocRows.allInnerTexts()) expect(move).toMatch(/^(▲ closer \+|▼ cooler -|• no change)/);
+    const live = await resultReading(page);
+    // History, after a LATER turn: the bargain turn reads exactly as it did live.
+    await resolveEmptyTurn(page, how);
+    await openHistoryTurn(page, resolved.turnResult.turn, how);
+    expect(await resultReading(page), "History equals live, after a later turn").toEqual(live);
     const after = await (await apiGet(page, `${base}/api/game/decision-options`)).json();
     const last = after.last_recorded_vote as {
       turn: number;
@@ -888,7 +1029,13 @@ for (const viewport of [WIDTHS[0], WIDTHS[4]]) {
     const preview = await (await pending).json();
     expect(preview.affordable, "the drafted reform with 300 influence is affordable").toBe(true);
     await expect(page.getByTestId("draft-status")).toHaveText("Preview is current for this draft");
-    await resolveFromDecisions(page, how);
+    const resolved = (await resolveFromDecisions(page, how)) as ResultBody;
+    // Gate 4A3 M-4 (Revision 2a): the amendment's card -- totals and the note, nothing invented.
+    expect(resolved.turnResult.recorded_vote?.proposal_kind).toBe("constitutional_amendment");
+    await checkResultCard(page, resolved);
+    const live = await resultReading(page);
+    await openHistoryTurn(page, resolved.turnResult.turn, how);
+    expect(await resultReading(page), "History equals live").toEqual(live);
     const after = await (await apiGet(page, `${base}/api/game/decision-options`)).json();
     const last = after.last_recorded_vote as { turn: number; vote: { proposal_kind: string; blocs_recorded: boolean } };
     expect(last.vote.proposal_kind).toBe("constitutional_amendment");
@@ -1017,5 +1164,124 @@ test("@m3 parity: the server refuses a bargain on the decree route, and the pane
   const panelLocator = await openBlocPanel(page, "lower", "opposition_party/main");
   await expect(panelLocator.getByTestId("influence-blocked-reason")).toContainText("being decreed");
   results.push({ block: "m3-parity", status: refused.status() });
+  await page.context().close();
+});
+
+// ---- @m4: the result restructure ---------------------------------------------------------------
+
+for (const viewport of WIDTHS) {
+  test(`@m4 the turn result -- ${viewport.width}px`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newPage(browser, viewport.width, viewport.height);
+    await ensureServer(page);
+    const how = viewport.width < 1024 ? "tap" : "click";
+    await startScenario(page, "Start Republic of Arken");
+    await visitScreen(page, "Decisions", how);
+    await selectPolicyCard(page, "Lower the personal income tax", how);
+    await openParliament(page, how);
+    // Parliament's colour for every party, before the vote.
+    const parliamentColours = await seatColours(page, '[data-testid="chamber-card"] [data-seat]');
+    const panelLocator = await openBlocPanel(page, "lower", "rural_alliance/farmers", how);
+    const stage = panelLocator.getByRole("button", { name: "Stage this bargain · 105" });
+    if (how === "tap") await stage.tap();
+    else await stage.click();
+    const body = (await resolveFromDecisions(page, how)) as ResultBody;
+    await checkResultCard(page, body);
+    expect(body.turnResult.recorded_vote?.chambers.length, "two chambers voted").toBe(2);
+
+    // One palette per vote, equal to Parliament's.
+    const resultColours = await seatColours(page, '[data-testid="proposal-card"] [data-seat][data-filled="true"]');
+    expect(Object.keys(resultColours).length).toBeGreaterThan(1);
+    for (const [party, fills] of Object.entries(resultColours)) {
+      expect(fills, `${party}: one colour across both chambers`).toHaveLength(1);
+      expect(fills, `${party}: the same colour as on Parliament`).toEqual(parliamentColours[party]);
+    }
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+      "no page overflow on the result",
+    ).toBe(true);
+    expect(await clippedNodes(page), "no clipped node on the result").toEqual([]);
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="turn-result-view"] button, [data-testid="turn-result-view"] summary')]
+        .map((e) => ({ name: e.textContent?.trim() ?? "", r: e.getBoundingClientRect() }))
+        .filter(({ r }) => r.height < 44)
+        .map(({ name, r }) => `${name} ${Math.round(r.width)}x${Math.round(r.height)}`),
+    );
+    expect(small, "result controls at least 44 px tall").toEqual([]);
+    const axe = await new AxeBuilder({ page }).include("main").analyze();
+    expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
+    await page.screenshot({
+      path: path.join(REVIEW_DIR, `${OUT_NAME}-shots`, `result-${viewport.width}.png`),
+      fullPage: true,
+    });
+    results.push({
+      block: "m4",
+      width: viewport.width,
+      verdict: body.turnResult.recorded_vote?.outcome,
+      chambers: body.turnResult.recorded_vote?.chambers.map((c) => [c.chamber, c.supporting_seats, c.required_seats]),
+      colours: resultColours,
+    });
+    await page.context().close();
+  });
+}
+
+test("@m4 Valdrun: a decree turn and a turn with no proposal", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const page = await newPage(browser, 1440, 900);
+  await ensureServer(page);
+  await startScenario(page, "Start Kingdom of Valdrun");
+  await visitScreen(page, "Decisions");
+  await selectPolicyCard(page, "Raise the personal income tax");
+  await page.getByRole("radiogroup", { name: "Route" }).getByRole("radio", { name: /^Decree/ }).click();
+  const decree = (await resolveFromDecisions(page, "click")) as ResultBody;
+  expect(decree.turnResult.no_vote_reason).toBe("enacted_by_decree");
+  await checkResultCard(page, decree);
+  await expect(page.getByTestId("proposal-card")).toContainText("Enacted by decree — no vote was held.");
+  await expect(page.getByTestId("result-bloc").first()).toBeVisible();
+
+  const empty = await resolveEmptyTurn(page, "click") as ResultBody;
+  expect(empty.turnResult.no_vote_reason).toBe("no_proposal");
+  await checkResultCard(page, empty);
+  await expect(page.getByTestId("result-proposal")).toHaveText("Your proposal: No proposal was put to a vote this turn.");
+  results.push({ block: "m4-valdrun", decree: decree.turnResult.no_vote_reason, empty: empty.turnResult.no_vote_reason });
+  await page.context().close();
+});
+
+test("@m4 keyboard: the Trace reaches a line in the card and a reaction under a bloc", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const page = await newPage(browser, 1440, 900);
+  await ensureServer(page);
+  await startScenario(page, "Start Kingdom of Valdrun");
+  await visitScreen(page, "Decisions");
+  await selectPolicyCard(page, "Raise the personal income tax");
+  await page.getByRole("radiogroup", { name: "Route" }).getByRole("radio", { name: /^Decree/ }).click();
+  await resolveFromDecisions(page, "click");
+  const view = page.getByTestId("turn-result-view");
+  const toggle = view.getByRole("button", { name: "Show exact values" });
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  const reached: Record<string, string> = {};
+  for (const reason of ["legislative_vote_resolved", "decree_bypass_relationship_reaction"]) {
+    await view.getByRole("button", { name: "Hide exact values" }).focus();
+    let found = false;
+    for (let i = 0; i < 80 && !found; i += 1) {
+      await page.keyboard.press("Tab");
+      found = await page.evaluate(
+        (id) => document.activeElement?.tagName === "A" && document.activeElement.textContent === id,
+        reason,
+      );
+    }
+    expect(found, `Tab reaches the Trace link for ${reason}`).toBe(true);
+    await page.keyboard.press("Enter");
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("data-reason-id"))).toBe(reason);
+    const where = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement;
+      return el.closest('[data-testid="proposal-card"]') ? "card" : el.closest('[data-testid="result-bloc"]') ? "bloc" : "elsewhere";
+    });
+    reached[reason] = where;
+  }
+  expect(reached).toEqual({ legislative_vote_resolved: "card", decree_bypass_relationship_reaction: "bloc" });
+  results.push({ block: "m4-keyboard", reached });
   await page.context().close();
 });

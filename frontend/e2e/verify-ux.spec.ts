@@ -236,10 +236,18 @@ for (const viewport of VIEWPORTS) {
   });
 }
 
+/** Every visible driver line of the turn result, in page order. Gate 4A3 M-4 (forward-only): the one
+ * "Why this happened" list became the proposal card, people and reactions, and "What else happened";
+ * this reads the same lines from all of them (Routine steps stay folded, as before). */
 async function driversText(page: Page): Promise<string> {
-  const heading = page.getByRole("heading", { name: "Why this happened" });
-  await heading.waitFor({ state: "visible", timeout: 15_000 });
-  return heading.locator("xpath=ancestor::section[1]").innerText();
+  const view = page.getByTestId("turn-result-view");
+  await view.getByRole("heading", { name: "What else happened" }).waitFor({ state: "visible", timeout: 15_000 });
+  return view.evaluate((root) =>
+    Array.from(root.querySelectorAll<HTMLElement>("[data-reason-id]"))
+      .filter((el) => el.closest('[data-testid="drivers-routine"]') === null)
+      .map((el) => el.innerText)
+      .join("\n"),
+  );
 }
 
 /** Opens the Trace and follows one reason link with the KEYBOARD only: Enter on the toggle, Tab
@@ -325,8 +333,9 @@ for (const viewport of VIEWPORTS) {
     await expect(routine).not.toHaveAttribute("open", /.*/);
     const routineCount = await routine.locator("li[data-reason-id]").count();
     expect(routineCount, "turn 1 records routine bookkeeping").toBeGreaterThan(0);
-    // UX-4e: the blocking chamber is now named, with its tally (UX-4g: votes, not "seats").
-    await expect(view.getByTestId("drivers-consequential")).toContainText(
+    // UX-4e: the blocking chamber is now named, with its tally (UX-4g: votes, not "seats"). M-4: in
+    // the proposal card.
+    await expect(view.getByTestId("result-card-drivers")).toContainText(
       /chamber blocked the budget: [\d,]+ supporting votes; [\d,]+ required—[\d,]+ short\./,
     );
     const live = await driversText(page);
@@ -930,8 +939,12 @@ for (const viewport of VIEWPORTS) {
       };
       const view = page.getByTestId("turn-result-view");
       await expect(view).toHaveAttribute("data-context", "live");
-      const visible = await view.getByTestId("drivers-consequential").locator(":scope > li").evaluateAll((lis) =>
-        lis.map((li) => ({ reason: li.getAttribute("data-reason-id") ?? "", text: (li as HTMLElement).innerText })),
+      // Gate 4A3 M-4 (forward-only): the visible lines now span the proposal card, people, the bloc
+      // rows and "What else happened" -- read in page order, Routine steps excluded as before.
+      const visible = await view.evaluate((root) =>
+        Array.from(root.querySelectorAll<HTMLElement>("[data-reason-id]"))
+          .filter((el) => el.closest('[data-testid="drivers-routine"]') === null)
+          .map((el) => ({ reason: el.getAttribute("data-reason-id") ?? "", text: el.innerText })),
       );
       return { body, view, visible };
     }

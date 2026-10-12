@@ -1,0 +1,1600 @@
+{
+  "arkenBargainBudget": {
+    "revision": "1.1",
+    "turn": 1,
+    "outcome_headline": "The budget was enacted by the legislature.",
+    "outcome_tone": "positive",
+    "drivers": [
+      {
+        "category": "budget",
+        "reason_id": "tax_rate_changed",
+        "label": "A tax rate changed.",
+        "params": {
+          "field": "personal_income_rate_bps",
+          "old_bps": 2000,
+          "new_bps": 1800
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "labor_market_resolved",
+        "label": "The labour market was resolved.",
+        "params": {
+          "effective_labor_force": 600000,
+          "total_employment": 540000,
+          "unemployed_workers": 60000,
+          "unfilled_jobs": 0,
+          "unemployment_rate_bps": 1000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "resource_extraction_resolved",
+        "label": "Resource extraction was resolved.",
+        "params": {
+          "deposits_active": 9,
+          "deposits_depleted": 0,
+          "total_extraction_workers": 14000,
+          "unassigned_resource_workers": 6000,
+          "extraction_sector_real_output": 2000000000,
+          "extraction_sector_potential_output": 2000000000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "construction"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "public_services"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "production_summary",
+        "label": "Production was resolved.",
+        "params": {
+          "total_employment": 540000,
+          "total_gross_output": 20000000000,
+          "sectors_capacity_constrained": 1,
+          "sectors_labor_constrained": 0,
+          "sectors_exactly_balanced": 7,
+          "sectors_physical_resource_constrained": 1,
+          "sectors_inactive": 2
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "tax_bases_derived",
+        "label": "Tax bases were derived from production.",
+        "params": {
+          "personal_income": 4000000000,
+          "corporate_profit": 2000000000,
+          "taxable_consumption": 3000000000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "legitimacy_resolved",
+        "label": "Legitimacy was resolved.",
+        "params": {
+          "opening_legitimacy_bps": 7000,
+          "order_support_contribution_bps": 100,
+          "performance_contribution_bps": 0,
+          "total_legitimacy_change_bps": 100,
+          "closing_legitimacy_bps": 7100,
+          "constitutional_order_support_bps": 8000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "political_capital_resolved",
+        "label": "Political capital was resolved.",
+        "params": {
+          "opening": 500,
+          "regeneration": 413,
+          "spent": 302,
+          "capacity": 1000,
+          "closing": 611
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "coup_risk_assessed",
+        "label": "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "params": {
+          "coup_attempt_risk_bps": 58,
+          "unrest_attempt_risk_bps": 30,
+          "impeachment_eligible": 1,
+          "impeachment_attempt_risk_bps": 0,
+          "structural_exposure_bps": 500,
+          "coup_structural_contribution_bps": 20,
+          "unrest_structural_contribution_bps": 15
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "legislative_vote_resolved",
+        "label": "The legislature voted.",
+        "params": {
+          "route": "legislative",
+          "outcome": "passed_legislative",
+          "chambers_passed": 2,
+          "chambers_total": 2,
+          "supporting_seats": 96,
+          "required_yes_seats": 82,
+          "political_capital_committed": 0
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "political_capital_ledger_resolved",
+        "label": "Political capital spending was recorded.",
+        "params": {
+          "opening": 500,
+          "total_committed": 302,
+          "legislative_committed": 0,
+          "relationship_committed": 0,
+          "regeneration": 413,
+          "closing": 611,
+          "capacity": 1000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "enacted_policy_relationship_reaction",
+        "label": "Blocs reacted to the enacted policy.",
+        "params": {
+          "party_id": "civic_union",
+          "bloc_id": "mainstream",
+          "tax_direction": "decrease",
+          "tax_intensity_bps": 2000,
+          "spending_direction": "unchanged",
+          "spending_intensity_bps": 0,
+          "policy_reaction_component_bps": -20,
+          "bloc_display_name": "Civic Union Mainstream"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "bloc_relationship_resolved",
+        "label": "A bloc's relationship with the government changed.",
+        "params": {
+          "party_id": "civic_union",
+          "bloc_id": "mainstream",
+          "opening_relationship_bps": 6000,
+          "uncapped_total_change_bps": -20,
+          "applied_total_change_bps": -20,
+          "closing_relationship_bps": 5980,
+          "bloc_display_name": "Civic Union Mainstream"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "enacted_policy_relationship_reaction",
+        "label": "Blocs reacted to the enacted policy.",
+        "params": {
+          "party_id": "civic_union",
+          "bloc_id": "reform",
+          "tax_direction": "decrease",
+          "tax_intensity_bps": 2000,
+          "spending_direction": "unchanged",
+          "spending_intensity_bps": 0,
+          "policy_reaction_component_bps": -40,
+          "bloc_display_name": "Civic Union Reform Caucus"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "bloc_relationship_resolved",
+        "label": "A bloc's relationship with the government changed.",
+        "params": {
+          "party_id": "civic_union",
+          "bloc_id": "reform",
+          "opening_relationship_bps": 3000,
+          "uncapped_total_change_bps": -40,
+          "applied_total_change_bps": -40,
+          "closing_relationship_bps": 2960,
+          "bloc_display_name": "Civic Union Reform Caucus"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "enacted_policy_relationship_reaction",
+        "label": "Blocs reacted to the enacted policy.",
+        "params": {
+          "party_id": "national_front",
+          "bloc_id": "conservatives",
+          "tax_direction": "decrease",
+          "tax_intensity_bps": 2000,
+          "spending_direction": "unchanged",
+          "spending_intensity_bps": 0,
+          "policy_reaction_component_bps": 60,
+          "bloc_display_name": "National Front Conservatives"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "bloc_relationship_resolved",
+        "label": "A bloc's relationship with the government changed.",
+        "params": {
+          "party_id": "national_front",
+          "bloc_id": "conservatives",
+          "opening_relationship_bps": -7000,
+          "uncapped_total_change_bps": 60,
+          "applied_total_change_bps": 60,
+          "closing_relationship_bps": -6940,
+          "bloc_display_name": "National Front Conservatives"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "enacted_policy_relationship_reaction",
+        "label": "Blocs reacted to the enacted policy.",
+        "params": {
+          "party_id": "national_front",
+          "bloc_id": "populists",
+          "tax_direction": "decrease",
+          "tax_intensity_bps": 2000,
+          "spending_direction": "unchanged",
+          "spending_intensity_bps": 0,
+          "policy_reaction_component_bps": 30,
+          "bloc_display_name": "National Front Populists"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "bloc_relationship_resolved",
+        "label": "A bloc's relationship with the government changed.",
+        "params": {
+          "party_id": "national_front",
+          "bloc_id": "populists",
+          "opening_relationship_bps": -3000,
+          "uncapped_total_change_bps": 30,
+          "applied_total_change_bps": 30,
+          "closing_relationship_bps": -2970,
+          "bloc_display_name": "National Front Populists"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "enacted_policy_relationship_reaction",
+        "label": "Blocs reacted to the enacted policy.",
+        "params": {
+          "party_id": "rural_alliance",
+          "bloc_id": "farmers",
+          "tax_direction": "decrease",
+          "tax_intensity_bps": 2000,
+          "spending_direction": "unchanged",
+          "spending_intensity_bps": 0,
+          "policy_reaction_component_bps": 10,
+          "bloc_display_name": "Rural Alliance Farmers"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "bloc_relationship_resolved",
+        "label": "A bloc's relationship with the government changed.",
+        "params": {
+          "party_id": "rural_alliance",
+          "bloc_id": "farmers",
+          "opening_relationship_bps": 2000,
+          "uncapped_total_change_bps": 10,
+          "applied_total_change_bps": 10,
+          "closing_relationship_bps": 2010,
+          "bloc_display_name": "Rural Alliance Farmers"
+        }
+      },
+      {
+        "category": "government",
+        "reason_id": "cabinet_replaced",
+        "label": "A cabinet post changed hands.",
+        "params": {
+          "post": "chief_of_staff",
+          "post_display_name": "chief of staff",
+          "capital_committed": 197,
+          "character_id": "wren_hollis",
+          "character_display_name": "Wren Hollis",
+          "outgoing_character_id": "hal_verrin",
+          "outgoing_character_display_name": "Hal Verrin",
+          "character_portrait_ref": "portrait_wren_hollis",
+          "outgoing_character_portrait_ref": "portrait_hal_verrin"
+        }
+      },
+      {
+        "category": "legislature",
+        "reason_id": "legislative_bargain_accepted",
+        "label": "A party leader backed the proposal.",
+        "params": {
+          "character_id": "leader_rural_alliance",
+          "character_display_name": "Maret Kuusk",
+          "party_id": "rural_alliance",
+          "party_display_name": "Rural Alliance",
+          "proposal_kind": "budget",
+          "proposal_display_name": "the budget",
+          "asking_price": 105,
+          "endorsement_bps": 2000,
+          "character_portrait_ref": "portrait_leader_rural_alliance"
+        }
+      },
+      {
+        "category": "administration",
+        "reason_id": "turn_resolved",
+        "label": "The turn was resolved.",
+        "params": {
+          "turn": 0
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "label": "Cabinet appointment",
+        "target": null,
+        "amount_text": "197",
+        "effect_text": null
+      },
+      {
+        "label": "Legislative bargain",
+        "target": null,
+        "amount_text": "105",
+        "effect_text": null
+      }
+    ],
+    "unchanged": [
+      "No formations moved."
+    ],
+    "trace": [
+      {
+        "label": "lower: supporting seats",
+        "value_text": "61",
+        "source_field": "LegislativeReport.chambers[].supporting_seats"
+      },
+      {
+        "label": "lower: required seats",
+        "value_text": "51",
+        "source_field": "LegislativeReport.chambers[].required_yes_seats"
+      },
+      {
+        "label": "upper: supporting seats",
+        "value_text": "35",
+        "source_field": "LegislativeReport.chambers[].supporting_seats"
+      },
+      {
+        "label": "upper: required seats",
+        "value_text": "31",
+        "source_field": "LegislativeReport.chambers[].required_yes_seats"
+      },
+      {
+        "label": "Final election support",
+        "value_text": "0.00%",
+        "source_field": "ElectionReport.final_support_bps"
+      },
+      {
+        "label": "Political capital committed",
+        "value_text": "302",
+        "source_field": "PoliticalCapitalReport.total_committed"
+      }
+    ],
+    "terminal": null,
+    "objective_line": null,
+    "recorded_vote": {
+      "proposal_kind": "budget",
+      "outcome": "passed_legislative",
+      "chambers": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 61,
+          "required_seats": 51,
+          "passed": true,
+          "blocs": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "bloc_display_name": "Civic Union Mainstream",
+              "seats": 40,
+              "supporting_seats": 40
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "bloc_display_name": "Civic Union Reform Caucus",
+              "seats": 12,
+              "supporting_seats": 11
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "bloc_display_name": "National Front Conservatives",
+              "seats": 30,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "populists",
+              "bloc_display_name": "National Front Populists",
+              "seats": 8,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "rural_alliance",
+              "bloc_id": "farmers",
+              "bloc_display_name": "Rural Alliance Farmers",
+              "seats": 10,
+              "supporting_seats": 10
+            }
+          ]
+        },
+        {
+          "chamber": "upper",
+          "total_seats": 60,
+          "supporting_seats": 35,
+          "required_seats": 31,
+          "passed": true,
+          "blocs": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "bloc_display_name": "Civic Union Mainstream",
+              "seats": 24,
+              "supporting_seats": 24
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "bloc_display_name": "Civic Union Reform Caucus",
+              "seats": 6,
+              "supporting_seats": 5
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "bloc_display_name": "National Front Conservatives",
+              "seats": 20,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "populists",
+              "bloc_display_name": "National Front Populists",
+              "seats": 4,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "rural_alliance",
+              "bloc_id": "farmers",
+              "bloc_display_name": "Rural Alliance Farmers",
+              "seats": 6,
+              "supporting_seats": 6
+            }
+          ]
+        }
+      ],
+      "blocs_recorded": true,
+      "budget": {
+        "tax_direction": "decrease",
+        "tax_delta_bps": -200,
+        "spending_direction": "unchanged",
+        "opening_total_program_spending": 1050000000,
+        "proposed_total_program_spending": 1050000000
+      },
+      "amendment_targets": []
+    },
+    "no_vote_reason": null
+  },
+  "valdrunFailedBudget": {
+    "revision": "1.1",
+    "turn": 1,
+    "outcome_headline": "The budget was blocked.",
+    "outcome_tone": "negative",
+    "drivers": [
+      {
+        "category": "production",
+        "reason_id": "labor_market_resolved",
+        "label": "The labour market was resolved.",
+        "params": {
+          "effective_labor_force": 600000,
+          "total_employment": 540000,
+          "unemployed_workers": 60000,
+          "unfilled_jobs": 0,
+          "unemployment_rate_bps": 1000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "resource_extraction_resolved",
+        "label": "Resource extraction was resolved.",
+        "params": {
+          "deposits_active": 9,
+          "deposits_depleted": 0,
+          "total_extraction_workers": 14000,
+          "unassigned_resource_workers": 6000,
+          "extraction_sector_real_output": 2000000000,
+          "extraction_sector_potential_output": 2000000000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "construction"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "public_services"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "production_summary",
+        "label": "Production was resolved.",
+        "params": {
+          "total_employment": 540000,
+          "total_gross_output": 20000000000,
+          "sectors_capacity_constrained": 1,
+          "sectors_labor_constrained": 0,
+          "sectors_exactly_balanced": 7,
+          "sectors_physical_resource_constrained": 1,
+          "sectors_inactive": 2
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "tax_bases_derived",
+        "label": "Tax bases were derived from production.",
+        "params": {
+          "personal_income": 4000000000,
+          "corporate_profit": 2000000000,
+          "taxable_consumption": 3000000000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "legitimacy_resolved",
+        "label": "Legitimacy was resolved.",
+        "params": {
+          "opening_legitimacy_bps": 6000,
+          "order_support_contribution_bps": 100,
+          "performance_contribution_bps": 0,
+          "total_legitimacy_change_bps": 100,
+          "closing_legitimacy_bps": 6100,
+          "constitutional_order_support_bps": 7000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "political_capital_resolved",
+        "label": "Political capital was resolved.",
+        "params": {
+          "opening": 500,
+          "regeneration": 383,
+          "spent": 0,
+          "capacity": 1000,
+          "closing": 883
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "coup_risk_assessed",
+        "label": "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "params": {
+          "coup_attempt_risk_bps": 352,
+          "unrest_attempt_risk_bps": 240,
+          "impeachment_eligible": 0,
+          "impeachment_attempt_risk_bps": 0,
+          "structural_exposure_bps": 7500,
+          "coup_structural_contribution_bps": 300,
+          "unrest_structural_contribution_bps": 225
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "legislative_vote_resolved",
+        "label": "The legislature voted.",
+        "params": {
+          "route": "legislative",
+          "outcome": "failed_legislative",
+          "chambers_passed": 0,
+          "chambers_total": 1,
+          "supporting_seats": 45,
+          "required_yes_seats": 51,
+          "political_capital_committed": 0
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "budget_blocked_by_legislature",
+        "label": "The legislature blocked the budget.",
+        "params": {
+          "chamber": "lower",
+          "supporting_seats": 45,
+          "required_yes_seats": 51,
+          "shortfall_seats": 6
+        }
+      },
+      {
+        "category": "administration",
+        "reason_id": "turn_resolved",
+        "label": "The turn was resolved.",
+        "params": {
+          "turn": 0
+        }
+      }
+    ],
+    "ledger": [],
+    "unchanged": [
+      "Tax rates and spending are unchanged.",
+      "No formations moved.",
+      "No cabinet changes."
+    ],
+    "trace": [
+      {
+        "label": "lower: supporting seats",
+        "value_text": "45",
+        "source_field": "LegislativeReport.chambers[].supporting_seats"
+      },
+      {
+        "label": "lower: required seats",
+        "value_text": "51",
+        "source_field": "LegislativeReport.chambers[].required_yes_seats"
+      },
+      {
+        "label": "Final election support",
+        "value_text": "0.00%",
+        "source_field": "ElectionReport.final_support_bps"
+      },
+      {
+        "label": "Political capital committed",
+        "value_text": "0",
+        "source_field": "PoliticalCapitalReport.total_committed"
+      }
+    ],
+    "terminal": null,
+    "objective_line": null,
+    "recorded_vote": {
+      "proposal_kind": "budget",
+      "outcome": "failed_legislative",
+      "chambers": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 45,
+          "required_seats": 51,
+          "passed": false,
+          "blocs": [
+            {
+              "party_id": "governing_party",
+              "bloc_id": "core",
+              "bloc_display_name": "Crown Party Core",
+              "seats": 45,
+              "supporting_seats": 45
+            },
+            {
+              "party_id": "opposition_party",
+              "bloc_id": "main",
+              "bloc_display_name": "Reform Opposition Main",
+              "seats": 55,
+              "supporting_seats": 0
+            }
+          ]
+        }
+      ],
+      "blocs_recorded": true,
+      "budget": {
+        "tax_direction": "decrease",
+        "tax_delta_bps": -200,
+        "spending_direction": "unchanged",
+        "opening_total_program_spending": 1050000000,
+        "proposed_total_program_spending": 1050000000
+      },
+      "amendment_targets": []
+    },
+    "no_vote_reason": null
+  },
+  "valdrunDecreeBudget": {
+    "revision": "1.1",
+    "turn": 1,
+    "outcome_headline": "The budget was enacted by decree. The legislature was bypassed.",
+    "outcome_tone": "caution",
+    "drivers": [
+      {
+        "category": "budget",
+        "reason_id": "tax_rate_changed",
+        "label": "A tax rate changed.",
+        "params": {
+          "field": "personal_income_rate_bps",
+          "old_bps": 2000,
+          "new_bps": 2500
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "labor_market_resolved",
+        "label": "The labour market was resolved.",
+        "params": {
+          "effective_labor_force": 600000,
+          "total_employment": 540000,
+          "unemployed_workers": 60000,
+          "unfilled_jobs": 0,
+          "unemployment_rate_bps": 1000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "resource_extraction_resolved",
+        "label": "Resource extraction was resolved.",
+        "params": {
+          "deposits_active": 9,
+          "deposits_depleted": 0,
+          "total_extraction_workers": 14000,
+          "unassigned_resource_workers": 6000,
+          "extraction_sector_real_output": 2000000000,
+          "extraction_sector_potential_output": 2000000000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "construction"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "public_services"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "production_summary",
+        "label": "Production was resolved.",
+        "params": {
+          "total_employment": 540000,
+          "total_gross_output": 20000000000,
+          "sectors_capacity_constrained": 1,
+          "sectors_labor_constrained": 0,
+          "sectors_exactly_balanced": 7,
+          "sectors_physical_resource_constrained": 1,
+          "sectors_inactive": 2
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "tax_bases_derived",
+        "label": "Tax bases were derived from production.",
+        "params": {
+          "personal_income": 4000000000,
+          "corporate_profit": 2000000000,
+          "taxable_consumption": 3000000000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "legitimacy_resolved",
+        "label": "Legitimacy was resolved.",
+        "params": {
+          "opening_legitimacy_bps": 6000,
+          "order_support_contribution_bps": 100,
+          "performance_contribution_bps": 0,
+          "total_legitimacy_change_bps": 100,
+          "closing_legitimacy_bps": 6100,
+          "constitutional_order_support_bps": 7000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "political_capital_resolved",
+        "label": "Political capital was resolved.",
+        "params": {
+          "opening": 500,
+          "regeneration": 383,
+          "spent": 250,
+          "capacity": 1000,
+          "closing": 633
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "coup_risk_assessed",
+        "label": "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "params": {
+          "coup_attempt_risk_bps": 352,
+          "unrest_attempt_risk_bps": 240,
+          "impeachment_eligible": 0,
+          "impeachment_attempt_risk_bps": 0,
+          "structural_exposure_bps": 7500,
+          "coup_structural_contribution_bps": 300,
+          "unrest_structural_contribution_bps": 225
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "legislative_vote_resolved",
+        "label": "The legislature voted.",
+        "params": {
+          "route": "decree",
+          "outcome": "enacted_by_decree",
+          "chambers_passed": 0,
+          "chambers_total": 0,
+          "supporting_seats": 0,
+          "required_yes_seats": 0,
+          "political_capital_committed": 250
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "political_capital_ledger_resolved",
+        "label": "Political capital spending was recorded.",
+        "params": {
+          "opening": 500,
+          "total_committed": 250,
+          "legislative_committed": 250,
+          "relationship_committed": 0,
+          "regeneration": 383,
+          "closing": 633,
+          "capacity": 1000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "enacted_policy_relationship_reaction",
+        "label": "Blocs reacted to the enacted policy.",
+        "params": {
+          "party_id": "governing_party",
+          "bloc_id": "core",
+          "tax_direction": "increase",
+          "tax_intensity_bps": 5000,
+          "spending_direction": "unchanged",
+          "spending_intensity_bps": 0,
+          "policy_reaction_component_bps": 50,
+          "bloc_display_name": "Crown Party Core"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "decree_bypass_relationship_reaction",
+        "label": "Blocs resented being bypassed by decree.",
+        "params": {
+          "party_id": "governing_party",
+          "bloc_id": "core",
+          "decree_bypass_component_bps": -200,
+          "bloc_display_name": "Crown Party Core"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "bloc_relationship_resolved",
+        "label": "A bloc's relationship with the government changed.",
+        "params": {
+          "party_id": "governing_party",
+          "bloc_id": "core",
+          "opening_relationship_bps": 6000,
+          "uncapped_total_change_bps": -150,
+          "applied_total_change_bps": -150,
+          "closing_relationship_bps": 5850,
+          "bloc_display_name": "Crown Party Core"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "enacted_policy_relationship_reaction",
+        "label": "Blocs reacted to the enacted policy.",
+        "params": {
+          "party_id": "opposition_party",
+          "bloc_id": "main",
+          "tax_direction": "increase",
+          "tax_intensity_bps": 5000,
+          "spending_direction": "unchanged",
+          "spending_intensity_bps": 0,
+          "policy_reaction_component_bps": -150,
+          "bloc_display_name": "Reform Opposition Main"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "decree_bypass_relationship_reaction",
+        "label": "Blocs resented being bypassed by decree.",
+        "params": {
+          "party_id": "opposition_party",
+          "bloc_id": "main",
+          "decree_bypass_component_bps": -200,
+          "bloc_display_name": "Reform Opposition Main"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "bloc_relationship_resolved",
+        "label": "A bloc's relationship with the government changed.",
+        "params": {
+          "party_id": "opposition_party",
+          "bloc_id": "main",
+          "opening_relationship_bps": -8000,
+          "uncapped_total_change_bps": -350,
+          "applied_total_change_bps": -350,
+          "closing_relationship_bps": -8350,
+          "bloc_display_name": "Reform Opposition Main"
+        }
+      },
+      {
+        "category": "administration",
+        "reason_id": "turn_resolved",
+        "label": "The turn was resolved.",
+        "params": {
+          "turn": 0
+        }
+      }
+    ],
+    "ledger": [
+      {
+        "label": "Decree",
+        "target": null,
+        "amount_text": "250",
+        "effect_text": null
+      }
+    ],
+    "unchanged": [
+      "No formations moved.",
+      "No cabinet changes."
+    ],
+    "trace": [
+      {
+        "label": "Final election support",
+        "value_text": "0.00%",
+        "source_field": "ElectionReport.final_support_bps"
+      },
+      {
+        "label": "Political capital committed",
+        "value_text": "250",
+        "source_field": "PoliticalCapitalReport.total_committed"
+      }
+    ],
+    "terminal": null,
+    "objective_line": null,
+    "recorded_vote": null,
+    "no_vote_reason": "enacted_by_decree"
+  },
+  "valdrunAmendmentFailed": {
+    "revision": "1.1",
+    "turn": 1,
+    "outcome_headline": "Amendment failed, 45 of 100 seats (67 required).",
+    "outcome_tone": "negative",
+    "drivers": [
+      {
+        "category": "budget",
+        "reason_id": "no_budget_changes_submitted",
+        "label": "No budget changes were submitted.",
+        "params": {}
+      },
+      {
+        "category": "production",
+        "reason_id": "labor_market_resolved",
+        "label": "The labour market was resolved.",
+        "params": {
+          "effective_labor_force": 600000,
+          "total_employment": 540000,
+          "unemployed_workers": 60000,
+          "unfilled_jobs": 0,
+          "unemployment_rate_bps": 1000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "resource_extraction_resolved",
+        "label": "Resource extraction was resolved.",
+        "params": {
+          "deposits_active": 9,
+          "deposits_depleted": 0,
+          "total_extraction_workers": 14000,
+          "unassigned_resource_workers": 6000,
+          "extraction_sector_real_output": 2000000000,
+          "extraction_sector_potential_output": 2000000000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "construction"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "public_services"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "production_summary",
+        "label": "Production was resolved.",
+        "params": {
+          "total_employment": 540000,
+          "total_gross_output": 20000000000,
+          "sectors_capacity_constrained": 1,
+          "sectors_labor_constrained": 0,
+          "sectors_exactly_balanced": 7,
+          "sectors_physical_resource_constrained": 1,
+          "sectors_inactive": 2
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "tax_bases_derived",
+        "label": "Tax bases were derived from production.",
+        "params": {
+          "personal_income": 4000000000,
+          "corporate_profit": 2000000000,
+          "taxable_consumption": 3000000000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "legitimacy_resolved",
+        "label": "Legitimacy was resolved.",
+        "params": {
+          "opening_legitimacy_bps": 6000,
+          "order_support_contribution_bps": 100,
+          "performance_contribution_bps": 0,
+          "total_legitimacy_change_bps": 100,
+          "closing_legitimacy_bps": 6100,
+          "constitutional_order_support_bps": 7000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "political_capital_resolved",
+        "label": "Political capital was resolved.",
+        "params": {
+          "opening": 500,
+          "regeneration": 383,
+          "spent": 0,
+          "capacity": 1000,
+          "closing": 883
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "coup_risk_assessed",
+        "label": "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "params": {
+          "coup_attempt_risk_bps": 352,
+          "unrest_attempt_risk_bps": 240,
+          "impeachment_eligible": 0,
+          "impeachment_attempt_risk_bps": 0,
+          "structural_exposure_bps": 7500,
+          "coup_structural_contribution_bps": 300,
+          "unrest_structural_contribution_bps": 225
+        }
+      },
+      {
+        "category": "administration",
+        "reason_id": "turn_resolved",
+        "label": "The turn was resolved.",
+        "params": {
+          "turn": 0
+        }
+      }
+    ],
+    "ledger": [],
+    "unchanged": [
+      "No budget was proposed.",
+      "No formations moved.",
+      "No cabinet changes."
+    ],
+    "trace": [
+      {
+        "label": "Amendment lower: supporting of required",
+        "value_text": "45 of 67",
+        "source_field": "ConstitutionalAmendmentReport.chambers[].supporting_seats"
+      },
+      {
+        "label": "Final election support",
+        "value_text": "0.00%",
+        "source_field": "ElectionReport.final_support_bps"
+      },
+      {
+        "label": "Political capital committed",
+        "value_text": "0",
+        "source_field": "PoliticalCapitalReport.total_committed"
+      }
+    ],
+    "terminal": null,
+    "objective_line": "The amendment failed; the constitution and checklist are unchanged.",
+    "recorded_vote": {
+      "proposal_kind": "constitutional_amendment",
+      "outcome": "failed_legislative",
+      "chambers": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 45,
+          "required_seats": 67,
+          "passed": false,
+          "blocs": []
+        }
+      ],
+      "blocs_recorded": false,
+      "budget": null,
+      "amendment_targets": [
+        {
+          "axis": "decree_authority",
+          "opening_value": "unlimited",
+          "proposed_value": "none"
+        },
+        {
+          "axis": "executive_selection",
+          "opening_value": "hereditary",
+          "proposed_value": "direct_election"
+        },
+        {
+          "axis": "executive_system",
+          "opening_value": "monarchical",
+          "proposed_value": "presidential"
+        },
+        {
+          "axis": "national_election_interval_turns",
+          "opening_value": "null",
+          "proposed_value": "4"
+        }
+      ]
+    },
+    "no_vote_reason": null
+  },
+  "valdrunAmendmentPassed": {
+    "revision": "1.1",
+    "turn": 1,
+    "outcome_headline": "Amendment passed, 100 of 100 seats (67 required).",
+    "outcome_tone": "positive",
+    "drivers": [
+      {
+        "category": "politics",
+        "reason_id": "constitutional_amendment_enacted",
+        "label": "The constitution was amended.",
+        "params": {
+          "axis": "decree_authority",
+          "opening_value": "unlimited",
+          "closing_value": "none",
+          "route": "legislative"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "constitutional_amendment_enacted",
+        "label": "The constitution was amended.",
+        "params": {
+          "axis": "executive_selection",
+          "opening_value": "hereditary",
+          "closing_value": "direct_election",
+          "route": "legislative"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "constitutional_amendment_enacted",
+        "label": "The constitution was amended.",
+        "params": {
+          "axis": "executive_system",
+          "opening_value": "monarchical",
+          "closing_value": "presidential",
+          "route": "legislative"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "constitutional_amendment_enacted",
+        "label": "The constitution was amended.",
+        "params": {
+          "axis": "national_election_interval_turns",
+          "opening_value": "null",
+          "closing_value": "4",
+          "route": "legislative"
+        }
+      },
+      {
+        "category": "budget",
+        "reason_id": "no_budget_changes_submitted",
+        "label": "No budget changes were submitted.",
+        "params": {}
+      },
+      {
+        "category": "production",
+        "reason_id": "labor_market_resolved",
+        "label": "The labour market was resolved.",
+        "params": {
+          "effective_labor_force": 600000,
+          "total_employment": 540000,
+          "unemployed_workers": 60000,
+          "unfilled_jobs": 0,
+          "unemployment_rate_bps": 1000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "resource_extraction_resolved",
+        "label": "Resource extraction was resolved.",
+        "params": {
+          "deposits_active": 9,
+          "deposits_depleted": 0,
+          "total_extraction_workers": 14000,
+          "unassigned_resource_workers": 6000,
+          "extraction_sector_real_output": 2000000000,
+          "extraction_sector_potential_output": 2000000000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "construction"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "public_services"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "production_summary",
+        "label": "Production was resolved.",
+        "params": {
+          "total_employment": 540000,
+          "total_gross_output": 20000000000,
+          "sectors_capacity_constrained": 1,
+          "sectors_labor_constrained": 0,
+          "sectors_exactly_balanced": 7,
+          "sectors_physical_resource_constrained": 1,
+          "sectors_inactive": 2
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "tax_bases_derived",
+        "label": "Tax bases were derived from production.",
+        "params": {
+          "personal_income": 4000000000,
+          "corporate_profit": 2000000000,
+          "taxable_consumption": 3000000000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "legitimacy_resolved",
+        "label": "Legitimacy was resolved.",
+        "params": {
+          "opening_legitimacy_bps": 6000,
+          "order_support_contribution_bps": 100,
+          "performance_contribution_bps": 0,
+          "total_legitimacy_change_bps": 100,
+          "closing_legitimacy_bps": 6100,
+          "constitutional_order_support_bps": 7000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "political_capital_resolved",
+        "label": "Political capital was resolved.",
+        "params": {
+          "opening": 1000,
+          "regeneration": 383,
+          "spent": 0,
+          "capacity": 1000,
+          "closing": 1000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "coup_risk_assessed",
+        "label": "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "params": {
+          "coup_attempt_risk_bps": 1028,
+          "unrest_attempt_risk_bps": 30,
+          "impeachment_eligible": 1,
+          "impeachment_attempt_risk_bps": 0,
+          "structural_exposure_bps": 500,
+          "coup_structural_contribution_bps": 20,
+          "unrest_structural_contribution_bps": 15
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "relationship_decay_resolved",
+        "label": "Relationships decayed toward their authored baseline.",
+        "params": {
+          "party_id": "governing_party",
+          "bloc_id": "core",
+          "baseline_relationship_bps": 6000,
+          "opening_relationship_bps": 10000,
+          "opening_deviation_bps": 4000,
+          "decay_component_bps": -500,
+          "bloc_display_name": "Crown Party Core"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "bloc_relationship_resolved",
+        "label": "A bloc's relationship with the government changed.",
+        "params": {
+          "party_id": "governing_party",
+          "bloc_id": "core",
+          "opening_relationship_bps": 10000,
+          "uncapped_total_change_bps": -500,
+          "applied_total_change_bps": -500,
+          "closing_relationship_bps": 9500,
+          "bloc_display_name": "Crown Party Core"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "relationship_decay_resolved",
+        "label": "Relationships decayed toward their authored baseline.",
+        "params": {
+          "party_id": "opposition_party",
+          "bloc_id": "main",
+          "baseline_relationship_bps": -8000,
+          "opening_relationship_bps": 10000,
+          "opening_deviation_bps": 18000,
+          "decay_component_bps": -2250,
+          "bloc_display_name": "Reform Opposition Main"
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "bloc_relationship_resolved",
+        "label": "A bloc's relationship with the government changed.",
+        "params": {
+          "party_id": "opposition_party",
+          "bloc_id": "main",
+          "opening_relationship_bps": 10000,
+          "uncapped_total_change_bps": -2250,
+          "applied_total_change_bps": -2250,
+          "closing_relationship_bps": 7750,
+          "bloc_display_name": "Reform Opposition Main"
+        }
+      },
+      {
+        "category": "administration",
+        "reason_id": "turn_resolved",
+        "label": "The turn was resolved.",
+        "params": {
+          "turn": 0
+        }
+      }
+    ],
+    "ledger": [],
+    "unchanged": [
+      "No budget was proposed.",
+      "No formations moved.",
+      "No cabinet changes."
+    ],
+    "trace": [
+      {
+        "label": "Amendment lower: supporting of required",
+        "value_text": "100 of 67",
+        "source_field": "ConstitutionalAmendmentReport.chambers[].supporting_seats"
+      },
+      {
+        "label": "Final election support",
+        "value_text": "0.00%",
+        "source_field": "ElectionReport.final_support_bps"
+      },
+      {
+        "label": "Political capital committed",
+        "value_text": "0",
+        "source_field": "PoliticalCapitalReport.total_committed"
+      }
+    ],
+    "terminal": null,
+    "objective_line": "The constitution now qualifies, and the transition is recorded. Win the election on turn 5 to complete it.",
+    "recorded_vote": {
+      "proposal_kind": "constitutional_amendment",
+      "outcome": "passed_legislative",
+      "chambers": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 100,
+          "required_seats": 67,
+          "passed": true,
+          "blocs": []
+        }
+      ],
+      "blocs_recorded": false,
+      "budget": null,
+      "amendment_targets": [
+        {
+          "axis": "decree_authority",
+          "opening_value": "unlimited",
+          "proposed_value": "none"
+        },
+        {
+          "axis": "executive_selection",
+          "opening_value": "hereditary",
+          "proposed_value": "direct_election"
+        },
+        {
+          "axis": "executive_system",
+          "opening_value": "monarchical",
+          "proposed_value": "presidential"
+        },
+        {
+          "axis": "national_election_interval_turns",
+          "opening_value": "null",
+          "proposed_value": "4"
+        }
+      ]
+    },
+    "no_vote_reason": null
+  },
+  "valdrunNoProposal": {
+    "revision": "1.1",
+    "turn": 1,
+    "outcome_headline": "The turn was resolved.",
+    "outcome_tone": "neutral",
+    "drivers": [
+      {
+        "category": "budget",
+        "reason_id": "no_budget_changes_submitted",
+        "label": "No budget changes were submitted.",
+        "params": {}
+      },
+      {
+        "category": "production",
+        "reason_id": "labor_market_resolved",
+        "label": "The labour market was resolved.",
+        "params": {
+          "effective_labor_force": 600000,
+          "total_employment": 540000,
+          "unemployed_workers": 60000,
+          "unfilled_jobs": 0,
+          "unemployment_rate_bps": 1000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "resource_extraction_resolved",
+        "label": "Resource extraction was resolved.",
+        "params": {
+          "deposits_active": 9,
+          "deposits_depleted": 0,
+          "total_extraction_workers": 14000,
+          "unassigned_resource_workers": 6000,
+          "extraction_sector_real_output": 2000000000,
+          "extraction_sector_potential_output": 2000000000
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "construction"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "sector_inactive",
+        "label": "A sector was inactive this turn.",
+        "params": {
+          "category": "public_services"
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "production_summary",
+        "label": "Production was resolved.",
+        "params": {
+          "total_employment": 540000,
+          "total_gross_output": 20000000000,
+          "sectors_capacity_constrained": 1,
+          "sectors_labor_constrained": 0,
+          "sectors_exactly_balanced": 7,
+          "sectors_physical_resource_constrained": 1,
+          "sectors_inactive": 2
+        }
+      },
+      {
+        "category": "production",
+        "reason_id": "tax_bases_derived",
+        "label": "Tax bases were derived from production.",
+        "params": {
+          "personal_income": 4000000000,
+          "corporate_profit": 2000000000,
+          "taxable_consumption": 3000000000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "legitimacy_resolved",
+        "label": "Legitimacy was resolved.",
+        "params": {
+          "opening_legitimacy_bps": 6000,
+          "order_support_contribution_bps": 100,
+          "performance_contribution_bps": 0,
+          "total_legitimacy_change_bps": 100,
+          "closing_legitimacy_bps": 6100,
+          "constitutional_order_support_bps": 7000
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "political_capital_resolved",
+        "label": "Political capital was resolved.",
+        "params": {
+          "opening": 500,
+          "regeneration": 383,
+          "spent": 0,
+          "capacity": 1000,
+          "closing": 883
+        }
+      },
+      {
+        "category": "politics",
+        "reason_id": "coup_risk_assessed",
+        "label": "Survival risk was assessed, including how much of it comes from the government's own structure.",
+        "params": {
+          "coup_attempt_risk_bps": 352,
+          "unrest_attempt_risk_bps": 240,
+          "impeachment_eligible": 0,
+          "impeachment_attempt_risk_bps": 0,
+          "structural_exposure_bps": 7500,
+          "coup_structural_contribution_bps": 300,
+          "unrest_structural_contribution_bps": 225
+        }
+      },
+      {
+        "category": "administration",
+        "reason_id": "turn_resolved",
+        "label": "The turn was resolved.",
+        "params": {
+          "turn": 0
+        }
+      }
+    ],
+    "ledger": [],
+    "unchanged": [
+      "No policy proposal was submitted.",
+      "No formations moved.",
+      "No cabinet changes."
+    ],
+    "trace": [
+      {
+        "label": "Final election support",
+        "value_text": "0.00%",
+        "source_field": "ElectionReport.final_support_bps"
+      },
+      {
+        "label": "Political capital committed",
+        "value_text": "0",
+        "source_field": "PoliticalCapitalReport.total_committed"
+      }
+    ],
+    "terminal": null,
+    "objective_line": null,
+    "recorded_vote": null,
+    "no_vote_reason": "no_proposal"
+  }
+}

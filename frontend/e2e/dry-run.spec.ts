@@ -136,7 +136,13 @@ test("internal dry run: five turns through the interface of the installed build"
     const view = page.getByTestId("turn-result-view");
     await expect(view).toHaveAttribute("data-context", "live");
     await expect(view).toContainText(body.turnResult.outcome_headline);
-    const consequences = await view.getByTestId("drivers-consequential").locator(":scope > li").allInnerTexts();
+    // Gate 4A3 M-4 (forward-only): the visible lines now span the proposal card, people and
+    // reactions, and "What else happened"; read in page order, Routine steps excluded as before.
+    const consequences = await view.evaluate((root) =>
+      Array.from(root.querySelectorAll<HTMLElement>("[data-reason-id]"))
+        .filter((el) => el.closest('[data-testid="drivers-routine"]') === null)
+        .map((el) => el.innerText),
+    );
     const routine = await view.getByTestId("drivers-routine").locator("li[data-reason-id]").count();
     await view.getByRole("button", { name: "Show exact values" }).click();
     const reasons = await view.getByTestId("trace-reasons").getByRole("link").count();

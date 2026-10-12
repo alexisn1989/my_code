@@ -1,0 +1,1133 @@
+{
+  "gate": "4A3 map-led redesign",
+  "out": "gate-4a3-m4-redesign",
+  "results": [
+    {
+      "block": "m1",
+      "width": 1440,
+      "layout": "wide",
+      "css": [
+        200
+      ],
+      "tracks": 4,
+      "minPinGapPx": 57.7,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 960,
+      "layout": "wide",
+      "css": [
+        200
+      ],
+      "tracks": 2,
+      "minPinGapPx": 24.4,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 820,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 2,
+      "minPinGapPx": 92.8,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 720,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 2,
+      "minPinGapPx": 71,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 390,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 1,
+      "minPinGapPx": 16.4,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m1",
+      "width": 320,
+      "layout": "tall",
+      "css": [
+        200
+      ],
+      "tracks": 1,
+      "minPinGapPx": 2.6,
+      "wash": "oklab(0.82997 0.00405313 0.0511302)",
+      "landedHeadings": {
+        "map:Parliament": "Legislature",
+        "list:Parliament": "Legislature",
+        "tap:Parliament": "Legislature",
+        "map:Palace": "Government",
+        "list:Palace": "Government",
+        "tap:Palace": "Government",
+        "map:Constitution hall": "Constitution",
+        "list:Constitution hall": "Constitution",
+        "tap:Constitution hall": "Constitution",
+        "map:Treasury": "Decision workspace",
+        "list:Treasury": "Decision workspace",
+        "tap:Treasury": "Decision workspace",
+        "map:Archive": "History",
+        "list:Archive": "History",
+        "tap:Archive": "History",
+        "map:Embassies": "Relationships",
+        "list:Embassies": "Relationships",
+        "tap:Embassies": "Relationships",
+        "map:Garrison": "Strategic map",
+        "list:Garrison": "Strategic map",
+        "tap:Garrison": "Strategic map"
+      }
+    },
+    {
+      "block": "m2",
+      "width": 1440,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 27.22
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2",
+      "width": 960,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 27.22
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2",
+      "width": 820,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 27.22
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 20.44
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2",
+      "width": 720,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 19.4
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 25.85
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 19.4
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2",
+      "width": 390,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 13.65
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 18.18
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 13.65
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2",
+      "width": 320,
+      "scenarios": [
+        {
+          "scenario": "arken",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 10.55
+            },
+            {
+              "chamber": "upper",
+              "seats": 60,
+              "minDiameterPx": 14.05
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 58,
+              "required": 51,
+              "carries": true
+            },
+            {
+              "chamber": "upper",
+              "supporting": 33,
+              "required": 31,
+              "carries": true
+            }
+          ]
+        },
+        {
+          "scenario": "valdrun",
+          "seats": [
+            {
+              "chamber": "lower",
+              "seats": 100,
+              "minDiameterPx": 10.55
+            }
+          ],
+          "preview": [
+            {
+              "chamber": "lower",
+              "supporting": 45,
+              "required": 51,
+              "carries": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "block": "m2-journeys",
+      "width": 1440,
+      "journal": {
+        "editedAfterPreview": "estimate hidden",
+        "heldResponseAfterEdit": "not shown",
+        "heldAcrossResolve": "not shown",
+        "decree": "no tallies",
+        "recordedVote": {
+          "turn": 1,
+          "lower": {
+            "chamber": "lower",
+            "total_seats": 100,
+            "supporting_seats": 45,
+            "required_seats": 51,
+            "passed": false,
+            "blocs": [
+              {
+                "party_id": "governing_party",
+                "bloc_id": "core",
+                "bloc_display_name": "Crown Party Core",
+                "seats": 45,
+                "supporting_seats": 45
+              },
+              {
+                "party_id": "opposition_party",
+                "bloc_id": "main",
+                "bloc_display_name": "Reform Opposition Main",
+                "seats": 55,
+                "supporting_seats": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "block": "m2-journeys",
+      "width": 390,
+      "journal": {
+        "editedAfterPreview": "estimate hidden",
+        "heldResponseAfterEdit": "not shown",
+        "heldAcrossResolve": "not shown",
+        "decree": "no tallies",
+        "recordedVote": {
+          "turn": 1,
+          "lower": {
+            "chamber": "lower",
+            "total_seats": 100,
+            "supporting_seats": 45,
+            "required_seats": 51,
+            "passed": false,
+            "blocs": [
+              {
+                "party_id": "governing_party",
+                "bloc_id": "core",
+                "bloc_display_name": "Crown Party Core",
+                "seats": 45,
+                "supporting_seats": 45
+              },
+              {
+                "party_id": "opposition_party",
+                "bloc_id": "main",
+                "bloc_display_name": "Reform Opposition Main",
+                "seats": 55,
+                "supporting_seats": 0
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "block": "m2-keyboard",
+      "focus": "unchanged after late responses, both directions"
+    },
+    {
+      "block": "m3",
+      "width": 1440,
+      "placement": {
+        "inAside": true,
+        "afterLowerCard": false
+      }
+    },
+    {
+      "block": "m3",
+      "width": 960,
+      "placement": {
+        "inAside": false,
+        "afterLowerCard": true
+      }
+    },
+    {
+      "block": "m3",
+      "width": 820,
+      "placement": {
+        "inAside": false,
+        "afterLowerCard": true
+      }
+    },
+    {
+      "block": "m3",
+      "width": 720,
+      "placement": {
+        "inAside": false,
+        "afterLowerCard": true
+      }
+    },
+    {
+      "block": "m3",
+      "width": 390,
+      "placement": {
+        "inAside": false,
+        "afterLowerCard": true
+      }
+    },
+    {
+      "block": "m3",
+      "width": 320,
+      "placement": {
+        "inAside": false,
+        "afterLowerCard": true
+      }
+    },
+    {
+      "block": "m3-journey-a",
+      "width": 1440,
+      "recorded": {
+        "turn": 1,
+        "vote": {
+          "proposal_kind": "budget",
+          "outcome": "passed_legislative",
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "supporting_seats": 61,
+              "required_seats": 51,
+              "passed": true,
+              "blocs": [
+                {
+                  "party_id": "civic_union",
+                  "bloc_id": "mainstream",
+                  "bloc_display_name": "Civic Union Mainstream",
+                  "seats": 40,
+                  "supporting_seats": 40
+                },
+                {
+                  "party_id": "civic_union",
+                  "bloc_id": "reform",
+                  "bloc_display_name": "Civic Union Reform Caucus",
+                  "seats": 12,
+                  "supporting_seats": 11
+                },
+                {
+                  "party_id": "national_front",
+                  "bloc_id": "conservatives",
+                  "bloc_display_name": "National Front Conservatives",
+                  "seats": 30,
+                  "supporting_seats": 0
+                },
+                {
+                  "party_id": "national_front",
+                  "bloc_id": "populists",
+                  "bloc_display_name": "National Front Populists",
+                  "seats": 8,
+                  "supporting_seats": 0
+                },
+                {
+                  "party_id": "rural_alliance",
+                  "bloc_id": "farmers",
+                  "bloc_display_name": "Rural Alliance Farmers",
+                  "seats": 10,
+                  "supporting_seats": 10
+                }
+              ]
+            },
+            {
+              "chamber": "upper",
+              "total_seats": 60,
+              "supporting_seats": 35,
+              "required_seats": 31,
+              "passed": true,
+              "blocs": [
+                {
+                  "party_id": "civic_union",
+                  "bloc_id": "mainstream",
+                  "bloc_display_name": "Civic Union Mainstream",
+                  "seats": 24,
+                  "supporting_seats": 24
+                },
+                {
+                  "party_id": "civic_union",
+                  "bloc_id": "reform",
+                  "bloc_display_name": "Civic Union Reform Caucus",
+                  "seats": 6,
+                  "supporting_seats": 5
+                },
+                {
+                  "party_id": "national_front",
+                  "bloc_id": "conservatives",
+                  "bloc_display_name": "National Front Conservatives",
+                  "seats": 20,
+                  "supporting_seats": 0
+                },
+                {
+                  "party_id": "national_front",
+                  "bloc_id": "populists",
+                  "bloc_display_name": "National Front Populists",
+                  "seats": 4,
+                  "supporting_seats": 0
+                },
+                {
+                  "party_id": "rural_alliance",
+                  "bloc_id": "farmers",
+                  "bloc_display_name": "Rural Alliance Farmers",
+                  "seats": 6,
+                  "supporting_seats": 6
+                }
+              ]
+            }
+          ],
+          "blocs_recorded": true,
+          "budget": {
+            "tax_direction": "decrease",
+            "tax_delta_bps": -500,
+            "spending_direction": "unchanged",
+            "opening_total_program_spending": 1050000000,
+            "proposed_total_program_spending": 1050000000
+          },
+          "amendment_targets": []
+        }
+      }
+    },
+    {
+      "block": "m3-journey-b",
+      "width": 1440,
+      "recorded": {
+        "turn": 1,
+        "vote": {
+          "proposal_kind": "constitutional_amendment",
+          "outcome": "failed_legislative",
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "supporting_seats": 56,
+              "required_seats": 67,
+              "passed": false,
+              "blocs": []
+            }
+          ],
+          "blocs_recorded": false,
+          "budget": null,
+          "amendment_targets": [
+            {
+              "axis": "decree_authority",
+              "opening_value": "unlimited",
+              "proposed_value": "none"
+            },
+            {
+              "axis": "executive_selection",
+              "opening_value": "hereditary",
+              "proposed_value": "direct_election"
+            },
+            {
+              "axis": "executive_system",
+              "opening_value": "monarchical",
+              "proposed_value": "presidential"
+            },
+            {
+              "axis": "national_election_interval_turns",
+              "opening_value": "null",
+              "proposed_value": "4"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "block": "m3-journey-a",
+      "width": 390,
+      "recorded": {
+        "turn": 1,
+        "vote": {
+          "proposal_kind": "budget",
+          "outcome": "passed_legislative",
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "supporting_seats": 61,
+              "required_seats": 51,
+              "passed": true,
+              "blocs": [
+                {
+                  "party_id": "civic_union",
+                  "bloc_id": "mainstream",
+                  "bloc_display_name": "Civic Union Mainstream",
+                  "seats": 40,
+                  "supporting_seats": 40
+                },
+                {
+                  "party_id": "civic_union",
+                  "bloc_id": "reform",
+                  "bloc_display_name": "Civic Union Reform Caucus",
+                  "seats": 12,
+                  "supporting_seats": 11
+                },
+                {
+                  "party_id": "national_front",
+                  "bloc_id": "conservatives",
+                  "bloc_display_name": "National Front Conservatives",
+                  "seats": 30,
+                  "supporting_seats": 0
+                },
+                {
+                  "party_id": "national_front",
+                  "bloc_id": "populists",
+                  "bloc_display_name": "National Front Populists",
+                  "seats": 8,
+                  "supporting_seats": 0
+                },
+                {
+                  "party_id": "rural_alliance",
+                  "bloc_id": "farmers",
+                  "bloc_display_name": "Rural Alliance Farmers",
+                  "seats": 10,
+                  "supporting_seats": 10
+                }
+              ]
+            },
+            {
+              "chamber": "upper",
+              "total_seats": 60,
+              "supporting_seats": 35,
+              "required_seats": 31,
+              "passed": true,
+              "blocs": [
+                {
+                  "party_id": "civic_union",
+                  "bloc_id": "mainstream",
+                  "bloc_display_name": "Civic Union Mainstream",
+                  "seats": 24,
+                  "supporting_seats": 24
+                },
+                {
+                  "party_id": "civic_union",
+                  "bloc_id": "reform",
+                  "bloc_display_name": "Civic Union Reform Caucus",
+                  "seats": 6,
+                  "supporting_seats": 5
+                },
+                {
+                  "party_id": "national_front",
+                  "bloc_id": "conservatives",
+                  "bloc_display_name": "National Front Conservatives",
+                  "seats": 20,
+                  "supporting_seats": 0
+                },
+                {
+                  "party_id": "national_front",
+                  "bloc_id": "populists",
+                  "bloc_display_name": "National Front Populists",
+                  "seats": 4,
+                  "supporting_seats": 0
+                },
+                {
+                  "party_id": "rural_alliance",
+                  "bloc_id": "farmers",
+                  "bloc_display_name": "Rural Alliance Farmers",
+                  "seats": 6,
+                  "supporting_seats": 6
+                }
+              ]
+            }
+          ],
+          "blocs_recorded": true,
+          "budget": {
+            "tax_direction": "decrease",
+            "tax_delta_bps": -500,
+            "spending_direction": "unchanged",
+            "opening_total_program_spending": 1050000000,
+            "proposed_total_program_spending": 1050000000
+          },
+          "amendment_targets": []
+        }
+      }
+    },
+    {
+      "block": "m3-journey-b",
+      "width": 390,
+      "recorded": {
+        "turn": 1,
+        "vote": {
+          "proposal_kind": "constitutional_amendment",
+          "outcome": "failed_legislative",
+          "chambers": [
+            {
+              "chamber": "lower",
+              "total_seats": 100,
+              "supporting_seats": 56,
+              "required_seats": 67,
+              "passed": false,
+              "blocs": []
+            }
+          ],
+          "blocs_recorded": false,
+          "budget": null,
+          "amendment_targets": [
+            {
+              "axis": "decree_authority",
+              "opening_value": "unlimited",
+              "proposed_value": "none"
+            },
+            {
+              "axis": "executive_selection",
+              "opening_value": "hereditary",
+              "proposed_value": "direct_election"
+            },
+            {
+              "axis": "executive_system",
+              "opening_value": "monarchical",
+              "proposed_value": "presidential"
+            },
+            {
+              "axis": "national_election_interval_turns",
+              "opening_value": "null",
+              "proposed_value": "4"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "block": "m3-keyboard",
+      "focus": "heading on open, row on Escape, new heading on swap"
+    },
+    {
+      "block": "m3-replacement-altered-response",
+      "width": 1440
+    },
+    {
+      "block": "m3-replacement-altered-response",
+      "width": 390
+    },
+    {
+      "block": "m3-parity",
+      "status": 422
+    },
+    {
+      "block": "m4",
+      "width": 1440,
+      "verdict": "passed_legislative",
+      "chambers": [
+        [
+          "lower",
+          61,
+          51
+        ],
+        [
+          "upper",
+          35,
+          31
+        ]
+      ],
+      "colours": {
+        "civic_union": [
+          "rgb(150, 116, 47)"
+        ],
+        "rural_alliance": [
+          "rgb(143, 184, 220)"
+        ]
+      }
+    },
+    {
+      "block": "m4",
+      "width": 960,
+      "verdict": "passed_legislative",
+      "chambers": [
+        [
+          "lower",
+          61,
+          51
+        ],
+        [
+          "upper",
+          35,
+          31
+        ]
+      ],
+      "colours": {
+        "civic_union": [
+          "rgb(150, 116, 47)"
+        ],
+        "rural_alliance": [
+          "rgb(143, 184, 220)"
+        ]
+      }
+    },
+    {
+      "block": "m4",
+      "width": 820,
+      "verdict": "passed_legislative",
+      "chambers": [
+        [
+          "lower",
+          61,
+          51
+        ],
+        [
+          "upper",
+          35,
+          31
+        ]
+      ],
+      "colours": {
+        "civic_union": [
+          "rgb(150, 116, 47)"
+        ],
+        "rural_alliance": [
+          "rgb(143, 184, 220)"
+        ]
+      }
+    },
+    {
+      "block": "m4",
+      "width": 720,
+      "verdict": "passed_legislative",
+      "chambers": [
+        [
+          "lower",
+          61,
+          51
+        ],
+        [
+          "upper",
+          35,
+          31
+        ]
+      ],
+      "colours": {
+        "civic_union": [
+          "rgb(150, 116, 47)"
+        ],
+        "rural_alliance": [
+          "rgb(143, 184, 220)"
+        ]
+      }
+    },
+    {
+      "block": "m4",
+      "width": 390,
+      "verdict": "passed_legislative",
+      "chambers": [
+        [
+          "lower",
+          61,
+          51
+        ],
+        [
+          "upper",
+          35,
+          31
+        ]
+      ],
+      "colours": {
+        "civic_union": [
+          "rgb(150, 116, 47)"
+        ],
+        "rural_alliance": [
+          "rgb(143, 184, 220)"
+        ]
+      }
+    },
+    {
+      "block": "m4",
+      "width": 320,
+      "verdict": "passed_legislative",
+      "chambers": [
+        [
+          "lower",
+          61,
+          51
+        ],
+        [
+          "upper",
+          35,
+          31
+        ]
+      ],
+      "colours": {
+        "civic_union": [
+          "rgb(150, 116, 47)"
+        ],
+        "rural_alliance": [
+          "rgb(143, 184, 220)"
+        ]
+      }
+    },
+    {
+      "block": "m4-valdrun",
+      "decree": "enacted_by_decree",
+      "empty": "no_proposal"
+    },
+    {
+      "block": "m4-keyboard",
+      "reached": {
+        "legislative_vote_resolved": "card",
+        "decree_bypass_relationship_reaction": "bloc"
+      }
+    }
+  ]
+}

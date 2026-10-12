@@ -234,11 +234,18 @@ async function openCustomize(page: Page): Promise<void> {
   if ((await details.getAttribute("open")) === null) await summary.click();
 }
 
-/** The "Why this happened" list, as a player reads it. */
+/** Every visible driver line of the turn result, as a player reads it, in page order. Gate 4A3 M-4
+ * (forward-only): the one "Why this happened" list became the proposal card, people and reactions,
+ * and "What else happened"; this reads the same lines from all of them (Routine steps stay folded). */
 async function driversText(page: Page): Promise<string> {
-  const heading = page.getByRole("heading", { name: "Why this happened" });
-  await heading.waitFor({ state: "visible", timeout: 15_000 });
-  return heading.locator("xpath=ancestor::section[1]").innerText();
+  const view = page.getByTestId("turn-result-view");
+  await view.getByRole("heading", { name: "What else happened" }).waitFor({ state: "visible", timeout: 15_000 });
+  return view.evaluate((root) =>
+    Array.from(root.querySelectorAll<HTMLElement>("[data-reason-id]"))
+      .filter((el) => el.closest('[data-testid="drivers-routine"]') === null)
+      .map((el) => el.innerText)
+      .join("\n"),
+  );
 }
 
 test.describe("Gate 4A3 Commit 5b: campaigns through the interface", () => {
@@ -465,7 +472,7 @@ test.describe("Gate 4A3 Commit 5b: campaigns through the interface", () => {
     /* T2, FIXED IN GATE 4A3 UX-2. Reason ids now live only in the collapsed Trace, linked to their
      * sentences, so with the Trace closed no driver's reason id is player-visible -- in rendered text
      * or in any player-visible attribute -- and no driver line carries a <code> element. */
-    const codeInDriverLines = await page.getByTestId("turn-result-view").locator("li[data-reason-id] code").count();
+    const codeInDriverLines = await page.getByTestId("turn-result-view").locator("[data-reason-id] code").count();
     expect(codeInDriverLines, "no painted reason id beside a driver sentence").toBe(0);
     const liveLeaks = await findIdentifierLeaks(page, reasonIds);
     expect(liveLeaks, "no reason id visible outside the Trace on the live result").toEqual([]);

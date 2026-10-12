@@ -60,15 +60,18 @@ async function renderIn(context: "live" | "history") {
 describe.each(["live", "history"] as const)("UX-4g corrections in the turn result (%s)", (context) => {
   it("a relationship ending just below zero keeps its minus sign", async () => {
     const view = await renderIn(context);
-    expect(within(view).getByTestId("drivers-consequential")).toHaveTextContent(
-      "Reform Bloc: relationship 0.20% → -0.50% (-0.70 points).",
+    // Gate 4A3 M-4 (forward-only): the bloc's move now sits under "How the blocs took it", with the
+    // same signed figures.
+    expect(within(view).getByTestId("result-bloc")).toHaveTextContent(
+      "Reform Bloc · relationship 0.20% → -0.50%▼ cooler -0.70 points",
     );
     expect(view.textContent ?? "").not.toContain("→ 0.50%");
   });
 
   it("the blocking chamber names supporting and required votes", async () => {
     const view = await renderIn(context);
-    expect(within(view).getByTestId("drivers-consequential")).toHaveTextContent(
+    // Gate 4A3 M-4 (forward-only): the vote's outcome now sits in the proposal card.
+    expect(within(view).getByTestId("result-card-drivers")).toHaveTextContent(
       "Lower chamber blocked the budget: 45 supporting votes; 51 required—6 short.",
     );
     expect(view.textContent ?? "").not.toContain("of 51 seats");

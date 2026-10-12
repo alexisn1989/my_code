@@ -1,0 +1,918 @@
+{
+  "bar": "3:1, WCAG 2.2 SC 1.4.11 (a 2px stroke is a graphical object)",
+  "scenario": "deficit_demo, via the real data/scenarios root, on this spec's own server",
+  "method": "Every `svg[data-icon]` in the live DOM, measured at its own placement. Placement comes from a NAMED container, and each placement's backdrop expectation comes from the component's authored `className` -- never from what the probe resolved. Each ratio is then reconciled against an offline computation from authored values: the `tokens.css` hex, the alpha, and that authored backdrop.",
+  "tolerances": {
+    "channel": 1,
+    "ratio": 0.05,
+    "fixedBeforeTheRun": true,
+    "note": "Fixed in `e2e/contrast-probe.ts` before this run. The previous calibration was a 5.2-5.7 BAND wide enough to contain navy-900 (5.45), navy-950 (5.57) and the 5.65 the broken parser produced from a pure-black backdrop -- so it could not detect the bug."
+  },
+  "probeFix": "`numbers()` read alpha only from a slash component, so legacy `rgba(0, 0, 0, 0)` -- what `getComputedStyle().backgroundColor` returns for a transparent background -- parsed as OPAQUE BLACK and `effectiveBg` stopped at the first transparent ancestor. Every figure Commits 3 and 4 recorded was inflated. Fixed in Commit 4a.",
+  "calibration": {
+    "className": "text-parchment-200/60",
+    "expectedRatio": 5.45,
+    "offlineNote": "parchment-200 #e8dcc0 at alpha 0.6, source-over onto navy-900 #0f1626, gives 5.45:1; axe independently reported 4.16:1 for the same token at 50% under the same model"
+  },
+  "totalMeasurements": 31,
+  "iconsMeasured": [
+    "capital",
+    "caution",
+    "down",
+    "negative",
+    "neutral",
+    "positive",
+    "route-one-way",
+    "route-two-way",
+    "unchanged",
+    "up"
+  ],
+  "iconsNotReached": [],
+  "perIcon": [
+    {
+      "icon": "positive",
+      "group": "tone",
+      "placements": [
+        "preview-panel"
+      ],
+      "screens": [
+        "Decisions (preview, failing vote)"
+      ],
+      "occurrences": 1,
+      "worstRatio": 10.18,
+      "token": "success-400",
+      "alpha": 1,
+      "backdrop": "rgb(15,22,38)",
+      "backdropSurface": "navy-900",
+      "offlineExpected": 10.18,
+      "clearsBar": true
+    },
+    {
+      "icon": "negative",
+      "group": "tone",
+      "placements": [
+        "dashboard-concern",
+        "preview-panel",
+        "turn-result"
+      ],
+      "screens": [
+        "Dashboard (turn 1)",
+        "Decisions (preview, failing vote)",
+        "Turn result (turn 1)"
+      ],
+      "occurrences": 4,
+      "worstRatio": 7.17,
+      "token": "danger-400",
+      "alpha": 1,
+      "backdrop": "rgb(15,22,38)",
+      "backdropSurface": "navy-900",
+      "offlineExpected": 7.17,
+      "clearsBar": true
+    },
+    {
+      "icon": "caution",
+      "group": "tone",
+      "placements": [
+        "dashboard-concern"
+      ],
+      "screens": [
+        "Dashboard (turn 1)"
+      ],
+      "occurrences": 1,
+      "worstRatio": 9.93,
+      "token": "warning-400",
+      "alpha": 1,
+      "backdrop": "rgb(15,22,38)",
+      "backdropSurface": "navy-900",
+      "offlineExpected": 9.93,
+      "clearsBar": true
+    },
+    {
+      "icon": "neutral",
+      "group": "tone",
+      "placements": [
+        "dashboard-concern"
+      ],
+      "screens": [
+        "Dashboard",
+        "Dashboard (turn 1)"
+      ],
+      "occurrences": 8,
+      "worstRatio": 13.27,
+      "token": "parchment-200",
+      "alpha": 1,
+      "backdrop": "rgb(15,22,38)",
+      "backdropSurface": "navy-900",
+      "offlineExpected": 13.27,
+      "clearsBar": true
+    },
+    {
+      "icon": "up",
+      "group": "direction",
+      "placements": [
+        "policy-card"
+      ],
+      "screens": [
+        "Decisions",
+        "Decisions (preview, failing vote)"
+      ],
+      "occurrences": 6,
+      "worstRatio": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8,
+      "backdrop": "rgb(15,22,38)",
+      "backdropSurface": "navy-900",
+      "offlineExpected": 8.78,
+      "clearsBar": true
+    },
+    {
+      "icon": "down",
+      "group": "direction",
+      "placements": [
+        "policy-card"
+      ],
+      "screens": [
+        "Decisions",
+        "Decisions (preview, failing vote)"
+      ],
+      "occurrences": 6,
+      "worstRatio": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8,
+      "backdrop": "rgb(15,22,38)",
+      "backdropSurface": "navy-900",
+      "offlineExpected": 8.78,
+      "clearsBar": true
+    },
+    {
+      "icon": "unchanged",
+      "group": "direction",
+      "placements": [
+        "policy-card"
+      ],
+      "screens": [
+        "Decisions (Constitutional reform)"
+      ],
+      "occurrences": 2,
+      "worstRatio": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8,
+      "backdrop": "rgb(15,22,38)",
+      "backdropSurface": "navy-900",
+      "offlineExpected": 8.78,
+      "clearsBar": true
+    },
+    {
+      "icon": "route-one-way",
+      "group": "map-legend",
+      "placements": [
+        "map-legend"
+      ],
+      "screens": [
+        "Strategic map"
+      ],
+      "occurrences": 1,
+      "worstRatio": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8,
+      "backdrop": "rgb(15,22,38)",
+      "backdropSurface": "navy-900",
+      "offlineExpected": 8.78,
+      "clearsBar": true
+    },
+    {
+      "icon": "route-two-way",
+      "group": "map-legend",
+      "placements": [
+        "map-legend"
+      ],
+      "screens": [
+        "Strategic map"
+      ],
+      "occurrences": 1,
+      "worstRatio": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8,
+      "backdrop": "rgb(15,22,38)",
+      "backdropSurface": "navy-900",
+      "offlineExpected": 8.78,
+      "clearsBar": true
+    },
+    {
+      "icon": "capital",
+      "group": "map-legend",
+      "placements": [
+        "map-legend"
+      ],
+      "screens": [
+        "Strategic map"
+      ],
+      "occurrences": 1,
+      "worstRatio": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8,
+      "backdrop": "rgb(15,22,38)",
+      "backdropSurface": "navy-900",
+      "offlineExpected": 8.78,
+      "clearsBar": true
+    }
+  ],
+  "reconciliation": [
+    {
+      "icon": "neutral",
+      "placement": "dashboard-concern",
+      "screen": "Dashboard",
+      "measured": 13.27,
+      "offline": 13.27,
+      "token": "parchment-200",
+      "alpha": 1
+    },
+    {
+      "icon": "neutral",
+      "placement": "dashboard-concern",
+      "screen": "Dashboard",
+      "measured": 13.27,
+      "offline": 13.27,
+      "token": "parchment-200",
+      "alpha": 1
+    },
+    {
+      "icon": "neutral",
+      "placement": "dashboard-concern",
+      "screen": "Dashboard",
+      "measured": 13.27,
+      "offline": 13.27,
+      "token": "parchment-200",
+      "alpha": 1
+    },
+    {
+      "icon": "neutral",
+      "placement": "dashboard-concern",
+      "screen": "Dashboard",
+      "measured": 13.27,
+      "offline": 13.27,
+      "token": "parchment-200",
+      "alpha": 1
+    },
+    {
+      "icon": "neutral",
+      "placement": "dashboard-concern",
+      "screen": "Dashboard",
+      "measured": 13.27,
+      "offline": 13.27,
+      "token": "parchment-200",
+      "alpha": 1
+    },
+    {
+      "icon": "route-one-way",
+      "placement": "map-legend",
+      "screen": "Strategic map",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "route-two-way",
+      "placement": "map-legend",
+      "screen": "Strategic map",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "capital",
+      "placement": "map-legend",
+      "screen": "Strategic map",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "up",
+      "placement": "policy-card",
+      "screen": "Decisions",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "down",
+      "placement": "policy-card",
+      "screen": "Decisions",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "up",
+      "placement": "policy-card",
+      "screen": "Decisions",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "down",
+      "placement": "policy-card",
+      "screen": "Decisions",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "up",
+      "placement": "policy-card",
+      "screen": "Decisions",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "down",
+      "placement": "policy-card",
+      "screen": "Decisions",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "unchanged",
+      "placement": "policy-card",
+      "screen": "Decisions (Constitutional reform)",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "unchanged",
+      "placement": "policy-card",
+      "screen": "Decisions (Constitutional reform)",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "up",
+      "placement": "policy-card",
+      "screen": "Decisions (preview, failing vote)",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "down",
+      "placement": "policy-card",
+      "screen": "Decisions (preview, failing vote)",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "up",
+      "placement": "policy-card",
+      "screen": "Decisions (preview, failing vote)",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "down",
+      "placement": "policy-card",
+      "screen": "Decisions (preview, failing vote)",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "up",
+      "placement": "policy-card",
+      "screen": "Decisions (preview, failing vote)",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "down",
+      "placement": "policy-card",
+      "screen": "Decisions (preview, failing vote)",
+      "measured": 8.78,
+      "offline": 8.78,
+      "token": "parchment-200",
+      "alpha": 0.8
+    },
+    {
+      "icon": "negative",
+      "placement": "preview-panel",
+      "screen": "Decisions (preview, failing vote)",
+      "measured": 7.17,
+      "offline": 7.17,
+      "token": "danger-400",
+      "alpha": 1
+    },
+    {
+      "icon": "negative",
+      "placement": "preview-panel",
+      "screen": "Decisions (preview, failing vote)",
+      "measured": 7.17,
+      "offline": 7.17,
+      "token": "danger-400",
+      "alpha": 1
+    },
+    {
+      "icon": "positive",
+      "placement": "preview-panel",
+      "screen": "Decisions (preview, failing vote)",
+      "measured": 10.18,
+      "offline": 10.18,
+      "token": "success-400",
+      "alpha": 1
+    },
+    {
+      "icon": "negative",
+      "placement": "turn-result",
+      "screen": "Turn result (turn 1)",
+      "measured": 7.17,
+      "offline": 7.17,
+      "token": "danger-400",
+      "alpha": 1
+    },
+    {
+      "icon": "negative",
+      "placement": "dashboard-concern",
+      "screen": "Dashboard (turn 1)",
+      "measured": 7.17,
+      "offline": 7.17,
+      "token": "danger-400",
+      "alpha": 1
+    },
+    {
+      "icon": "neutral",
+      "placement": "dashboard-concern",
+      "screen": "Dashboard (turn 1)",
+      "measured": 13.27,
+      "offline": 13.27,
+      "token": "parchment-200",
+      "alpha": 1
+    },
+    {
+      "icon": "neutral",
+      "placement": "dashboard-concern",
+      "screen": "Dashboard (turn 1)",
+      "measured": 13.27,
+      "offline": 13.27,
+      "token": "parchment-200",
+      "alpha": 1
+    },
+    {
+      "icon": "neutral",
+      "placement": "dashboard-concern",
+      "screen": "Dashboard (turn 1)",
+      "measured": 13.27,
+      "offline": 13.27,
+      "token": "parchment-200",
+      "alpha": 1
+    },
+    {
+      "icon": "caution",
+      "placement": "dashboard-concern",
+      "screen": "Dashboard (turn 1)",
+      "measured": 9.93,
+      "offline": 9.93,
+      "token": "warning-400",
+      "alpha": 1
+    }
+  ],
+  "coverage": [
+    "Dashboard: 5 icon(s)",
+    "Strategic map: 3 icon(s)",
+    "Decisions: 6 icon(s)",
+    "server projection carries 24 card(s) with an unchanged-direction effect",
+    "Decisions / Constitutional reform: 2 icon(s), including 2 unchanged",
+    "preview: has_proposal=true, would_pass=false, 1 chamber(s) not carrying",
+    "Decisions / preview: 9 icon(s)",
+    "after one resolved turn the dashboard concerns are: Money=negative, Legitimacy=neutral, Legislature=neutral, Constitution=neutral, Survival=caution",
+    "Turn result after the resolve: 1 icon(s)",
+    "Dashboard after the resolve: 5 icon(s)"
+  ],
+  "measurements": [
+    {
+      "icon": "neutral",
+      "group": "tone",
+      "placement": "dashboard-concern",
+      "ratio": 13.27,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(232, 220, 192)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Dashboard",
+      "classes": "text-parchment-200"
+    },
+    {
+      "icon": "neutral",
+      "group": "tone",
+      "placement": "dashboard-concern",
+      "ratio": 13.27,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(232, 220, 192)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Dashboard",
+      "classes": "text-parchment-200"
+    },
+    {
+      "icon": "neutral",
+      "group": "tone",
+      "placement": "dashboard-concern",
+      "ratio": 13.27,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(232, 220, 192)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Dashboard",
+      "classes": "text-parchment-200"
+    },
+    {
+      "icon": "neutral",
+      "group": "tone",
+      "placement": "dashboard-concern",
+      "ratio": 13.27,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(232, 220, 192)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Dashboard",
+      "classes": "text-parchment-200"
+    },
+    {
+      "icon": "neutral",
+      "group": "tone",
+      "placement": "dashboard-concern",
+      "ratio": 13.27,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(232, 220, 192)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Dashboard",
+      "classes": "text-parchment-200"
+    },
+    {
+      "icon": "route-one-way",
+      "group": "map-legend",
+      "placement": "map-legend",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Strategic map",
+      "classes": ""
+    },
+    {
+      "icon": "route-two-way",
+      "group": "map-legend",
+      "placement": "map-legend",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Strategic map",
+      "classes": ""
+    },
+    {
+      "icon": "capital",
+      "group": "map-legend",
+      "placement": "map-legend",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Strategic map",
+      "classes": ""
+    },
+    {
+      "icon": "up",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "down",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "up",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "down",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "up",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "down",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "unchanged",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (Constitutional reform)",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "unchanged",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (Constitutional reform)",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "up",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (preview, failing vote)",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "down",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (preview, failing vote)",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "up",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (preview, failing vote)",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "down",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (preview, failing vote)",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "up",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (preview, failing vote)",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "down",
+      "group": "direction",
+      "placement": "policy-card",
+      "ratio": 8.78,
+      "strokeWidth": "2px",
+      "rawColor": "oklab(0.896735 0.00171477 0.0394163 / 0.8)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 0.8,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (preview, failing vote)",
+      "classes": "flex items-center gap-1 tabular-nums"
+    },
+    {
+      "icon": "negative",
+      "group": "tone",
+      "placement": "preview-panel",
+      "ratio": 7.17,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(229, 138, 138)",
+      "normalised": "rgb(229,138,138)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (preview, failing vote)",
+      "classes": "text-danger-400"
+    },
+    {
+      "icon": "negative",
+      "group": "tone",
+      "placement": "preview-panel",
+      "ratio": 7.17,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(229, 138, 138)",
+      "normalised": "rgb(229,138,138)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (preview, failing vote)",
+      "classes": "text-danger-400"
+    },
+    {
+      "icon": "positive",
+      "group": "tone",
+      "placement": "preview-panel",
+      "ratio": 10.18,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(134, 211, 160)",
+      "normalised": "rgb(134,211,160)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Decisions (preview, failing vote)",
+      "classes": "text-success-400"
+    },
+    {
+      "icon": "negative",
+      "group": "tone",
+      "placement": "turn-result",
+      "ratio": 7.17,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(229, 138, 138)",
+      "normalised": "rgb(229,138,138)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Turn result (turn 1)",
+      "classes": "text-danger-400"
+    },
+    {
+      "icon": "negative",
+      "group": "tone",
+      "placement": "dashboard-concern",
+      "ratio": 7.17,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(229, 138, 138)",
+      "normalised": "rgb(229,138,138)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Dashboard (turn 1)",
+      "classes": "text-danger-400"
+    },
+    {
+      "icon": "neutral",
+      "group": "tone",
+      "placement": "dashboard-concern",
+      "ratio": 13.27,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(232, 220, 192)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Dashboard (turn 1)",
+      "classes": "text-parchment-200"
+    },
+    {
+      "icon": "neutral",
+      "group": "tone",
+      "placement": "dashboard-concern",
+      "ratio": 13.27,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(232, 220, 192)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Dashboard (turn 1)",
+      "classes": "text-parchment-200"
+    },
+    {
+      "icon": "neutral",
+      "group": "tone",
+      "placement": "dashboard-concern",
+      "ratio": 13.27,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(232, 220, 192)",
+      "normalised": "rgb(232,220,192)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Dashboard (turn 1)",
+      "classes": "text-parchment-200"
+    },
+    {
+      "icon": "caution",
+      "group": "tone",
+      "placement": "dashboard-concern",
+      "ratio": 9.93,
+      "strokeWidth": "2px",
+      "rawColor": "rgb(232, 185, 98)",
+      "normalised": "rgb(232,185,98)",
+      "alpha": 1,
+      "bg": "rgb(15,22,38)",
+      "screen": "Dashboard (turn 1)",
+      "classes": "text-warning-400"
+    }
+  ]
+}
