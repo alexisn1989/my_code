@@ -15,7 +15,7 @@
  * polite announcement is made only for a request this screen issued.
  */
 
-import { useEffect, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import type { BlocOption, ChamberPreview, LastRecordedVote } from "../../api/client";
 import { useDashboard, useDecisionOptions } from "../../api/queries";
@@ -63,6 +63,7 @@ import { ErrorPanel } from "../../status/ErrorPanel";
 import { LoadingPanel } from "../../status/StatusPanels";
 import { ConcernSummaries } from "../ConcernCards";
 import { DataTable, Panel } from "../components";
+import { BlocPanel, type OpenBloc } from "../parliament/BlocPanel";
 import { Hemicycle } from "../parliament/Hemicycle";
 import type { ScreenProps } from "../registry";
 
@@ -88,7 +89,14 @@ function ChamberCard({
   colours,
   estimate,
   seatsReason,
+  openBloc,
+  onOpenBloc,
+  registerInvoker,
 }: {
+  /** Gate 4A3 M-3: which bloc's panel is open (to mark its button), and how to open one. */
+  openBloc: OpenBloc | null;
+  onOpenBloc: (bloc: BlocOption) => void;
+  registerInvoker: (key: string, element: HTMLButtonElement | null) => void;
   chamber: string;
   totalSeats: number;
   budgetRequired: number;
@@ -116,7 +124,11 @@ function ChamberCard({
       className="rounded border border-navy-800 bg-navy-900 p-4"
     >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-        <h3 id={headingId} className="font-[family-name:var(--font-display)] text-xl text-parchment-100">
+        <h3
+          id={headingId}
+          tabIndex={-1}
+          className="font-[family-name:var(--font-display)] text-xl text-parchment-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+        >
           {chamberTitle(chamber, totalSeats)}
         </h3>
         <p className="flex flex-col text-sm text-parchment-200 sm:items-end">
@@ -199,10 +211,23 @@ function ChamberCard({
                 // Party and stance sit under the bloc's name rather than in a column of their own, so on
                 // a phone the numbers stay in view instead of scrolling off beside a wide text column.
                 <span key="name" className="block min-w-32">
-                  <span className="block">
+                  {/* Gate 4A3 M-3: the bloc's name opens its panel. */}
+                  <button
+                    type="button"
+                    data-bloc-open={`${bloc.party_id}/${bloc.bloc_id}`}
+                    aria-expanded={
+                      openBloc !== null &&
+                      openBloc.chamber === chamber &&
+                      openBloc.partyId === bloc.party_id &&
+                      openBloc.blocId === bloc.bloc_id
+                    }
+                    ref={(element) => registerInvoker(`${chamber}/${bloc.party_id}/${bloc.bloc_id}`, element)}
+                    onClick={() => onOpenBloc(bloc)}
+                    className="block min-h-11 rounded text-left underline decoration-gold-600 underline-offset-4 aria-expanded:text-gold-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                  >
                     <Swatch colour={colours[bloc.party_id]} />
                     {bloc.bloc_name}
-                  </span>
+                  </button>
                   <span className="block pl-4.5 text-xs text-parchment-200/80">
                     {bloc.party_name} · {roleLabel(bloc.government_role)}
                   </span>
@@ -267,8 +292,32 @@ function LastRecordedVotePanel({ last }: { last: LastRecordedVote | null | undef
   );
 }
 
+/** Gate 4A3 M-3: from `xl` the bloc panel sits beside the chambers; below, inline after its chamber.
+ * Without `matchMedia` (jsdom) the inline placement is used. */
+function useWideLayout(): boolean {
+  const query = "(min-width: 1280px)";
+  const [wide, setWide] = useState(() => typeof window.matchMedia === "function" && window.matchMedia(query).matches);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const list = window.matchMedia(query);
+    const update = () => setWide(list.matches);
+    update();
+    list.addEventListener("change", update);
+    return () => list.removeEventListener("change", update);
+  }, []);
+  return wide;
+}
+
+/** Focus for a panel that closed with no invoking button left: its chamber's heading, else the
+ * screen's heading. */
+function focusFallback(chamber: string): void {
+  const target =
+    document.getElementById(`chamber-${chamber}`) ?? document.getElementById("parliament-heading");
+  target?.focus();
+}
+
 export function ParliamentScreen({ navigate }: ScreenProps) {
-  const { revision } = useSession();
+  const { revision, campaignId } = useSession();
   const dashboard = useDashboard(revision, { enabled: revision !== null });
   const options = useDecisionOptions(revision, { enabled: revision !== null });
   const draft = useDraftStore();
@@ -282,12 +331,73 @@ export function ParliamentScreen({ navigate }: ScreenProps) {
     setIssuedRequestId(null);
   }, [issuedRequestId, preview.current, preview.currentRequestId]);
 
+  // ---- Gate 4A3 M-3: the bloc panel ------------------------------------------------------------
+  // Only ids are kept; the bloc, leader, price and limits are read from the current projection on
+  // every render (`BlocPanel`), so nothing shown can be stale.
+  const [openBloc, setOpenBloc] = useState<OpenBloc | null>(null);
+  const panelHeading = useRef<HTMLHeadingElement | null>(null);
+  const invokers = useRef(new Map<string, HTMLButtonElement>());
+  const focusPanelNext = useRef(false);
+  const wide = useWideLayout();
+  const registerInvoker = useCallback((key: string, element: HTMLButtonElement | null) => {
+    if (element === null) invokers.current.delete(key);
+    else invokers.current.set(key, element);
+  }, []);
+  // The panel belongs to one view of one campaign: a resolve, load, new game or view-changing
+  // refresh closes it.
+  const openRef = useRef<OpenBloc | null>(null);
+  openRef.current = openBloc;
+  useEffect(() => {
+    const was = openRef.current;
+    if (was === null) return;
+    const focusWasInPanel = document.activeElement?.closest('[data-testid="bloc-panel"]') !== null && document.activeElement !== null;
+    setOpenBloc(null);
+    if (focusWasInPanel) window.setTimeout(() => focusFallback(was.chamber), 0);
+  }, [revision, campaignId]);
+  useEffect(() => {
+    if (!focusPanelNext.current || openBloc === null) return;
+    focusPanelNext.current = false;
+    panelHeading.current?.focus();
+  }, [openBloc]);
+  // A bloc that is no longer in the current options closes the panel without error; focus that was
+  // in the panel falls back to the chamber's heading (or the screen's).
+  const currentBlocs = options.data?.blocs;
+  useEffect(() => {
+    if (openBloc === null || currentBlocs === undefined) return;
+    if (currentBlocs.some((b) => b.party_id === openBloc.partyId && b.bloc_id === openBloc.blocId)) return;
+    const focusLost = document.activeElement === null || document.activeElement === document.body;
+    setOpenBloc(null);
+    if (focusLost) focusFallback(openBloc.chamber);
+  }, [currentBlocs, openBloc]);
+
+  function openPanel(chamber: string, bloc: BlocOption): void {
+    focusPanelNext.current = true;
+    setOpenBloc({ partyId: bloc.party_id, blocId: bloc.bloc_id, chamber });
+  }
+
+  function closePanel(): void {
+    if (openBloc === null) return;
+    const invoker = invokers.current.get(`${openBloc.chamber}/${openBloc.partyId}/${openBloc.blocId}`);
+    const chamber = openBloc.chamber;
+    setOpenBloc(null);
+    window.setTimeout(() => {
+      if (invoker !== undefined && invoker.isConnected) invoker.focus();
+      else focusFallback(chamber);
+    }, 0);
+  }
+
   // The heading sits at the SAME position in every state (first child of the first child), so React
   // keeps the one element from loading to loaded. A place on the map moves focus to this heading as
   // soon as it renders; were the element replaced when the data arrived, focus would fall to the
   // page (found by the M-1 place checks in the M-2 gate run).
   const heading = (
-    <h2 className="font-[family-name:var(--font-display)] text-2xl text-parchment-100">Legislature</h2>
+    <h2
+      id="parliament-heading"
+      tabIndex={-1}
+      className="font-[family-name:var(--font-display)] text-2xl text-parchment-100 focus:outline-none"
+    >
+      Legislature
+    </h2>
   );
   const summaries = <ConcernSummaries screen="legislature" />;
 
@@ -351,6 +461,20 @@ export function ParliamentScreen({ navigate }: ScreenProps) {
   };
   const colours = partyColours(data.blocs.map((b) => b.party_id));
 
+  const panel: ReactNode =
+    openBloc === null ? null : (
+      <BlocPanel
+        open={openBloc}
+        options={data}
+        concluded={concluded}
+        currentPreview={concluded ? null : preview.current}
+        headingRef={panelHeading}
+        onClose={closePanel}
+        announce={setAnnouncement}
+        navigate={navigate}
+      />
+    );
+
   function handlePreview() {
     const token = preview.run();
     if (token !== null) setIssuedRequestId(token.requestId);
@@ -410,30 +534,45 @@ export function ParliamentScreen({ navigate }: ScreenProps) {
         </div>
       </Panel>
 
-      {data.chamber_details.length === 0 ? (
-        <Panel title="Chambers">
-          <p className="text-sm">{noLegislatureSentence(country)}</p>
-        </Panel>
-      ) : (
-        data.chamber_details.map((detail) => {
-          const estimate = liveEstimate?.chambers.find((c) => c.chamber === detail.chamber) ?? null;
-          return (
-            <ChamberCard
-              key={detail.chamber}
-              chamber={detail.chamber}
-              totalSeats={detail.total_seats}
-              budgetRequired={detail.budget_required_seats}
-              amendmentRequired={detail.amendment_required_seats}
-              blocs={data.blocs.filter((b) => b.chamber === detail.chamber)}
-              colours={colours}
-              estimate={estimate}
-              seatsReason={seatsReason(detail.chamber)}
-            />
-          );
-        })
-      )}
+      {/* The wrapper's structure never changes when the panel opens or closes (only its class), so
+          the chamber cards and their bloc buttons are never remounted and focus can return to them. */}
+      <div
+        data-testid="parliament-body"
+        className={wide && openBloc !== null ? "grid grid-cols-[minmax(0,1fr)_24rem] items-start gap-6" : "flex flex-col"}
+      >
+        <div className="flex min-w-0 flex-col gap-6">
+          {data.chamber_details.length === 0 ? (
+            <Panel title="Chambers">
+              <p className="text-sm">{noLegislatureSentence(country)}</p>
+            </Panel>
+          ) : (
+            data.chamber_details.map((detail) => {
+              const estimate = liveEstimate?.chambers.find((c) => c.chamber === detail.chamber) ?? null;
+              return (
+                <Fragment key={detail.chamber}>
+                  <ChamberCard
+                    chamber={detail.chamber}
+                    totalSeats={detail.total_seats}
+                    budgetRequired={detail.budget_required_seats}
+                    amendmentRequired={detail.amendment_required_seats}
+                    blocs={data.blocs.filter((b) => b.chamber === detail.chamber)}
+                    colours={colours}
+                    estimate={estimate}
+                    seatsReason={seatsReason(detail.chamber)}
+                    openBloc={openBloc}
+                    onOpenBloc={(bloc) => openPanel(detail.chamber, bloc)}
+                    registerInvoker={registerInvoker}
+                  />
+                  {!wide && openBloc !== null && openBloc.chamber === detail.chamber ? panel : null}
+                </Fragment>
+              );
+            })
+          )}
 
-      <LastRecordedVotePanel last={data.last_recorded_vote} />
+          <LastRecordedVotePanel last={data.last_recorded_vote} />
+        </div>
+        {wide && openBloc !== null ? <aside className="sticky top-4">{panel}</aside> : null}
+      </div>
 
       {summaries}
     </div>

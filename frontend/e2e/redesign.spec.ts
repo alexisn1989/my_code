@@ -24,6 +24,18 @@
  *     response held across a resolve, a decree (no tallies), a failed vote that appears only under
  *     "Last recorded vote";
  *   - keyboard: a late response never steals focus, from Decisions or from Parliament.
+ *
+ * @m3 -- the bloc panel and negotiation:
+ *   - at every width, with the panel open: placement (beside from 1280 px, inline below), no overflow
+ *     or clipped node, 44 px controls, axe clean on main;
+ *   - journey A (Arken, 1440 and 390 touch): stage Maret Kuusk's bargain from the panel, preview,
+ *     resolve, then both chambers' stored tallies under "Last recorded vote";
+ *   - journey B (Valdrun, 1440 and 390): the qualifying reform, Nadia Brekke refuses (no price),
+ *     influence 300 from the panel, preview, resolve, the amendment's totals and its note;
+ *   - keyboard: open, stage, Escape back to the row, swap blocs;
+ *   - replacement, on a LABELLED ALTERED decision-options response (a second willing leader), never
+ *     previewed or resolved;
+ *   - parity: the server refuses a decree-route bargain, and the panel gives the decree reason.
  */
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -717,5 +729,293 @@ test("@m2 a late preview never steals focus (keyboard)", async ({ browser }) => 
   ).toBe("Dashboard");
   await page.unroute("**/api/game/preview");
   results.push({ block: "m2-keyboard", focus: "unchanged after late responses, both directions" });
+  await page.context().close();
+});
+
+// ---- @m3: the bloc panel and negotiation --------------------------------------------------------
+
+function apiPost(page: Page, url: string, data: unknown) {
+  return page.request.post(url, { data, headers: { Connection: "close" } });
+}
+
+function blocButton(page: Page, chamber: string, key: string) {
+  return page.locator(`[data-testid="chamber-card"][data-chamber="${chamber}"] [data-bloc-open="${key}"]`);
+}
+
+async function openBlocPanel(page: Page, chamber: string, key: string, how: "click" | "tap" = "click") {
+  const button = blocButton(page, chamber, key);
+  if (how === "tap") await button.tap();
+  else await button.click();
+  const panelLocator = page.getByTestId("bloc-panel");
+  await expect(panelLocator).toBeVisible();
+  return panelLocator;
+}
+
+async function resolveFromDecisions(page: Page, how: "click" | "tap") {
+  await visitScreen(page, "Decisions", how);
+  await page.getByRole("button", { name: "Resolve turn" }).click();
+  const pending = page.waitForResponse((r) => r.url().includes("/api/game/resolve") && r.request().method() === "POST", {
+    timeout: 120_000,
+  });
+  await page.getByRole("button", { name: "Confirm and resolve" }).click();
+  const response = await pending;
+  expect(response.status()).toBe(200);
+  const body = (await response.json()) as { turnResult: { outcome_headline: string } };
+  await expect(page.getByTestId("turn-result-view")).toContainText(body.turnResult.outcome_headline);
+  return body;
+}
+
+for (const viewport of WIDTHS) {
+  test(`@m3 the bloc panel -- ${viewport.width}px`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newPage(browser, viewport.width, viewport.height);
+    await ensureServer(page);
+    const how = viewport.width < 1024 ? "tap" : "click";
+    await startScenario(page, "Start Republic of Arken");
+    await visitScreen(page, "Decisions", how);
+    await selectPolicyCard(page, "Lower the personal income tax", how);
+    await openParliament(page, how);
+    const panelLocator = await openBlocPanel(page, "lower", "rural_alliance/farmers", how);
+    await expect(panelLocator.getByRole("heading", { level: 3, name: "Rural Alliance Farmers" })).toBeVisible();
+    await expect(panelLocator.getByTestId("leader-offer")).toContainText("Asking price: 105 political capital.");
+
+    // Placement: beside the chambers from 1280 px, inline after its chamber below.
+    const placement = await page.evaluate(() => {
+      const panelNode = document.querySelector('[data-testid="bloc-panel"]')!;
+      return {
+        inAside: panelNode.parentElement?.tagName === "ASIDE",
+        afterLowerCard:
+          (panelNode.previousElementSibling as HTMLElement | null)?.dataset?.chamber === "lower",
+      };
+    });
+    if (viewport.width >= 1280) expect(placement.inAside, "beside the chambers").toBe(true);
+    else expect(placement.afterLowerCard, "inline after its chamber").toBe(true);
+
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+      "no page overflow with the panel open",
+    ).toBe(true);
+    expect(await clippedNodes(page), "no clipped node with the panel open").toEqual([]);
+    const small = await page.evaluate(() =>
+      [...document.querySelectorAll('[data-testid="bloc-panel"] button, [data-testid="bloc-panel"] input')]
+        .map((e) => ({ name: e.getAttribute("aria-label") ?? e.textContent?.trim() ?? "", r: e.getBoundingClientRect() }))
+        .filter(({ r }) => r.height < 44 || r.width < 44)
+        .map(({ name, r }) => `${name} ${Math.round(r.width)}x${Math.round(r.height)}`),
+    );
+    expect(small, "panel controls at least 44 x 44").toEqual([]);
+    const axe = await new AxeBuilder({ page }).include("main").analyze();
+    expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
+    await page.screenshot({
+      path: path.join(REVIEW_DIR, `${OUT_NAME}-shots`, `parliament-panel-${viewport.width}.png`),
+      fullPage: true,
+    });
+    results.push({ block: "m3", width: viewport.width, placement });
+    await page.context().close();
+  });
+}
+
+for (const viewport of [WIDTHS[0], WIDTHS[4]]) {
+  const how = viewport.width < 1024 ? "tap" : "click";
+
+  test(`@m3 journey A, budget bargaining (Arken) -- ${viewport.width}px`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newPage(browser, viewport.width, viewport.height);
+    await ensureServer(page);
+    await startScenario(page, "Start Republic of Arken");
+    await visitScreen(page, "Decisions", how);
+    await selectPolicyCard(page, "Lower the personal income tax", how);
+    await openParliament(page, how);
+    const panelLocator = await openBlocPanel(page, "lower", "rural_alliance/farmers", how);
+    const stage = panelLocator.getByRole("button", { name: "Stage this bargain · 105" });
+    if (how === "tap") await stage.tap();
+    else await stage.click();
+    await expect(panelLocator.getByTestId("bargain-staged-here")).toContainText(
+      "Staged: endorsement from Maret Kuusk, which applies to Rural Alliance's one bloc.",
+    );
+    const pending = page.waitForResponse((r) => r.url().includes("/api/game/preview") && r.request().method() === "POST");
+    await page.getByTestId("parliament-draft").getByRole("button", { name: "Preview" }).click();
+    const preview = await (await pending).json();
+    const sent = (await (await pending).request().postDataJSON()) as { decisions: { kind: string; character_id?: string }[] };
+    expect(sent.decisions.some((d) => d.kind === "legislative_bargain" && d.character_id)).toBe(true);
+    await expect(page.getByTestId("draft-status")).toHaveText("Preview is current for this draft");
+    expect(preview.chambers.map((c: { chamber: string }) => c.chamber)).toEqual(["lower", "upper"]);
+    const tallies = await shownTallies(page);
+    for (const chamber of preview.chambers as { chamber: string; supporting_seats: number }[]) {
+      const shown = tallies.find((t) => t.chamber === chamber.chamber)!;
+      expect(shown.mode).toBe("current");
+      expect(shown.rowSum).toBe(chamber.supporting_seats);
+    }
+    await resolveFromDecisions(page, how);
+    const after = await (await apiGet(page, `${base}/api/game/decision-options`)).json();
+    const last = after.last_recorded_vote as {
+      turn: number;
+      vote: { chambers: { chamber: string; supporting_seats: number; required_seats: number; passed: boolean }[] };
+    };
+    expect(last.vote.chambers.map((c) => c.chamber)).toEqual(["lower", "upper"]);
+    await openParliament(page, how);
+    await expect(page.getByRole("heading", { name: `Last recorded vote · turn ${last.turn}` })).toBeVisible();
+    const lines = page.getByTestId("recorded-chamber");
+    await expect(lines).toHaveCount(2);
+    for (const [i, c] of last.vote.chambers.entries()) {
+      await expect(lines.nth(i)).toContainText(`${c.supporting_seats} supporting; ${c.required_seats} required`);
+    }
+    results.push({ block: "m3-journey-a", width: viewport.width, recorded: last });
+    await page.context().close();
+  });
+
+  test(`@m3 journey B, amendment influence (Valdrun) -- ${viewport.width}px`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newPage(browser, viewport.width, viewport.height);
+    await ensureServer(page);
+    await startScenario(page, "Start Kingdom of Valdrun");
+    await visitScreen(page, "Constitution", how);
+    const draftReform = page.getByRole("button", { name: "Draft the qualifying reform" });
+    if (how === "tap") await draftReform.tap();
+    else await draftReform.click();
+    await expect(navEntry(page, "Decisions")).toHaveAttribute("aria-current", "page");
+    await openParliament(page, how);
+    const panelLocator = await openBlocPanel(page, "lower", "opposition_party/main", how);
+    await expect(panelLocator.getByTestId("leader-refuses")).toHaveText("Will not deal at any price.");
+    await expect(panelLocator.getByTestId("bloc-leader")).not.toContainText("Asking price");
+    const influence = panelLocator.getByTestId("panel-influence");
+    await expect(influence).toBeEnabled();
+    await influence.fill("300");
+    await expect(panelLocator.getByTestId("bloc-staged")).toContainText(
+      "Influence on this vote: 300 capital (on your constitutional amendment).",
+    );
+    const pending = page.waitForResponse((r) => r.url().includes("/api/game/preview") && r.request().method() === "POST");
+    await page.getByTestId("parliament-draft").getByRole("button", { name: "Preview" }).click();
+    const preview = await (await pending).json();
+    expect(preview.affordable, "the drafted reform with 300 influence is affordable").toBe(true);
+    await expect(page.getByTestId("draft-status")).toHaveText("Preview is current for this draft");
+    await resolveFromDecisions(page, how);
+    const after = await (await apiGet(page, `${base}/api/game/decision-options`)).json();
+    const last = after.last_recorded_vote as { turn: number; vote: { proposal_kind: string; blocs_recorded: boolean } };
+    expect(last.vote.proposal_kind).toBe("constitutional_amendment");
+    expect(last.vote.blocs_recorded).toBe(false);
+    await openParliament(page, how);
+    await expect(page.getByRole("heading", { name: `Last recorded vote · turn ${last.turn}` })).toBeVisible();
+    await expect(page.getByTestId("amendment-blocs-note")).toHaveText("Per-bloc votes are not recorded for amendments.");
+    results.push({ block: "m3-journey-b", width: viewport.width, recorded: last });
+    await page.context().close();
+  });
+}
+
+test("@m3 the panel by keyboard: open, stage, Escape back, swap blocs", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const page = await newPage(browser, 1440, 900);
+  await ensureServer(page);
+  await startScenario(page, "Start Republic of Arken");
+  await visitScreen(page, "Decisions");
+  await selectPolicyCard(page, "Lower the personal income tax");
+  await openParliament(page);
+  const row = blocButton(page, "lower", "rural_alliance/farmers");
+  await row.focus();
+  await page.keyboard.press("Enter");
+  await expect(row).toHaveAttribute("aria-expanded", "true");
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.closest('[data-testid="bloc-panel"]') !== null && document.activeElement?.tagName))
+    .toBe("H3");
+  await page.getByTestId("bloc-panel").getByRole("button", { name: "Stage this bargain · 105" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("bargain-staged-here")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("bloc-panel")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("data-bloc-open"))).toBe("rural_alliance/farmers");
+
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("bloc-panel")).toBeVisible();
+  const other = blocButton(page, "upper", "national_front/conservatives");
+  await other.focus();
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.closest('[data-testid="bloc-panel"]')?.getAttribute("data-bloc")))
+    .toBe("conservatives");
+  results.push({ block: "m3-keyboard", focus: "heading on open, row on Escape, new heading on swap" });
+  await page.context().close();
+});
+
+for (const viewport of [WIDTHS[0], WIDTHS[4]]) {
+  const how = viewport.width < 1024 ? "tap" : "click";
+  test(`@m3 replacing a staged bargain (ALTERED RESPONSE: a second willing leader) -- ${viewport.width}px`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newPage(browser, viewport.width, viewport.height);
+    await ensureServer(page);
+    // LABELLED ALTERED RESPONSE. No shipped campaign has two willing leaders at turn 0, so the
+    // decision-options response is changed IN THE BROWSER ONLY to make Gustav Reiner willing at 137.
+    // This exercises only the panel's replace / announce / keep behaviour: the state is never
+    // previewed or resolved, and the server would refuse it.
+    await page.route("**/api/game/decision-options", async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as { legislative_bargain_counterparties: Record<string, unknown>[] };
+      body.legislative_bargain_counterparties = body.legislative_bargain_counterparties.map((c) =>
+        c.display_name === "Gustav Reiner" ? { ...c, will_deal: true, asking_price: 137, refusal_reason: null } : c,
+      );
+      await route.fulfill({ response, json: body });
+    });
+    await startScenario(page, "Start Republic of Arken");
+    await visitScreen(page, "Decisions", how);
+    await selectPolicyCard(page, "Lower the personal income tax", how);
+    await openParliament(page, how);
+    let panelLocator = await openBlocPanel(page, "lower", "rural_alliance/farmers", how);
+    const stage = panelLocator.getByRole("button", { name: "Stage this bargain · 105" });
+    if (how === "tap") await stage.tap();
+    else {
+      await stage.focus();
+      await page.keyboard.press("Enter");
+    }
+    panelLocator = await openBlocPanel(page, "lower", "national_front/conservatives", how);
+    await expect(panelLocator.getByTestId("bargain-replace")).toContainText(
+      "You already have a bargain staged: Maret Kuusk's endorsement, for 105.",
+    );
+    const keep = panelLocator.getByRole("button", { name: "Keep Maret Kuusk's bargain" });
+    if (how === "tap") await keep.tap();
+    else await keep.click();
+    await expect(page.getByTestId("parliament-announcement")).toHaveText("Kept your staged bargain with Maret Kuusk.");
+    const replace = panelLocator.getByRole("button", { name: "Replace bargain with Gustav Reiner · 137" });
+    if (how === "tap") await replace.tap();
+    else {
+      await replace.focus();
+      await page.keyboard.press("Enter");
+    }
+    await expect(page.getByTestId("parliament-announcement")).toHaveText(
+      "Replaced your staged bargain with Maret Kuusk by Gustav Reiner.",
+    );
+    await expect(panelLocator.getByTestId("bargain-staged-here")).toContainText("Staged: endorsement from Gustav Reiner");
+    await page.unroute("**/api/game/decision-options");
+    results.push({ block: "m3-replacement-altered-response", width: viewport.width });
+    await page.context().close();
+  });
+}
+
+test("@m3 parity: the server refuses a bargain on the decree route, and the panel says why", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const page = await newPage(browser, 1440, 900);
+  await ensureServer(page);
+  await startScenario(page, "Start Kingdom of Valdrun");
+  await visitScreen(page, "Decisions");
+  await selectPolicyCard(page, "Raise the personal income tax");
+  await page.getByRole("radiogroup", { name: "Route" }).getByRole("radio", { name: /^Decree/ }).click();
+  // The exact set the interface sends for this decree draft...
+  const pending = page.waitForRequest((r) => r.url().includes("/api/game/preview") && r.method() === "POST");
+  await page.getByRole("button", { name: "Preview", exact: true }).click();
+  const sent = (await pending).postDataJSON() as { revision: string; campaign_id: string; decisions: unknown[] };
+  // ...plus a bargain, which the interface never sends on this route.
+  const refused = await apiPost(page, `${base}/api/game/preview`, {
+    ...sent,
+    decisions: [...sent.decisions, { kind: "legislative_bargain", character_id: "leader_opposition_party", proposal_kind: "budget" }],
+  });
+  expect(refused.status()).toBe(422);
+  // The response carries the rule's MESSAGE, not its code name: this is the message the preflight
+  // attaches to `legislative_bargain_requires_legislative_route` (`decision_preflight.py`).
+  const problem = (await refused.json()) as { type: string; detail: string };
+  expect(problem.type).toBe("decision_rejected");
+  expect(problem.detail).toBe(
+    "A bargain buys support in a chamber vote, and this proposal is being decreed rather than put to the chamber.",
+  );
+  await openParliament(page);
+  const panelLocator = await openBlocPanel(page, "lower", "opposition_party/main");
+  await expect(panelLocator.getByTestId("influence-blocked-reason")).toContainText("being decreed");
+  results.push({ block: "m3-parity", status: refused.status() });
   await page.context().close();
 });

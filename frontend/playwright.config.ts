@@ -157,6 +157,9 @@ export default defineConfig({
       name: "redesign",
       testMatch: /redesign\.spec\.ts$/,
       dependencies: ["preflight"],
+      // Gate 4A3 M-3: a failure here keeps its trace and a screenshot (in the git-ignored
+      // `test-results/`), after the M-2 gate runs met one unexplained stall with nothing to inspect.
+      use: { trace: "retain-on-failure", screenshot: "only-on-failure" },
     },
     // Gate 4A3 victory path (V-2): a winning campaign in every scenario through the Constitution
     // links, plus the objective surfaces' reflow and accessibility. Its own server: it resolves

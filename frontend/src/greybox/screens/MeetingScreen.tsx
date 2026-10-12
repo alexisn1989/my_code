@@ -67,8 +67,9 @@ import {
   promiseReleaseStagedLine,
   proposalPhrase,
 } from "../../format/format";
+import { bargainBlockedReason } from "../../format/parliament";
 import { useSession } from "../../state/SessionContext";
-import { useDraftStore, type PolicySlotKind } from "../../state/draft";
+import { useDraftStore } from "../../state/draft";
 import { ErrorPanel } from "../../status/ErrorPanel";
 import { EmptyNote, Panel } from "../components";
 import { Portrait } from "../Portrait";
@@ -86,23 +87,8 @@ type ActiveRow = Options["active_promises"][number];
  * staged bargain identically; kept under its old name here for its other call sites. */
 const proposalLabel = proposalPhrase;
 
-/** Why the bargain cannot be staged right now, or `null` when it can.
- *
- * Both reasons are facts about the DRAFT the player has already composed, not judgements about the
- * counterparty, which is why they live here and not in a projected field: no proposal at all, and a
- * proposal the player chose to decree. */
-function bargainBlockedReason(
-  policySlot: PolicySlotKind | null,
-  route: "legislative" | "decree",
-): string | null {
-  if (policySlot === null) {
-    return "Put a budget or an amendment in this turn's draft first — a bargain buys support for one exact proposal, so there has to be one.";
-  }
-  if (route === "decree") {
-    return "This turn's proposal is being decreed, not put to the chamber. A bargain buys votes, and a decree holds none — change the route on the Decisions screen to bargain over it.";
-  }
-  return null;
-}
+// Gate 4A3 M-3: `bargainBlockedReason` moved to `format/parliament.ts`, word for word, so the bloc
+// panel and this screen give the same reason.
 
 export function MeetingScreen(_props: ScreenProps) {
   const { revision } = useSession();
