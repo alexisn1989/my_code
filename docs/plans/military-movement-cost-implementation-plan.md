@@ -10,6 +10,11 @@ archive built from `a322484`, `f542cf28…`) is unchanged by this document and b
 the archive built from `5236ddb` (`083c7a98…`). The build named above is historical. Nothing else in
 this plan has changed.
 
+**Records note (2026-10-14).** By the user's ruling in `3f0c881`, the approved playtest build is now
+the archive built from `8ba9ff7` (`b3ac1a94…`). The builds named above are historical. That build
+is still on ruleset `0.23.0`, so the save-compatibility note below applies to its saves too. Nothing
+else in this plan has changed.
+
 > **Deliberate loss of save compatibility.** Implementing this plan bumps the ruleset from
 > `0.23.0` to `0.24.0`. The engine supports only the current ruleset
 > (`SUPPORTED_RULESET_VERSIONS`, `backend/app/simulation/save_format.py:50`), so **every `0.23.0`
