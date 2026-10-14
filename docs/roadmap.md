@@ -822,25 +822,72 @@ than assumed in advance.
   - `5236ddb`: the fix, which seeds the listing memo when the server writes a save.
   - `d415e04`: the candidate release, measured.
 
-  The internal dry runs are not playtesters, and they do not count toward the playtest.
+  **Work since the R1-fix build, each commit with its record:**
+  - `0016161`: the route to victory audited in each shipped scenario
+    ([`gate-4a3-victory-route-audit.md`](reviews/gate-4a3-victory-route-audit.md)).
+  - `04db44c`: a correction to `scripts/measure_budgets.py`, which the release check runs.
+  - **The victory path:**
+    - V-1 `746897d`: the campaign objective, derived from the engine
+      ([`gate-4a3-v1-objective-backend.md`](reviews/gate-4a3-v1-objective-backend.md)).
+    - V-2 `30d0b80`: the objective card, the Constitution screen, its links and the result line
+      ([`gate-4a3-v2-objective-frontend.md`](reviews/gate-4a3-v2-objective-frontend.md)).
+    - V-3 `97a5dfd`: a candidate release
+      ([`gate-4a3-v3-release.md`](reviews/gate-4a3-v3-release.md)).
+    - V-4 `6f610b9`: corrections
+      ([`gate-4a3-v4-corrections.md`](reviews/gate-4a3-v4-corrections.md)).
+    - V-5 `80ede6b`: a candidate verified and walked through as installed
+      ([`gate-4a3-v5-release-and-walkthrough.md`](reviews/gate-4a3-v5-release-and-walkthrough.md)).
+  - **Playtest feedback:**
+    - W-1 `2ded352`: decision reliability
+      ([`gate-4a3-w1-decision-reliability.md`](reviews/gate-4a3-w1-decision-reliability.md)).
+    - W-2 `a9e006b`: what investments and cabinet posts do
+      ([`gate-4a3-w2-effect-explanations.md`](reviews/gate-4a3-w2-effect-explanations.md)).
+  - **The map-led redesign:**
+    - M-0 `3e684e0`: the backend data
+      ([`gate-4a3-m0-backend-data.md`](reviews/gate-4a3-m0-backend-data.md)).
+    - M-1 `506790e`: the map dashboard
+      ([`gate-4a3-m1-map-dashboard.md`](reviews/gate-4a3-m1-map-dashboard.md)).
+    - M-2 `a177c52`: Parliament and the shared preview
+      ([`gate-4a3-m2-parliament.md`](reviews/gate-4a3-m2-parliament.md)).
+    - M-3 `a2c7663`: the bloc panel and negotiation
+      ([`gate-4a3-m3-bloc-panel.md`](reviews/gate-4a3-m3-bloc-panel.md)).
+    - M-4 `b2864c6`: the turn result restructured
+      ([`gate-4a3-m4-result.md`](reviews/gate-4a3-m4-result.md)).
+    - M-5 `5eda158`: consolidation
+      ([`gate-4a3-m5-consolidation.md`](reviews/gate-4a3-m5-consolidation.md)).
+  - `8ba9ff7`: the installed redesign walk, and exact walkthrough selectors.
 
-  **The approved playtest build** is the release archive built from `5236ddb`, sha256
-  `083c7a984aedfa3823e128c2e160cd385135ac102ead60673fc3012268a8f490` (`SOURCE_DATE_EPOCH`
-  1791513998). It contains both the R2 fix (`a322484`) and the R1 fix (`5236ddb`).
-  [`gate-4a3-r1fix-release-and-dry-run.md`](reviews/gate-4a3-r1fix-release-and-dry-run.md) records:
-  - it is reproducible, and identical from a fresh clone;
-  - it was verified `PASSED` (run `5c5e355c…`), with the installed C YAML loader confirmed;
-  - its enforced internal dry run passed.
+  **Never adopted for the playtest:** the V-3 candidate (`faeef811…`) and the V-5 candidate
+  (`8848c0e9…`).
 
-  The user switched the playtest to this build after reviewing the R1 fix (`5236ddb`) and its release
-  record (`d415e04`). The ruleset and save format are unchanged, so saves stay compatible with the
-  previous playtest build.
+  The internal dry runs and walkthroughs are not playtesters, and they do not count toward the
+  playtest.
+
+  **The approved playtest build** is the release archive built from `8ba9ff7`, sha256
+  `b3ac1a946daaacac5bfbb635ee679aebb5e39608722626089d76160566d7a2b0` (`SOURCE_DATE_EPOCH`
+  1791945066). It contains the victory path, W-1, W-2 and the map-led redesign, on top of the R1 and
+  R2 fixes.
+  [`gate-4a3-rc-release-and-walkthroughs.md`](reviews/gate-4a3-rc-release-and-walkthroughs.md)
+  records:
+  - it is reproducible and identical from a fresh clone, and its SPA equals the built `dist`;
+  - it was verified `PASSED` (run `c0e5d8fe…`), with the installed C YAML loader confirmed;
+  - against one fresh installation, these each exited 0:
+    - the original installed walkthrough;
+    - the installed redesign walk;
+    - the enforced internal dry run.
+
+  The user switched the playtest to this build after reviewing the candidate (`8ba9ff7`) and its
+  release evidence. The ruleset (`0.23.0`) and save format are unchanged since `5236ddb`: there is no
+  change under `backend/app/simulation`, `data` or the save fixtures. So saves stay compatible with
+  the previous playtest build.
 
   **Superseded, for the playtest:**
-  - the archive built from `a322484` (sha256 `f542cf28…`, run `fd3208fc…`);
-  - before it, the archive built from `81f0648` (sha256 `058d779f…`, UX-4h, run `d9590709…`).
+  - the archive built from `5236ddb` (sha256 `083c7a98…`, run `5c5e355c…`;
+    [`gate-4a3-r1fix-release-and-dry-run.md`](reviews/gate-4a3-r1fix-release-and-dry-run.md));
+  - before it, the archive built from `a322484` (sha256 `f542cf28…`, run `fd3208fc…`);
+  - before that, the archive built from `81f0648` (sha256 `058d779f…`, UX-4h, run `d9590709…`).
 
-  Both builds' records are unchanged.
+  All three builds' records are unchanged.
 
   **Carried risks for the facilitator:**
   - **R1:** a save listing validates every save it has not seen since the server started. **Open,
@@ -851,7 +898,7 @@ than assumed in advance.
     - **A root with 21 saves of one 40-turn campaign** takes 1.6–1.8 s on its first listing.
     - **Each turn's resolve** also validates the campaign so far, at about 3.5 ms per stored turn,
       in-process.
-    - **On the playtest build (`5236ddb`)**, the server seeds the listing memo when it writes a save
+    - **On the `5236ddb` build**, the server seeds the listing memo when it writes a save
       ([`gate-4a3-r1fix-release-and-dry-run.md`](reviews/gate-4a3-r1fix-release-and-dry-run.md)).
       - **Lower observed resolve times:** for turns 6–10 on the playtester path, a median of 48.7 ms
         against 82.7 ms on the `a322484` build.
@@ -861,6 +908,8 @@ than assumed in advance.
     - **The cold listing after a restart is unchanged:** 1.6–1.8 s for a root of 21 long saves, and
       65 ms median on the protocol's own path. **R1 stays open for that cold path.**
     - Persistent caching (option (b)) is **not chosen**, and awaits a separate decision.
+    - **On the playtest build (`8ba9ff7`)**, the `5236ddb` seeding is present and the cold path is
+      unchanged. **R1 stays open.**
 
     The earlier figures are in
     [`gate-4a3-commit6c-saves.md`](reviews/gate-4a3-commit6c-saves.md) §3.2.
@@ -875,8 +924,11 @@ than assumed in advance.
     - **On the `a322484` build (libyaml's C loader):** `verify_release` `PASSED`, and 0 of 30
       matched runs breached (95% upper bound 11.6%) on that machine
       ([`gate-4a3-r2fix-release-and-dry-run.md`](reviews/gate-4a3-r2fix-release-and-dry-run.md)).
-    - **On the playtest build (`5236ddb`)**, the same loader is present.
+    - **On the `5236ddb` build**, the same loader is present.
       - Its single `verify_release` passed, with a read-projection worst of 67.90 ms.
+      - The 30-run breach measurement was **not repeated** on it.
+    - **On the playtest build (`8ba9ff7`)**, the same loader is present.
+      - Its single `verify_release` passed, with a read-projection worst of 71.56 ms.
       - The 30-run breach measurement was **not repeated** on it.
     - **R2 is not closed:** a nonzero failure rate is not excluded, and the tail's cause was never
       established. It stays listed for the facilitator.
@@ -888,6 +940,9 @@ than assumed in advance.
   - **R3:** History's "Turn N — …" entries name the turn a result produced. The result heading itself
     is the neutral "Turn outcome" (UX-4e).
   - **R4:** foreign-assistance amounts are shown in minor units, in the CLI and the browser alike.
+
+  These risks are carried forward to the `8ba9ff7` build. That build's release pass closes none of
+  them.
 
 ## Characters, cabinet appointments and leader negotiations — **complete**
 

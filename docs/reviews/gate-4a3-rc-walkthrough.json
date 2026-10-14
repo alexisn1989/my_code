@@ -1,0 +1,72 @@
+{
+  "gate": "4A3 redesign candidate (enforced, installed archive)",
+  "internal": "Not one of the five external playtesters.",
+  "archive": {
+    "file": "mandate-gui-0.1.0.tar.gz",
+    "sha256": "b3ac1a946daaacac5bfbb635ee679aebb5e39608722626089d76160566d7a2b0",
+    "expectedSha256": "b3ac1a946daaacac5bfbb635ee679aebb5e39608722626089d76160566d7a2b0"
+  },
+  "installedServer": {
+    "url": "http://127.0.0.1:46509",
+    "pid": 1265,
+    "cmdline": [
+      "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/rc/install/mandate-gui-0.1.0/.venv/bin/python3.11",
+      "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/rc/install/mandate-gui-0.1.0/.venv/bin/mandate-gui",
+      "--frontend-dist",
+      "dist",
+      "--scenario-root",
+      "scenarios",
+      "--port",
+      "46509",
+      "--save-root",
+      "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/rc/saves"
+    ],
+    "cwd": "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/rc/install/mandate-gui-0.1.0",
+    "appFile": "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/rc/install/mandate-gui-0.1.0/.venv/lib/python3.11/site-packages/app/__init__.py"
+  },
+  "walkA": {
+    "scenario": "decree_state",
+    "linkCard": "Complete the constitutional conditions in one reform",
+    "preview": {
+      "would_pass": false,
+      "affordable": true,
+      "effect": {
+        "effect": "qualifies",
+        "conditions_met": 3,
+        "still_needed": [],
+        "deciding_election_turn": 5,
+        "election_this_turn_too_soon": false
+      },
+      "sentence": "If enacted, this reform would record the qualifying transition; the election on turn 5 would decide.",
+      "caveat": "This amendment would not pass as it stands, so it would not change the constitution."
+    },
+    "resolved": false
+  },
+  "walkB": {
+    "scenario": "deficit_demo",
+    "linkCard": "Set decree authority to no decree authority",
+    "preview": {
+      "would_pass": true,
+      "affordable": true,
+      "effect": {
+        "effect": "qualifies",
+        "conditions_met": 3,
+        "still_needed": [],
+        "deciding_election_turn": 20,
+        "election_this_turn_too_soon": false
+      },
+      "sentence": "If enacted, this reform would record the qualifying transition; the election on turn 20 would decide.",
+      "caveat": null
+    },
+    "resolution": {
+      "turn": 1,
+      "headline": "Amendment passed, 53 of 100 seats (51 required).",
+      "enacted": true,
+      "objectiveLine": "The constitution now qualifies, and the transition is recorded. Win the election on turn 20 to complete it."
+    },
+    "historyMatchesLive": true,
+    "afterStage": "qualifying_election"
+  },
+  "offOrigin": [],
+  "consoleErrors": []
+}

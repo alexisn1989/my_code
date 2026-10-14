@@ -1,0 +1,218 @@
+{
+  "gate": "4A3 redesign candidate: redesign walk (enforced, installed archive)",
+  "internal": "Not one of the five external playtesters.",
+  "archive": {
+    "file": "mandate-gui-0.1.0.tar.gz",
+    "sha256": "b3ac1a946daaacac5bfbb635ee679aebb5e39608722626089d76160566d7a2b0",
+    "expectedSha256": "b3ac1a946daaacac5bfbb635ee679aebb5e39608722626089d76160566d7a2b0"
+  },
+  "installedServer": {
+    "url": "http://127.0.0.1:46509",
+    "pid": 1265,
+    "cmdline": [
+      "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/rc/install/mandate-gui-0.1.0/.venv/bin/python3.11",
+      "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/rc/install/mandate-gui-0.1.0/.venv/bin/mandate-gui",
+      "--frontend-dist",
+      "dist",
+      "--scenario-root",
+      "scenarios",
+      "--port",
+      "46509",
+      "--save-root",
+      "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/rc/saves"
+    ],
+    "cwd": "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/rc/install/mandate-gui-0.1.0",
+    "appFile": "/tmp/claude-0/-home-user-my-code/95421f9a-dace-5133-a3f4-58c7d173c2c7/scratchpad/rc/install/mandate-gui-0.1.0/.venv/lib/python3.11/site-packages/app/__init__.py"
+  },
+  "redesignWalk": {
+    "scenario": "tiny_valid",
+    "proposal": "Lower the personal income tax",
+    "bargain": {
+      "leader": "Maret Kuusk",
+      "price": 105
+    },
+    "draftSurvivedNavigation": true,
+    "preview": {
+      "would_pass": true,
+      "chambers": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 61,
+          "required_seats": 51,
+          "carries": true,
+          "blocs": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "seats": 40,
+              "supporting_seats": 40
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "seats": 12,
+              "supporting_seats": 11
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "seats": 30,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "populists",
+              "seats": 8,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "rural_alliance",
+              "bloc_id": "farmers",
+              "seats": 10,
+              "supporting_seats": 10
+            }
+          ]
+        },
+        {
+          "chamber": "upper",
+          "total_seats": 60,
+          "supporting_seats": 35,
+          "required_seats": 31,
+          "carries": true,
+          "blocs": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "seats": 24,
+              "supporting_seats": 24
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "seats": 6,
+              "supporting_seats": 5
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "seats": 20,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "populists",
+              "seats": 4,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "rural_alliance",
+              "bloc_id": "farmers",
+              "seats": 6,
+              "supporting_seats": 6
+            }
+          ]
+        }
+      ]
+    },
+    "resolution": {
+      "turn": 1,
+      "headline": "The budget was enacted by the legislature.",
+      "outcome": "passed_legislative",
+      "chambers": [
+        {
+          "chamber": "lower",
+          "total_seats": 100,
+          "supporting_seats": 61,
+          "required_seats": 51,
+          "passed": true,
+          "blocs": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "bloc_display_name": "Civic Union Mainstream",
+              "seats": 40,
+              "supporting_seats": 40
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "bloc_display_name": "Civic Union Reform Caucus",
+              "seats": 12,
+              "supporting_seats": 11
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "bloc_display_name": "National Front Conservatives",
+              "seats": 30,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "populists",
+              "bloc_display_name": "National Front Populists",
+              "seats": 8,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "rural_alliance",
+              "bloc_id": "farmers",
+              "bloc_display_name": "Rural Alliance Farmers",
+              "seats": 10,
+              "supporting_seats": 10
+            }
+          ]
+        },
+        {
+          "chamber": "upper",
+          "total_seats": 60,
+          "supporting_seats": 35,
+          "required_seats": 31,
+          "passed": true,
+          "blocs": [
+            {
+              "party_id": "civic_union",
+              "bloc_id": "mainstream",
+              "bloc_display_name": "Civic Union Mainstream",
+              "seats": 24,
+              "supporting_seats": 24
+            },
+            {
+              "party_id": "civic_union",
+              "bloc_id": "reform",
+              "bloc_display_name": "Civic Union Reform Caucus",
+              "seats": 6,
+              "supporting_seats": 5
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "conservatives",
+              "bloc_display_name": "National Front Conservatives",
+              "seats": 20,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "national_front",
+              "bloc_id": "populists",
+              "bloc_display_name": "National Front Populists",
+              "seats": 4,
+              "supporting_seats": 0
+            },
+            {
+              "party_id": "rural_alliance",
+              "bloc_id": "farmers",
+              "bloc_display_name": "Rural Alliance Farmers",
+              "seats": 6,
+              "supporting_seats": 6
+            }
+          ]
+        }
+      ]
+    },
+    "previewAgreesWithResolution": true,
+    "historyMatchesLive": true
+  },
+  "offOrigin": [],
+  "consoleErrors": []
+}
