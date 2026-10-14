@@ -1,0 +1,618 @@
+{
+  "gate": "4A3 victory path",
+  "commit": "V-2",
+  "deficit_demo": {
+    "turnsPlayed": 20,
+    "terminal": {
+      "bucket": "victory",
+      "reason_label": "Peaceful liberalization completed",
+      "turn": 20,
+      "headline": "Victory: peaceful liberalization completed, turn 20."
+    },
+    "log": [
+      {
+        "turn": 0,
+        "kinds": [
+          "constitutional_amendment"
+        ],
+        "headline": "Amendment passed, 53 of 100 seats (51 required).",
+        "objectiveLine": "The constitution now qualifies, and the transition is recorded. Win the election on turn 20 to complete it.",
+        "previewEffect": "If enacted, this reform would record the qualifying transition; the election on turn 20 would decide."
+      },
+      {
+        "turn": 1,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 2,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 3,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 4,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 5,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 6,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 7,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 8,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 9,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 10,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 11,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 12,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 13,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 14,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 15,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 16,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 17,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 18,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 19,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The election was won with 65.42%.",
+        "objectiveLine": "Objective complete: you won the qualifying election.",
+        "previewEffect": null
+      }
+    ],
+    "surfaces": 36,
+    "consoleErrors": [],
+    "concluded": {
+      "parliamentMeasured": [
+        {
+          "target": "text[x=\"46.46283396995818\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Core",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"282.56271498320257\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Independent Regionalists",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"510.99154121291025\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Hardliners",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"696.1421875485958\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Moderates",
+          "ratio": 13.27,
+          "backdrop": ""
+        }
+      ],
+      "resultMeasured": [
+        {
+          "target": "#_r_l_driver-15 > span[data-testid=\"result-bloc-move\"] > span[aria-hidden=\"true\"]",
+          "why": "Element content contains only non-text characters",
+          "kind": "html",
+          "text": "▲",
+          "ratio": 15.31,
+          "backdrop": "rgb(15,22,38)"
+        }
+      ]
+    }
+  },
+  "tiny_valid": {
+    "turnsPlayed": 16,
+    "terminal": {
+      "bucket": "victory",
+      "reason_label": "Peaceful liberalization completed",
+      "turn": 16,
+      "headline": "Victory: peaceful liberalization completed, turn 16."
+    },
+    "log": [
+      {
+        "turn": 0,
+        "kinds": [
+          "constitutional_amendment",
+          "legislative_bargain"
+        ],
+        "headline": "Amendment passed, 69 of 100 seats (67 required).",
+        "objectiveLine": "The constitution now qualifies, and the transition is recorded. Win the election on turn 16 to complete it.",
+        "previewEffect": "If enacted, this reform would record the qualifying transition; the election on turn 16 would decide."
+      },
+      {
+        "turn": 1,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 2,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 3,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 4,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 5,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 6,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 7,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 8,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 9,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 10,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 11,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 12,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 13,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 14,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 15,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The election was won with 66.72%.",
+        "objectiveLine": "Objective complete: you won the qualifying election.",
+        "previewEffect": null
+      }
+    ],
+    "surfaces": 36,
+    "consoleErrors": [],
+    "concluded": {
+      "parliamentMeasured": [
+        {
+          "target": "text[x=\"65.33997866855714\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Mainstream",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"314.57688510742196\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Reform Caucus",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"437.43728501679743\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Farmers",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"632.0773558988743\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Conservatives",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"64.12443676609433\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Mainstream",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"282.56271498320257\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Reform Caucus",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"409.5255637191032\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Farmers",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"617.1751031927895\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Conservatives",
+          "ratio": 13.27,
+          "backdrop": ""
+        }
+      ],
+      "resultMeasured": [
+        {
+          "target": "#_r_h_driver-18 > span[data-testid=\"result-bloc-move\"] > span[aria-hidden=\"true\"]",
+          "why": "Element content contains only non-text characters",
+          "kind": "html",
+          "text": "▲",
+          "ratio": 15.31,
+          "backdrop": "rgb(15,22,38)"
+        },
+        {
+          "target": "#_r_h_driver-20 > span[data-testid=\"result-bloc-move\"] > span[aria-hidden=\"true\"]",
+          "why": "Element content contains only non-text characters",
+          "kind": "html",
+          "text": "▲",
+          "ratio": 15.31,
+          "backdrop": "rgb(15,22,38)"
+        },
+        {
+          "target": "#_r_h_driver-22 > span[data-testid=\"result-bloc-move\"] > span[aria-hidden=\"true\"]",
+          "why": "Element content contains only non-text characters",
+          "kind": "html",
+          "text": "▲",
+          "ratio": 15.31,
+          "backdrop": "rgb(15,22,38)"
+        }
+      ]
+    }
+  },
+  "decree_state": {
+    "turnsPlayed": 7,
+    "terminal": {
+      "bucket": "victory",
+      "reason_label": "Peaceful liberalization completed",
+      "turn": 7,
+      "headline": "Victory: peaceful liberalization completed, turn 7."
+    },
+    "log": [
+      {
+        "turn": 0,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 1,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 2,
+        "kinds": [
+          "constitutional_amendment"
+        ],
+        "headline": "Amendment passed, 72 of 100 seats (67 required).",
+        "objectiveLine": "The constitution now qualifies, and the transition is recorded. Win the election on turn 7 to complete it.",
+        "previewEffect": "If enacted, this reform would record the qualifying transition; the election on turn 7 would decide."
+      },
+      {
+        "turn": 3,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 4,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 5,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The turn was resolved.",
+        "objectiveLine": null,
+        "previewEffect": null
+      },
+      {
+        "turn": 6,
+        "kinds": [
+          "bloc_relationship_investment"
+        ],
+        "headline": "The election was won with 64.38%.",
+        "objectiveLine": "Objective complete: you won the qualifying election.",
+        "previewEffect": null
+      }
+    ],
+    "surfaces": 36,
+    "consoleErrors": [],
+    "concluded": {
+      "parliamentMeasured": [
+        {
+          "target": "text[x=\"85.37910273005508\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Core",
+          "ratio": 13.27,
+          "backdrop": ""
+        },
+        {
+          "target": "text[x=\"595.6939869257578\"]",
+          "why": "Element's background color could not be determined because element contains an image node",
+          "kind": "svg-text",
+          "text": "Main",
+          "ratio": 13.27,
+          "backdrop": ""
+        }
+      ],
+      "resultMeasured": [
+        {
+          "target": "#_r_8_driver-18 > span[data-testid=\"result-bloc-move\"] > span[aria-hidden=\"true\"]",
+          "why": "Element content contains only non-text characters",
+          "kind": "html",
+          "text": "▲",
+          "ratio": 15.31,
+          "backdrop": "rgb(15,22,38)"
+        },
+        {
+          "target": "#_r_8_driver-20 > span[data-testid=\"result-bloc-move\"] > span[aria-hidden=\"true\"]",
+          "why": "Element content contains only non-text characters",
+          "kind": "html",
+          "text": "▲",
+          "ratio": 15.31,
+          "backdrop": "rgb(15,22,38)"
+        }
+      ]
+    }
+  },
+  "decisionReliability": {
+    "selectionSurvivedNavigation": true,
+    "noMajorActionClearedProposal": true,
+    "consoleErrors": []
+  },
+  "fixtures": {
+    "surfaces": 48,
+    "consoleErrors": []
+  }
+}

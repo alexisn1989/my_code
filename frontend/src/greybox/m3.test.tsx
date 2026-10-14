@@ -25,6 +25,7 @@ import { SessionProvider, useSession } from "../state/SessionContext";
 import { stagedActions } from "../state/stagedActions";
 import { OBJECTIVE_FIXTURE } from "../test/objectiveFixture";
 import VALDRUN_OPTIONS from "../test/decision-options-valdrun.json";
+import { offerLine } from "../format/parliament";
 import { ParliamentScreen } from "./screens/ParliamentScreen";
 
 // ---- Fixtures ------------------------------------------------------------------------------------
@@ -315,11 +316,22 @@ describe("4. disabled states and their reasons", () => {
     await ready();
     await openPanel("lower", "opp/main");
     expect(within(panel()).getByRole("button", { name: "Stage this bargain · 105" })).toBeDisabled();
+    // Gate 4A3 M-5 (F2): with nothing drafted there is no budget to name.
+    expect(within(panel()).getByTestId("leader-offer")).toHaveTextContent(/^Endorse your proposal\. /);
+    expect(panel().textContent ?? "").not.toContain("Endorse your budget");
     expect(within(panel()).getByTestId("bargain-blocked-reason")).toHaveTextContent("Put a budget or an amendment");
     expect(within(panel()).getByTestId("panel-influence")).toBeDisabled();
     expect(within(panel()).getByTestId("influence-blocked-reason")).toHaveTextContent("Put a budget or an amendment");
     fireEvent.click(within(panel()).getByRole("button", { name: "Stage this bargain · 105" }));
     expect(useDraftStore.getState().bargain).toBeNull();
+  });
+
+  it("names what is drafted in the offer, and only that (F2)", () => {
+    expect([offerLine("budget"), offerLine("amendment"), offerLine(null)]).toEqual([
+      "Endorse your budget.",
+      "Endorse your constitutional amendment.",
+      "Endorse your proposal.",
+    ]);
   });
 
   it("on the decree route: disabled with the decree reason", async () => {

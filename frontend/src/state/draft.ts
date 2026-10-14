@@ -301,7 +301,10 @@ export const useDraftStore = create<DraftState>((set) => ({
   bargain: null,
   assistance: null,
   promise: null,
-  dismissedHelp: false,
+  // Gate 4A3 M-5 (finding F1, ruled): the introduction starts CLOSED at every width. Open on desktop,
+  // it pushed the Dashboard's map below the 1440x900 fold; the map is now the Dashboard's
+  // orientation, and the note is one click away on the header's "How to govern" toggle.
+  dismissedHelp: true,
   glossaryOpen: false,
   requestedCardId: null,
   selectedCardId: null,

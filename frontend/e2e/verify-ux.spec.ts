@@ -445,12 +445,11 @@ for (const viewport of VIEWPORTS) {
       expect(firstViewport.winBottom, "the stakes are inside the first 1440x900 viewport").toBeLessThanOrEqual(viewport.height);
       expect(firstViewport.buttonBottom, "Build a decision is inside the first viewport").toBeLessThanOrEqual(viewport.height);
     }
-    // UX-4c (U12): below `lg` the note starts closed on a fresh load; open it the way a player would.
+    // UX-4c (U12), widened by Gate 4A3 M-5 (F1): the note starts closed on a fresh load at EVERY
+    // width; open it the way a player would.
     const note = page.getByRole("complementary", { name: "How to govern" });
-    if (viewport.width < 1024) {
-      await expect(note, "the note starts closed on a narrow first load").toHaveCount(0);
-      await page.getByRole("button", { name: "How to govern" }).click();
-    }
+    await expect(note, "the note starts closed on a first load").toHaveCount(0);
+    await page.getByRole("button", { name: "How to govern" }).click();
     // Gate 4A3 M-1: the shortened note no longer repeats the stakes; the objective card states them.
     await expect(note.getByTestId("win-and-loss")).toHaveCount(0);
     await expect(page.getByTestId("objective-card").getByTestId("win-and-loss")).toContainText(WIN_LINE_START);

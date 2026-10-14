@@ -31,6 +31,9 @@ import path from "node:path";
 import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
+import { decidedContrast } from "./contrast-decided";
+import { installColourProbe } from "./contrast-probe";
+
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
 const ROUTES_DIR = path.join(REVIEW_DIR, "gate-4a3-victory-route-audit", "engine-search");
 const FIXTURES_DIR = path.join(process.cwd(), "e2e", "fixtures");
@@ -187,6 +190,8 @@ for (const scenario of ["deficit_demo", "tiny_valid", "decree_state"] as const) 
   test(`a winning campaign through the Constitution links: ${scenario}`, async ({ page }) => {
     test.setTimeout(1_800_000);
     await ensureServer(page);
+    // Gate 4A3 M-5: the calibrated colour probe, for the concluded surfaces' contrast measurements.
+    await installColourProbe(page);
     const file = scenario === "decree_state" ? "search-v2-decree_state.json" : `search-${scenario}.json`;
     const route = JSON.parse(readFileSync(path.join(ROUTES_DIR, file), "utf-8")) as { turns: RouteTurn[]; outcome: any };
     expect(route.outcome?.bucket, "the audited route ends in victory").toBe("victory");
@@ -321,10 +326,46 @@ for (const scenario of ["deficit_demo", "tiny_valid", "decree_state"] as const) 
       entries.filter((entry) => entry.surface === "Constitution (concluded)").map((entry) => entry.width),
       `${scenario}: the concluded Constitution screen at every width`,
     ).toEqual(WIDTHS.map((size) => size.width));
+    // Gate 4A3 M-5 (G4): the concluded campaign at a REAL win, on the redesign's surfaces.
+    // Parliament: no live estimate, no Preview; every chamber shows seats only.
+    await visit(page, "Legislature");
+    await expect(page.getByTestId("parliament-draft")).toContainText("The campaign has ended.");
+    await expect(page.getByTestId("parliament-draft").getByRole("button", { name: "Preview" })).toHaveCount(0);
+    const modes = await page.getByTestId("chamber-card").evaluateAll((cards) => cards.map((c) => (c as HTMLElement).dataset.mode));
+    expect(modes.length, `${scenario}: chambers shown`).toBeGreaterThan(0);
+    expect(new Set(modes), `${scenario}: no live estimate once concluded`).toEqual(new Set(["seats"]));
+    await expect(page.getByTestId("chamber-supporting")).toHaveCount(0);
+    // The bloc panel: readable, every action disabled with the reason.
+    await page.locator("[data-bloc-open]").first().click();
+    const blocPanel = page.getByTestId("bloc-panel");
+    await expect(blocPanel).toContainText("The campaign has ended.");
+    const live = await blocPanel.evaluate((root) =>
+      [...root.querySelectorAll("button, input")]
+        .filter((el) => !(el as HTMLButtonElement | HTMLInputElement).disabled)
+        .map((el) => el.getAttribute("aria-label") ?? el.textContent?.trim() ?? el.tagName),
+    );
+    expect(live.filter((name) => !/^Close |^Open in Decisions$/.test(name)), `${scenario}: no enabled action once concluded`).toEqual([]);
+    const parliamentContrast = await decidedContrast(page, "main", `${scenario}: Parliament (concluded)`);
+    // The winning turn's result: the proposal card, the ending, and no next turn to plan.
+    await visit(page, "Turn result");
+    const resultView = page.getByTestId("turn-result-view");
+    await expect(resultView.getByTestId("proposal-card")).toBeVisible();
+    await expect(resultView.getByTestId("result-verdict")).toHaveText(/^(Enacted|Did not carry|Enacted by decree|No proposal)$/);
+    await expect(resultView).toHaveAttribute("data-unmatched-components", "0");
+    await expect(page.getByRole("heading", { name: "This turn ended the campaign" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: /^Plan turn \d+$/ })).toHaveCount(0);
+    const resultContrast = await decidedContrast(page, "main", `${scenario}: result (concluded)`);
     await visit(page, "Victory / defeat");
     await expect(page.locator("main")).toContainText(final.terminal!.headline);
     expect(consoleErrors).toEqual([]);
-    record[scenario] = { turnsPlayed: log.length, terminal: final.terminal, log, surfaces: surfaces.length, consoleErrors };
+    record[scenario] = {
+      turnsPlayed: log.length,
+      terminal: final.terminal,
+      log,
+      surfaces: surfaces.length,
+      consoleErrors,
+      concluded: { parliamentMeasured: parliamentContrast.measuredSvgText, resultMeasured: resultContrast.measuredSvgText },
+    };
   });
 }
 

@@ -330,6 +330,29 @@ describe("GreyboxApp: Glossary is chrome-level, keyboard-activatable, and dismis
   });
 });
 
+describe("Gate 4A3 M-5 (F1): the introduction starts closed at every width", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+    mockFullApp();
+    // The store's own initial state, not a value this test sets: that is the default a player meets.
+    useDraftStore.setState({ dismissedHelp: useDraftStore.getInitialState().dismissedHelp, glossaryOpen: false });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("is closed by default, with its toggle collapsed, and opens from the toggle", async () => {
+    expect(useDraftStore.getInitialState().dismissedHelp).toBe(true);
+    renderApp();
+    const toggle = await screen.findByRole("button", { name: "How to govern" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("complementary", { name: "How to govern" })).not.toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("complementary", { name: "How to govern" })).toBeInTheDocument();
+  });
+});
+
 describe("Gate 4A3 Commit 4: the \"How to govern\" introduction", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());

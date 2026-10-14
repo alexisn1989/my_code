@@ -46,6 +46,19 @@
  *   - History after a LATER turn: the card, the people and the portrait equal what live showed;
  *   - Valdrun: a decree turn ("Enacted by decree", no tallies) and a no-proposal turn;
  *   - keyboard: Trace to a line in the card and to a reaction under a bloc.
+ *
+ * @m5 -- consolidation (the acceptance journeys and the gaps the M-5 audit found):
+ *   - journeys A (Arken bargain) and B (Valdrun amendment influence) FROM THE DASHBOARD MAP, at the
+ *     mockups' sizes 1440x900 (keyboard: Tab to a pin, Space or Enter), 390x844 and 320x800 (every
+ *     step tapped): objective, place, bloc, stage, Preview (supporting seats), the draft surviving
+ *     Dashboard -> Decisions -> Parliament, resolve, the card and reactions, History equal to live;
+ *     the body's background token, every seat diagram with a box, and colour contrast DECIDED (no
+ *     axe "incomplete") on the map, Parliament with the panel open, and the result;
+ *   - input: every pin and Places button is a Tab stop and opens by Enter and by Space; every Places
+ *     button opens by tap;
+ *   - states: an unaffordable draft on Parliament (and the server refusing the same set), a failed
+ *     vote's result card;
+ *   - the visual record: the eleven approved M-V views re-shot at the mockups' own sizes.
  */
 
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
@@ -55,6 +68,9 @@ import path from "node:path";
 
 import { AxeBuilder } from "@axe-core/playwright";
 import { expect, test, type Browser, type Page } from "@playwright/test";
+
+import { decidedContrast } from "./contrast-decided";
+import { installColourProbe } from "./contrast-probe";
 
 const REVIEW_DIR = path.join(process.cwd(), "..", "docs", "reviews");
 const SCENARIO_ROOT = path.join(process.cwd(), "..", "data", "scenarios");
@@ -1285,3 +1301,422 @@ test("@m4 keyboard: the Trace reaches a line in the card and a reaction under a 
   results.push({ block: "m4-keyboard", reached });
   await page.context().close();
 });
+
+// ---- @m5: consolidation -- the acceptance journeys from the map, the state matrix, input, records ----
+
+/** The three sizes the approved M-V mockups were drawn at. Phones are touch-only: every step taps. */
+const M5_SIZES = [
+  { width: 1440, height: 900, label: "desktop-1440x900", touch: false },
+  { width: 390, height: 844, label: "mobile-390x844", touch: true },
+  { width: 320, height: 800, label: "narrow-320x800", touch: true },
+] as const;
+
+/** A page with the calibrated colour probe installed (it must precede the first navigation). */
+async function newProbedPage(browser: Browser, width: number, height: number): Promise<Page> {
+  const page = await newPage(browser, width, height);
+  await installColourProbe(page);
+  return page;
+}
+
+async function press(locator: ReturnType<Page["locator"]>, touch: boolean) {
+  if (touch) await locator.tap();
+  else await locator.click();
+}
+
+/** The page's own background is the token, and every seat diagram on screen has a real box. */
+async function paintedFacts(page: Page) {
+  return page.evaluate(() => {
+    const token = getComputedStyle(document.documentElement).getPropertyValue("--color-navy-950").trim();
+    const probe = document.createElement("div");
+    probe.style.backgroundColor = token;
+    document.body.appendChild(probe);
+    const tokenRgb = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return {
+      body: getComputedStyle(document.body).backgroundColor,
+      tokenRgb,
+      emptyDiagrams: [...document.querySelectorAll('[data-testid="hemicycle"]')]
+        .map((svg) => svg.getBoundingClientRect())
+        .filter((r) => r.width === 0 || r.height === 0).length,
+      diagrams: document.querySelectorAll('[data-testid="hemicycle"]').length,
+    };
+  });
+}
+
+async function expectPainted(page: Page, label: string) {
+  const facts = await paintedFacts(page);
+  expect(facts.body, `${label}: the body's background is --color-navy-950`).toBe(facts.tokenRgb);
+  expect(facts.emptyDiagrams, `${label}: every seat diagram has a box`).toBe(0);
+  return facts;
+}
+
+/** From the Dashboard, open a place by its map pin (keyboard: Tab to it, then `key`) or, on a touch
+ * screen, by tapping its Places button. */
+async function placeFromDashboard(page: Page, place: (typeof PLACES)[number], touch: boolean, key: "Enter" | "Space") {
+  await visitScreen(page, "Dashboard", touch ? "tap" : "click");
+  const name = `${place.name}: opens ${place.opens}`;
+  if (touch) {
+    await page.getByTestId("places-list").getByRole("button", { name, exact: true }).tap();
+  } else {
+    await page.locator("[data-map-pin]").first().focus();
+    let reached = false;
+    for (let i = 0; i < 20 && !reached; i += 1) {
+      reached = await page.evaluate((n) => document.activeElement?.getAttribute("aria-label") === n, name);
+      if (!reached) await page.keyboard.press("Tab");
+    }
+    expect(reached, `Tab reaches ${name}`).toBe(true);
+    await page.keyboard.press(key);
+  }
+  await expect(navEntry(page, place.opens)).toHaveAttribute("aria-current", "page");
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.closest("main") !== null && document.activeElement?.tagName === "H2"))
+    .toBe(true);
+}
+
+const PLACE = (name: string) => PLACES.find((p) => p.name === name)!;
+
+/** Resolve from Decisions with every step touched on a phone. */
+async function resolveTurn(page: Page, touch: boolean) {
+  await visitScreen(page, "Decisions", touch ? "tap" : "click");
+  await press(page.getByRole("button", { name: "Resolve turn" }), touch);
+  const pending = page.waitForResponse((r) => r.url().includes("/api/game/resolve") && r.request().method() === "POST", {
+    timeout: 120_000,
+  });
+  await press(page.getByRole("button", { name: "Confirm and resolve" }), touch);
+  const response = await pending;
+  expect(response.status()).toBe(200);
+  const body = (await response.json()) as ResultBody;
+  await expect(page.getByTestId("turn-result-view")).toContainText(body.turnResult.outcome_headline);
+  return body;
+}
+
+/** Preview from Parliament; returns the response and the request it answered. */
+async function previewFromParliament(page: Page, touch: boolean) {
+  const pending = page.waitForResponse((r) => r.url().includes("/api/game/preview") && r.request().method() === "POST");
+  await press(page.getByTestId("parliament-draft").getByRole("button", { name: "Preview" }), touch);
+  const response = await pending;
+  return { body: await response.json(), request: response.request().postDataJSON() as Record<string, unknown> };
+}
+
+async function shot(page: Page, name: string) {
+  await page.screenshot({ path: path.join(REVIEW_DIR, `${OUT_NAME}-shots`, name), fullPage: true });
+}
+
+for (const size of M5_SIZES) {
+  const how = size.touch ? "tap" : "click";
+
+  test(`@m5 journey A from the map: budget bargaining (Arken) -- ${size.label}`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newProbedPage(browser, size.width, size.height);
+    await ensureServer(page);
+    await startScenario(page, "Start Republic of Arken");
+
+    // 1. The Dashboard: the objective, the map, contrast decided.
+    await visitScreen(page, "Dashboard", how);
+    await expect(page.getByTestId("objective-card").getByTestId("objective-headline")).toBeVisible();
+    await expectPainted(page, "Dashboard");
+    const mapContrast = await decidedContrast(page, 'section[aria-label="The country"]', "the map");
+    await shot(page, `m5-a-dashboard-${size.width}.png`);
+
+    // 2. The Treasury (Decisions) from the map: draft the budget.
+    await placeFromDashboard(page, PLACE("Treasury"), size.touch, "Enter");
+    await selectPolicyCard(page, "Lower the personal income tax", how);
+
+    // 3. Parliament from the map (desktop: Tab to the pin, then SPACE).
+    await placeFromDashboard(page, PLACE("Parliament"), size.touch, "Space");
+    const panelLocator = await openBlocPanel(page, "lower", "rural_alliance/farmers", how);
+    await press(panelLocator.getByRole("button", { name: "Stage this bargain · 105" }), size.touch);
+    await expect(panelLocator.getByTestId("bargain-staged-here")).toContainText("Maret Kuusk");
+
+    // 4. Preview from Parliament: supporting seats in both chambers, rows that sum.
+    const preview = await previewFromParliament(page, size.touch);
+    expect((preview.request.decisions as { kind: string }[]).map((d) => d.kind)).toContain("legislative_bargain");
+    await expect(page.getByTestId("draft-status")).toHaveText("Preview is current for this draft");
+    const tallies = await shownTallies(page);
+    for (const chamber of preview.body.chambers as { chamber: string; supporting_seats: number }[]) {
+      const shown = tallies.find((t) => t.chamber === chamber.chamber)!;
+      expect(shown.mode).toBe("current");
+      expect(shown.rowSum).toBe(chamber.supporting_seats);
+    }
+    await expectPainted(page, "Parliament");
+    const parliamentContrast = await decidedContrast(page, "main", "Parliament, panel open, previewed");
+    await shot(page, `m5-a-parliament-${size.width}.png`);
+
+    // 5. The draft survives Dashboard -> Decisions -> Parliament.
+    await visitScreen(page, "Dashboard", how);
+    await visitScreen(page, "Decisions", how);
+    await expect(page.getByRole("group", { name: "Lower the personal income tax" }).getByRole("button", { name: "Selected" })).toBeVisible();
+    await expect(page.getByTestId("staged-actions")).toContainText("Maret Kuusk");
+    await expect(page.getByTestId("staged-count")).toHaveText("· 2 staged");
+    await openParliament(page, how);
+    const again = await openBlocPanel(page, "lower", "rural_alliance/farmers", how);
+    await expect(again.getByTestId("bargain-staged-here")).toContainText("Maret Kuusk");
+
+    // 6. Resolve (every step touched on phones), then the card, the people, History.
+    const body = await resolveTurn(page, size.touch);
+    await checkResultCard(page, body);
+    const leader = page.locator('[data-testid="result-person"][data-reason-id="legislative_bargain_accepted"]');
+    await expect(leader).toContainText("backed the budget, for 105 political capital.");
+    await expect(leader.locator("[data-portrait-ref]")).toHaveCount(1);
+    for (const move of await page.getByTestId("result-bloc-move").allInnerTexts()) {
+      expect(move).toMatch(/^(▲ closer \+|▼ cooler -|• no change)/);
+    }
+    await expectPainted(page, "Result");
+    const resultContrast = await decidedContrast(page, "main", "the result");
+    await shot(page, `m5-a-result-${size.width}.png`);
+    const live = await resultReading(page);
+    await openHistoryTurn(page, body.turnResult.turn, how);
+    expect(await resultReading(page), "History equals live").toEqual(live);
+    results.push({
+      block: "m5-journey-a",
+      size: size.label,
+      recorded: body.turnResult.recorded_vote?.chambers.map((c) => [c.chamber, c.supporting_seats]),
+      svgTextMeasured: {
+        map: mapContrast.measuredSvgText,
+        parliament: parliamentContrast.measuredSvgText,
+        result: resultContrast.measuredSvgText,
+      },
+    });
+    await page.context().close();
+  });
+
+  test(`@m5 journey B from the map: amendment influence (Valdrun) -- ${size.label}`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newProbedPage(browser, size.width, size.height);
+    await ensureServer(page);
+    await startScenario(page, "Start Kingdom of Valdrun");
+    await visitScreen(page, "Dashboard", how);
+    await expect(page.getByTestId("objective-card").getByTestId("objective-headline")).toBeVisible();
+
+    // The Constitution hall from the map, then its own link.
+    await placeFromDashboard(page, PLACE("Constitution hall"), size.touch, "Enter");
+    await press(page.getByRole("button", { name: "Draft the qualifying reform" }), size.touch);
+    await expect(navEntry(page, "Decisions")).toHaveAttribute("aria-current", "page");
+
+    await placeFromDashboard(page, PLACE("Parliament"), size.touch, "Enter");
+    const panelLocator = await openBlocPanel(page, "lower", "opposition_party/main", how);
+    await expect(panelLocator.getByTestId("leader-refuses")).toHaveText("Will not deal at any price.");
+    const influence = panelLocator.getByTestId("panel-influence");
+    if (size.touch) await influence.tap();
+    await influence.fill("300");
+    await expect(panelLocator.getByTestId("bloc-staged")).toContainText("Influence on this vote: 300 capital");
+
+    const preview = await previewFromParliament(page, size.touch);
+    const tallies = await shownTallies(page);
+    for (const chamber of preview.body.chambers as { chamber: string; supporting_seats: number }[]) {
+      const shown = tallies.find((t) => t.chamber === chamber.chamber)!;
+      expect(shown.mode, "supporting seats are shown after Preview").toBe("current");
+      expect(shown.supporting, "the supporting count is on the card").not.toBeNull();
+      expect(shown.rowSum).toBe(chamber.supporting_seats);
+    }
+    await expectPainted(page, "Parliament");
+
+    const body = await resolveTurn(page, size.touch);
+    expect(body.turnResult.recorded_vote?.proposal_kind).toBe("constitutional_amendment");
+    await checkResultCard(page, body);
+    const live = await resultReading(page);
+    await openHistoryTurn(page, body.turnResult.turn, how);
+    expect(await resultReading(page), "History equals live").toEqual(live);
+    results.push({ block: "m5-journey-b", size: size.label, verdict: body.turnResult.recorded_vote?.outcome });
+    await page.context().close();
+  });
+}
+
+test("@m5 F1: the Dashboard's first desktop screen, introduction closed by default (1440x900)", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const page = await newPage(browser, 1440, 900);
+  await ensureServer(page);
+  await startValdrun(page);
+  await openDashboard(page);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(page.getByRole("complementary", { name: "How to govern" }), "the note starts closed").toHaveCount(0);
+  await expect(page.getByRole("button", { name: "How to govern" })).toHaveAttribute("aria-expanded", "false");
+  const fold = await page.evaluate(() => {
+    const frame = document.querySelector('[data-testid="country-map"]')!.getBoundingClientRect();
+    const pins = [...document.querySelectorAll("[data-map-pin]")].map((pin) => {
+      const r = pin.getBoundingClientRect();
+      return { name: pin.getAttribute("aria-label") ?? "", bottom: Math.round(r.bottom) };
+    });
+    return {
+      frameTop: Math.round(frame.top),
+      frameBottom: Math.round(frame.bottom),
+      pinsInFirstScreen: pins.filter((p) => p.bottom <= window.innerHeight).map((p) => p.name),
+      pinBottoms: pins.map((p) => p.bottom),
+    };
+  });
+  // Measured with the note closed by default (the M-5 record gives the before and after figures):
+  // the map frame starts at 511 px, and the capital's top row -- Parliament, Palace, Constitution
+  // hall -- is inside the first 900 px. The rest of the capital and the Places list still lie below.
+  expect(fold.frameTop, "the map starts within the top 520 px").toBeLessThanOrEqual(520);
+  for (const name of ["Parliament: opens Legislature", "Palace: opens Government", "Constitution hall: opens Constitution"]) {
+    expect(fold.pinsInFirstScreen, `${name} is in the first screen`).toContain(name);
+  }
+  await page.screenshot({ path: path.join(REVIEW_DIR, `${OUT_NAME}-shots`, "m5-f1-dashboard-1440x900.png") });
+  results.push({ block: "m5-f1", fold });
+  await page.context().close();
+});
+
+test("@m5 input: every pin and place is reached by Tab and opened by Enter and by Space", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const page = await newPage(browser, 1440, 900);
+  await ensureServer(page);
+  await startValdrun(page);
+  await openDashboard(page);
+  // Tab order from the map's first control: every pin and every Places button is a Tab stop.
+  await page.locator("[data-map-pin]").first().focus();
+  const stops: string[] = [];
+  for (let i = 0; i < 30; i += 1) {
+    stops.push((await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))) ?? "");
+    await page.keyboard.press("Tab");
+  }
+  for (const place of PLACES) {
+    const name = `${place.name}: opens ${place.opens}`;
+    expect(stops.filter((s) => s === name).length, `${name}: a pin and a Places button, both Tab stops`).toBe(2);
+  }
+  const landed: Record<string, string> = {};
+  for (const place of PLACES) {
+    for (const key of ["Enter", "Space"] as const) {
+      await placeFromDashboard(page, place, false, key);
+      landed[`${place.name}:${key}`] = await page.evaluate(() => document.activeElement?.textContent?.trim() ?? "");
+    }
+    expect(landed[`${place.name}:Space`], `${place.name}: Space lands where Enter does`).toBe(landed[`${place.name}:Enter`]);
+  }
+  results.push({ block: "m5-input-keyboard", landed });
+  await page.context().close();
+});
+
+test("@m5 input: every Places button opens its place by tap (390)", async ({ browser }) => {
+  test.setTimeout(300_000);
+  const page = await newPage(browser, 390, 844);
+  await ensureServer(page);
+  await startValdrun(page);
+  const landed: Record<string, string> = {};
+  for (const place of PLACES) landed[place.name] = await openPlace(page, "list", place, "tap");
+  results.push({ block: "m5-input-touch", landed });
+  await page.context().close();
+});
+
+for (const size of [M5_SIZES[0], M5_SIZES[1]]) {
+  const how = size.touch ? "tap" : "click";
+
+  test(`@m5 states: an unaffordable draft on Parliament -- ${size.label}`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newProbedPage(browser, size.width, size.height);
+    await ensureServer(page);
+    await startScenario(page, "Start Kingdom of Valdrun");
+    await visitScreen(page, "Constitution", how);
+    await press(page.getByRole("button", { name: "Draft the qualifying reform" }), size.touch);
+    await openParliament(page, how);
+    const panelLocator = await openBlocPanel(page, "lower", "opposition_party/main", how);
+    await panelLocator.getByTestId("panel-influence").fill("400");
+    await panelLocator.getByTestId("panel-investment").fill("200");
+    const preview = await previewFromParliament(page, size.touch);
+    expect(preview.body.affordable, "the backend's previewUnaffordable case").toBe(false);
+    // The tallies still show; the draft says resolving would be refused; nothing claims enactment.
+    expect((await shownTallies(page)).every((t) => t.mode === "current")).toBe(true);
+    await expect(page.getByTestId("draft-unaffordable")).toHaveText(
+      "This draft is not affordable, so resolving it would be refused.",
+    );
+    await expect(page.getByTestId("parliament-draft")).not.toContainText(/enacted|will pass/i);
+    // The server agrees: the same set is refused, and the turn does not move.
+    const before = (await (await apiGet(page, `${base}/api/game/state`)).json()) as { turn: number };
+    const refused = await apiPost(page, `${base}/api/game/resolve`, preview.request);
+    expect(refused.status()).toBe(422);
+    const after = (await (await apiGet(page, `${base}/api/game/state`)).json()) as { turn: number };
+    expect(after.turn).toBe(before.turn);
+    await shot(page, `m5-unaffordable-${size.width}.png`);
+    results.push({ block: "m5-unaffordable", size: size.label, refused: refused.status(), turn: after.turn });
+    await page.context().close();
+  });
+
+  test(`@m5 states: a failed vote's result card -- ${size.label}`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newProbedPage(browser, size.width, size.height);
+    await ensureServer(page);
+    await startScenario(page, "Start Kingdom of Valdrun");
+    await visitScreen(page, "Decisions", how);
+    await selectPolicyCard(page, "Raise the personal income tax", how);
+    const body = await resolveTurn(page, size.touch);
+    expect(body.turnResult.recorded_vote?.outcome).toBe("failed_legislative");
+    await checkResultCard(page, body);
+    await expect(page.getByTestId("result-card-drivers")).toContainText(/chamber blocked the budget: [\d,]+ supporting votes/);
+    const live = await resultReading(page);
+    await openHistoryTurn(page, body.turnResult.turn, how);
+    expect(await resultReading(page)).toEqual(live);
+    results.push({ block: "m5-failed", size: size.label });
+    await page.context().close();
+  });
+}
+
+/** The approved M-V views, re-shot from the app at the mockups' own sizes (viewport, not full page),
+ * each scrolled to the part the mockup shows. */
+for (const size of M5_SIZES) {
+  const how = size.touch ? "tap" : "click";
+  test(`@m5 visual record -- ${size.label}`, async ({ browser }) => {
+    test.setTimeout(300_000);
+    const page = await newProbedPage(browser, size.width, size.height);
+    await ensureServer(page);
+    const view = async (name: string, focus?: string) => {
+      if (focus) await page.locator(focus).first().scrollIntoViewIfNeeded();
+      else await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: path.join(REVIEW_DIR, `${OUT_NAME}-shots`, `visual-${name}__${size.label}.png`) });
+    };
+
+    // Valdrun.
+    await startScenario(page, "Start Kingdom of Valdrun");
+    await visitScreen(page, "Dashboard", how);
+    await view("dashboard");
+    await visitScreen(page, "Constitution", how);
+    await press(page.getByRole("button", { name: "Draft the qualifying reform" }), size.touch);
+    await openParliament(page, how);
+    await view("parliament-valdrun-draft", '[data-testid="chamber-card"]');
+    let panelLocator = await openBlocPanel(page, "lower", "opposition_party/main", how);
+    await view("bloc-refuses", '[data-testid="bloc-panel"]');
+    await press(panelLocator.getByRole("button", { name: /^Close / }), size.touch);
+    await previewFromParliament(page, size.touch);
+    await view("parliament-valdrun-preview", '[data-testid="chamber-card"]');
+
+    // Arken.
+    await startScenario(page, "Start Republic of Arken");
+    await openParliament(page, how);
+    panelLocator = await openBlocPanel(page, "lower", "rural_alliance/farmers", how);
+    await view("bloc-no-proposal", '[data-testid="bloc-panel"]');
+    await visitScreen(page, "Decisions", how);
+    await selectPolicyCard(page, "Lower the personal income tax", how);
+    await openParliament(page, how);
+    panelLocator = await openBlocPanel(page, "lower", "rural_alliance/farmers", how);
+    await view("bloc-offer", '[data-testid="bloc-panel"]');
+    await press(panelLocator.getByRole("button", { name: "Stage this bargain · 105" }), size.touch);
+    await view("bloc-staged", '[data-testid="bloc-panel"]');
+    await press(panelLocator.getByRole("button", { name: /^Close / }), size.touch);
+    await previewFromParliament(page, size.touch);
+    await view("parliament-tiny-preview", '[data-testid="chamber-card"]');
+    await resolveTurn(page, size.touch);
+    await view("result");
+    await openParliament(page, how);
+    await view("parliament-tiny-recorded", '[data-testid="recorded-chamber"]');
+    await page.context().close();
+
+    // The replacement, on M-3's LABELLED ALTERED RESPONSE (a second willing leader; never resolved).
+    const altered = await newPage(browser, size.width, size.height);
+    await altered.route("**/api/game/decision-options", async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as { legislative_bargain_counterparties: Record<string, unknown>[] };
+      body.legislative_bargain_counterparties = body.legislative_bargain_counterparties.map((c) =>
+        c.display_name === "Gustav Reiner" ? { ...c, will_deal: true, asking_price: 137, refusal_reason: null } : c,
+      );
+      await route.fulfill({ response, json: body });
+    });
+    await startScenario(altered, "Start Republic of Arken");
+    await visitScreen(altered, "Decisions", how);
+    await selectPolicyCard(altered, "Lower the personal income tax", how);
+    await openParliament(altered, how);
+    const first = await openBlocPanel(altered, "lower", "rural_alliance/farmers", how);
+    await press(first.getByRole("button", { name: "Stage this bargain · 105" }), size.touch);
+    await openBlocPanel(altered, "lower", "national_front/conservatives", how);
+    await altered.locator('[data-testid="bloc-panel"]').first().scrollIntoViewIfNeeded();
+    await altered.screenshot({ path: path.join(REVIEW_DIR, `${OUT_NAME}-shots`, `visual-bloc-replace__${size.label}.png`) });
+    await altered.context().close();
+    results.push({ block: "m5-visual-record", size: size.label, views: 11 });
+  });
+}

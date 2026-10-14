@@ -12,7 +12,7 @@
  * panel without navigating away.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useDashboard } from "../api/queries";
 import { revealScrollLeft, scrollRoom, scrollStep } from "../format/countryMap";
@@ -250,19 +250,10 @@ function GreyboxShell() {
   const ScreenComponent = screen.component;
   const stagedCount = useDraftStore((state) => stagedActions(state).length);
 
-  // Gate 4A3 UX-4c (U12), as ruled: on a phone the introduction was about 420 px tall at 390 px wide,
-  // and with the nav beneath it the Dashboard's priority card began near y = 1,500. So when the app
-  // FIRST LOADS below the `lg` breakpoint, the note starts closed. The header's "How to govern"
-  // toggle reopens it, the choice is not persisted (testers may share a browser), and the priority
-  // card itself carries the stakes line. Decided once, at mount: resizing later never re-closes a
-  // note the player opened. Without `matchMedia` (jsdom) the screen is treated as wide.
-  useLayoutEffect(() => {
-    if (typeof window.matchMedia === "function" && !window.matchMedia("(min-width: 1024px)").matches) {
-      setHelpDismissed(true);
-    }
-    // Mount only, by design: see above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Gate 4A3 M-5 (finding F1, ruled): the introduction starts closed at EVERY width -- the store's
+  // initial `dismissedHelp` is true. UX-4c had closed it only below `lg`, at mount; on desktop it
+  // stayed open and pushed the Dashboard's map below the 1440x900 fold. The header's "How to govern"
+  // toggle reopens it, and the choice is still not persisted (testers may share a browser).
 
   function navItem(entry: ScreenDefinition) {
     const disabled = (entry.requiresActiveGame ?? false) && revision === null;

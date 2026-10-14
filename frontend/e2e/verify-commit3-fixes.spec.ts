@@ -1266,6 +1266,12 @@ test.describe("Gate 4A3 Commit 3 — fix verification", () => {
     test.setTimeout(300_000);
     await page.goto("/");
 
+    // Gate 4A3 M-5 (F1): the note now starts closed at every width; open it with its own toggle
+    // first. Everything after this -- the traversal, dismissal and reopening -- is unchanged.
+    const opener = page.getByRole("button", { name: "How to govern" });
+    await opener.waitFor({ state: "visible", timeout: 30_000 });
+    await expect(opener).toHaveAttribute("aria-expanded", "false");
+    await opener.click();
     const note = page.getByRole("complementary", { name: "How to govern" });
     await note.waitFor({ state: "visible", timeout: 30_000 });
 

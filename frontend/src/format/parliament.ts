@@ -279,8 +279,12 @@ export function leaderTraitsLine(t: {
   return `Loyalty ${formatBpsPercent(t.loyalty_bps)} · independence ${formatBpsPercent(t.independence_bps)} · ambition ${formatBpsPercent(t.ambition_bps)} · trust in you ${formatBpsPercent(t.personal_trust_bps)}`;
 }
 
+/** What the leader offers to endorse. With nothing drafted there is no budget to name, so the offer
+ * is for "your proposal" (Gate 4A3 M-5, finding F2: it used to fall through to "your budget"). */
 export function offerLine(slot: "budget" | "amendment" | null): string {
-  return slot === "amendment" ? "Endorse your constitutional amendment." : "Endorse your budget.";
+  if (slot === "amendment") return "Endorse your constitutional amendment.";
+  if (slot === "budget") return "Endorse your budget.";
+  return "Endorse your proposal.";
 }
 
 export const PRICE_FIXED = "The price is theirs and fixed; there is no haggling.";

@@ -152,6 +152,8 @@ describe("U1: the stakes and the first action", () => {
   // the shortened How to govern note no longer repeats them.
   it("keeps the stakes out of How to govern, and explains Capital with the Glossary's definition", async () => {
     renderApp();
+    // Gate 4A3 M-5 (F1): the note starts closed at every width; open it the way a player would.
+    fireEvent.click(screen.getByRole("button", { name: "How to govern" }));
     const aside = screen.getByRole("complementary", { name: "How to govern" });
     expect(within(aside).queryByTestId("win-and-loss")).toBeNull();
     expect(aside.textContent ?? "").not.toContain(WIN_AND_LOSS_LINE);
